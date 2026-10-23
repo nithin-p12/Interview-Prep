@@ -63,8 +63,15 @@ E · Under the hood
 ====================================================================
 [OLD]  01 FireFlink Platform Architecture — tech stack, diagrams, flows, talking points
        _archive/03_System_Design/01_FireFlink_Platform_Architecture_v1.html
-[WIP]  02 System Design Interview Simulator — one app, 12 design cards (8 planned + 4 coming soon).
-          Ticket Booking DONE (awaiting owner review): 10 slides — architecture tour, data model/state machine,
+[NEW]  02 System Design Interview Simulator — one app, 12 design cards (8 planned + 4 coming soon).
+          2026-10-23: + Rate Limiter, URL Shortener, E-commerce Order (saga), Notification System — 9 slides each
+          (architecture tour, model, 5 scenarios with branches, interview script, 14-15 follow-ups). Not tested (owner rule).
+          2026-10-23: + File Upload & Storage, Chat System, Distributed Job Scheduler — all 8 active designs built (not tested).
+          2026-10-23: + News Feed, Search, Video Streaming, Distributed Cache — all 12 designs live (not tested).
+          Home order re-set to owner's list: 1 URL, 2 Rate, 3 Ticket, 4 Notification, 5 E-commerce, 6 Files, 7 Chat,
+          8 Jobs, 9 Feed, 10 Search, 11 Video, 12 Cache. (older line below kept for history)
+          Home order = owner priority: 1 Rate Limiter, 2 Ticket, 3 URL, 4 E-commerce, 5 Notification.
+          Ticket Booking: 10 slides — architecture tour, data model/state machine,
           6 animated scenarios (happy path, A-vs-B race w/ wrong-way branch, hold expiry + late payment/C pays
           branches, idempotency, outbox + Kafka redelivery w/ dedupe branch, stale cache), interview script
           (7 sections + 60 s timer), 22 follow-ups with "Visualize failure". Other 7 designs: after owner OK,
@@ -142,3 +149,6 @@ CHANGE LOG
             picture → per part: focus zoom + text/code + simulator → Q&A → production scenarios); v3 deck archived.
 2026-10-23  03_System_Design/02_SD_Interview_Simulator.html: interactive system-design simulator, Ticket Booking first
             (no JS errors, every scenario/branch stepped to the end, panels fit 1365×620/650). Added to prep.js.
+2026-10-23  Simulator: added Rate Limiter, URL Shortener, E-commerce Order, Notification System (not tested, per owner).
+2026-10-23  Simulator: added File Upload, Chat, Job Scheduler — all 8 designs live; 4 'coming soon' cards remain (not tested).
+2026-10-23  Simulator: added News Feed, Search, Video Streaming, Distributed Cache; all 12 live; home re-ordered (not tested).

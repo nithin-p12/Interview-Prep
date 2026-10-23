@@ -44,7 +44,7 @@ window.PREP=(function(){
    ['Design Patterns — Interview Guide','20 must-know, without vs with code','old','_archive/02_Design_Patterns/02_Design_Patterns_Interview_v2.html',[['posters','_archive/02_Design_Patterns/images/interview_v2/']]]]},
   {n:3,id:'sd',name:'System Design',col:'orange',logo:'kubernetes',hub:'03_System_Design/00_System_Design.html',desc:'architecture, REST, scaling, microservices, Docker & K8s',items:[
    ['FireFlink Platform Architecture','stack, flows, talking points','old','_archive/03_System_Design/01_FireFlink_Platform_Architecture_v1.html'],
-   ['System Design Interview Simulator','animated flows, races, failures, interview script · Ticket Booking ready, 7 more designs next','new','03_System_Design/02_SD_Interview_Simulator.html'],
+   ['System Design Interview Simulator','12 designs: URL Shortener → Distributed Cache — animated flows, races, failures, interview script','new','03_System_Design/02_SD_Interview_Simulator.html'],
    ['REST API design','status codes, idempotency, versioning','todo'],
    ['System design basics','scaling, CAP, rate limiting','todo'],
    ['Microservices patterns (interactive)','gateway, discovery, resilience','todo'],
