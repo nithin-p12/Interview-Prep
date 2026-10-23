@@ -1,0 +1,1626 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JVM Memory & Architecture · Interview Prep</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<style>
+:root{--ink:#0F172A;--text:#334155;--muted:#64748B;--line:#E2E8F0;--top:62px;--pager:56px;
+ --b-bg:#EEF5FF;--b-bd:#3B82F6;--b-dk:#1D4ED8;--b-lt:#BFDBFE;
+ --p-bg:#F7F0FF;--p-bd:#9333EA;--p-dk:#7E22CE;--p-lt:#E9D5FF;
+ --o-bg:#FFF6EC;--o-bd:#F97316;--o-dk:#C2410C;--o-lt:#FED7AA;
+ --g-bg:#EFFCF3;--g-bd:#22C55E;--g-dk:#15803D;--g-lt:#BBF7D0;
+ --r-bg:#FFF1F1;--r-bd:#EF4444;--r-dk:#B91C1C;--r-lt:#FECACA;
+ --s-bg:#F8FAFC;--s-bd:#64748B;--s-dk:#334155;--s-lt:#E2E8F0}
+*{box-sizing:border-box}
+html,body{margin:0;background:#fff;color:var(--text);font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;font-size:15px;line-height:1.5}
+code{font-family:"Cascadia Mono",Consolas,monospace;font-size:.9em;background:rgba(15,23,42,.06);padding:1px 5px;border-radius:5px}
+b{color:var(--ink)}
+
+/* ---------- top bar ---------- */
+.topbar{position:fixed;top:0;left:0;right:0;height:var(--top);z-index:20;background:rgba(255,255,255,.97);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 clamp(10px,2vw,22px)}
+.topbar .ttl{display:flex;flex-direction:column;min-width:0;flex:none}
+.topbar .ttl a{font-size:12.5px;color:#2563EB;text-decoration:none;font-weight:600}
+.topbar .ttl b{font-size:17px;white-space:nowrap}
+.tabs{display:flex;gap:6px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;padding:4px 0}
+.tabs::-webkit-scrollbar{display:none}
+.tab{font:inherit;font-size:12.5px;font-weight:700;padding:5px 10px;border-radius:999px;border:1.5px solid;background:#fff;cursor:pointer;white-space:nowrap}
+.tab.on{color:#fff!important}
+.tools{display:flex;gap:6px;flex:none}
+.tg{font:inherit;font-size:13px;font-weight:700;padding:6px 11px;border-radius:9px;border:1.5px solid #CBD5E1;background:#fff;cursor:pointer;color:#334155;white-space:nowrap}
+.tg.on{background:#0F172A;border-color:#0F172A;color:#fff}
+
+/* ---------- deck ---------- */
+.deck{padding-top:var(--top);padding-bottom:var(--pager)}
+.slide{display:none;height:calc(100vh - var(--top) - var(--pager));overflow:auto;padding:16px clamp(14px,4vw,64px) 18px}
+.slide.on{display:block}
+body.all .slide{display:block;height:auto;overflow:visible;border-bottom:2px dashed #CBD5E1;padding-bottom:28px}
+body.all .pager,body.all .side-arrow{display:none}
+body.all .deck{padding-bottom:20px}
+.cat-title{display:none}
+body.all .cat-title{display:block;margin:26px clamp(14px,4vw,64px) 0;font-size:24px;color:var(--ink)}
+.sh{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.sn{display:grid;place-items:center;min-width:46px;height:34px;padding:0 10px;border-radius:999px;color:#fff;font-weight:800;font-size:14px}
+.sh h2{margin:0;font-size:clamp(20px,2.2vw,26px);color:var(--ink)}
+.sh .sub{color:var(--muted);font-size:14.5px}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:18px;align-items:start}
+.cols.even{grid-template-columns:repeat(2,minmax(0,1fr))}
+.stack{display:flex;flex-direction:column;gap:12px;min-width:0}
+.box{background:#fff;border:1.5px solid;border-radius:12px;padding:12px 14px;min-width:0}
+.box h4{margin:0 0 6px;font-size:15.5px;color:var(--ink)}
+.box ul,.box ol{margin:0;padding-left:20px}.box li{margin:3px 0}
+.lead{font-size:16px;line-height:1.6;margin:0;color:#1E293B}
+.take{font-size:15px;background:#fff;border:1.5px solid;border-left-width:6px;border-radius:10px;padding:9px 13px;color:#1E293B}
+.qa{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0;padding:0;list-style:none}
+.qa li{background:#fff;border:1.5px solid #E2E8F0;border-radius:10px;padding:9px 13px;font-size:14.5px}
+.qa .q{display:block;font-weight:700;color:var(--ink);margin-bottom:2px}
+.lbl{font-size:12.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;margin:0 0 6px}
+.pills{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pills span{background:#fff;border:1.5px solid #CBD5E1;border-radius:999px;padding:4px 11px;font-weight:600;font-size:13.5px;color:var(--ink)}
+.pills em{font-style:normal;color:var(--muted);font-weight:800}
+table.t{width:100%;border-collapse:collapse;font-size:14px;background:#fff}
+table.t th,table.t td{border:1px solid #E2E8F0;padding:6px 9px;text-align:left;vertical-align:top}
+table.t th{background:#F8FAFC;color:var(--ink)}
+.tree{font-family:"Cascadia Mono",Consolas,monospace;font-size:13px;line-height:1.75;background:#fff;border:1.5px solid #CBD5E1;border-radius:12px;padding:10px 14px;white-space:pre;overflow:auto}
+.tree span{border-radius:5px;padding:1px 4px;transition:all .3s}
+.tree .hit{background:#DCFCE7;color:#166534;font-weight:700}
+.tree .skip{background:#F1F5F9;color:#94A3B8;text-decoration:line-through}
+.tree .out{background:#FEE2E2;color:#B91C1C;font-weight:700}
+.tree .cur{background:#FEF08A}
+/* themes */
+.c-b .sn{background:var(--b-bd)}.c-b .box{border-color:var(--b-lt)}.c-b .take{border-color:var(--b-bd)}.c-b .lbl{color:var(--b-dk)}
+.c-p .sn{background:var(--p-bd)}.c-p .box{border-color:var(--p-lt)}.c-p .take{border-color:var(--p-bd)}.c-p .lbl{color:var(--p-dk)}
+.c-o .sn{background:var(--o-bd)}.c-o .box{border-color:var(--o-lt)}.c-o .take{border-color:var(--o-bd)}.c-o .lbl{color:var(--o-dk)}
+.c-g .sn{background:var(--g-bd)}.c-g .box{border-color:var(--g-lt)}.c-g .take{border-color:var(--g-bd)}.c-g .lbl{color:var(--g-dk)}
+.c-r .sn{background:var(--r-bd)}.c-r .box{border-color:var(--r-lt)}.c-r .take{border-color:var(--r-bd)}.c-r .lbl{color:var(--r-dk)}
+.c-s .sn{background:var(--s-bd)}.c-s .box{border-color:var(--s-lt)}.c-s .take{border-color:var(--s-bd)}.c-s .lbl{color:var(--s-dk)}
+
+/* ---------- code ---------- */
+body.nocode .code{display:none!important}
+.mac{background:#1E1E1E;border-radius:12px;overflow:hidden;border:1px solid #0B0B0B;box-shadow:0 8px 20px rgba(15,23,42,.15);min-width:0}
+.mac .bar{height:32px;background:linear-gradient(#3A3A3C,#2C2C2E);display:flex;align-items:center;padding:0 12px;position:relative}
+.mac .dots{display:flex;gap:7px}.mac .dots i{width:12px;height:12px;border-radius:50%;display:block}
+.mac .dots i:nth-child(1){background:#FF5F57}.mac .dots i:nth-child(2){background:#FEBC2E}.mac .dots i:nth-child(3){background:#28C840}
+.mac .fn{position:absolute;left:0;right:0;text-align:center;color:#C7C7CC;font-size:12.5px;font-weight:600}
+.mac pre{margin:0;padding:11px 14px 13px;font-family:"Cascadia Mono",Consolas,monospace;font-size:13px;line-height:1.55;color:#D4D4D4;white-space:pre;overflow:auto}
+.k{color:#569CD6}.s{color:#CE9178}.cm{color:#6A9955;font-style:italic}.a{color:#C586C0}.ty{color:#4EC9B0}.nu{color:#B5CEA8}.f{color:#DCDCAA}.y{color:#9CDCFE}.sh-p{color:#4ADE80}
+
+/* ---------- interactive bits ---------- */
+.ctrl{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{font:inherit;font-size:13.5px;font-weight:700;padding:6px 12px;border-radius:9px;border:1.5px solid #CBD5E1;background:#fff;cursor:pointer;color:#334155}
+.btn:hover{filter:brightness(.96)}.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.p{color:#fff}
+.seg{display:inline-flex;border:1.5px solid #CBD5E1;border-radius:9px;overflow:hidden}
+.seg button{font:inherit;font-size:13.5px;font-weight:700;padding:6px 11px;border:0;background:#fff;cursor:pointer;color:#475569}
+.seg button.on{background:#0F172A;color:#fff}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;background:#fff;border:1.5px solid #E2E8F0;border-radius:9px;padding:5px 10px;cursor:pointer;user-select:none}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.ok{background:#DCFCE7;color:#166534}.no{background:#F1F5F9;color:#64748B}.back{background:#FEF3C7;color:#92400E}.bad{background:#FEE2E2;color:#991B1B}
+.flow{display:flex;flex-direction:column;gap:6px}
+.fstep{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1.5px solid #E2E8F0;border-radius:10px;padding:7px 11px;transition:all .25s}
+.fstep i{font-style:normal;display:grid;place-items:center;min-width:24px;height:24px;border-radius:50%;background:#E2E8F0;color:#475569;font-weight:800;font-size:12px}
+.fstep.done{border-color:#86EFAC;background:#F0FDF4}.fstep.done i{background:#16A34A;color:#fff}
+.fstep.cur{border-color:#F59E0B;background:#FEF3C7;box-shadow:0 0 0 3px #FDE68A}.fstep.cur i{background:#F59E0B;color:#fff}
+.fstep.stop{border-color:#FCA5A5;background:#FEF2F2}.fstep.stop i{background:#DC2626;color:#fff}
+.fstep small{display:block;color:var(--muted);font-size:13px}
+.lane{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.node{border:2px solid #CBD5E1;border-radius:10px;padding:6px 10px;background:#fff;font-size:13px;font-weight:700;color:var(--ink);transition:all .25s;text-align:center}
+.node small{display:block;font-weight:600;color:var(--muted);font-size:11.5px}
+.node.hot{border-color:#F59E0B;background:#FEF3C7;box-shadow:0 0 0 3px #FDE68A}
+.node.pass{border-color:#86EFAC;background:#F0FDF4}
+.node.fail{border-color:#FCA5A5;background:#FEF2F2}
+.lane em{font-style:normal;color:var(--muted);font-weight:800}
+.console{background:#0B1220;color:#CBD5E1;border-radius:10px;padding:9px 11px;font-family:"Cascadia Mono",Consolas,monospace;font-size:12.3px;line-height:1.55;overflow:auto;white-space:pre-wrap;word-break:break-word}
+.console .nar{color:#FDE047}.console .err{color:#F87171}.console .ok{background:none;color:#4ADE80}.console .dim{color:#64748B}.console .ban{color:#4ADE80}
+.dgraph{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.dcol{display:flex;flex-direction:column;gap:8px}
+.dcol h5{margin:0;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.bean{border:2px dashed #CBD5E1;border-radius:10px;padding:6px 9px;font-size:13px;font-weight:700;color:#94A3B8;background:#F8FAFC;transition:all .3s}
+.bean small{display:block;font-weight:600;font-size:11.5px}
+.bean.made{border-style:solid;border-color:#3B82F6;background:#EFF6FF;color:#1E3A8A}
+.bean.ready{border-style:solid;border-color:#22C55E;background:#F0FDF4;color:#166534}
+.bean.hot{box-shadow:0 0 0 3px #FDE68A}
+.bean.gone{border-style:dashed;border-color:#FCA5A5;background:#FEF2F2;color:#B91C1C;text-decoration:line-through}
+.status{display:inline-flex;align-items:center;gap:8px;font-weight:800;font-size:14px;padding:5px 12px;border-radius:999px}
+.status i{width:10px;height:10px;border-radius:50%;display:block}
+
+/* master sim */
+.master{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.25fr) minmax(0,1.15fr);gap:12px;margin-top:10px}
+.master .flow .fstep{padding:4px 9px;font-size:13px}
+.master .flow .fstep i{min-width:20px;height:20px;font-size:11px}
+#m-flow{max-height:min(52vh,420px);overflow:auto;padding-right:4px}
+.beansgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+
+/* ---------- pager & side arrows ---------- */
+.pager{position:fixed;bottom:0;left:0;right:0;height:var(--pager);z-index:20;background:rgba(255,255,255,.97);border-top:1px solid var(--line);display:flex;align-items:center;justify-content:center;gap:14px;padding:0 12px}
+.pager .dots{display:flex;gap:7px}
+.pager .dots button{width:11px;height:11px;border-radius:50%;border:0;background:#CBD5E1;cursor:pointer;padding:0}
+.pager .dots button.on{transform:scale(1.35)}
+.pager .cnt{font-size:13.5px;font-weight:700;color:var(--muted);min-width:150px;text-align:center}
+.pager .nb{font:inherit;font-weight:800;font-size:15px;width:38px;height:38px;border-radius:50%;border:1.5px solid #CBD5E1;background:#fff;cursor:pointer}
+.pager .nb:disabled{opacity:.35;cursor:not-allowed}
+.pager .next-cat{font:inherit;font-size:13px;font-weight:800;padding:7px 12px;border-radius:999px;border:0;color:#fff;cursor:pointer;display:none}
+.side-arrow{position:fixed;top:50%;transform:translateY(-50%);z-index:15;width:42px;height:42px;border-radius:50%;border:1.5px solid #CBD5E1;background:rgba(255,255,255,.92);font-size:18px;font-weight:800;color:#334155;cursor:pointer;box-shadow:0 4px 12px rgba(15,23,42,.12)}
+.side-arrow:disabled{opacity:0;pointer-events:none}
+.side-arrow.l{left:8px}.side-arrow.r{right:8px}
+.kbd{font-size:12px;color:#94A3B8}
+
+@media (max-width:1100px){.cols,.cols.even{grid-template-columns:minmax(0,1fr)}.master{grid-template-columns:minmax(0,1fr)}.qa{grid-template-columns:1fr}.topbar .ttl b{font-size:15px}}
+@media (max-width:760px){:root{--top:96px}.topbar{flex-wrap:wrap;align-content:center;row-gap:4px}.tabs{order:3;flex-basis:100%}.dgraph{grid-template-columns:repeat(2,minmax(0,1fr))}.side-arrow{display:none}.pager .cnt{min-width:0}.kbd{display:none}}
+@media print{.topbar,.pager,.side-arrow{display:none}.slide{display:block!important;height:auto}}
+/* ---------- themed sections (same look as the other pages) ---------- */
+.c-t{--bg:#F0FDFA;--bd:#14B8A6;--dk:#0F766E;--lt:#99F6E4}
+.c-b{--bg:#EEF5FF;--bd:#3B82F6;--dk:#1D4ED8;--lt:#BFDBFE}
+.c-p{--bg:#F7F0FF;--bd:#9333EA;--dk:#7E22CE;--lt:#E9D5FF}
+.c-o{--bg:#FFF6EC;--bd:#F97316;--dk:#C2410C;--lt:#FED7AA}
+.c-g{--bg:#EFFCF3;--bd:#22C55E;--dk:#15803D;--lt:#BBF7D0}
+.c-r{--bg:#FFF1F1;--bd:#EF4444;--dk:#B91C1C;--lt:#FECACA}
+.c-s{--bg:#F8FAFC;--bd:#64748B;--dk:#334155;--lt:#CBD5E1}
+.c-t .sn{background:var(--bd)}.c-t .box{border-color:var(--lt)}.c-t .take{border-color:var(--bd)}.c-t .lbl{color:var(--dk)}
+.sec{background:var(--bg);border:2.5px solid var(--bd);border-radius:16px;padding:14px 18px 18px;min-height:100%}
+.sec .box,.sec .fstep,.sec .tree,.sec .qa li,.sec .take{background:#fff}
+.sec .sh h2{color:var(--ink)}
+.hnav{font:inherit;font-size:13px;font-weight:800;border:2px solid;border-radius:999px;padding:4px 12px;background:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.hnav:hover{filter:brightness(.94)}
+.hnav.next{margin-left:auto}
+.hnav.cat{color:#fff}
+svg.lg{width:22px;height:22px;vertical-align:-4px;margin-right:6px;flex:none}
+.node svg.lg{width:16px;height:16px;vertical-align:-3px;margin-right:4px}
+.msg{background:#fff;border:1.5px solid #E2E8F0;border-left:6px solid var(--bd);border-radius:10px;padding:9px 13px;font-size:14.5px;line-height:1.55}
+a.go,button.go{font:inherit;font-size:12.5px;font-weight:800;color:var(--dk);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+/* contents slide */
+.toc{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.tcat{border:2px solid;border-radius:14px;padding:10px 12px}
+.tcat h3{margin:0 0 6px;font-size:16px;display:flex;align-items:center;gap:8px}
+.tcat button{display:flex;gap:8px;width:100%;text-align:left;font:inherit;font-size:14px;background:#fff;border:1.5px solid #E2E8F0;border-radius:9px;padding:6px 9px;margin-top:5px;cursor:pointer;color:var(--ink)}
+.tcat button:hover{box-shadow:0 2px 8px rgba(15,23,42,.12)}
+.tcat button b{min-width:30px;color:inherit}
+@media (max-width:1100px){.toc{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:700px){.toc{grid-template-columns:1fr}.hnav{font-size:12px;padding:3px 9px}}
+.side-arrow{display:none!important}
+/* brand + subject in the top bar */
+.tbrand{display:flex;align-items:center;gap:8px;text-decoration:none;flex:none}
+.pm2{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#3B82F6,#9333EA);color:#fff;font-weight:800;font-size:13px;display:grid;place-items:center}
+.tbrand b{display:block;font-size:15.5px;color:#0F172A;line-height:1.1}
+.tbrand small{font-size:11px;font-weight:700;color:#64748B;letter-spacing:1.3px}
+.tsubj{display:inline-flex;align-items:center;font-size:16px;font-weight:800;color:#15803D;text-decoration:none;padding:4px 10px;border-radius:10px;flex:none}
+.tsubj:hover{background:#EEF5FF}
+.tsubj svg.lg{width:22px;height:22px}
+.donebox{display:inline-flex;align-items:center;gap:8px;font-size:14.5px;font-weight:800;color:#334155;background:#fff;border:2px solid #CBD5E1;border-radius:999px;padding:6px 14px;cursor:pointer;user-select:none}
+.donebox input{width:18px;height:18px;accent-color:#16A34A;margin:0;cursor:pointer}
+.donebox.on{border-color:#22C55E;background:#DCFCE7;color:#166534}
+/* breadcrumb in the top bar (unused) */
+.crumb{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.crumb a{color:#2563EB;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.crumb a:hover{text-decoration:underline}
+.crumb i{font-style:normal;color:#94A3B8}
+.pm{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#3B82F6,#9333EA);color:#fff;font-size:9.5px;font-weight:800}
+/* interview Q&A accordion */
+.c-i{--bg:#EEF2FF;--bd:#6366F1;--dk:#4338CA;--lt:#C7D2FE}
+.c-i .sn{background:var(--bd)}.c-i .box{border-color:var(--lt)}.c-i .lbl{color:var(--dk)}
+.acc{display:flex;flex-direction:column;gap:7px}
+.aq{background:#fff;border:1.5px solid var(--lt);border-radius:11px;overflow:hidden}
+.aq .qh{display:flex;align-items:center;gap:10px;width:100%;padding:9px 13px;cursor:pointer;font-size:15px;font-weight:700;color:var(--ink);outline:none}
+.aq .qh:hover,.aq .qh:focus-visible{background:#F8FAFC}
+.aq.hide{display:none}
+.aq .qn{display:grid;place-items:center;min-width:28px;height:24px;border-radius:7px;background:var(--lt);color:var(--dk);font-size:12px;font-weight:800}
+.aq .chev{margin-left:auto;color:var(--muted);transition:transform .2s}
+.aq.open .chev{transform:rotate(90deg)}
+.aq .ans{display:none;padding:0 13px 11px 51px;font-size:14.5px;line-height:1.6;color:#1E293B}
+.aq.open{border-color:var(--bd);box-shadow:0 0 0 3px var(--lt)}
+.aq.open .ans{display:block}
+.ref{display:inline-flex;gap:5px;margin-left:6px}
+.ref button{font:inherit;font-size:11.5px;font-weight:800;border-radius:999px;padding:1px 9px;border:1.5px solid;background:#fff;cursor:pointer}
+.qbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.qbar input[type=search]{font:inherit;font-size:14px;padding:6px 11px;border:1.5px solid #CBD5E1;border-radius:9px;min-width:220px;flex:1;max-width:360px}
+
+/* ===== shared simulator UI ===== */
+.sim{background:#fff;border:2px solid;border-radius:14px;padding:16px}
+.ctrl{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{font:inherit;font-size:14px;font-weight:700;padding:7px 13px;border-radius:9px;border:1.5px solid #CBD5E1;background:#fff;cursor:pointer;color:#334155}
+.btn:hover{filter:brightness(.96)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.p{color:#fff}
+.seg{display:inline-flex;border:1.5px solid #CBD5E1;border-radius:10px;overflow:hidden}
+.seg button{font:inherit;font-size:14px;font-weight:700;padding:7px 12px;border:0;background:#fff;cursor:pointer;color:#475569}
+.seg button.on{color:#fff}
+.howto{font-size:15px;line-height:1.55;margin:0 0 12px;color:#1E293B}
+.msg{margin-top:12px;background:#F8FAFC;border:1.5px solid #CBD5E1;border-left:6px solid;border-radius:10px;padding:10px 14px;font-size:15.5px;line-height:1.55;min-height:52px}
+.msg .cnt{float:right;font-size:12.5px;color:#64748B;font-weight:700;margin-left:10px}
+.err{color:#B91C1C;font-weight:700}
+@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+@keyframes fadeout{to{transform:scale(.3);opacity:0}}
+.obj{display:inline-flex;align-items:center;gap:6px;margin:3px 5px 3px 0;padding:5px 9px;border-radius:8px;font-family:Consolas,monospace;font-size:12.5px;font-weight:700;border:1.5px solid;animation:pop .35s}
+.panel{border:2px solid;border-radius:12px;padding:10px 12px;margin-bottom:10px;min-height:60px;background:#fff}
+.panel h5{margin:0 0 6px;font-size:14px;color:#0F172A;display:flex;justify-content:space-between;gap:8px}
+.panel h5 small{font-weight:600;color:#64748B}
+.empty{font-size:13px;color:#94A3B8;font-style:italic}
+
+/* ===== mini code view ===== */
+.mac{background:#1E1E1E;border-radius:12px;overflow:hidden;border:1px solid #0B0B0B;box-shadow:0 8px 20px rgba(15,23,42,.15)}
+.mac .bar{height:32px;background:linear-gradient(#3A3A3C,#2C2C2E);display:flex;align-items:center;padding:0 12px;position:relative}
+.mac .dots{display:flex;gap:7px}.mac .dots i{width:12px;height:12px;border-radius:50%;display:block}
+.mac .dots i:nth-child(1){background:#FF5F57}.mac .dots i:nth-child(2){background:#FEBC2E}.mac .dots i:nth-child(3){background:#28C840}
+.mac .fn{position:absolute;left:0;right:0;text-align:center;color:#C7C7CC;font-size:13px;font-weight:600}
+.mac pre{margin:0;padding:12px 0;font-family:"Cascadia Mono",Consolas,monospace;font-size:13.5px;line-height:1.6;color:#D4D4D4;overflow:auto}
+.mac .ln{display:block;padding:0 14px;white-space:pre}
+.mac .ln i{display:inline-block;width:24px;color:#6B7280;font-style:normal;user-select:none}
+.mac .ln.cur{background:#3F3F46;box-shadow:inset 4px 0 0 #FACC15}
+.k{color:#569CD6}.s{color:#CE9178}.c{color:#6A9955;font-style:italic}.a{color:#C586C0}.t{color:#4EC9B0}.nu{color:#B5CEA8}.f{color:#DCDCAA}
+
+/* ===== class loading sim ===== */
+.phasebar{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+.phase{padding:6px 12px;border-radius:999px;border:1.5px solid #CBD5E1;font-weight:700;font-size:13.5px;color:#64748B;background:#fff;transition:all .3s}
+.phase.done{background:#DCFCE7;border-color:#86EFAC;color:#166534}
+.phase.cur{background:#1D4ED8;border-color:#1D4ED8;color:#fff;box-shadow:0 0 0 3px #BFDBFE}
+.phase.bad{background:#FEE2E2;border-color:#FCA5A5;color:#991B1B}
+.cl3{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.8fr) minmax(0,1fr);gap:14px;margin-top:14px;align-items:start}
+.loader{border:2px solid #CBD5E1;border-radius:12px;padding:10px 12px;background:#F8FAFC;transition:all .3s}
+.loader b{display:block;font-size:15px;color:#0F172A}
+.loader span{font-size:13px;color:#64748B}
+.loader em{display:inline-block;margin-top:6px;font-style:normal;font-size:12.5px;font-weight:800;padding:2px 8px;border-radius:999px;background:#E2E8F0;color:#475569}
+.loader.ask{border-color:#F59E0B;background:#FEF3C7;box-shadow:0 0 0 3px #FDE68A}.loader.ask em{background:#F59E0B;color:#fff}
+.loader.wait{border-color:#93C5FD;background:#EFF6FF}.loader.wait em{background:#BFDBFE;color:#1E3A8A}
+.loader.miss{border-color:#CBD5E1;background:#F1F5F9;opacity:.75}.loader.miss em{background:#94A3B8;color:#fff}
+.loader.found{border-color:#22C55E;background:#DCFCE7;box-shadow:0 0 0 3px #BBF7D0}.loader.found em{background:#16A34A;color:#fff}
+.upar{text-align:center;color:#64748B;font-size:12.5px;font-weight:700;margin:3px 0}
+.console{background:#0F172A;color:#E2E8F0;font-family:Consolas,monospace;font-size:13px;border-radius:10px;padding:8px 10px;min-height:36px}
+
+/* ===== memory sim ===== */
+.mem2{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.25fr);gap:14px;margin-top:14px;align-items:start}
+.memgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.fr{border:1.5px solid #EF4444;border-radius:9px;background:#FFF5F5;padding:6px 9px;margin-bottom:6px;animation:pop .3s}
+.fr b{color:#991B1B;font-size:13px;display:block;margin-bottom:2px}
+.var{display:flex;justify-content:space-between;gap:8px;font-family:Consolas,monospace;font-size:12.5px;padding:3px 0;border-top:1px dashed #FCA5A5}
+.refb{padding:0 6px;border-radius:5px;color:#fff;font-weight:700;font-size:12px}
+.obj.garbage{background:repeating-linear-gradient(45deg,#F8FAFC,#F8FAFC 6px,#E2E8F0 6px,#E2E8F0 12px)!important;border-style:dashed!important;color:#64748B!important}
+.obj .tag{font-family:"Segoe UI",sans-serif;font-size:10.5px;font-weight:800;padding:1px 5px;border-radius:5px;color:#fff}
+.pc{display:inline-block;font-family:Consolas,monospace;font-size:12.5px;font-weight:700;background:#FEE2E2;color:#991B1B;border:1.5px solid #FCA5A5;border-radius:8px;padding:3px 8px;margin-bottom:8px}
+
+/* ===== GC sim ===== */
+.gcgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr) minmax(0,1.3fr);gap:10px;margin-top:12px}
+.area{border:2px solid;border-radius:12px;padding:10px;position:relative;background:#fff}
+.area h5{margin:0 0 4px;font-size:14.5px;color:#0F172A;display:flex;justify-content:space-between}
+.area h5 small{font-weight:700;color:#64748B;font-family:Consolas,monospace}
+.cap{height:7px;background:#F1F5F9;border-radius:99px;overflow:hidden;margin-bottom:8px}
+.cap i{display:block;height:100%;transition:width .4s}
+.pool{display:flex;flex-wrap:wrap;gap:6px;min-height:96px;align-content:flex-start}
+.go{width:58px;height:44px;border-radius:9px;border:2px solid #3B82F6;background:#EFF6FF;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Consolas,monospace;font-size:11.5px;font-weight:800;color:#1E3A8A;cursor:pointer;position:relative;user-select:none}
+.go small{font-family:"Segoe UI",sans-serif;font-size:9.5px;font-weight:700;color:#64748B}
+.go.dead{border-style:dashed;border-color:#94A3B8;background:repeating-linear-gradient(45deg,#F8FAFC,#F8FAFC 5px,#E2E8F0 5px,#E2E8F0 10px);color:#64748B}
+.go.born{animation:pop .35s}
+.go.dying{animation:fadeout .45s forwards}
+.go.mk-live{box-shadow:0 0 0 3px #4ADE80}
+.go.mk-live::after{content:"✓";position:absolute;top:-9px;right:-7px;background:#16A34A;color:#fff;border-radius:50%;width:17px;height:17px;font-size:11px;display:grid;place-items:center}
+.go.mk-dead{box-shadow:0 0 0 3px #FCA5A5}
+.go.mk-dead::after{content:"✗";position:absolute;top:-9px;right:-7px;background:#DC2626;color:#fff;border-radius:50%;width:17px;height:17px;font-size:11px;display:grid;place-items:center}
+.stw{display:none;margin-top:10px;background:#7F1D1D;color:#fff;font-weight:800;border-radius:10px;padding:8px 12px;font-size:14px;text-align:center}
+.stw.on{display:block;animation:pop .25s}
+.gstats{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.gstat{background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:10px;padding:5px 11px;font-size:12.5px;color:#64748B}
+.gstat b{display:block;font-size:18px;color:#0F172A;font-family:Consolas,monospace}
+.glog{margin-top:12px;background:#0F172A;color:#CBD5E1;border-radius:10px;padding:10px 12px;font-family:Consolas,monospace;font-size:13px;line-height:1.55;max-height:200px;overflow:auto}
+.glog div{border-bottom:1px solid #1E293B;padding:2px 0}
+.glog .y{color:#FDE047}.glog .g{color:#4ADE80}.glog .r{color:#F87171}.glog .p{color:#F472B6}
+.hint{box-shadow:0 0 0 3px #FDE047!important}
+
+@media (max-width:1100px){.cl3,.mem2{grid-template-columns:minmax(0,1fr)}.gcgrid{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:700px){.memgrid{grid-template-columns:minmax(0,1fr)}}
+
+/* ===== JVM page extras ===== */
+.c-a{--bg:#FFFBEB;--bd:#F59E0B;--dk:#B45309;--lt:#FDE68A}
+.c-k{--bg:#FDF2F8;--bd:#EC4899;--dk:#BE185D;--lt:#FBCFE8}
+.c-a .sn,.c-k .sn{background:var(--bd)}.c-a .box,.c-k .box{border-color:var(--lt)}.c-a .take,.c-k .take{border-color:var(--bd)}
+.c-b{--b-lt:#BFDBFE}.c-r{--r-lt:#FECACA}
+:root{--top:58px;--pager:46px}
+.slide{padding:10px clamp(12px,3vw,40px) 10px}
+.sec{padding:12px 16px 14px}
+.sh{margin-bottom:10px}
+.pager .nb{width:34px;height:34px}
+.flagc{font-family:Consolas,monospace;font-size:12px;color:#64748B;background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:2px 7px;margin-left:6px}
+/* 1.1 map */
+.jmap{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:10px}
+.jb{font:inherit;text-align:left;border:2.5px solid var(--c);background:var(--f);border-radius:12px;padding:12px 14px;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.jb:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(15,23,42,.12)}
+.jb b{display:block;font-size:17px;color:#0F172A}.jb span{font-size:13.5px;color:#475569}
+/* 1.2 where does it live */
+.wl{display:flex;flex-direction:column;gap:6px}
+.wl button{font:inherit;text-align:left;display:flex;gap:10px;align-items:center;background:#fff;border:1.5px solid #E2E8F0;border-radius:9px;padding:6px 10px;cursor:pointer;font-size:14px}
+.wl button code{background:none;padding:0}
+.wl button.on{border-color:#0F172A;box-shadow:0 0 0 2px #0F172A}
+.wl button .ok-t{margin-left:auto;font-size:11.5px;font-weight:800;color:#64748B}
+.wmap{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.wmap div{border:2.5px solid var(--c);border-radius:11px;padding:9px 12px;background:#fff;opacity:.45;transition:all .25s}
+.wmap div:first-child{grid-row:span 2}
+.wmap div b{display:block;font-size:15.5px;color:#0F172A}.wmap div small{color:#64748B}
+.wmap div.hit{opacity:1;box-shadow:0 0 0 4px color-mix(in srgb,var(--c) 30%,transparent);transform:scale(1.02)}
+.wmap div.hit2{opacity:1}
+/* 3.1 regions */
+.regions{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:5px;max-width:520px}
+.regions i{aspect-ratio:1;border-radius:6px;border:1.5px solid #F97316;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:14px;color:#9A3412;transition:all .35s}
+.rE{background:#FFEDD5}.rS{background:#FED7AA}.rO{background:#FDBA74}.rH{background:#FECACA;border-color:#EF4444!important;color:#991B1B!important}.rF{background:#fff;border-style:dashed!important}
+.regions.focus i{opacity:.18}.regions.focus i.on{opacity:1;box-shadow:0 0 0 3px #0F172A}
+.rleg{display:flex;flex-direction:column;gap:5px}
+.rleg button{font:inherit;display:flex;gap:10px;align-items:center;text-align:left;background:#fff;border:1.5px solid #E2E8F0;border-radius:9px;padding:5px 9px;cursor:pointer;font-size:14px}
+.rleg button i{width:26px;height:26px;border-radius:5px;border:1.5px solid #F97316;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:12px;color:#9A3412;flex:none}
+.rleg button.on{border-color:#0F172A;box-shadow:0 0 0 2px #0F172A}
+/* 4.1 metaspace leak */
+.mini4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.mini4 span{background:#fff;border:1.5px solid #E2E8F0;border-radius:8px;padding:5px 7px;font-size:12.5px;color:#475569}
+.mini4 b{display:block;font-size:13.5px;color:#0F172A}
+.mbar{position:relative;height:26px;background:#F1F5F9;border:1.5px solid #E2E8F0;border-radius:8px;overflow:hidden}
+.mbar i{display:block;height:100%;background:linear-gradient(90deg,#C084FC,#9333EA);transition:width .4s}
+.mbar span{position:absolute;inset:0;display:grid;place-items:center;font-size:12.5px;font-weight:800;color:#0F172A}
+.loaders{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;min-height:30px}
+.loaders span{font-size:11.5px;font-weight:800;padding:3px 8px;border-radius:999px;border:1.5px solid #9333EA;color:#6B21A8;background:#fff;animation:pop .3s}
+.loaders span.dead{border-style:dashed;border-color:#CBD5E1;color:#94A3B8;text-decoration:line-through}
+.loaders span.live{background:#F3E8FF}
+@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+/* 4.2 string quiz */
+.sq{display:flex;flex-direction:column;gap:7px}
+.sq .q{display:flex;align-items:center;gap:8px;background:#fff;border:1.5px solid #E2E8F0;border-radius:9px;padding:6px 10px;font-family:Consolas,monospace;font-size:13.5px}
+.sq .q span{flex:1}
+.sq .q button{font:inherit;font-family:"Segoe UI",sans-serif;font-size:12.5px;font-weight:800;border:1.5px solid #CBD5E1;border-radius:7px;background:#fff;padding:2px 9px;cursor:pointer}
+.sq .why{display:none;font-family:"Segoe UI",sans-serif;font-size:13px;color:#334155;padding:2px 10px 4px}
+.sq .q.right{border-color:#86EFAC;background:#F0FDF4}.sq .q.wrong{border-color:#FCA5A5;background:#FEF2F2}
+/* 5.2 stack overflow */
+.sowrap{display:flex;gap:12px;align-items:stretch}
+.sostack{width:190px;height:300px;border:2px solid #EF4444;border-radius:10px;display:flex;flex-direction:column-reverse;gap:3px;padding:4px;position:relative;background:#fff;flex:none}
+.sostack .lim{position:absolute;left:0;right:0;border-top:2px dashed #DC2626}
+.sostack .lim::after{content:"stack limit (-Xss)";position:absolute;right:4px;top:-17px;font-size:10.5px;font-weight:800;color:#DC2626;background:#fff;padding:0 3px}
+.sostack b{display:block;font-family:Consolas,monospace;font-size:11.5px;background:#FFDCDC;border:1px solid #EF4444;border-radius:5px;padding:1px 6px;color:#7F1D1D;animation:pop .2s}
+.sostack.boom{animation:shake .4s;background:#FEF2F2}
+@keyframes shake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+/* 6.1 jit */
+.tiers{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.tiers div{border:2px solid #E2E8F0;border-radius:10px;padding:6px 8px;background:#fff;font-size:12.5px;color:#64748B;transition:all .3s}
+.tiers div b{display:block;font-size:14px;color:#0F172A}
+.tiers div.on{border-color:#22C55E;background:#F0FDF4;box-shadow:0 0 0 3px #BBF7D0}
+.tiers div.past{border-color:#86EFAC}
+.jstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px}
+.jstats div{background:#fff;border:1.5px solid #E2E8F0;border-radius:9px;padding:6px 10px;font-size:12.5px;color:#64748B}
+.jstats b{display:block;font-family:Consolas,monospace;font-size:17px;color:#0F172A}
+.speedbar{height:10px;background:#E2E8F0;border-radius:99px;overflow:hidden;margin-top:4px}
+.speedbar i{display:block;height:100%;background:#22C55E;transition:width .4s}
+/* 7.1 roots graph */
+.rgraph{position:relative;height:300px;background:#fff;border:1.5px solid #E2E8F0;border-radius:10px}
+.rgraph svg{position:absolute;inset:0;width:100%;height:100%}
+.rgraph .nd{position:absolute;width:max-content;transform:translate(-50%,-50%);font-size:12.5px;font-weight:800;border:2px solid #3B82F6;background:#EFF6FF;color:#1E3A8A;border-radius:9px;padding:4px 9px;white-space:nowrap;transition:all .3s}
+.rgraph .nd.root{border-color:#0F172A;background:#0F172A;color:#fff}
+.rgraph .nd.alive{border-color:#16A34A;background:#DCFCE7;color:#166534}
+.rgraph .nd.dead{border-style:dashed;border-color:#94A3B8;background:#F1F5F9;color:#94A3B8}
+.rgraph .nd.gone{opacity:0;transform:translate(-50%,-50%) scale(.3)}
+.rgraph line{stroke:#64748B;stroke-width:2.5;cursor:pointer}
+.rgraph line.cut{stroke:#FCA5A5;stroke-dasharray:5 5}
+.rgraph line.hit{stroke:transparent;stroke-width:16}
+/* 7.4 gc chooser */
+.gcpick{display:flex;flex-direction:column;gap:6px}
+.gcpick button{font:inherit;text-align:left;background:#fff;border:1.5px solid #E2E8F0;border-radius:9px;padding:7px 11px;cursor:pointer;font-size:14px}
+.gcpick button.on{border-color:var(--bd);box-shadow:0 0 0 2px var(--bd)}
+#gc-table tr.on td{background:#FEF3C7;font-weight:700}
+/* 8.1 live */
+.live{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:9px}
+.lp{border:2px solid var(--c);border-radius:11px;padding:7px 10px;background:#fff;min-width:0}
+.lp h5{margin:0 0 5px;font-size:13.5px;color:#0F172A;display:flex;justify-content:space-between}
+.lp h5 small{font-weight:700;color:#64748B}
+.lp.flash{box-shadow:0 0 0 4px color-mix(in srgb,var(--c) 35%,transparent)}
+.lvtext{font-size:13px;color:#334155;min-height:20px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chips span{font-size:11px;font-weight:800;border-radius:6px;padding:2px 6px;background:#F3E8FF;color:#6B21A8;animation:pop .3s}
+#lv-code span{background:#DCFCE7;color:#166534}
+.thr{border:1.5px solid #FECACA;border-radius:8px;padding:4px 6px;margin-bottom:5px;font-size:11.5px;min-height:60px}
+.thr b{font-size:12px;color:#991B1B}
+.thr .fr2{display:block;font-family:Consolas,monospace;background:#FFDCDC;border-radius:4px;padding:0 5px;margin-top:2px;animation:pop .2s}
+.hrow{display:grid;grid-template-columns:62px 1fr;gap:6px;align-items:center;margin:3px 0}
+.hrow span{font-size:12px;font-weight:800;color:#9A3412}
+.dots{display:flex;flex-wrap:wrap;gap:3px;min-height:16px}
+.dots i{width:13px;height:13px;border-radius:4px;background:#3B82F6;animation:pop .25s}
+.dots i.dead{background:#CBD5E1}
+.dots i.mk{outline:2px solid #16A34A}
+.dots i.mkd{outline:2px solid #DC2626}
+.status{display:inline-flex;align-items:center;gap:7px;font-weight:800;font-size:13px;padding:4px 11px;border-radius:999px;background:#F1F5F9;color:#475569}
+.status.stw{background:#FEE2E2;color:#991B1B}
+/* Q&A list scrolls inside its own box only */
+.acc{max-height:calc(100vh - var(--top) - var(--pager) - 150px);overflow:auto;padding:2px 4px 2px 2px}
+/* simulators imported from v2 */
+.sim{padding:12px}
+.mem2{margin-top:8px}
+.mac .ln{display:block;white-space:pre;margin:0 -14px;padding:0 14px}
+.mac .ln i{display:inline-block;width:22px;color:#6B7280;font-style:normal}
+.mac .ln.cur{background:#3F3F46;box-shadow:inset 4px 0 0 #FACC15}
+.glog{max-height:96px!important}
+.gcgrid .pool{min-height:70px}
+.go{width:54px!important;height:40px!important}
+
+.msg{border-left-color:var(--bd)}
+/* ===== compact layout so every slide fits 1365×650 without scrolling ===== */
+body{font-size:14.5px}
+.sh{margin-bottom:8px;gap:10px}.sh h2{font-size:21px}.sh .sub{font-size:13.5px}.sn{height:30px;min-width:40px;font-size:13px}
+.cols{gap:14px}.stack{gap:9px}
+.box{padding:9px 12px}.box h4{margin:0 0 4px;font-size:14.5px}
+.lead{font-size:14.5px;line-height:1.5}
+.take{font-size:13.5px;padding:7px 11px}
+.msg{font-size:13.5px;padding:7px 11px}
+.t{font-size:13px}.t td,.t th{padding:4px 7px}
+.flow{gap:4px}.fstep{padding:4px 9px;gap:8px}.fstep i{min-width:21px;height:21px;font-size:11px}
+.flow .fstep small{display:inline;margin-left:4px;font-size:12.5px}
+.flow .fstep b{font-size:13.5px}
+.mac pre{font-size:12.5px;line-height:1.45;padding:8px 12px 10px}.mac .bar{height:28px}
+.ctrl .btn,.btn{padding:5px 10px;font-size:13px}
+/* contents */
+.toc{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.tcat{padding:7px 9px}.tcat h3{font-size:14px;margin:0 0 3px}
+.tcat button{font-size:12.5px;padding:3px 7px;margin-top:3px}.tcat button b{min-width:24px}
+/* 1.1 / 1.2 */
+.jmap{gap:8px}.jb{padding:8px 12px}.jb b{font-size:15.5px}.jb span{font-size:12.5px}
+.wl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.wl button{font-size:12.5px;padding:5px 8px}
+.wmap div{padding:7px 10px}
+/* class-loading sim */
+.phasebar{margin-top:8px;gap:5px}.phase{padding:3px 9px;font-size:12px}
+.cl3{gap:10px;margin-top:8px}
+.loader{padding:5px 10px}.loader b{font-size:13.5px}.loader span{font-size:12px}.loader em{margin-top:2px;font-size:11.5px}
+.upar{margin:1px 0;font-size:11.5px}
+.panel{padding:6px 10px;margin-bottom:7px;min-height:44px}.panel h5{font-size:13px;margin-bottom:3px}
+.obj{padding:3px 7px;font-size:11.5px;margin:2px 4px 2px 0}
+/* memory sim: explanation goes under the panels */
+.mem2{grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr);gap:12px}
+.mem2>div:first-child{display:contents}
+.mem2 [data-o=code]{grid-column:1;grid-row:1/3}
+.mem2>div:last-child{grid-column:2;grid-row:1}
+.mem2 .msg{grid-column:2;grid-row:2;margin-top:0!important}
+.memgrid{gap:7px}.fr{padding:4px 7px;margin-bottom:4px}.var{padding:1px 0;font-size:12px}
+.mac .ln{line-height:1.4}
+/* others */
+.regions{max-width:420px;gap:4px}
+.rleg button{padding:4px 8px;font-size:13px}
+.sostack{height:230px}
+.rgraph{height:240px}
+.mini4 span{padding:4px 6px;font-size:12px}
+.live{gap:7px;margin-top:7px}.lp{padding:5px 9px}
+#lv-log{height:66px!important}
+.gcgrid{margin-top:8px}.glog{max-height:70px!important;margin-top:8px}.gstats{margin-top:8px}.gstat{padding:3px 9px}.gstat b{font-size:15px}
+.howto{margin:0 0 8px;font-size:13.5px}
+#sim-load{padding:8px 10px}#sim-load .msg{min-height:0;margin-top:8px!important}#sim-load .console{min-height:28px;padding:5px 9px}
+@media (max-width:1100px){.toc{grid-template-columns:repeat(2,minmax(0,1fr))}.mem2>div:first-child{display:block}.mem2 [data-o=code],.mem2>div:last-child,.mem2 .msg{grid-column:auto;grid-row:auto}}
+.mac pre{padding:11px 14px 13px}
+
+.aq{flex-shrink:0}
+
+/* ===== spacing driven by --k (fit-to-screen): only padding & gaps grow, fonts stay fixed ===== */
+.sec{--k:1;padding:calc(12px*var(--k)) calc(16px*var(--k)) calc(14px*var(--k))}
+.sec .sh{margin-bottom:calc(8px*var(--k))}
+.sec .cols{gap:calc(14px*var(--k))}
+.sec .stack{gap:calc(9px*var(--k))}
+.sec .box{padding:calc(9px*var(--k)) calc(12px*var(--k))}
+.sec .box h4{margin-bottom:calc(4px*var(--k))}
+.sec .flow{gap:calc(4px*var(--k))}
+.sec .fstep{padding:calc(4px*var(--k)) 9px}
+.sec .take,.sec .msg{padding:calc(7px*var(--k)) 11px}
+.sec .pills{gap:calc(6px*var(--k))}
+.sec .toc{gap:calc(8px*var(--k))}.sec .tcat{padding:calc(7px*var(--k)) 9px}.sec .tcat button{padding:calc(3px*var(--k)) 7px;margin-top:calc(3px*var(--k))}
+.sec .acc{gap:calc(6px*var(--k))}
+.sec .jmap{gap:calc(8px*var(--k))}.sec .jb{padding:calc(8px*var(--k)) 12px}
+.sec .wl{gap:calc(5px*var(--k))}.sec .wl button{padding:calc(5px*var(--k)) 8px}
+.sec .wmap{gap:calc(8px*var(--k))}.sec .wmap div{padding:calc(7px*var(--k)) 10px}
+.sec .cl3{gap:calc(10px*var(--k))}.sec .loader{padding:calc(5px*var(--k)) 10px}.sec .upar{margin:calc(1px*var(--k)) 0}
+.sec .panel{padding:calc(6px*var(--k)) 10px;margin-bottom:calc(7px*var(--k))}
+.sec .mem2{gap:calc(12px*var(--k))}.sec .memgrid{gap:calc(7px*var(--k))}
+.sec .gcgrid{gap:calc(10px*var(--k))}.sec .area{padding:calc(10px*var(--k))}.sec .pool{min-height:calc(70px*var(--k))}
+.sec .gstats{margin-top:calc(8px*var(--k))}
+.sec .tiers{gap:calc(6px*var(--k))}.sec .tiers div{padding:calc(6px*var(--k)) 8px}.sec .jstats{gap:calc(8px*var(--k))}
+.sec .sq{gap:calc(7px*var(--k))}.sec .sq .q{padding:calc(6px*var(--k)) 10px}
+.sec .rleg{gap:calc(5px*var(--k))}.sec .rleg button{padding:calc(4px*var(--k)) 8px}
+.sec .gcpick{gap:calc(6px*var(--k))}.sec .gcpick button{padding:calc(7px*var(--k)) 11px}
+.sec .mini4{gap:calc(6px*var(--k))}.sec .mini4 span{padding:calc(4px*var(--k)) 6px}
+.sec .live{gap:calc(7px*var(--k))}.sec .lp{padding:calc(5px*var(--k)) 9px}
+.sec .master{gap:calc(9px*var(--k))}.sec .dgraph{gap:calc(7px*var(--k))}.sec .bean{padding:calc(4px*var(--k)) 8px}
+.sec .tree{padding:calc(7px*var(--k)) 11px}
+.sec .rgraph{height:calc(240px*var(--k))}
+.sec .sostack{height:calc(230px*var(--k))}
+.sec #lv-log{height:calc(66px*var(--k))!important}
+.sec .mac pre{padding:calc(8px*var(--k)) 12px calc(10px*var(--k))}
+/* words never spill out of small boxes */
+.mini4 span,.mini4 b,.box h4,.loader b,.jb b{overflow-wrap:anywhere}
+
+</style>
+</head>
+<body>
+<header class="topbar">
+ <a class="tbrand" href="../../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="../../01_Java_Core/00_Java_Core.html" title="All Java Core topics" style="color:#1D4ED8"><svg class="lg" data-logo="openjdk"></svg>Java Core</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<!-- ===================================================== 0. CONTENTS -->
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2><svg class="lg" data-logo="openjdk"></svg>JVM Memory &amp; Architecture</h2><span class="sub">Java 25 · HotSpot · G1 — click any topic</span><label class="donebox" style="margin-left:auto"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="toc" id="toc"></div>
+</div>
+</section>
+
+<!-- ===================================================== 1. OVERVIEW -->
+<section class="cat" data-name="1. Overview" data-col="s">
+<h1 class="cat-title">1. Overview</h1>
+<div class="slide c-s">
+ <div class="sh"><span class="sn">1.1</span><h2>The JVM at a glance</h2><span class="sub">click a block to open its slide</span></div>
+ <div class="pills" style="margin-bottom:10px"><span>.java</span><em>→</em><span>javac</span><em>→</em><span>.class bytecode</span><em>→</em><span>Class Loader</span><em>→</em><span>Runtime Data Areas</span><em>⇄</em><span>Execution Engine</span><em>⇄</em><span>native libraries</span></div>
+ <div class="jmap">
+  <button class="jb" data-go="2.1" style="grid-column:span 12;--c:#3B82F6;--f:#EEF5FF"><b>Class Loader</b><span>loads, links &amp; initializes classes</span></button>
+  <button class="jb" data-go="3.1" style="grid-column:span 7;--c:#F97316;--f:#FFF6EC"><b>Heap</b><span>shared · all objects &amp; arrays · G1 regions</span></button>
+  <button class="jb" data-go="4.1" style="grid-column:span 5;--c:#9333EA;--f:#F7F0FF"><b>Native memory</b><span>Metaspace · StringTable · Code Cache</span></button>
+  <button class="jb" data-go="5.1" style="grid-column:span 12;--c:#EF4444;--f:#FFF1F1"><b>Threads</b><span>per thread: PC register + stack of frames</span></button>
+  <button class="jb" data-go="6.1" style="grid-column:span 6;--c:#22C55E;--f:#EFFCF3"><b>Execution engine</b><span>interpreter + JIT (C1, C2)</span></button>
+  <button class="jb" data-go="7.1" style="grid-column:span 6;--c:#F59E0B;--f:#FFFBEB"><b>Garbage collector</b><span>G1 (default) · ZGC · Parallel · Serial</span></button>
+ </div>
+ <p class="take" style="margin-top:10px"><b>Remember:</b> JVM memory ≈ <b>Heap</b> (limited by <code>-Xmx</code>) + <b>Metaspace</b> + <b>Code Cache</b> + <b>thread stacks</b> + direct buffers + GC/JVM internals. Only the heap is capped by <code>-Xmx</code>.</p>
+</div>
+
+<div class="slide c-s">
+ <div class="sh"><span class="sn">1.2</span><h2>Where does it live?</h2><span class="sub">click a line of code — the memory area lights up</span></div>
+ <div class="cols even">
+  <div class="box"><h4>▶ Try it — pick something</h4><div class="wl" id="wl-list"></div></div>
+  <div class="stack">
+   <div class="wmap" id="wl-map">
+    <div data-a="stack" style="--c:#EF4444"><b>Thread stack</b><small>frames, locals, references</small></div>
+    <div data-a="heap" style="--c:#F97316"><b>Heap</b><small>objects, arrays, class mirrors</small></div>
+    <div data-a="meta" style="--c:#9333EA"><b>Metaspace</b><small>class metadata, bytecode</small></div>
+    <div data-a="code" style="--c:#22C55E"><b>Code Cache</b><small>JIT-compiled machine code</small></div>
+    <div data-a="native" style="--c:#64748B"><b>Other native</b><small>StringTable, direct buffers</small></div>
+   </div>
+   <div class="msg" id="wl-out">Pick an item on the left.</div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 2. CLASS LOADING -->
+<section class="cat" data-name="2. Class loading" data-col="b">
+<h1 class="cat-title">2. Class loading</h1>
+<div class="slide c-b">
+ <div class="sh"><span class="sn">2.1</span><h2>Class loaders &amp; parent delegation</h2><span class="sub">pick a class, press Next ▶</span></div>
+ <div class="sim" style="border-color:var(--b-lt)" id="sim-load"></div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">2.2</span><h2>Linking &amp; initialization</h2><span class="sub">what happens after the class is found</span></div>
+ <div class="cols">
+  <div class="box"><h4>▶ Try it — follow class <code>Order</code></h4>
+   <div class="flow" data-step>
+    <div class="fstep"><i>1</i><div><b>Verify</b><small>bytecode is valid and type-safe, else <code>VerifyError</code></small></div></div>
+    <div class="fstep"><i>2</i><div><b>Prepare</b><small>static fields get <b>default</b> values → <code>count = 0</code> · constant <code>MAX = 10</code> already set · stored in the Class mirror (heap)</small></div></div>
+    <div class="fstep"><i>3</i><div><b>Resolve</b><small>symbolic names → direct references, usually lazily on first use</small></div></div>
+    <div class="fstep"><i>4</i><div><b>Initialize — <code>&lt;clinit&gt;</code></b><small>static initializers &amp; blocks run in order → <code>count = 5</code> · superclass first · thread-safe</small></div></div>
+    <div class="fstep"><i>5</i><div><b>Ready</b><small>happens once, on first active use (new, static call, static field access)</small></div></div>
+   </div><p class="take" style="margin:10px 0 0"><b>Remember:</b> a class is unloaded only when its class loader and all its classes are unreachable — decided by GC.</p></div>
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="Order.java" data-lang="java">
+public class Order {
+    static int count = 5;          // Prepare: 0 → Initialize: 5
+    static final int MAX = 10;     // compile-time constant
+    static { System.out.println("Order loaded"); }
+}</script></div>
+   <div class="box"><h4>Errors you'll be asked about</h4>
+    <table class="t"><tr><td><code>ClassNotFoundException</code></td><td>asked for a class by name (<code>Class.forName</code>) and no loader found it</td></tr>
+     <tr><td><code>NoClassDefFoundError</code></td><td>class was there at compile time, missing or failed to initialize at runtime</td></tr>
+     <tr><td><code>ExceptionInInitializerError</code></td><td>a static initializer threw an exception</td></tr></table></div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 3. HEAP -->
+<section class="cat" data-name="3. Heap" data-col="o">
+<h1 class="cat-title">3. Heap</h1>
+<div class="slide c-o">
+ <div class="sh"><span class="sn">3.1</span><h2>G1 heap regions</h2><span class="sub">click a region type · run a GC to see roles change</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="ctrl"><button class="btn p" style="background:var(--bd);border-color:var(--bd)" id="rg-gc">↻ Run a GC (roles change)</button><span class="flagc">-Xms -Xmx -XX:G1HeapRegionSize</span></div>
+   <div class="regions" id="rg-grid"></div>
+  </div>
+  <div class="stack">
+   <div class="rleg" id="rg-leg"></div>
+   <div class="msg" id="rg-out"></div>
+   <p class="take"><b>Remember:</b> young gen = Eden + Survivor regions; its size adapts (≈5–60% of heap) to meet <code>-XX:MaxGCPauseMillis</code> (200 ms). No fixed S0/S1 or 8:1:1 ratio in G1.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-o">
+ <div class="sh"><span class="sn">3.2</span><h2>An object's life &amp; what else is on the heap</h2><span class="sub">step through one object</span></div>
+ <div class="cols">
+  <div class="box"><h4>▶ Try it — <code>new Order()</code></h4>
+   <div class="flow" data-step>
+    <div class="fstep"><i>1</i><div><b>Allocate in a TLAB in Eden</b><small>each thread has its own buffer → allocation is a pointer bump, no locking</small></div></div>
+    <div class="fstep"><i>2</i><div><b>Request ends → most objects unreachable</b><small>"most objects die young"</small></div></div>
+    <div class="fstep"><i>3</i><div><b>Young GC evacuates (copies) live objects</b><small>Eden is freed as a whole · stop-the-world but short</small></div></div>
+    <div class="fstep"><i>4</i><div><b>Survivor region, age + 1</b><small>each Young GC it survives adds 1</small></div></div>
+    <div class="fstep"><i>5</i><div><b>Promoted to an Old region</b><small>age ≥ tenuring threshold (adaptive, max 15)</small></div></div>
+    <div class="fstep"><i>6</i><div><b>Big object? straight to Humongous regions</b><small>≥ ½ region size, skips Eden</small></div></div>
+   </div></div>
+  <div class="stack">
+   <div class="box"><h4>Class mirrors (<code>java.lang.Class</code>)</h4>one per loaded class; <b>static fields live here</b>, not in Metaspace</div>
+   <div class="box"><h4>Interned Strings</h4>ordinary heap objects (young or old) — indexed by the native StringTable</div>
+   <div class="box"><h4>Virtual-thread stack chunks</h4>frames of a blocked virtual thread are copied to the heap until it resumes</div>
+   <p class="take"><b>Remember:</b> unreachable objects are simply <b>not copied</b>; no space left after GC → <code>OutOfMemoryError: Java heap space</code>.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 4. NATIVE MEMORY -->
+<section class="cat" data-name="4. Native memory" data-col="p">
+<h1 class="cat-title">4. Native memory</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">4.1</span><h2>Method Area vs Metaspace</h2><span class="sub">try it: create a class-loader leak</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="box" style="border-style:dashed;border-color:var(--bd)"><h4>Method Area <small style="font-weight:400;color:var(--muted)">— logical area from the JVM spec</small></h4>
+    <div class="box" style="background:var(--lt)"><h4>Metaspace <small style="font-weight:400;color:var(--muted)">— HotSpot's native storage</small></h4>
+     <div class="mini4" style="grid-template-columns:repeat(2,minmax(0,1fr))"><span><b>Klass</b>class metadata</span><span><b>ConstMethod</b>bytecode</span><span><b>ConstantPool</b>per class</span><span><b>MethodData</b>JIT profiles</span></div></div>
+    <p style="margin:8px 0 0;font-size:14px">Outside <code>-Xmx</code> · grows on demand · cap with <code>-XX:MaxMetaspaceSize</code> · Compressed Class Space holds Klass with 32-bit pointers.</p></div>
+   <p class="take"><b>Remember:</b> class metadata → Metaspace, but the <code>Class</code> mirror and <b>static fields → heap</b>.</p>
+  </div>
+  <div class="box"><h4>▶ Try it — redeploy an app 10 times</h4>
+   <div class="ctrl" style="margin-bottom:8px"><button class="btn p" style="background:var(--bd);border-color:var(--bd)" id="lk-go">⟳ Redeploy app</button><label class="chk"><input type="checkbox" id="lk-leak"> old class loader still referenced (leak)</label><button class="btn" id="lk-reset">↺ Reset</button></div>
+   <div class="mbar"><i id="lk-bar"></i><span id="lk-txt"></span></div>
+   <div class="loaders" id="lk-loaders"></div>
+   <div class="msg" id="lk-out" style="margin-top:8px">Each redeploy creates a new class loader that loads ~1,000 classes.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">4.2</span><h2>StringTable, Code Cache &amp; other native memory</h2><span class="sub">test yourself on the String pool</span></div>
+ <div class="cols">
+  <div class="box"><h4>▶ Try it — true or false?</h4>
+   <div class="sq" id="sq"></div></div>
+  <div class="stack">
+   <div class="box"><h4>Code Cache <span class="flagc">-XX:ReservedCodeCacheSize</span></h4>
+    <div class="mini4" style="grid-template-columns:repeat(3,1fr)"><span><b>Non-method</b>interpreter, stubs</span><span><b>Profiled</b>C1 code (tiers 2–3)</span><span><b>Non-profiled</b>C2 (tier 4) + trivial C1</span></div></div>
+   <div class="box"><h4>Other native memory</h4>thread stacks · direct <code>ByteBuffer</code>s (<code>-XX:MaxDirectMemorySize</code>) · FFM off-heap segments · GC structures · track with <code>-XX:NativeMemoryTracking=summary</code></div>
+   <p class="take"><b>Remember:</b> the StringTable is a native hash table; the interned <b>String objects live on the heap</b>.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 5. THREADS -->
+<section class="cat" data-name="5. Threads" data-col="r">
+<h1 class="cat-title">5. Threads</h1>
+<div class="slide c-r">
+ <div class="sh"><span class="sn">5.1</span><h2>Stack vs heap, line by line</h2><span class="sub">frames pushed &amp; popped, objects created &amp; abandoned</span></div>
+ <div class="sim" style="border-color:var(--r-lt)" id="sim-mem"></div>
+</div>
+
+<div class="slide c-r">
+ <div class="sh"><span class="sn">5.2</span><h2>Stack depth &amp; virtual threads</h2><span class="sub">try it: recurse until the stack runs out</span></div>
+ <div class="cols">
+  <div class="box"><h4>▶ Try it — <code>recurse(n)</code> with no exit</h4>
+   <div class="ctrl" style="margin-bottom:8px"><button class="btn p" style="background:var(--bd);border-color:var(--bd)" id="so-call">call recurse()</button><button class="btn" id="so-auto">▶ keep calling</button><span class="seg" id="so-xss"><button data-x="8" class="on">-Xss small</button><button data-x="14">-Xss large</button></span><button class="btn" id="so-reset">↺</button></div>
+   <div class="sowrap"><div class="sostack" id="so-stack"></div><div class="msg" id="so-out" style="flex:1">Each call pushes a new frame onto this thread's stack.</div></div>
+  </div>
+  <div class="stack">
+   <div class="box"><h4>Platform thread</h4>one OS thread · fixed stack (<code>-Xss</code>, ~1 MB) · <b>PC register</b> = current bytecode (undefined in native code) · thousands max</div>
+   <div class="box"><h4>Virtual thread</h4>runs <b>mounted</b> on a carrier thread · on blocking I/O it <b>unmounts</b>: frames move to the heap, the carrier is free · millions possible</div>
+   <div class="code"><script type="text/plain" data-mac="Virtual.java" data-lang="java">
+try (var ex = Executors.newVirtualThreadPerTaskExecutor()) {
+    for (int i = 0; i < 10_000; i++)
+        ex.submit(() -> callSlackWebhook());   // blocks cheaply
+}</script></div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 6. JIT -->
+<section class="cat" data-name="6. JIT" data-col="g">
+<h1 class="cat-title">6. JIT</h1>
+<div class="slide c-g">
+ <div class="sh"><span class="sn">6.1</span><h2>Interpreter → tiered JIT</h2><span class="sub">try it: call a method until it gets hot</span></div>
+ <div class="cols">
+  <div class="box"><h4>▶ Try it — call <code>orderTotal()</code></h4>
+   <div class="ctrl" style="margin-bottom:8px"><button class="btn p" style="background:var(--bd);border-color:var(--bd)" data-j="100">×100 calls</button><button class="btn p" style="background:var(--bd);border-color:var(--bd)" data-j="1000">×1,000</button><button class="btn" id="jit-deopt">💥 break an assumption</button><button class="btn" id="jit-reset">↺</button></div>
+   <div class="tiers" id="jit-tiers"></div>
+   <div class="jstats" id="jit-stats"></div>
+   <div class="msg" id="jit-out" style="margin-top:8px"></div>
+  </div>
+  <div class="stack">
+   <div class="box"><h4>Why tiers?</h4>The <b>interpreter</b> starts instantly but is slow. <b>C1</b> compiles quickly with light optimisation and collects profiles. <b>C2</b> uses those profiles for aggressive, speculative optimisation. Compiled code goes to the <b>Code Cache</b>.</div>
+   <p class="take"><b>Remember:</b> usual path 0 → 3 → 4 · trivial methods 0 → 1 · if a speculative assumption breaks, <b>deoptimise</b> back to the interpreter. (Thresholds here are simplified.)</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-g">
+ <div class="sh"><span class="sn">6.2</span><h2>What the JIT optimises</h2><span class="sub">the big three for interviews</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="box"><h4>Inlining</h4>copies a small method's body into the caller → no call overhead, opens more optimisations</div>
+   <div class="box"><h4>Escape analysis → scalar replacement</h4>an object that never leaves the method isn't allocated on the heap at all — its fields become locals</div>
+   <div class="box"><h4>OSR (on-stack replacement)</h4>a long-running loop is swapped to compiled code while it is still running</div>
+   <div class="box"><h4>Also</h4>loop unrolling · intrinsics (e.g. <code>Math</code>, <code>String</code> ops) · dead-code elimination</div>
+  </div>
+  <div class="code"><script type="text/plain" data-mac="EscapeAnalysis.java" data-lang="java">
+// What you write
+int area(int w, int h) {
+    Rect r = new Rect(w, h);   // never escapes this method
+    return r.w() * r.h();
+}
+
+// What C2 effectively runs (no Rect object at all)
+int area(int w, int h) {
+    return w * h;              // inlined + scalar replaced
+}</script></div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 7. GC -->
+<section class="cat" data-name="7. GC" data-col="a">
+<h1 class="cat-title">7. GC</h1>
+<div class="slide c-a">
+ <div class="sh"><span class="sn">7.1</span><h2>GC roots &amp; reachability</h2><span class="sub">click an arrow to cut a reference, then Mark and Sweep</span></div>
+ <div class="cols">
+  <div class="box"><h4>▶ Try it</h4>
+   <div class="ctrl" style="margin-bottom:8px"><button class="btn p" style="background:var(--bd);border-color:var(--bd)" id="rt-mark">① Mark</button><button class="btn p" style="background:#B45309;border-color:#B45309" id="rt-sweep">② Sweep</button><button class="btn" id="rt-reset">↺ Reset</button></div>
+   <div class="rgraph" id="rt-graph"></div>
+  </div>
+  <div class="stack">
+   <div class="box"><h4>GC roots — where tracing starts</h4><ul><li>locals &amp; operands in thread stacks</li><li>static fields (via loaded classes)</li><li>JNI references, JVM internals</li></ul></div>
+   <div class="box"><h4>Reference strength (not roots)</h4><b>Strong</b> never cleared · <b>Soft</b> cleared under memory pressure · <b>Weak</b> cleared at next GC · <b>Phantom</b> post-mortem cleanup</div>
+   <div class="msg" id="rt-out">Objects reachable from a root are live; everything else is garbage — even if they point to each other.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-a">
+ <div class="sh"><span class="sn">7.2</span><h2>The G1 cycle</h2><span class="sub">young-only → marking → mixed → back</span></div>
+ <div class="cols">
+  <div class="box"><h4>▶ Try it</h4>
+   <div class="flow" data-step>
+    <div class="fstep"><i>1</i><div><b>Young GCs</b><small>STW · evacuate Eden + Survivor regions</small></div></div>
+    <div class="fstep"><i>2</i><div><b>Old ≥ IHOP (≈45%) → Concurrent Start</b><small>piggybacks on a Young GC</small></div></div>
+    <div class="fstep"><i>3</i><div><b>Concurrent Mark</b><small>app keeps running while live objects are marked</small></div></div>
+    <div class="fstep"><i>4</i><div><b>Remark → Cleanup</b><small>short STW · choose old regions with the most garbage</small></div></div>
+    <div class="fstep"><i>5</i><div><b>Mixed GCs</b><small>young + some old regions, then back to young-only</small></div></div>
+    <div class="fstep"><i>6</i><div><b>Full GC — fallback only</b><small>evacuation ran out of space → whole heap, long STW pause</small></div></div>
+   </div></div>
+  <div class="stack">
+   <div class="box"><h4>Remembered sets &amp; write barriers</h4>a write barrier records cross-region references in each region's <b>remembered set</b>, so a Young GC scans roots + RSets instead of the whole old generation</div>
+   <p class="take"><b>Remember:</b> G1 flags: <code>-XX:MaxGCPauseMillis=200</code>, <code>-XX:InitiatingHeapOccupancyPercent</code>. <code>System.gc()</code> is only a hint.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-a">
+ <div class="sh"><span class="sn">7.3</span><h2>GC simulator</h2><span class="sub">allocate → requests finish → Young GC → Mixed GC</span></div>
+ <div class="sim" style="border-color:var(--lt)" id="sim-gc"></div>
+</div>
+
+<div class="slide c-a">
+ <div class="sh"><span class="sn">7.4</span><h2>Which collector?</h2><span class="sub">pick what matters most</span></div>
+ <div class="cols">
+  <div class="box"><h4>▶ Try it</h4><div class="gcpick" id="gc-pick"></div><div class="msg" id="gc-out" style="margin-top:10px"></div></div>
+  <div class="box"><h4>Collectors in Java 25</h4>
+   <table class="t" id="gc-table">
+    <tr><th>GC</th><th>Good for</th><th>Flag</th></tr>
+    <tr data-g="g1"><td><b>G1</b> (default)</td><td>balanced pause / throughput, most apps</td><td><code>-XX:+UseG1GC</code></td></tr>
+    <tr data-g="zgc"><td><b>ZGC</b> (generational)</td><td>sub-millisecond pauses, huge heaps</td><td><code>-XX:+UseZGC</code></td></tr>
+    <tr data-g="shen"><td><b>Shenandoah</b></td><td>low pause, concurrent compaction</td><td><code>-XX:+UseShenandoahGC</code></td></tr>
+    <tr data-g="par"><td><b>Parallel</b></td><td>max throughput, batch jobs</td><td><code>-XX:+UseParallelGC</code></td></tr>
+    <tr data-g="ser"><td><b>Serial</b></td><td>tiny heaps / 1 CPU containers</td><td><code>-XX:+UseSerialGC</code></td></tr>
+    <tr data-g="eps"><td><b>Epsilon</b></td><td>never collects — testing only</td><td><code>-XX:+UseEpsilonGC</code></td></tr>
+   </table></div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 8. ALL IN ACTION -->
+<section class="cat" data-name="8. All in action" data-col="k">
+<h1 class="cat-title">8. All in action</h1>
+<div class="slide c-k">
+ <div class="sh"><span class="sn">8.1</span><h2>The whole JVM, live</h2><span class="sub">requests arrive, classes load, objects pile up, methods get hot, GC cleans up</span></div>
+ <div class="ctrl"><button class="btn p" style="background:#BE185D;border-color:#BE185D" id="lv-play">▶ Play</button><button class="btn" id="lv-step">⏭ Step</button><button class="btn" id="lv-reset">↺ Reset</button><span class="seg" id="lv-speed"><button data-s="0.25">0.25×</button><button data-s="0.5" class="on">0.5×</button><button data-s="1">1×</button><button data-s="2">2×</button></span><span class="status" id="lv-status"></span></div>
+ <div class="live">
+  <div class="lp" style="--c:#3B82F6"><h5>Class loader</h5><div id="lv-cl" class="lvtext">idle</div></div>
+  <div class="lp" style="--c:#9333EA"><h5>Metaspace <small id="lv-mn"></small></h5><div id="lv-meta" class="chips"></div></div>
+  <div class="lp" style="--c:#22C55E"><h5>Code Cache <small>JIT</small></h5><div id="lv-code" class="chips"></div></div>
+  <div class="lp" style="--c:#EF4444;grid-row:span 2"><h5>Threads</h5><div id="lv-th"></div></div>
+  <div class="lp heapp" style="--c:#F97316;grid-column:span 3"><h5>Heap <small id="lv-hn"></small></h5>
+   <div class="hrow"><span>Eden</span><div class="dots" id="lv-eden"></div></div>
+   <div class="hrow"><span>Survivor</span><div class="dots" id="lv-surv"></div></div>
+   <div class="hrow"><span>Old</span><div class="dots" id="lv-old"></div></div></div>
+  <div class="lp" style="--c:#F59E0B;grid-column:span 2"><h5>GC</h5><div id="lv-gc" class="lvtext">no GC yet</div></div>
+  <div class="lp" style="--c:#64748B;grid-column:span 2"><h5>Log</h5><div class="console" id="lv-log" style="height:84px"></div></div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">8.2</span><h2>Troubleshooting cheat sheet</h2><span class="sub">error → area → first thing to check</span></div>
+ <div class="cols">
+  <div class="box"><h4>Errors</h4>
+   <table class="t">
+    <tr><th>Error</th><th>Area</th><th>Check first</th></tr>
+    <tr><td><code>OOM: Java heap space</code></td><td>Heap</td><td>heap dump → biggest retainers; leak or <code>-Xmx</code> too small</td></tr>
+    <tr><td><code>OOM: Metaspace</code></td><td>Metaspace</td><td>class-loader leak (redeploys, dynamic proxies)</td></tr>
+    <tr><td><code>OOM: Direct buffer memory</code></td><td>Native</td><td>unreleased <code>ByteBuffer</code>s · <code>-XX:MaxDirectMemorySize</code></td></tr>
+    <tr><td><code>OOM: unable to create native thread</code></td><td>Threads</td><td>thread leak / OS limits → thread pools or virtual threads</td></tr>
+    <tr><td><code>StackOverflowError</code></td><td>Stack</td><td>runaway recursion · <code>-Xss</code></td></tr>
+    <tr><td><code>OOM: GC overhead limit</code></td><td>Heap</td><td>GC running constantly, freeing little</td></tr>
+   </table></div>
+  <div class="stack">
+   <div class="box"><h4>Tools</h4><code>jcmd &lt;pid&gt; GC.heap_info</code> · <code>jcmd &lt;pid&gt; GC.heap_dump file.hprof</code> · <code>jcmd &lt;pid&gt; Thread.print</code> · <code>jcmd &lt;pid&gt; VM.native_memory</code> · <code>-Xlog:gc*</code> · <code>-XX:+HeapDumpOnOutOfMemoryError</code></div>
+   <div class="box"><h4>Java 25 HotSpot notes</h4>G1 default · generational ZGC · compact object headers <code>-XX:+UseCompactObjectHeaders</code> · AOT cache <code>-XX:AOTCache</code> for faster start-up</div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 9. INTERVIEW Q&A -->
+<section class="cat" data-name="9. Interview Q&amp;A" data-col="i">
+<h1 class="cat-title">9. Interview Q&amp;A</h1>
+<div class="slide c-i">
+ <div class="sh"><span class="sn">9.1</span><h2>Interview questions</h2><span class="sub">click a question to reveal the answer · pill = slide that explains it</span></div>
+ <div class="qbar"><input id="qa-find" type="search" placeholder="Filter questions… (e.g. metaspace, G1, string)"><span class="chip ok" id="qa-count"></span><button class="btn" id="qa-random">🎲 Random question</button><label class="donebox" style="margin-left:auto"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="acc" id="qa-list"></div>
+</div>
+</section>
+
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <button class="next-cat" id="nextCat"></button>
+ <span class="kbd">← → keys</span>
+</footer>
+
+<script>
+// ===================================================== code blocks
+const ESC=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const RX={
+ java:[/(\/\/.*$)|("(?:[^"\\]|\\.)*")|(@\w+)|\b(public|private|protected|static|final|class|new|return|void|package|import|implements|extends|this|null|true|false)\b|\b([A-Z][A-Za-z0-9_]*)\b|\b(\d+)\b|([a-z_]\w*)(?=\()/gm,['cm','s','a','k','ty','nu','f']],
+ yaml:[/(#.*$)|^(\s*[\w.\-]+)(?=:)|("(?:[^"\\]|\\.)*")|\b(true|false)\b|\b(\d[\w.]*)\b/gm,['cm','y','s','k','nu']],
+ sh:[/(^\$)|(\s-{1,2}[\w.\-]+(?:=[^\s\\]+)?)/gm,['sh-p','y']],
+ text:[/^([\w\-]+)(?=:)/gm,['y']]};
+function hl(src,lang){const [re,cls]=RX[lang]||RX.text;let o='',last=0,m;re.lastIndex=0;
+ while((m=re.exec(src))){if(m[0]===''){re.lastIndex++;continue;}o+=ESC(src.slice(last,m.index));const g=m.slice(1).findIndex(x=>x!==undefined);o+=`<span class="${cls[g]}">${ESC(m[0])}</span>`;last=m.index+m[0].length;}
+ return o+ESC(src.slice(last));}
+document.querySelectorAll('script[data-mac]').forEach(s=>{const d=document.createElement('div');
+ d.innerHTML=`<div class="mac"><div class="bar"><div class="dots"><i></i><i></i><i></i></div><div class="fn">${s.dataset.mac}</div></div><pre>${hl(s.textContent.replace(/^\n|\n\s*$/g,''),s.dataset.lang)}</pre></div>`;
+ s.replaceWith(d.firstChild);});
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const store={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:v;}catch(e){return d;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
+
+// ===================================================== logos
+const LOGO={
+ 'amazons3':'M20.913 13.147l.12-.895c.947.576 1.258.922 1.354 1.071-.16.031-.562.046-1.474-.176zm-2.174 7.988a.547.547 0 0 0-.005.073c0 .084-.207.405-1.124.768a10.28 10.28 0 0 1-1.438.432c-1.405.325-3.128.504-4.853.504-4.612 0-7.412-1.184-7.412-1.704a.547.547 0 0 0-.005-.073L1.81 5.602c.135.078.28.154.432.227.042.02.086.038.128.057.134.062.272.122.417.18l.179.069c.154.058.314.114.478.168.043.013.084.029.13.043.207.065.423.127.646.187l.176.044c.175.044.353.087.534.127a23.414 23.414 0 0 0 .843.17l.121.023c.252.045.508.085.768.122.071.011.144.02.216.03.2.027.4.053.604.077l.24.027c.245.026.49.05.74.07l.081.009c.275.022.552.04.83.056l.233.012c.21.01.422.018.633.025a33.088 33.088 0 0 0 2.795-.026l.232-.011c.278-.016.555-.034.83-.056l.08-.008c.25-.02.497-.045.742-.072l.238-.026c.205-.024.408-.05.609-.077.07-.01.141-.019.211-.03.261-.037.519-.078.772-.122l.111-.02c.215-.04.427-.082.634-.125l.212-.047c.186-.041.368-.085.546-.13l.166-.042c.225-.06.444-.122.654-.189.04-.012.077-.026.115-.038a10.6 10.6 0 0 0 .493-.173c.058-.021.114-.044.17-.066.15-.06.293-.12.43-.185.038-.017.079-.034.116-.052.153-.073.3-.15.436-.228l-.976 7.245c-2.488-.78-5.805-2.292-7.311-3a1.09 1.09 0 0 0-1.088-1.085c-.6 0-1.088.489-1.088 1.088 0 .6.488 1.089 1.088 1.089.196 0 .378-.056.537-.148 1.72.812 5.144 2.367 7.715 3.15zm-7.42-20.047c5.677 0 9.676 1.759 9.75 2.736l-.014.113c-.01.033-.031.067-.048.101-.015.028-.026.057-.047.087-.024.033-.058.068-.09.102-.028.03-.051.06-.084.09-.038.035-.087.07-.133.105-.04.03-.074.06-.119.091-.053.036-.116.071-.177.107-.05.03-.095.06-.15.09-.068.036-.147.073-.222.11-.059.028-.114.057-.177.085-.084.038-.177.074-.268.111-.068.027-.13.054-.203.082-.097.036-.205.072-.31.107-.075.026-.148.053-.228.079-.111.035-.233.069-.35.103-.085.024-.165.05-.253.073-.124.034-.258.065-.389.098-.093.022-.181.046-.278.068-.139.032-.287.061-.433.091-.098.02-.191.041-.293.06-.155.03-.32.057-.482.084-.1.018-.198.036-.302.052-.166.026-.342.048-.515.072-.11.014-.213.03-.325.044-.181.023-.372.041-.56.06-.11.012-.218.025-.332.036-.188.016-.386.029-.58.043-.122.009-.24.02-.364.028-.207.012-.422.02-.635.028-.12.005-.234.012-.354.016a35.605 35.605 0 0 1-2.069 0c-.12-.004-.234-.011-.352-.016-.214-.008-.43-.016-.637-.028-.122-.008-.238-.02-.36-.027-.195-.015-.394-.028-.584-.044-.11-.01-.215-.024-.324-.035-.19-.02-.384-.038-.568-.06l-.315-.044c-.176-.024-.355-.046-.525-.073-.1-.015-.192-.033-.29-.05-.167-.028-.335-.055-.494-.086-.096-.018-.183-.038-.276-.056-.151-.032-.305-.062-.45-.095-.09-.02-.173-.043-.26-.064-.138-.034-.277-.067-.407-.102-.082-.022-.157-.046-.235-.069a11.75 11.75 0 0 1-.368-.108c-.075-.024-.141-.049-.213-.073-.11-.037-.223-.075-.325-.113-.067-.025-.125-.051-.188-.077-.096-.038-.195-.076-.282-.115-.06-.027-.11-.054-.166-.08-.08-.039-.162-.077-.233-.116-.052-.028-.094-.055-.142-.084-.063-.038-.13-.075-.185-.113-.043-.029-.075-.058-.113-.086-.048-.037-.098-.073-.139-.11-.032-.029-.054-.057-.08-.087-.033-.035-.069-.07-.093-.104-.02-.03-.031-.058-.046-.086-.018-.035-.039-.068-.049-.102l-.015-.113c.076-.977 4.074-2.736 9.748-2.736zm12.182 12.124c-.118-.628-.84-1.291-2.31-2.128l.963-7.16a.531.531 0 0 0 .005-.073C22.16 1.581 16.447 0 11.32 0 6.194 0 .482 1.581.482 3.851a.58.58 0 0 0 .005.072L2.819 21.25c.071 2.002 5.236 2.75 8.5 2.75 1.805 0 3.615-.188 5.098-.531.598-.138 1.133-.3 1.592-.48 1.18-.467 1.789-1.053 1.813-1.739l.945-7.018c.557.131 1.016.197 1.389.197.54 0 .902-.137 1.134-.413a.956.956 0 0 0 .21-.804Z',
+ 'apachekafka':'M9.71 2.136a1.43 1.43 0 0 0-2.047 0h-.007a1.48 1.48 0 0 0-.421 1.042c0 .41.161.777.422 1.039l.007.007c.257.264.616.426 1.019.426.404 0 .766-.162 1.027-.426l.003-.007c.261-.262.421-.629.421-1.039 0-.408-.159-.777-.421-1.042H9.71zM8.683 22.295c.404 0 .766-.167 1.027-.429l.003-.008c.261-.261.421-.631.421-1.036 0-.41-.159-.778-.421-1.044H9.71a1.42 1.42 0 0 0-1.027-.432 1.4 1.4 0 0 0-1.02.432h-.007c-.26.266-.422.634-.422 1.044 0 .406.161.775.422 1.036l.007.008c.258.262.617.429 1.02.429zm7.89-4.462c.359-.096.683-.33.882-.684l.027-.052a1.47 1.47 0 0 0 .114-1.067 1.454 1.454 0 0 0-.675-.896l-.021-.014a1.425 1.425 0 0 0-1.078-.132c-.36.091-.684.335-.881.686-.2.349-.241.75-.146 1.119.099.363.33.691.675.896h.002c.346.203.737.239 1.101.144zm-6.405-7.342a2.083 2.083 0 0 0-1.485-.627c-.58 0-1.103.242-1.482.627-.378.385-.612.916-.612 1.507s.233 1.124.612 1.514a2.08 2.08 0 0 0 2.967 0c.379-.39.612-.923.612-1.514s-.233-1.122-.612-1.507zm-.835-2.51c.843.141 1.6.552 2.178 1.144h.004c.092.093.182.196.265.299l1.446-.851a3.176 3.176 0 0 1-.047-1.808 3.149 3.149 0 0 1 1.456-1.926l.025-.016a3.062 3.062 0 0 1 2.345-.306c.77.21 1.465.721 1.898 1.482v.002c.431.757.518 1.626.313 2.408a3.145 3.145 0 0 1-1.456 1.928l-.198.118h-.02a3.095 3.095 0 0 1-2.154.201 3.127 3.127 0 0 1-1.514-.944l-1.444.848a4.162 4.162 0 0 1 0 2.879l1.444.846c.413-.47.939-.789 1.514-.944a3.041 3.041 0 0 1 2.371.319l.048.023v.002a3.17 3.17 0 0 1 1.408 1.906 3.215 3.215 0 0 1-.313 2.405l-.026.053-.003-.005a3.147 3.147 0 0 1-1.867 1.436 3.096 3.096 0 0 1-2.371-.318v-.006a3.156 3.156 0 0 1-1.456-1.927 3.175 3.175 0 0 1 .047-1.805l-1.446-.848a3.905 3.905 0 0 1-.265.294l-.004.005a3.938 3.938 0 0 1-2.178 1.138v1.699a3.09 3.09 0 0 1 1.56.862l.002.004c.565.572.914 1.368.914 2.243 0 .873-.35 1.664-.914 2.239l-.002.009a3.1 3.1 0 0 1-2.21.931 3.1 3.1 0 0 1-2.206-.93h-.002v-.009a3.186 3.186 0 0 1-.916-2.239c0-.875.35-1.672.916-2.243v-.004h.002a3.1 3.1 0 0 1 1.558-.862v-1.699a3.926 3.926 0 0 1-2.176-1.138l-.006-.005a4.098 4.098 0 0 1-1.173-2.874c0-1.122.452-2.136 1.173-2.872h.006a3.947 3.947 0 0 1 2.176-1.144V6.289a3.137 3.137 0 0 1-1.558-.864h-.002v-.004a3.192 3.192 0 0 1-.916-2.243c0-.871.35-1.669.916-2.243l.002-.002A3.084 3.084 0 0 1 8.683 0c.861 0 1.641.355 2.21.932v.002h.002c.565.574.914 1.372.914 2.243 0 .876-.35 1.667-.914 2.243l-.002.005a3.142 3.142 0 0 1-1.56.864v1.692zm8.121-1.129l-.012-.019a1.452 1.452 0 0 0-.87-.668 1.43 1.43 0 0 0-1.103.146h.002c-.347.2-.58.529-.677.896-.095.365-.054.768.146 1.119l.007.009c.2.347.519.579.874.673.357.103.755.059 1.098-.144l.019-.009a1.47 1.47 0 0 0 .657-.885 1.493 1.493 0 0 0-.141-1.118',
+ 'apachemaven':'M4.237.001c-.312-.013-.665.072-.828.457-.158.374-.283 1.188-.34 2.276l1.223.591c-.02-.737.007-1.43.076-2.066-.026.299-.056.96.006 2.039.019.342.049.725.088 1.15.002.024.002.047.007.069a45.485 45.485 0 0 0 .309 2.412c.057.368.126.752.195 1.16l-.01.01c.014.01.015.018.014.023l.03.16c.03.162.06.328.093.494l.108.553.056.289a61.72 61.72 0 0 0 .457 2.068c.09.382.186.78.287 1.186.098.386.199.783.309 1.193.096.362.199.735.303 1.117.003.018.012.036.015.055a145.826 145.826 0 0 0 .34 1.185l.049.174c.078.261.158.533.242.805a4.2 4.2 0 0 1-.293-.135l-.19-.654c-.02-.077-.042-.148-.062-.225l-.002-.004-.004-.002c-.087-.3-.17-.607-.257-.916-.023-.087-.044-.173-.069-.263l-.314-1.178c-.1-.381-.194-.765-.29-1.154-.094-.39-.185-.78-.277-1.172-.093-.401-.181-.8-.265-1.203-.085-.396-.161-.798-.24-1.193a50.315 50.315 0 0 1-.211-1.17c-.004-.013-.006-.03-.01-.041l.004-.002c-.057-.386-.116-.77-.174-1.15a60.905 60.905 0 0 1-.154-1.204 27.447 27.447 0 0 1-.172-2.41l-1.22-.59c-.004.074-.01.15-.013.23-.012.294-.02.605-.023.93a45.3 45.3 0 0 0 .006 1.157c.009.37.025.755.045 1.148.02.336.042.675.07 1.022l.002.039.006.004c.003.023.007.05.006.076.033.368.064.739.107 1.115a34.493 34.493 0 0 0 .303 2.125c.01.064.024.131.035.195a23.418 23.418 0 0 0 .547 2.32c.07.237.14.464.21.68.063.182.13.365.194.545.155.422.327.832.512 1.232l.006.004a.318.318 0 0 0 .02.05c.225.485.475.95.755 1.395.01.013.02.033.03.047-.455-.183-1.259-.098-1.253-.097.83.288 1.557.64 2.016 1.175-.183.2-.523.352-.953.477.594.064.924-.039 1.045-.092-.31.26-.483.732-.635 1.24.35-.57.696-.949 1.033-1.094.078.258.162.524.244.788A147.532 147.532 0 0 0 5.157 24a.56.56 0 0 0 .43-.312c.13-.282.83-1.775 1.908-3.875.413 1.303.88 2.679 1.386 4.109a.494.494 0 0 0 .076-.465 103.735 103.735 0 0 1-1.308-3.945c.154-.299.316-.612.484-.932.125.04.255.094.389.155.203.186.352.491.482.84a1.515 1.515 0 0 0-.334-1.098c1.335.258 2.547.09 3.287-.81a3.97 3.97 0 0 0 .192-.258c-.325.304-.682.404-1.313.273.996-.281 1.523-.617 2.035-1.22.12-.145.244-.303.371-.48-.943.722-1.927.822-2.9.493l-.045-.018c.914.02 2.203-.474 3.092-1.189.41-.33.796-.73 1.17-1.21.28-.359.55-.76.82-1.216.234-.393.468-.824.7-1.293a2.83 2.83 0 0 1-.74.137l-.144.008c-.048.002-.093 0-.146.002.885-.198 1.5-.74 1.994-1.447-.24.117-.628.262-1.07.297-.058.006-.12.006-.182.006-.013-.002-.028 0-.047-.002.306-.078.574-.178.81-.309a3.363 3.363 0 0 0 .358-.236c.044-.037.088-.07.13-.106.099-.086.193-.18.28-.287.028-.034.056-.063.08-.098.036-.05.073-.098.104-.146a8.388 8.388 0 0 0 .51-.828c.015-.031.032-.057.046-.088.04-.084.08-.16.11-.227.042-.099.074-.179.092-.238a.515.515 0 0 1-.108.051c-.273.112-.727.187-1.086.201-.004 0-.008 0-.013.004h-.067c.72-.214 1.067-.45 1.422-.818a13.883 13.883 0 0 0 1.154-1.428c.264-.37.505-.738.692-1.072a6.5 6.5 0 0 0 .298-.592c.066-.157.122-.305.172-.45-.466.01-.986.011-1.48 0 .495.01 1.015.007 1.484-.005.5-1.485.063-2.262.063-2.262s-.526-1.212-1.4-.851c-.426.175-1.172.73-2.083 1.56l.514 1.45a17.561 17.561 0 0 1 1.703-1.602c-.257.22-.807.726-1.615 1.644-.256.29-.537.624-.844.997-.017.02-.035.038-.047.06a51.435 51.435 0 0 0-1.666 2.187c-.248.34-.498.704-.765 1.088h-.016c.002.02-.004.028-.01.032l-.101.152c-.104.155-.213.31-.318.47l-.352.534c-.061.09-.124.181-.186.277-.184.282-.367.573-.558.873a97.351 97.351 0 0 0-1.428 2.338 96.866 96.866 0 0 0-1.341 2.343c-.012.017-.02.04-.034.057a197.256 197.256 0 0 0-.668 1.223l-.097.181c-.17.318-.346.642-.52.979 0 .004-.005.008-.006.013-.026.048-.05.093-.072.141-.117.222-.218.424-.45.87a1.352 1.352 0 0 0-.233-.182l.345-.65c.047-.089.096-.177.143-.27l.04-.077.546-1.001.13-.233v-.006l-.001-.006c.169-.31.345-.62.52-.94.051-.087.102-.173.153-.265.224-.395.454-.794.684-1.197a91.685 91.685 0 0 1 2.135-3.504c.247-.386.503-.77.754-1.152.092-.138.182-.272.279-.41a72.9 72.9 0 0 1 .48-.701c.007-.012.019-.024.026-.037h.006c.26-.356.517-.713.773-1.065.278-.373.554-.735.83-1.09a31.075 31.075 0 0 1 1.777-2.075l-.515-1.446c-.06.057-.126.116-.192.178a32.37 32.37 0 0 0-.758.729c-.295.294-.597.606-.912.935a46.032 46.032 0 0 0-1.632 1.838l-.03.033.002.008c-.017.02-.033.044-.054.064-.266.323-.538.649-.801.985a39.105 39.105 0 0 0-1.445 1.95c-.043.06-.085.126-.127.186a26.458 26.458 0 0 0-1.403 2.303c-.13.247-.256.485-.37.715-.096.195-.187.395-.278.591-.21.463-.398.93-.566 1.399l.002.006a.36.36 0 0 0-.026.058c-.108.303-.203.608-.29.914-.14.174-.302.325-.483.46a3.505 3.505 0 0 0-.131-.153 5.148 5.148 0 0 0 .824-2.211 6.4 6.4 0 0 0-.016-1.488c-.046-.4-.126-.82-.238-1.274-.097-.393-.217-.81-.363-1.248-.091.185-.22.367-.379.545l-.086.094c-.029.032-.06.06-.092.094.434-.674.486-1.397.358-2.148a2.722 2.722 0 0 1-.49.85c-.033.038-.072.077-.11.116-.01.007-.019.018-.033.028.144-.24.25-.467.318-.698a1.29 1.29 0 0 0 .04-.146 2.85 2.85 0 0 0 .038-.225l.018-.146a2.11 2.11 0 0 0-.002-.354c-.003-.04-.004-.076-.01-.113-.01-.055-.016-.105-.027-.154a7.416 7.416 0 0 0-.193-.84c-.01-.028-.015-.056-.026-.084-.027-.079-.048-.149-.072-.209a2.1 2.1 0 0 0-.09-.209.455.455 0 0 1-.035.1c-.102.24-.34.57-.557.8-.003.003-.007.005-.007.01l-.04.043c.318-.58.39-.946.385-1.398a12.274 12.274 0 0 0-.16-1.615 10.68 10.68 0 0 0-.232-1.104 5.853 5.853 0 0 0-.18-.558 6.337 6.337 0 0 0-.172-.391 26.18 26.18 0 0 0 .002-.004C5.576.341 4.82.124 4.82.124s-.27-.11-.582-.123zm3.38 15.783l.032.082v.002c-.06.033-.116.067-.178.097-.012.004-.024.012-.039.018a2.41 2.41 0 0 0 .186-.2zm-.603 1.626c.13.136.25.242.354.32l.07.227a1.866 1.866 0 0 0-.246.053l-.03-.098c-.024-.084-.048-.17-.076-.257l-.021-.073zm.26.875a2.34 2.34 0 0 1 .271.01l.07.229a.778.778 0 0 1 .247-.004l-.326.627a127.643 127.643 0 0 1-.262-.862z',
+ 'apachetomcat':'M12.66 3.494c-.377.637-.544 2.114-.502 3.162l-.005.004c.036.946.165 1.816.372 2.615-3.096.767-6.466 2.795-8.352 4.754-.882-1.19-1.232-2.168-1.336-2.908-.131-.936.092-1.794.646-2.482.867-1.077 2.098-1.153 3.365-.94-.025.2.001.391.081.51.335.494 2.135.668 3.21.189-.793-1.112-2.4-1.654-2.844-1.437a.762.762 0 00-.335.359c-.438-.078-.873-.137-1.19-.134-1.117.008-1.971.398-2.61 1.193-.628.78-.882 1.747-.734 2.8.14.996.633 2.055 1.46 3.154-.138.147-.27.293-.398.436C1.473 17.023 0 19.44 0 19.842v.207h2.658l-.046-.246c-.15-.793.15-1.785.763-2.526.386-.465 1.024-.996 2.027-1.241.891.87 2.027 1.794 3.291 2.685h1.976v-.208a.678.678 0 00-.327-.577c-.312-.204-.794-.232-1.237-.081-.421-.47-.658-1.098-.709-1.877 4.287.38 8.388 2.11 13.015 4.528h2.546l.033-.167c.048-.237-.082-.556-.346-.851-.456-.51-1.349-.752-2.095-.734-.514-.612-3.342-3.591-3.507-3.765a9.626 9.626 0 002.673-2.847h1.388v-.298H20.89a9.81 9.81 0 00.223-.419h.989v-.299h-.845c.628-1.359.975-2.918.942-4.625l.003.002c-.002-.468-.147-2.445-.415-2.989-.726.276-2.047 1.17-2.346 2.084a14.557 14.557 0 00-4.463.056c-.237-.984-1.423-1.736-2.318-2.16zm.164.577c.211 1.148.593 1.869 1.42 2.223.734-.21 1.58-.34 2.448-.388l.717 1.571.46-1.585c.876.029 1.736.142 2.485.349.762-.554 1.057-1.4 1.218-2.138.202.86.178 2.717.18 2.717a9.883 9.883 0 01-.158 1.988l-.824.35.726.11a9.19 9.19 0 01-.198.714l-.703.205.56.201c-.094.253-.2.5-.314.738h-1.16v.299h1.008a8.788 8.788 0 01-.238.419h-.77v.298h.583a8.634 8.634 0 01-2.921 2.748c-1.334-.664-2.341-1.634-3.079-2.748h.446v-.298h-.636a9.195 9.195 0 01-.236-.419h.872v-.299h-1.026a10.12 10.12 0 01-.46-1.094l.522-.147-.659-.263c-.066-.215-.127-.43-.18-.646l1.015-.069-1.16-.615c-.282-1.563-.225-3.08.062-4.221zm2.946 2.97c-.89 0-1.24.909-1.255.948l.252.094c.012-.033.302-.773 1.003-.773.154 0 .262.062.34.195.182.314.152.933 0 1.58h-1.227v.269h1.159a5.679 5.679 0 01-.496 1.225l-.064.112 1.537.967-.865.57.148.224.967-.637 1.043.681.143-.228-.967-.598 1.518-.986v-.001c-.318-.47-.42-.872-.286-1.329h.108l1.167-.001.002-.268h-1.175c.216-.51.52-.968 1.602-.968v-.27c-.999 0-1.596.397-1.883 1.238h-2.154c.15-.672.177-1.333-.046-1.715a.63.63 0 00-.57-.33zm.55 2.313h2.126c-.095.304-.057.763.178 1.157h-2.737c.166-.334.32-.74.433-1.157zm-3.683.321c.155.515.344.997.562 1.451h-.91v.299h1.06c.075.142.153.282.233.419H12.29v.298h1.478c.91 1.416 2.14 2.499 3.534 3.318a9.45 9.45 0 00.456-.28l.362.39-.61.938 1.04-.474.606.652-1.019.776 1.403-.363 1.905 2.05.16-.014c1.007-.086 1.58.46 1.73.63.112.124.179.237.215.326h-2.036c-4.67-2.437-8.771-4.155-13.127-4.53.01-.607.117-1.293.324-2.058l-.4-.108c-.213.786-.325 1.497-.338 2.134-.454-.03-.91-.046-1.371-.046-.391 0-.747.036-1.072.1a14.771 14.771 0 01-1.09-1.21c.546-.57 1.19-1.123 1.893-1.643l.967.668-.316-1.128c.297-.2.603-.394.914-.58l1.434.73-.673-1.162c.198-.106.398-.21.598-.31l2.007 1.346-.66-1.952a15.32 15.32 0 012.034-.667zm3.492 1.105h2.22l-1.084.715zM4.153 14.675c.273.337.577.678.91 1.021a4.104 4.104 0 00-2.007 1.316c-.629.76-.962 1.762-.886 2.622H.495c.337-.728 1.677-2.833 3.658-4.959z',
+ 'docker':'M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185m-2.92 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.082.185.185.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.087-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288Z',
+ 'elasticsearch':'M13.394 0C8.683 0 4.609 2.716 2.644 6.667h15.641a4.77 4.77 0 0 0 3.073-1.11c.446-.375.864-.785 1.247-1.243l.001-.002A11.974 11.974 0 0 0 13.394 0zM1.804 8.889a12.009 12.009 0 0 0 0 6.222h14.7a3.111 3.111 0 1 0 0-6.222zm.84 8.444C4.61 21.283 8.684 24 13.395 24c3.701 0 7.011-1.677 9.212-4.312l-.001-.002a9.958 9.958 0 0 0-1.247-1.243 4.77 4.77 0 0 0-3.073-1.11z',
+ 'git':'M23.546 10.93L13.067.452c-.604-.603-1.582-.603-2.188 0L8.708 2.627l2.76 2.76c.645-.215 1.379-.07 1.889.441.516.515.658 1.258.438 1.9l2.658 2.66c.645-.223 1.387-.078 1.9.435.721.72.721 1.884 0 2.604-.719.719-1.881.719-2.6 0-.539-.541-.674-1.337-.404-1.996L12.86 8.955v6.525c.176.086.342.203.488.348.713.721.713 1.883 0 2.6-.719.721-1.889.721-2.609 0-.719-.719-.719-1.879 0-2.598.182-.18.387-.316.605-.406V8.835c-.217-.091-.424-.222-.6-.401-.545-.545-.676-1.342-.396-2.009L7.636 3.7.45 10.881c-.6.605-.6 1.584 0 2.189l10.48 10.477c.604.604 1.582.604 2.186 0l10.43-10.43c.605-.603.605-1.582 0-2.187',
+ 'jsonwebtokens':'M10.2 0v6.456L12 8.928l1.8-2.472V0zm3.6 6.456v3.072l2.904-.96L20.52 3.36l-2.928-2.136zm2.904 2.112l-1.8 2.496 2.928.936 6.144-1.992-1.128-3.432zM17.832 12l-2.928.936 1.8 2.496 6.144 1.992 1.128-3.432zm-1.128 3.432l-2.904-.96v3.072l3.792 5.232 2.928-2.136zM13.8 17.544L12 15.072l-1.8 2.472V24h3.6zm-3.6 0v-3.072l-2.904.96L3.48 20.64l2.928 2.136zm-2.904-2.112l1.8-2.496L6.168 12 .024 13.992l1.128 3.432zM6.168 12l2.928-.936-1.8-2.496-6.144-1.992-1.128 3.432zm1.128-3.432l2.904.96V6.456L6.408 1.224 3.48 3.36Z',
+ 'junit5':'M11.886 9.769c1.647 0 2.95.436 3.912 1.307.961.872 1.442 2.06 1.442 3.566 0 1.744-.548 3.107-1.643 4.09-1.088.977-2.638 1.465-4.65 1.465-1.826 0-3.26-.294-4.303-.883v-2.38a7.89 7.89 0 002.079.793c.782.186 1.509.28 2.18.28 1.184 0 2.086-.265 2.704-.794.619-.53.928-1.304.928-2.325 0-1.952-1.245-2.929-3.733-2.929-.35 0-.783.038-1.297.112-.514.067-.965.145-1.352.235l-1.174-.693.626-7.98H16.1v2.335H9.919l-.37 4.046c.262-.044.578-.096.95-.156.38-.06.843-.09 1.387-.09zM12 0C5.373 0 0 5.373 0 12a11.998 11.998 0 006.65 10.738v-3.675h.138c.01.004 4.86 2.466 8.021 0 3.163-2.468 1.62-5.785 1.08-6.557-.54-.771-3.317-2.083-5.708-1.851-2.391.231-2.391.308-2.391.308l.617-7.096 7.687-.074V.744A12 12 0 0011.999 0zm4.095.744V3.793l-7.688.074-.617 7.096s0-.077 2.391-.308c2.392-.232 5.169 1.08 5.708 1.851.54.772 2.083 4.089-1.08 6.557-3.16 2.467-8.013.004-8.02 0h-.14v3.675A12 12 0 0012 24c6.628 0 12-5.373 12-12A12.007 12.007 0 0016.35.83c-.085-.03-.17-.059-.255-.086zM6.299 22.556z',
+ 'keycloak':'m18.742 1.182-12.493.002C4.155 4.784 2.079 8.393 0 12.002c2.071 3.612 4.162 7.214 6.252 10.816l12.49-.004 3.089-5.404h2.158v-.002H24L23.996 6.59h-2.168zM8.327 4.792h2.081l1.04 1.8-3.12 5.413 3.117 5.403-1.035 1.81H8.327a2047.566 2047.566 0 0 0-4.168-7.204C5.547 9.606 6.937 7.2 8.327 4.792Zm6.241 0 2.086.003c1.393 2.405 2.78 4.813 4.166 7.222l-4.167 7.2h-2.08c-.382-.562-1.038-1.808-1.038-1.808l3.123-5.405-3.124-5.413z',
+ 'kubernetes':'M10.204 14.35l.007.01-.999 2.413a5.171 5.171 0 0 1-2.075-2.597l2.578-.437.004.005a.44.44 0 0 1 .484.606zm-.833-2.129a.44.44 0 0 0 .173-.756l.002-.011L7.585 9.7a5.143 5.143 0 0 0-.73 3.255l2.514-.725.002-.009zm1.145-1.98a.44.44 0 0 0 .699-.337l.01-.005.15-2.62a5.144 5.144 0 0 0-3.01 1.442l2.147 1.523.004-.002zm.76 2.75l.723.349.722-.347.18-.78-.5-.623h-.804l-.5.623.179.779zm1.5-3.095a.44.44 0 0 0 .7.336l.008.003 2.134-1.513a5.188 5.188 0 0 0-2.992-1.442l.148 2.615.002.001zm10.876 5.97l-5.773 7.181a1.6 1.6 0 0 1-1.248.594l-9.261.003a1.6 1.6 0 0 1-1.247-.596l-5.776-7.18a1.583 1.583 0 0 1-.307-1.34L2.1 5.573c.108-.47.425-.864.863-1.073L11.305.513a1.606 1.606 0 0 1 1.385 0l8.345 3.985c.438.209.755.604.863 1.073l2.062 8.955c.108.47-.005.963-.308 1.34zm-3.289-2.057c-.042-.01-.103-.026-.145-.034-.174-.033-.315-.025-.479-.038-.35-.037-.638-.067-.895-.148-.105-.04-.18-.165-.216-.216l-.201-.059a6.45 6.45 0 0 0-.105-2.332 6.465 6.465 0 0 0-.936-2.163c.052-.047.15-.133.177-.159.008-.09.001-.183.094-.282.197-.185.444-.338.743-.522.142-.084.273-.137.415-.242.032-.024.076-.062.11-.089.24-.191.295-.52.123-.736-.172-.216-.506-.236-.745-.045-.034.027-.08.062-.111.088-.134.116-.217.23-.33.35-.246.25-.45.458-.673.609-.097.056-.239.037-.303.033l-.19.135a6.545 6.545 0 0 0-4.146-2.003l-.012-.223c-.065-.062-.143-.115-.163-.25-.022-.268.015-.557.057-.905.023-.163.061-.298.068-.475.001-.04-.001-.099-.001-.142 0-.306-.224-.555-.5-.555-.275 0-.499.249-.499.555l.001.014c0 .041-.002.092 0 .128.006.177.044.312.067.475.042.348.078.637.056.906a.545.545 0 0 1-.162.258l-.012.211a6.424 6.424 0 0 0-4.166 2.003 8.373 8.373 0 0 1-.18-.128c-.09.012-.18.04-.297-.029-.223-.15-.427-.358-.673-.608-.113-.12-.195-.234-.329-.349-.03-.026-.077-.062-.111-.088a.594.594 0 0 0-.348-.132.481.481 0 0 0-.398.176c-.172.216-.117.546.123.737l.007.005.104.083c.142.105.272.159.414.242.299.185.546.338.743.522.076.082.09.226.1.288l.16.143a6.462 6.462 0 0 0-1.02 4.506l-.208.06c-.055.072-.133.184-.215.217-.257.081-.546.11-.895.147-.164.014-.305.006-.48.039-.037.007-.09.02-.133.03l-.004.002-.007.002c-.295.071-.484.342-.423.608.061.267.349.429.645.365l.007-.001.01-.003.129-.029c.17-.046.294-.113.448-.172.33-.118.604-.217.87-.256.112-.009.23.069.288.101l.217-.037a6.5 6.5 0 0 0 2.88 3.596l-.09.218c.033.084.069.199.044.282-.097.252-.263.517-.452.813-.091.136-.185.242-.268.399-.02.037-.045.095-.064.134-.128.275-.034.591.213.71.248.12.556-.007.69-.282v-.002c.02-.039.046-.09.062-.127.07-.162.094-.301.144-.458.132-.332.205-.68.387-.897.05-.06.13-.082.215-.105l.113-.205a6.453 6.453 0 0 0 4.609.012l.106.192c.086.028.18.042.256.155.136.232.229.507.342.84.05.156.074.295.145.457.016.037.043.09.062.129.133.276.442.402.69.282.247-.118.341-.435.213-.71-.02-.039-.045-.096-.065-.134-.083-.156-.177-.261-.268-.398-.19-.296-.346-.541-.443-.793-.04-.13.007-.21.038-.294-.018-.022-.059-.144-.083-.202a6.499 6.499 0 0 0 2.88-3.622c.064.01.176.03.213.038.075-.05.144-.114.28-.104.266.039.54.138.87.256.154.06.277.128.448.173.036.01.088.019.13.028l.009.003.007.001c.297.064.584-.098.645-.365.06-.266-.128-.537-.423-.608zM16.4 9.701l-1.95 1.746v.005a.44.44 0 0 0 .173.757l.003.01 2.526.728a5.199 5.199 0 0 0-.108-1.674A5.208 5.208 0 0 0 16.4 9.7zm-4.013 5.325a.437.437 0 0 0-.404-.232.44.44 0 0 0-.372.233h-.002l-1.268 2.292a5.164 5.164 0 0 0 3.326.003l-1.27-2.296h-.01zm1.888-1.293a.44.44 0 0 0-.27.036.44.44 0 0 0-.214.572l-.003.004 1.01 2.438a5.15 5.15 0 0 0 2.081-2.615l-2.6-.44-.004.005z',
+ 'mongodb':'M17.193 9.555c-1.264-5.58-4.252-7.414-4.573-8.115-.28-.394-.53-.954-.735-1.44-.036.495-.055.685-.523 1.184-.723.566-4.438 3.682-4.74 10.02-.282 5.912 4.27 9.435 4.888 9.884l.07.05A73.49 73.49 0 0111.91 24h.481c.114-1.032.284-2.056.51-3.07.417-.296.604-.463.85-.693a11.342 11.342 0 003.639-8.464c.01-.814-.103-1.662-.197-2.218zm-5.336 8.195s0-8.291.275-8.29c.213 0 .49 10.695.49 10.695-.381-.045-.765-1.76-.765-2.405z',
+ 'openjdk':'M11.915 0 11.7.215C9.515 2.4 7.47 6.39 6.046 10.483c-1.064 1.024-3.633 2.81-3.711 3.551-.093.87 1.746 2.611 1.55 3.235-.198.625-1.304 1.408-1.014 1.939.1.188.823.011 1.277-.491a13.389 13.389 0 0 0-.017 2.14c.076.906.27 1.668.643 2.232.372.563.956.911 1.667.911.397 0 .727-.114 1.024-.264.298-.149.571-.33.91-.5.68-.34 1.634-.666 3.53-.604 1.903.062 2.872.39 3.559.704.687.314 1.15.664 1.925.664.767 0 1.395-.336 1.807-.9.412-.563.631-1.33.72-2.24.06-.623.055-1.32 0-2.066.454.45 1.117.604 1.213.424.29-.53-.816-1.314-1.013-1.937-.198-.624 1.642-2.366 1.549-3.236-.08-.748-2.707-2.568-3.748-3.586C16.428 6.374 14.308 2.394 12.13.215zm.175 6.038a2.95 2.95 0 0 1 2.943 2.942 2.95 2.95 0 0 1-2.943 2.943A2.95 2.95 0 0 1 9.148 8.98a2.95 2.95 0 0 1 2.942-2.942zM8.685 7.983a3.515 3.515 0 0 0-.145.997c0 1.951 1.6 3.55 3.55 3.55 1.95 0 3.55-1.598 3.55-3.55 0-.329-.046-.648-.132-.951.334.095.64.208.915.336a42.699 42.699 0 0 1 2.042 5.829c.678 2.545 1.01 4.92.846 6.607-.082.844-.29 1.51-.606 1.94-.315.431-.713.651-1.315.651-.593 0-.932-.27-1.673-.61-.741-.338-1.825-.694-3.792-.758-1.974-.064-3.073.293-3.821.669-.375.188-.659.373-.911.5s-.466.2-.752.2c-.53 0-.876-.209-1.16-.64-.285-.43-.474-1.101-.545-1.948-.141-1.693.176-4.069.823-6.614a43.155 43.155 0 0 1 1.934-5.783c.348-.167.749-.31 1.192-.425zm-3.382 4.362a.216.216 0 0 1 .13.031c-.166.56-.323 1.116-.463 1.665a33.849 33.849 0 0 0-.547 2.555 3.9 3.9 0 0 0-.2-.39c-.58-1.012-.914-1.642-1.16-2.08.315-.24 1.679-1.755 2.24-1.781zm13.394.01c.562.027 1.926 1.543 2.24 1.783-.246.438-.58 1.068-1.16 2.08a4.428 4.428 0 0 0-.163.309 32.354 32.354 0 0 0-.562-2.49 40.579 40.579 0 0 0-.482-1.652.216.216 0 0 1 .127-.03z',
+ 'selenium':'M23.174 3.468l-7.416 8.322a.228.228 0 0 1-.33 0l-3.786-3.9a.228.228 0 0 1 0-.282L12.872 6a.228.228 0 0 1 .366 0l2.106 2.346a.228.228 0 0 0 .342 0l5.94-8.094A.162.162 0 0 0 21.5 0H.716a.174.174 0 0 0-.174.174v23.652A.174.174 0 0 0 .716 24h22.566a.174.174 0 0 0 .174-.174V3.6a.162.162 0 0 0-.282-.132zM6.932 21.366a5.706 5.706 0 0 1-4.05-1.44.222.222 0 0 1 0-.288l.882-1.236a.222.222 0 0 1 .33-.036 4.338 4.338 0 0 0 2.964 1.158c1.158 0 1.722-.534 1.722-1.098 0-1.752-5.7-.552-5.7-4.278 0-1.65 1.428-3 3.756-3a5.568 5.568 0 0 1 3.708 1.242.222.222 0 0 1 0 .3l-.906 1.2a.222.222 0 0 1-.318.036 4.29 4.29 0 0 0-2.706-.936c-.906 0-1.41.402-1.41.996 0 1.572 5.688.522 5.688 4.2.006 1.812-1.284 3.18-3.96 3.18zm12.438-3.432a.192.192 0 0 1-.192.192h-5.202a.06.06 0 0 0-.06.066 1.986 1.986 0 0 0 2.106 1.638 3.264 3.264 0 0 0 1.8-.6.192.192 0 0 1 .276.042l.636.93a.198.198 0 0 1-.042.264 4.71 4.71 0 0 1-2.892.9 3.726 3.726 0 0 1-3.93-3.87 3.744 3.744 0 0 1 3.81-3.852c2.196 0 3.684 1.644 3.684 4.05zm-3.684-2.748a1.758 1.758 0 0 0-1.8 1.56.06.06 0 0 0 .06.066h3.492a.06.06 0 0 0 .06-.066 1.698 1.698 0 0 0-1.812-1.56Z',
+ 'spring':'M21.8537 1.4158a10.4504 10.4504 0 0 1-1.284 2.2471A11.9666 11.9666 0 1 0 3.8518 20.7757l.4445.3951a11.9543 11.9543 0 0 0 19.6316-8.2971c.3457-3.0126-.568-6.8649-2.0743-11.458zM5.5805 20.8745a1.0174 1.0174 0 1 1-.1482-1.4323 1.0396 1.0396 0 0 1 .1482 1.4323zm16.1991-3.5806c-2.9385 3.9263-9.2601 2.5928-13.2852 2.7904 0 0-.7161.0494-1.4323.1481 0 0 .2717-.1234.6174-.2469 2.8398-.9877 4.1732-1.1853 5.9018-2.0743 3.2349-1.6545 6.4698-5.2844 7.1118-9.0379-1.2347 3.6053-4.9881 6.7167-8.3959 7.9761-2.3459.8643-6.5685 1.7039-6.5685 1.7039l-.1729-.0988c-2.8645-1.4076-2.9632-7.6304 2.2718-9.6306 2.2966-.889 4.4696-.395 6.9637-.9877 2.6422-.6174 5.7043-2.5929 6.939-5.1857 1.3828 4.1732 3.062 10.643.0493 14.6434z',
+ 'springboot':'m23.693 10.7058-4.73-8.1844c-.4094-.7106-1.4166-1.2942-2.2402-1.2942H7.2725c-.819 0-1.8308.5836-2.2402 1.2942L.307 10.7058c-.4095.7106-.4095 1.873 0 2.5837l4.7252 8.189c.4094.7107 1.4166 1.2943 2.2402 1.2943h9.455c.819 0 1.826-.5836 2.2402-1.2942l4.7252-8.189c.4095-.7107.4095-1.8732 0-2.5838zM10.9763 5.7547c0-.5365.4377-.9742.9742-.9742s.9742.4377.9742.9742v5.8217c0 .5366-.4377.9742-.9742.9742s-.9742-.4376-.9742-.9742zm.9742 12.4294c-3.6427 0-6.6077-2.965-6.6077-6.6077.0047-2.0896.993-4.0521 2.6685-5.304a.8657.8657 0 0 1 1.2142.1788.8657.8657 0 0 1-.1788 1.2143c-2.1602 1.6048-2.612 4.6592-1.0072 6.8194 1.6049 2.1603 4.6593 2.612 6.8195 1.0072 1.2378-.9177 1.9673-2.372 1.9673-3.9157a4.8972 4.8972 0 0 0-1.9861-3.925c-.386-.2824-.466-.8284-.1836-1.2143.2824-.386.8283-.466 1.2143-.1835 1.6895 1.2471 2.6826 3.2238 2.6873 5.3228 0 3.6474-2.965 6.6077-6.6077 6.6077z',
+ 'springsecurity':'M20.59 2.066 11.993 0 3.41 2.066v6.612h4.557a3.804 3.804 0 0 0 0 .954H3.41v3.106C3.41 19.867 11.994 24 11.994 24s8.582-4.133 8.582-11.258V9.635h-4.545a3.616 3.616 0 0 0 0-.954h4.558zM12 12.262h-.006a3.109 3.109 0 1 1 .006 0zm-.006-4.579a.804.804 0 0 0-.37 1.52v.208l.238.237v.159l.159.159v.159l-.14.14.15.246v.159l-.16.189.223.222.246-.246V9.218a.804.804 0 0 0-.346-1.535zm0 .836a.299.299 0 1 1 .298-.299.299.299 0 0 1-.298.3z',
+
+};
+const BRAND={openjdk:'#ED8B00',apachemaven:'#C71A36',springboot:'#6DB33F',spring:'#6DB33F',springsecurity:'#6DB33F',mongodb:'#47A248',apachekafka:'#231F20',apachetomcat:'#F8DC75',elasticsearch:'#005571',docker:'#2496ED',kubernetes:'#326CE5',keycloak:'#4D4D4D',git:'#F05032',junit5:'#25A162',jsonwebtokens:'#000000',amazons3:'#569A31',selenium:'#43B02A'};
+const logo=(n,cls='lg',style='')=>LOGO[n]?`<svg class="${cls}" viewBox="0 0 24 24" style="${style}"><path fill="${n==='apachetomcat'?'#D1A41A':BRAND[n]}" d="${LOGO[n]}"/></svg>`:'';
+function fillLogos(root=document){root.querySelectorAll('svg[data-logo]').forEach(s=>{const n=s.dataset.logo;if(!LOGO[n])return;s.setAttribute('viewBox','0 0 24 24');s.innerHTML=`<path fill="${n==='apachetomcat'?'#D1A41A':BRAND[n]}" d="${LOGO[n]}"/>`;});}
+fillLogos();
+
+// ===================================================== fit each slide to the screen: spread spare height as PADDING (never font size)
+function fitSlide(sl){
+ if(!sl)return;const sec=sl.firstElementChild;if(!sec||!sec.classList.contains('sec'))return;
+ sec.style.zoom='';
+ if(document.body.classList.contains('all')){sec.style.removeProperty('--k');sec.style.minHeight='';return;}
+ const cs=getComputedStyle(sl),pad=parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom);
+ sec.style.minHeight='0';
+ const fits=k=>{sec.style.setProperty('--k',k);return sl.scrollHeight<=sl.clientHeight+1;};
+ let lo,hi;if(fits(1)){lo=1;hi=2.2;}else{lo=0.3;hi=1;}
+ for(let i=0;i<8;i++){const m=(lo+hi)/2;if(fits(m))lo=m;else hi=m;}
+ let k=Math.floor(lo*100)/100;sec.style.setProperty('--k',k);
+ sec.style.minHeight=(sl.clientHeight-pad-4)+'px';
+ const over=()=>sl.scrollHeight>sl.clientHeight;
+ while(over()&&k>0.3){k=Math.round((k-0.03)*100)/100;sec.style.setProperty('--k',k);}
+ if(over())sec.style.minHeight='';
+ document.dispatchEvent(new CustomEvent('slide-fitted',{detail:sl}));}
+const fitCurrent=()=>fitSlide(document.querySelector('.slide.on'));
+let fitT;window.addEventListener('resize',()=>{clearTimeout(fitT);fitT=setTimeout(fitCurrent,120);});
+window.addEventListener('load',()=>{fitCurrent();setTimeout(fitCurrent,250);});
+// content can grow while you play with a simulator: shrink again only if it starts to overflow
+document.addEventListener('click',()=>setTimeout(()=>{const sl=document.querySelector('.slide.on');if(sl&&sl.scrollHeight>sl.clientHeight+1)fitSlide(sl);},350));
+// ===================================================== slide deck
+const DECK=(function(){
+ const COL={t:['#14B8A6','#0F766E','#F0FDFA'],b:['#3B82F6','#1D4ED8','#EEF5FF'],p:['#9333EA','#7E22CE','#F7F0FF'],o:['#F97316','#C2410C','#FFF6EC'],g:['#22C55E','#15803D','#EFFCF3'],r:['#EF4444','#B91C1C','#FFF1F1'],s:['#64748B','#334155','#F8FAFC'],i:['#6366F1','#4338CA','#EEF2FF'],a:['#F59E0B','#B45309','#FFFBEB'],k:['#EC4899','#BE185D','#FDF2F8']};
+ const cats=[...document.querySelectorAll('.cat')].map(el=>({el,name:el.dataset.name,col:el.dataset.col,slides:[...el.querySelectorAll('.slide')]}));
+ // wrap every slide in a coloured section
+ cats.forEach(k=>k.slides.forEach(sl=>{const w=document.createElement('div');w.className='sec';while(sl.firstChild)w.appendChild(sl.firstChild);sl.appendChild(w);}));
+ const flat=[];cats.forEach((k,ci)=>k.slides.forEach((sl,si)=>flat.push({ci,si,sl,num:sl.querySelector('.sn').textContent.trim(),title:sl.querySelector('h2').textContent.trim()})));
+ let c=0,s=0;
+ const idx=()=>flat.findIndex(f=>f.ci===c&&f.si===s);
+ const isAll=()=>document.body.classList.contains('all');
+ function go(ci,si){if(isAll()){cats[ci].slides[si].scrollIntoView({behavior:'smooth',block:'start'});return;}c=ci;s=si;show();}
+ const goFlat=i=>{if(i>=0&&i<flat.length)go(flat[i].ci,flat[i].si);};
+ // heading arrows: ◀ previous number … next number ▶ (next category in its colour)
+ flat.forEach((f,i)=>{const sh=f.sl.querySelector('.sh');
+  if(i>0){const p=flat[i-1],col=COL[cats[p.ci].col];const b=document.createElement('button');b.className='hnav prev';b.style.borderColor=col[0];b.style.color=col[1];b.textContent=`◀ ${p.num}`;b.title=p.title;b.onclick=()=>goFlat(i-1);sh.prepend(b);}
+  if(i<flat.length-1){const n=flat[i+1],cross=n.ci!==f.ci,col=COL[cats[n.ci].col];const b=document.createElement('button');b.className='hnav next'+(cross?' cat':'');b.style.borderColor=col[0];
+   if(cross){b.style.background=col[0];b.textContent=`${cats[n.ci].name} ▶`;}else{b.style.color=col[1];b.textContent=`${n.num} ▶`;}
+   b.title=n.title;b.onclick=()=>goFlat(i+1);sh.appendChild(b);}});
+ // tabs
+ const tabs=document.getElementById('tabs');
+ tabs.innerHTML=cats.map((k,i)=>`<button class="tab" data-c="${i}" style="border-color:${COL[k.col][0]};color:${COL[k.col][1]}">${k.name.replace(/^\d+\.\s*/,'').replace('Interview ','')}</button>`).join('');
+ // contents
+ const toc=document.getElementById('toc');
+ if(toc)toc.innerHTML=cats.slice(1).map((k,j)=>{const col=COL[k.col];return `<div class="tcat" style="border-color:${col[0]};background:${col[2]}"><h3 style="color:${col[1]}">${k.name}</h3>${k.slides.map((sl,si)=>{const f=flat.find(x=>x.ci===j+1&&x.si===si);return `<button data-goflat="${flat.indexOf(f)}"><b style="color:${col[1]}">${f.num}</b>${f.title}</button>`;}).join('')}</div>`;}).join('');
+ function show(push){
+  cats.forEach((k,i)=>k.slides.forEach((sl,j)=>sl.classList.toggle('on',i===c&&j===s)));
+  tabs.querySelectorAll('.tab').forEach((t,i)=>{const on=i===c;t.classList.toggle('on',on);t.style.background=on?COL[cats[i].col][0]:'#fff';if(on)t.scrollIntoView({block:'nearest',inline:'nearest'});});
+  const k=cats[c],col=COL[k.col][0],i=idx();
+  document.getElementById('dots').innerHTML=k.slides.map((_,j)=>`<button data-s="${j}" class="${j===s?'on':''}" style="background:${j===s?col:'#CBD5E1'}" title="${k.slides[j].querySelector('h2').textContent}"></button>`).join('');
+  document.getElementById('cnt').textContent=`${k.name} · ${s+1} / ${k.slides.length}`;
+  document.getElementById('prev').disabled=i===0;document.getElementById('next').disabled=i===flat.length-1;
+  k.slides[s].scrollTop=0;fitSlide(k.slides[s]);
+  if(push!==false)history.replaceState(null,'',`#${c}-${s+1}`);}
+ document.getElementById('prev').onclick=()=>goFlat(idx()-1);
+ document.getElementById('next').onclick=()=>goFlat(idx()+1);
+ document.getElementById('dots').onclick=e=>{const b=e.target.closest('[data-s]');if(b)go(c,+b.dataset.s);};
+ tabs.onclick=e=>{const b=e.target.closest('[data-c]');if(b)go(+b.dataset.c,0);};
+ document.addEventListener('click',e=>{const g=e.target.closest('[data-goflat]');if(g){goFlat(+g.dataset.goflat);return;}
+  const n=e.target.closest('[data-go]');if(n){const i=flat.findIndex(f=>f.num===n.dataset.go);if(i>=0)goFlat(i);}});
+ document.addEventListener('keydown',e=>{
+  if(isAll()||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;
+  if(e.key==='ArrowRight'){goFlat(idx()+1);e.preventDefault();}
+  if(e.key==='ArrowLeft'){goFlat(idx()-1);e.preventDefault();}});
+ // toggles
+ const tc=document.getElementById('t-code'),ta=document.getElementById('t-all');
+ function applyPrefs(){const code=store.get('sb-code','1')==='1',all=store.get('sb-all','0')==='1';
+  document.body.classList.toggle('nocode',!code);tc.classList.toggle('on',code);tc.innerHTML=code?'&lt;/&gt; Code: on':'&lt;/&gt; Code: off';
+  document.body.classList.toggle('all',all);ta.classList.toggle('on',!all);ta.innerHTML=all?'▭ Slides: off':'▭ Slides: on';}
+ tc.onclick=()=>{store.set('sb-code',store.get('sb-code','1')==='1'?'0':'1');applyPrefs();fitCurrent();};
+ ta.onclick=()=>{store.set('sb-all',store.get('sb-all','0')==='1'?'0':'1');applyPrefs();document.querySelectorAll('.slide').forEach(fitSlide);if(!isAll())show();window.scrollTo(0,0);};
+ const h=location.hash.match(/^#(\d+)-(\d+)$/);
+ if(h){const hc=+h[1],hs=+h[2]-1;if(cats[hc]&&cats[hc].slides[hs]){c=hc;s=hs;}}
+ applyPrefs();show(false);
+ return {go,goFlat};
+})();
+
+// ===================================================== generic stepper for .flow[data-step]
+document.querySelectorAll('.flow[data-step]').forEach(fl=>{
+ const steps=[...fl.querySelectorAll('.fstep')];let i=-1,timer=null;
+ const bar=document.createElement('div');bar.className='ctrl';bar.style.marginBottom='8px';
+ bar.innerHTML='<button class="btn p" data-x="next" style="background:var(--bd);border-color:var(--bd)">Next ▶</button><button class="btn" data-x="auto">▶ Auto play</button><button class="btn" data-x="reset">↺ Reset</button><span style="font-size:12.5px;color:var(--muted);font-weight:700" data-x="n"></span>';
+ fl.before(bar);
+ const autoBtn=bar.querySelector('[data-x=auto]');
+ const stop=()=>{clearInterval(timer);timer=null;autoBtn.textContent='▶ Auto play';};
+ const draw=()=>{steps.forEach((st,k)=>{st.classList.toggle('done',k<i);st.classList.toggle('cur',k===i);});bar.querySelector('[data-x=n]').textContent=i<0?'':`step ${i+1} / ${steps.length}`;bar.querySelector('[data-x=next]').disabled=i>=steps.length-1;};
+ bar.onclick=e=>{const x=e.target.closest('[data-x]');if(!x)return;const a=x.dataset.x;
+  if(a==='next'&&i<steps.length-1){i++;draw();}
+  if(a==='reset'){i=-1;stop();draw();}
+  if(a==='auto'){if(timer){stop();return;}if(i>=steps.length-1)i=-1;autoBtn.textContent='⏸ Pause';
+   timer=setInterval(()=>{if(i>=steps.length-1){stop();return;}i++;draw();},1600);}};
+ draw();});
+
+// ===================================================== 1.1 command builder
+(function(){
+ const box=document.getElementById('cmd-opts');if(!box)return;
+ const O={xmx:['-Xmx1g','JVM option (before -jar): maximum heap = 1 GB'],prof:['-Dspring.profiles.active=dev','JVM system property: Spring activates the dev profile → application-dev.yml is loaded'],port:['--server.port=9090','program argument (after the jar): highest priority → Tomcat listens on 9090'],debug:['--debug','program argument: Spring prints the auto-configuration CONDITIONS report']};
+ function draw(){const on=k=>box.querySelector(`[data-o=${k}]`).checked;
+  const jvm=['xmx','prof'].filter(on).map(k=>O[k][0]),args=['port','debug'].filter(on).map(k=>O[k][0]);
+  document.getElementById('cmd-out').innerHTML=`<span style="color:#4ADE80">$</span> java ${jvm.map(x=>`<span style="color:#FDE047">${x}</span>`).join(' ')} -jar notification-service.jar ${args.map(x=>`<span style="color:#67E8F9">${x}</span>`).join(' ')}`;
+  const eff=['xmx','prof','port','debug'].filter(on).map(k=>`<li>${O[k][1]}</li>`);
+  if(!on('port'))eff.push('<li>no port given → <code>server.port</code> from yml (8080)</li>');
+  document.getElementById('cmd-eff').innerHTML=eff.join('');}
+ box.onchange=draw;draw();
+})();
+
+// ===================================================== 2.1 remove an annotation
+(function(){
+ const box=document.getElementById('ann-opts');if(!box)return;
+ function draw(){const on=k=>box.querySelector(`[data-a=${k}]`).checked;const m=[];
+  if(on('cfg')&&on('auto')&&on('scan'))m.push('✅ <b>All three present</b> → the app starts normally: your beans are found, Tomcat / MongoDB / Kafka are auto-configured.');
+  if(!on('cfg'))m.push('⚠ <b>No @SpringBootConfiguration</b> → <code>@Bean</code> methods inside this class are not processed, and Spring tests can\'t find the configuration automatically.');
+  if(!on('auto'))m.push('❌ <b>No @EnableAutoConfiguration</b> → no Tomcat, no MongoTemplate, no KafkaTemplate. The app starts and exits, or fails with "No qualifying bean of type MongoTemplate".');
+  if(!on('scan'))m.push('❌ <b>No @ComponentScan</b> → your <code>@Service</code> / <code>@RestController</code> classes are never found → every endpoint returns 404, injections fail.');
+  document.getElementById('ann-out').innerHTML=m.join('<br>');}
+ box.onchange=draw;draw();
+})();
+
+// ===================================================== 3.2 proxyBeanMethods demo
+(function(){
+ const seg=document.getElementById('px-seg'),go=document.getElementById('px-go'),lg=document.getElementById('px-log');if(!seg)return;
+ let v='1',run=false;
+ seg.onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;v=b.dataset.v;seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));lg.innerHTML='';};
+ const log=(t,c='')=>{lg.innerHTML+=`<div class="${c}">${t}</div>`;lg.scrollTop=lg.scrollHeight;};
+ go.onclick=async()=>{if(run)return;run=true;lg.innerHTML='';let n=0;
+  log('▸ create bean templates()','nar');n++;log(`  new EmailTemplates() #${n} — loads templates from MongoDB`);await sleep(700);
+  log('▸ create bean email() → calls templates()','nar');await sleep(600);
+  if(v==='1')log('  proxy intercepts → returns the EXISTING bean #1','ok');else{n++;log(`  plain Java call → new EmailTemplates() #${n} — DB load again`,'err');}
+  await sleep(700);log('▸ create bean digest() → calls templates()','nar');await sleep(600);
+  if(v==='1')log('  proxy intercepts → returns the EXISTING bean #1','ok');else{n++;log(`  plain Java call → new EmailTemplates() #${n} — DB load again`,'err');}
+  await sleep(500);log(v==='1'?'✓ EmailTemplates created 1 time — one shared singleton':`✗ EmailTemplates created ${n} times — 3 objects, 3 DB loads`,v==='1'?'ok':'err');run=false;};
+})();
+
+
+
+// ---------- tiny Java highlighter + code view ----------
+
+const KW='public|private|protected|static|final|class|new|return|if|else|void|int|this|null';
+const RE=new RegExp(String.raw`(\/\/.*$)|("(?:[^"\\]|\\.)*")|(@\w+)|\b(${KW})\b|\b([A-Z][A-Za-z0-9_]*)\b|\b(\d+)\b|([a-z_]\w*)(?=\()`,'gm');
+const CLS=['cm','s','a','k','ty','nu','f'];
+function hlLine(src){let out='',last=0,m;RE.lastIndex=0;
+ while((m=RE.exec(src))){if(m[0]===''){RE.lastIndex++;continue;}out+=ESC(src.slice(last,m.index));const g=m.slice(1).findIndex(x=>x!==undefined);
+  out+=`<span class="${CLS[g]}">${ESC(m[0])}</span>`;last=m.index+m[0].length;}
+ return out+ESC(src.slice(last));}
+function codeView(file,src,cur,nums){
+ const lines=src.split('\n');
+ return `<div class="mac"><div class="bar"><div class="dots"><i></i><i></i><i></i></div><div class="fn">${file}</div></div><pre>${
+  lines.map((l,i)=>`<span class="ln${cur===i+1?' cur':''}">${nums?`<i>${i+1}</i>`:''}${hlLine(l)||' '}</span>`).join('')}</pre></div>`;}
+
+
+// =====================================================================
+// 1. CLASS LOADING
+// =====================================================================
+(function(){
+ const root=document.getElementById('sim-load');if(!root)return;
+ const L=(B,P,A)=>({B,P,A});
+ const SRC={
+  order:{file:'Order.java',label:'Order (your class)',src:`public class Order {
+    static int count = 5;
+    static final int MAX = 10;   // constant
+    static {
+        System.out.println("Order loaded");
+    }
+}
+// first use:
+new Order();`},
+  string:{file:'Main.java',label:'String (JDK class)',src:`// first use in your code:
+String s = "hello";
+
+// java.lang.String is in the
+// java.base module (JDK)`},
+  missing:{file:'Main.java',label:'Missing class',src:`// first use:
+Class.forName("com.shop.Invoice");
+
+// but Invoice.class is NOT
+// on the class path`}};
+ const STEPS={
+  order:[
+   {ld:L('','','ask'),ph:0,msg:'<b>new Order()</b> runs for the first time. The JVM asks the <b>Application</b> class loader for <code>Order</code>.'},
+   {ld:L('','ask','wait'),ph:0,msg:'<b>Parent delegation:</b> before searching itself, Application asks its parent — the <b>Platform</b> loader.'},
+   {ld:L('ask','wait','wait'),ph:0,msg:'Platform also asks its parent first — the <b>Bootstrap</b> loader (built into the JVM).'},
+   {ld:L('miss','wait','wait'),ph:0,msg:'Bootstrap searches the core JDK (<code>java.base</code>)… no <code>Order</code> there ✗. It hands the job back down.'},
+   {ld:L('miss','miss','wait'),ph:0,msg:'Platform searches the platform modules… not there either ✗.'},
+   {ld:L('miss','miss','found'),ph:0,meta:true,mirror:{count:'—',MAX:'—'},msg:'Application searches the <b>class path</b> → finds <code>Order.class</code> ✓. Class metadata goes to <b>Metaspace</b>, and a <code>Class</code> object (the "mirror") is created on the <b>Heap</b>.'},
+   {ph:1,msg:'<b>Linking → Verify:</b> the bytecode is checked — valid instructions, correct types. ✓'},
+   {ph:2,mirror:{count:'0',MAX:'10'},msg:'<b>Linking → Prepare:</b> static fields get <b>default</b> values → <code>count = 0</code>. <code>MAX</code> is a compile-time constant, so it is already <code>10</code>.'},
+   {ph:3,msg:'<b>Linking → Resolve:</b> names like <code>System.out</code> become direct references (usually lazily, the first time they are used).'},
+   {ph:4,mirror:{count:'5',MAX:'10'},out:'Order loaded',msg:'<b>Initialization:</b> the static code runs top to bottom → <code>count = 5</code>, then the static block prints.'},
+   {ph:5,obj:true,msg:'✅ <b>Ready.</b> <code>new Order()</code> now creates an <b>object on the heap</b>. Next time, all of these steps are skipped — the class is already loaded.'}],
+  string:[
+   {ld:L('','','ask'),ph:0,msg:'Your code uses <code>String</code>. The JVM asks the <b>Application</b> loader.'},
+   {ld:L('','ask','wait'),ph:0,msg:'Parent delegation: Application asks <b>Platform</b> first.'},
+   {ld:L('ask','wait','wait'),ph:0,msg:'Platform asks <b>Bootstrap</b> first.'},
+   {ld:L('found','wait','wait'),ph:5,meta:'string',msg:'Bootstrap owns <code>java.base</code> → <b>found</b> ✓. In fact <code>String</code> was loaded when the JVM started, so it is returned right away — no new linking or initialization.<br><b>Why delegation?</b> Your own fake <code>java.lang.String</code> can never replace the real one.'},
+   {ld:L('found','done','done'),ph:5,meta:'string',msg:'The same <code>Class</code> object goes back down to Platform and Application. Every class loader shares this one <code>String</code> class.'}],
+  missing:[
+   {ld:L('','','ask'),ph:0,msg:'<code>Class.forName("com.shop.Invoice")</code> → the JVM asks the <b>Application</b> loader.'},
+   {ld:L('','ask','wait'),ph:0,msg:'Application asks <b>Platform</b> first.'},
+   {ld:L('ask','wait','wait'),ph:0,msg:'Platform asks <b>Bootstrap</b> first.'},
+   {ld:L('miss','wait','wait'),ph:0,msg:'Bootstrap: not in the JDK ✗.'},
+   {ld:L('miss','miss','wait'),ph:0,msg:'Platform: not in the platform modules ✗.'},
+   {ld:L('miss','miss','miss'),ph:-2,out:'java.lang.ClassNotFoundException: com.shop.Invoice',msg:'<span class="err">Nobody found it → ClassNotFoundException.</span><br><b>Interview tip:</b> <code>ClassNotFoundException</code> = you asked for a class by name and it isn\'t there. <code>NoClassDefFoundError</code> = the class existed at compile time but is missing (or failed to initialize) at runtime.'}]};
+ const PH=['Loading','Verify','Prepare','Resolve','Initialize','Ready'];
+ let cls='order',i=0,auto=null;
+ root.innerHTML=`<div class="ctrl"><span class="seg" data-o="seg">${Object.entries(SRC).map(([k,v])=>`<button data-c="${k}">${v.label}</button>`).join('')}</span>
+  <button class="btn" data-a="back">◀ Back</button><button class="btn p" data-a="next" style="background:#1D4ED8;border-color:#1D4ED8">Next ▶</button>
+  <button class="btn" data-a="auto">▶ Auto play</button><button class="btn" data-a="reset">↺ Reset</button></div>
+  <div class="phasebar" data-o="ph"></div>
+  <div class="cl3"><div data-o="code"></div>
+   <div><div class="loader" data-l="B"><b>Bootstrap loader</b><span>core JDK · java.base</span><br><em></em></div><div class="upar">▲ asks parent first</div>
+        <div class="loader" data-l="P"><b>Platform loader</b><span>platform modules</span><br><em></em></div><div class="upar">▲ asks parent first</div>
+        <div class="loader" data-l="A"><b>Application loader</b><span>your class path</span><br><em></em></div></div>
+   <div><div class="panel" style="border-color:var(--p-bd)"><h5>Metaspace <small>class metadata</small></h5><div data-o="meta"></div></div>
+        <div class="panel" style="border-color:var(--o-bd)"><h5>Heap <small>objects</small></h5><div data-o="heap"></div></div>
+        <div class="console" data-o="out"></div></div></div>
+  <div class="msg" style="border-left-color:#3B82F6" data-o="msg"></div>`;
+ const q=s=>root.querySelector(s);
+ function snap(){const st={ld:L('','',''),ph:-1,meta:false,mirror:null,out:'',obj:false,msg:''};STEPS[cls].slice(0,i+1).forEach(s=>Object.assign(st,s));return st;}
+ const TXT={ask:'asked — checking…',wait:'waiting for parent',miss:'not found ✗',found:'found ✓',done:'got it from parent',"":'idle'};
+ function draw(){
+  const st=snap(),n=STEPS[cls].length;
+  q('[data-o=seg]').querySelectorAll('button').forEach(b=>{const on=b.dataset.c===cls;b.classList.toggle('on',on);b.style.background=on?'#1D4ED8':'#fff';});
+  q('[data-o=ph]').innerHTML=PH.map((p,k)=>{let c='';if(st.ph===-2&&k===0)c='bad';else if(st.ph>k||st.ph===5)c='done';else if(st.ph===k)c='cur';return `<span class="phase ${c}">${k===0?'① ':k<4?'② ':k===4?'③ ':'✓ '}${p}</span>`;}).join('');
+  q('[data-o=code]').innerHTML=codeView(SRC[cls].file,SRC[cls].src);
+  ['B','P','A'].forEach(k=>{const e=q(`[data-l=${k}]`),s=st.ld[k];e.className='loader '+(s==='done'?'found':s);e.querySelector('em').textContent=TXT[s];});
+  q('[data-o=meta]').innerHTML=st.meta==='string'?'<span class="obj" style="border-color:#9333EA;color:#6B21A8;background:#F7F0FF">Klass java.lang.String · loaded by Bootstrap</span>':st.meta?'<span class="obj" style="border-color:#9333EA;color:#6B21A8;background:#F7F0FF">Klass Order · fields · methods · bytecode</span>':'<span class="empty">nothing yet</span>';
+  let h='';
+  if(st.meta==='string')h+='<span class="obj" style="border-color:#F97316;color:#9A3412;background:#FFF6EC">Class&lt;String&gt; mirror</span>';
+  if(st.mirror)h+=`<span class="obj" style="border-color:#F97316;color:#9A3412;background:#FFF6EC">Class&lt;Order&gt; mirror · count = ${st.mirror.count} · MAX = ${st.mirror.MAX}</span>`;
+  if(st.obj)h+='<span class="obj" style="border-color:#2563EB;color:#1E3A8A;background:#EFF6FF">Order object @1</span>';
+  q('[data-o=heap]').innerHTML=h||'<span class="empty">nothing yet</span>';
+  q('[data-o=out]').innerHTML=st.out?(st.out.startsWith('java.')?`<span style="color:#F87171">${st.out}</span>`:'&gt; '+st.out):'<span style="color:#64748B">console output</span>';
+  q('[data-o=msg]').innerHTML=`<span class="cnt">step ${i+1} / ${n}</span>${st.msg}`;
+  q('[data-a=back]').disabled=i===0;q('[data-a=next]').disabled=i>=n-1;
+ }
+ function stop(){if(auto){clearInterval(auto);auto=null;q('[data-a=auto]').textContent='▶ Auto play';}}
+ root.addEventListener('click',e=>{const c=e.target.closest('[data-c]'),a=e.target.closest('[data-a]');
+  if(c){cls=c.dataset.c;i=0;stop();draw();}
+  if(!a)return;const act=a.dataset.a;
+  if(act==='next'&&i<STEPS[cls].length-1){i++;draw();}
+  if(act==='back'&&i>0){i--;draw();}
+  if(act==='reset'){i=0;stop();draw();}
+  if(act==='auto'){if(auto){stop();return;}if(i>=STEPS[cls].length-1)i=0;draw();a.textContent='⏸ Pause';
+   auto=setInterval(()=>{if(i>=STEPS[cls].length-1){stop();return;}i++;draw();},1900);}});
+ draw();
+})();
+
+// =====================================================================
+// 2. WHERE DOES IT LIVE?
+// =====================================================================
+(function(){
+ const root=document.getElementById('sim-mem');if(!root)return;
+ const SRC=`public class Shop {
+    static int orders = 0;
+
+    public static void main(String[] args) {
+        int qty = 2;
+        Order o = new Order("A1");
+        String s = "paid";
+        int t = o.total(qty);
+        o = null;
+    }
+}
+
+class Order {
+    String id;
+    Order(String id) { this.id = id; }
+    int total(int n) { int sum = n * 100; return sum; }
+}`;
+ const C={o:'#2563EB',a1:'#16A34A',paid:'#0D9488',args:'#64748B'};
+ const R=(k,label)=>`<span class="refb" style="background:${C[k]}">→ ${label}</span>`;
+ const H={
+  args:{k:'args',t:'String[] args',tag:'#args'},
+  mirror:{k:null,t:'Class&lt;Shop&gt; mirror · orders = 0'},
+  a1:{k:'a1',t:'String "A1"',tag:'#2'},
+  ord:{k:'o',t:'Order { id → #2 }',tag:'#1'},
+  paid:{k:'paid',t:'String "paid"',tag:'#3'}};
+ // each step: line, frames [{name,vars:[[n,v]]}], heap [[key,garbage?]], meta [], strs [], note
+ const S=[
+  {line:4,frames:[{n:'main',v:[['args',R('args','#args')]]}],heap:[['mirror'],['args']],meta:['Klass Shop','Klass String'],strs:[],
+   note:'The JVM calls <code>main()</code>: a <b>frame</b> is pushed on the main thread\'s <b>stack</b>. Class info for <code>Shop</code> is in <b>Metaspace</b>; its static field <code>orders</code> lives in the <code>Class</code> mirror on the <b>heap</b>.'},
+  {line:5,frames:[{n:'main',v:[['args',R('args','#args')],['qty','2']]}],heap:[['mirror'],['args']],meta:['Klass Shop','Klass String'],strs:[],
+   note:'<code>int qty = 2</code> — a <b>primitive local</b> is stored <b>directly in the stack frame</b>. No heap object is created.'},
+  {line:6,frames:[{n:'main',v:[['args',R('args','#args')],['qty','2'],['o',R('o','#1')]]}],heap:[['mirror'],['args'],['ord'],['a1']],meta:['Klass Shop','Klass String','Klass Order'],strs:['"A1"'],
+   note:'<code>new Order("A1")</code>: class <code>Order</code> is loaded (Metaspace), the <b>object goes on the heap</b>, and the variable <code>o</code> on the stack holds only a <b>reference</b> to it. The literal <code>"A1"</code> is interned: the StringTable points to a String on the heap.'},
+  {line:7,frames:[{n:'main',v:[['args',R('args','#args')],['qty','2'],['o',R('o','#1')],['s',R('paid','#3')]]}],heap:[['mirror'],['args'],['ord'],['a1'],['paid']],meta:['Klass Shop','Klass String','Klass Order'],strs:['"A1"','"paid"'],
+   note:'<code>String s = "paid"</code> — another literal: one shared String on the heap, indexed by the native <b>StringTable</b>. <code>s</code> is just a reference.'},
+  {line:16,frames:[{n:'total',v:[['this',R('o','#1')],['n','2'],['sum','200']]},{n:'main',v:[['args',R('args','#args')],['qty','2'],['o',R('o','#1')],['s',R('paid','#3')]]}],heap:[['mirror'],['args'],['ord'],['a1'],['paid']],meta:['Klass Shop','Klass String','Klass Order'],strs:['"A1"','"paid"'],
+   note:'Calling <code>o.total(qty)</code> <b>pushes a new frame</b> on top of <code>main</code>. Its locals <code>n</code> and <code>sum</code> live in that frame. The PC register now points into <code>total()</code>.'},
+  {line:8,frames:[{n:'main',v:[['args',R('args','#args')],['qty','2'],['o',R('o','#1')],['s',R('paid','#3')],['t','200']]}],heap:[['mirror'],['args'],['ord'],['a1'],['paid']],meta:['Klass Shop','Klass String','Klass Order'],strs:['"A1"','"paid"'],
+   note:'<code>total()</code> returns → its <b>frame is popped</b>. <code>n</code> and <code>sum</code> are gone instantly — stack memory needs <b>no garbage collector</b>.'},
+  {line:9,frames:[{n:'main',v:[['args',R('args','#args')],['qty','2'],['o','null'],['s',R('paid','#3')],['t','200']]}],heap:[['mirror'],['args'],['ord',1],['a1'],['paid']],meta:['Klass Shop','Klass String','Klass Order'],strs:['"A1"','"paid"'],
+   note:'<code>o = null</code> → nothing references the <code>Order</code> object any more → it is <b>garbage</b> (striped). It stays in memory until the GC runs — try the GC simulator below. ("A1" is still reachable through the StringTable.)'},
+  {line:10,frames:[],heap:[['mirror'],['args',1],['ord',1],['a1'],['paid']],meta:['Klass Shop','Klass String','Klass Order'],strs:['"A1"','"paid"'],
+   note:'<code>main()</code> ends → its frame is popped and the stack is empty. Objects that were only reachable from it (like <code>args</code>) are now garbage too. Classes stay in Metaspace while their class loader is alive.'}];
+ let i=0;
+ root.innerHTML=`<div class="ctrl"><button class="btn" data-a="back">◀ Back</button><button class="btn p" data-a="next" style="background:#DC2626;border-color:#DC2626">Next line ▶</button><button class="btn" data-a="reset">↺ Reset</button></div>
+  <div class="mem2"><div><div data-o="code"></div><div class="msg" style="border-left-color:#EF4444" data-o="msg"></div></div>
+   <div><div class="memgrid">
+    <div class="panel" style="border-color:var(--r-bd)"><h5>Thread stack (main) <small>top ↓</small></h5><div data-o="pc"></div><div data-o="stack"></div></div>
+    <div class="panel" style="border-color:var(--o-bd)"><h5>Heap <small>objects</small></h5><div data-o="heap"></div></div>
+    <div class="panel" style="border-color:var(--p-bd)"><h5>Metaspace <small>classes</small></h5><div data-o="meta"></div></div>
+    <div class="panel" style="border-color:#C4B5FD"><h5>StringTable <small>native</small></h5><div data-o="str"></div></div>
+   </div></div></div>`;
+ const q=s=>root.querySelector(s);
+ function draw(){const s=S[i];
+  q('[data-o=code]').innerHTML=codeView('Shop.java',SRC,s.line,true);
+  q('[data-o=msg]').innerHTML=`<span class="cnt">step ${i+1} / ${S.length}</span>${s.note}`;
+  q('[data-o=pc]').innerHTML=s.frames.length?`<span class="pc">PC register → line ${s.line}</span>`:'';
+  q('[data-o=stack]').innerHTML=s.frames.length?s.frames.map((f,k)=>`<div class="fr"><b>${f.n}()${k===0?'  ← current':''}</b>${f.v.map(([n,v])=>`<div class="var"><span>${n}</span><span>${v}</span></div>`).join('')}</div>`).join(''):'<span class="empty">empty — main() has returned</span>';
+  q('[data-o=heap]').innerHTML=s.heap.map(([k,g])=>{const o=H[k],col=o.k?C[o.k]:'#F97316';return `<span class="obj${g?' garbage':''}" style="border-color:${col};color:${col};background:#fff">${o.tag?`<span class="tag" style="background:${col}">${o.tag}</span>`:''}${o.t}${g?' · garbage':''}</span>`;}).join('');
+  q('[data-o=meta]').innerHTML=s.meta.map(m=>`<span class="obj" style="border-color:#9333EA;color:#6B21A8;background:#F7F0FF">${m}</span>`).join('');
+  q('[data-o=str]').innerHTML=s.strs.length?s.strs.map(x=>`<span class="obj" style="border-color:#A78BFA;color:#5B21B6;background:#fff">${x} → heap</span>`).join(''):'<span class="empty">empty</span>';
+  q('[data-a=back]').disabled=i===0;q('[data-a=next]').disabled=i===S.length-1;}
+ root.addEventListener('click',e=>{const a=e.target.closest('[data-a]');if(!a)return;
+  if(a.dataset.a==='next'&&i<S.length-1)i++;if(a.dataset.a==='back'&&i>0)i--;if(a.dataset.a==='reset')i=0;draw();});
+ draw();
+})();
+
+// =====================================================================
+// 3. GC SIMULATOR
+// =====================================================================
+(function(){
+ const root=document.getElementById('sim-gc');if(!root)return;
+ const CAP={eden:12,surv:6,old:18},TENURE=3,IHOP=0.45;
+ const NAMES=['Order','DTO','String','List','JSON','Map','byte[]','Event','Result','Request'];
+ let objs,seq,busy,mark,stats,logs,oom;
+ const $=s=>root.querySelector(s);
+ root.innerHTML=`<div class="ctrl">
+   <button class="btn p" data-a="alloc" style="background:#EA580C;border-color:#EA580C">+ Allocate 3 objects</button>
+   <button class="btn" data-a="finish" style="border-color:#94A3B8">⏩ Requests finish</button>
+   <button class="btn" data-a="young" style="border-color:#3B82F6;color:#1D4ED8">Young GC</button>
+   <button class="btn" data-a="mixed" style="border-color:#9333EA;color:#7E22CE">Mixed GC</button>
+   <button class="btn" data-a="full" style="border-color:#DC2626;color:#B91C1C">Full GC</button>
+   <button class="btn" data-a="reset">↺ Reset</button></div>
+  <div class="gcgrid">
+   <div class="area" style="border-color:#FDBA74;background:#FFF7ED"><h5>Eden <small data-c="eden"></small></h5><div class="cap"><i data-b="eden" style="background:#FB923C"></i></div><div class="pool" data-p="eden"></div></div>
+   <div class="area" style="border-color:#F97316;background:#FFEDD5"><h5>Survivor <small data-c="surv"></small></h5><div class="cap"><i data-b="surv" style="background:#F97316"></i></div><div class="pool" data-p="surv"></div></div>
+   <div class="area" style="border-color:#C2410C;background:#FED7AA"><h5>Old <small data-c="old"></small></h5><div class="cap"><i data-b="old" style="background:#C2410C"></i></div><div class="pool" data-p="old"></div></div>
+  </div>
+  <div class="stw" data-o="stw"></div>
+  <div class="gstats" data-o="stats"></div>
+  <div style="font-size:13px;color:#64748B;margin-top:8px">Blue = still referenced (live) · grey striped = no references (garbage — the GC only finds out when it marks) · <b>age</b> = Young GCs survived · promote to Old at age ${TENURE} (real JVM: up to 15) · in G1 each area is a set of regions</div>
+  <div class="glog" data-o="log"></div>`;
+ function log(m,c=''){logs.unshift(`<div class="${c}">${m}</div>`);if(logs.length>60)logs.pop();}
+ const count=g=>objs.filter(o=>o.gen===g&&!o.dying).length;
+ function mk(gen,live,age=0,name){return {id:++seq,gen,live,age,name:name||NAMES[Math.floor(Math.random()*NAMES.length)]};}
+ function reset(){seq=0;busy=false;mark=false;oom=false;logs=[];stats={young:0,mixed:0,full:0,freed:0,promoted:0};
+  objs=[mk('old',true,5,'Config'),mk('old',true,4,'Cache'),mk('surv',true,1,'Session'),mk('surv',false,1,'DTO'),mk('eden',true),mk('eden',false),mk('eden',true),mk('eden',false),mk('eden',false)];
+  log('Heap ready. Long-lived objects (Config, Cache) already sit in Old.','y');render();}
+ function render(){
+  const first={};root.querySelectorAll('.go').forEach(e=>first[e.dataset.id]=e.getBoundingClientRect());
+  ['eden','surv','old'].forEach(g=>{
+   const list=objs.filter(o=>o.gen===g);
+   $(`[data-p=${g}]`).innerHTML=list.map(o=>`<div class="go ${o.live?'':'dead'} ${o.dying?'dying':''} ${mark?(o.live?'mk-live':'mk-dead'):''}" data-id="${o.id}" title="click to ${o.live?'drop':'restore'} its reference">${o.name}<small>${o.live?'age '+o.age:'garbage'}</small></div>`).join('');
+   const n=list.filter(o=>!o.dying).length;$(`[data-c=${g}]`).textContent=`${n} / ${CAP[g]}`;$(`[data-b=${g}]`).style.width=Math.min(100,n/CAP[g]*100)+'%';});
+  root.querySelectorAll('.go').forEach(e=>{const f=first[e.dataset.id];if(!f){e.classList.add('born');return;}
+   const l=e.getBoundingClientRect(),dx=f.left-l.left,dy=f.top-l.top;
+   if(dx||dy){e.style.transition='none';e.style.transform=`translate(${dx}px,${dy}px)`;void e.offsetWidth;e.style.transition='transform .65s ease';e.style.transform='';}});
+  const used=objs.filter(o=>!o.dying).length;
+  $('[data-o=stats]').innerHTML=`<div class="gstat">Young GCs<b>${stats.young}</b></div><div class="gstat">Mixed GCs<b>${stats.mixed}</b></div><div class="gstat">Full GCs<b>${stats.full}</b></div><div class="gstat">objects freed<b>${stats.freed}</b></div><div class="gstat">promoted to Old<b>${stats.promoted}</b></div><div class="gstat">heap used<b>${used} / ${CAP.eden+CAP.surv+CAP.old}</b></div>`;
+  $('[data-o=log]').innerHTML=logs.join('');
+  root.querySelectorAll('[data-a]').forEach(b=>{if(b.dataset.a!=='reset')b.disabled=busy||(oom&&b.dataset.a==='alloc');});
+  $('[data-a=mixed]').classList.toggle('hint',!busy&&count('old')>=CAP.old*IHOP&&objs.some(o=>o.gen==='old'&&!o.live));
+ }
+ function stw(t){const e=$('[data-o=stw]');e.textContent=t||'';e.classList.toggle('on',!!t);}
+ async function freeGarbage(gens){const dead=objs.filter(o=>gens.includes(o.gen)&&!o.live);dead.forEach(o=>o.dying=true);render();await sleep(480);
+  objs=objs.filter(o=>!o.dying);stats.freed+=dead.length;return dead.length;}
+ function evacuateYoung(){let promoted=0,early=0;
+  const young=objs.filter(o=>(o.gen==='eden'||o.gen==='surv')&&o.live).sort((a,b)=>b.age-a.age);
+  young.forEach(o=>{o.age++;if(o.age>=TENURE){o.gen='old';promoted++;}else o.gen='surv';});
+  let surv=objs.filter(o=>o.gen==='surv');
+  while(surv.length>CAP.surv){const o=surv.shift();o.gen='old';early++;surv=objs.filter(x=>x.gen==='surv');}
+  // keep order: old objects first, newcomers appended
+  objs=[...objs.filter(o=>o.gen==='old'),...objs.filter(o=>o.gen==='surv'),...objs.filter(o=>o.gen==='eden')];
+  stats.promoted+=promoted+early;return {promoted,early};}
+ async function young(reason){
+  if(busy)return;busy=true;stats.young++;
+  log(`Young GC #${stats.young}${reason?' — '+reason:''}`,'y');stw('⏸ Stop-the-world pause — application threads wait (Young GC)');
+  mark=true;render();await sleep(1000);
+  const freed=await freeGarbage(['eden','surv']);mark=false;
+  const r=evacuateYoung();render();await sleep(750);
+  log(`  freed ${freed} · live objects copied to Survivor (age +1) · ${r.promoted} promoted to Old${r.early?` · ${r.early} sent to Old early (Survivor full)`:''} · Eden is empty again`,'g');
+  stw('');busy=false;
+  if(count('old')>CAP.old){await full('Old is over capacity');return;}
+  if(count('old')>=CAP.old*IHOP)log(`  Old is ${Math.round(count('old')/CAP.old*100)}% full (≥ 45%) → G1 would start concurrent marking, then Mixed GCs`,'p');
+  render();}
+ async function mixed(){
+  if(busy)return;busy=true;stats.mixed++;
+  log(`Mixed GC #${stats.mixed} — young areas + the old regions with the most garbage`,'y');stw('⏸ Stop-the-world pause (Mixed GC: young + some old regions)');
+  mark=true;render();await sleep(1000);
+  const freed=await freeGarbage(['eden','surv','old']);mark=false;
+  const r=evacuateYoung();render();await sleep(750);
+  log(`  freed ${freed} (incl. old garbage) · old live objects compacted · ${r.promoted+r.early} promoted`,'g');stw('');busy=false;render();}
+ async function full(reason){
+  busy=true;stats.full++;
+  log(`Full GC #${stats.full} — ${reason||'requested'} · whole heap, long pause`,'r');stw('⛔ Full GC — whole heap marked and compacted, everything stops (fallback, slow)');
+  mark=true;render();await sleep(1300);
+  const freed=await freeGarbage(['eden','surv','old']);mark=false;
+  const r=evacuateYoung();render();await sleep(800);
+  log(`  freed ${freed} · heap compacted`,'g');stw('');busy=false;
+  if(count('old')>CAP.old){oom=true;log('  ❌ Old still full after Full GC → java.lang.OutOfMemoryError: Java heap space. Drop some references (click objects) or Reset.','r');}
+  render();}
+ async function alloc(){
+  if(busy||oom)return;
+  for(let k=0;k<3;k++){
+   if(count('eden')>=CAP.eden){await young('Eden is full (allocation failure)');if(oom)return;}
+   objs.push(mk('eden',true));render();await sleep(120);}
+  log('new objects → Eden (fast TLAB allocation)');render();}
+ function finish(){if(busy)return;let n=0;
+  objs.forEach(o=>{if(!o.live)return;const p=o.gen==='eden'?0.7:o.gen==='surv'?0.4:0.12;if(o.name!=='Config'&&Math.random()<p){o.live=false;n++;}});
+  log(`⏩ requests finished → ${n} object(s) lost all references (most of them young)`);render();}
+ root.addEventListener('click',e=>{
+  const a=e.target.closest('[data-a]');
+  if(a){({alloc,finish,young:()=>young('requested'),mixed,full:()=>{if(!busy)full('requested by you (System.gc() is only a hint)');},reset})[a.dataset.a]();return;}
+  const g=e.target.closest('.go');if(g&&!busy){const o=objs.find(x=>x.id==+g.dataset.id);if(o){o.live=!o.live;if(o.live)oom=false;log(`${o.name} (${o.gen}) ${o.live?'is referenced again':'lost its last reference → garbage'}`);render();}}});
+ reset();
+})();
+
+
+
+// ===================================================== 1.2 where does it live?
+(function(){
+ const L=document.getElementById('wl-list');if(!L)return;
+ const IT=[
+  ['int qty = 2;','stack','A primitive <b>local variable</b> lives directly in the current method\'s stack frame.'],
+  ['Order o = new Order();  // the object','heap','<code>new</code> always creates the <b>object on the heap</b> (in Eden, via the thread\'s TLAB).'],
+  ['Order o = …;  // the variable o','stack','The variable is only a <b>reference</b> (an address) stored in the stack frame.'],
+  ['static int total;','heap','Static fields live in the class\'s <code>Class</code> mirror object — on the <b>heap</b> (not in Metaspace).'],
+  ['class Order { … }  // its metadata','meta','Field/method descriptions, vtables, bytecode → <b>Metaspace</b> (native memory).'],
+  ['"paid"  // a String literal','heap+native','The String object is on the <b>heap</b>; the native <b>StringTable</b> points to it so every "paid" literal shares it.'],
+  ['orderTotal() after it gets hot','code','The JIT compiles it to machine code stored in the <b>Code Cache</b>.'],
+  ['calling orderTotal()','stack','Each call pushes a <b>new frame</b> (locals + operand stack) on the thread\'s stack; it\'s popped on return.'],
+  ['ByteBuffer.allocateDirect(1024)','native','Direct buffers live <b>outside the heap</b> in native memory (<code>-XX:MaxDirectMemorySize</code>).'],
+  ['int[] ids = new int[10];','heap','Arrays are objects too → <b>heap</b>, even arrays of primitives.']];
+ const MAP={stack:['stack'],heap:['heap'],meta:['meta'],code:['code'],native:['native'],'heap+native':['heap','native']};
+ L.innerHTML=IT.map((x,i)=>`<button data-i="${i}"><code>${x[0].replace(/</g,'&lt;')}</code><span class="ok-t">?</span></button>`).join('');
+ const map=document.getElementById('wl-map'),out=document.getElementById('wl-out');
+ L.onclick=e=>{const b=e.target.closest('[data-i]');if(!b)return;const x=IT[+b.dataset.i];
+  L.querySelectorAll('button').forEach(z=>z.classList.toggle('on',z===b));
+  b.querySelector('.ok-t').textContent=MAP[x[1]].map(a=>({stack:'Stack',heap:'Heap',meta:'Metaspace',code:'Code Cache',native:'Native'})[a]).join(' + ');
+  map.querySelectorAll('[data-a]').forEach(a=>a.classList.toggle('hit',MAP[x[1]].includes(a.dataset.a)));
+  out.innerHTML=x[2];};
+})();
+
+// ===================================================== 3.1 G1 regions
+(function(){
+ const G=document.getElementById('rg-grid');if(!G)return;
+ const T={E:['Eden','most new objects, allocated via per-thread TLABs'],S:['Survivor','objects that survived a Young GC (age + 1) — any free region, not fixed S0/S1'],O:['Old','promoted once age ≥ tenuring threshold (adaptive, max 15)'],H:['Humongous','objects ≥ ½ a region, allocated directly into contiguous old regions'],F:['Free','available for any role']};
+ const W={E:12,S:4,O:18,H:4,F:12};
+ let map='EEOOFHHOSF'+'OEEFOOFEOF'+'SOFEEOHHHO'+'FOEOFSOFEO'+'OFOEOFFOOE',sel=null,gcs=0;
+ const leg=document.getElementById('rg-leg'),out=document.getElementById('rg-out');
+ function draw(){G.innerHTML=[...map].map(k=>`<i class="r${k}${sel===k?' on':''}">${k==='F'?'':k}</i>`).join('');G.classList.toggle('focus',!!sel);
+  const cnt=k=>[...map].filter(x=>x===k).length;
+  leg.innerHTML=Object.entries(T).map(([k,v])=>`<button data-k="${k}" class="${sel===k?'on':''}"><i class="r${k}">${k==='F'?'':k}</i><span><b>${v[0]}</b> · ${cnt(k)} regions</span></button>`).join('');
+  out.innerHTML=sel?`<b>${T[sel][0]} regions</b> — ${T[sel][1]}.`:`50 equal-size regions. Click a type to highlight it.${gcs?` After ${gcs} GC${gcs>1?'s':''} the roles moved — regions are re-assigned every cycle.`:''}`;}
+ leg.onclick=e=>{const b=e.target.closest('[data-k]');if(b){sel=sel===b.dataset.k?null:b.dataset.k;draw();}};
+ document.getElementById('rg-gc').onclick=()=>{gcs++;const a=[];Object.entries(W).forEach(([k,n])=>{for(let i=0;i<n;i++)a.push(k);});
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+  // keep humongous contiguous
+  const h=a.filter(x=>x==='H').length;const r=a.filter(x=>x!=='H');const at=Math.floor(Math.random()*(r.length-h));r.splice(at,0,...Array(h).fill('H'));map=r.join('');draw();};
+ draw();
+})();
+
+// ===================================================== 4.1 metaspace leak
+(function(){
+ const go=document.getElementById('lk-go');if(!go)return;
+ const bar=document.getElementById('lk-bar'),txt=document.getElementById('lk-txt'),ls=document.getElementById('lk-loaders'),out=document.getElementById('lk-out'),leak=document.getElementById('lk-leak');
+ const MAX=10,PER=1;let loaders=[],n=0,oom=false;
+ function draw(){const used=loaders.filter(l=>l.alive).length*PER;bar.style.width=Math.min(100,used/MAX*100)+'%';
+  txt.textContent=`Metaspace: ${used*1000} classes loaded · ${Math.round(used/MAX*100)}% of MaxMetaspaceSize`;
+  ls.innerHTML=loaders.map(l=>`<span class="${l.alive?(l.cur?'live':''):'dead'}">loader #${l.id}${l.cur?' (current)':''}</span>`).join('');go.disabled=oom;}
+ go.onclick=()=>{if(oom)return;n++;loaders.forEach(l=>{if(l.cur){l.cur=false;if(!leak.checked)l.alive=false;}});loaders.push({id:n,cur:true,alive:true});
+  const used=loaders.filter(l=>l.alive).length;
+  if(used>MAX){oom=true;loaders[loaders.length-1].alive=false;out.innerHTML='<b style="color:#B91C1C">java.lang.OutOfMemoryError: Metaspace</b> — every old class loader is still referenced, so none of its classes can be unloaded. Classic causes: redeploys in an app server, a static cache or ThreadLocal holding an old class, dynamic proxies.';}
+  else out.innerHTML=leak.checked?`Redeploy #${n}: the old loader is <b>still referenced</b> (e.g. from a static map or a ThreadLocal) → its 1,000 classes stay in Metaspace.`:`Redeploy #${n}: the old loader became unreachable → GC unloaded its classes and Metaspace was freed.`;
+  draw();};
+ document.getElementById('lk-reset').onclick=()=>{loaders=[];n=0;oom=false;out.innerHTML='Each redeploy creates a new class loader that loads ~1,000 classes.';draw();};
+ draw();
+})();
+
+// ===================================================== 4.2 String quiz
+(function(){
+ const box=document.getElementById('sq');if(!box)return;
+ const Q=[['"pay" == "pay"',true,'both literals point to the same interned String in the pool'],
+  ['new String("pay") == "pay"',false,'<code>new</code> always creates a separate heap object'],
+  ['new String("pay").intern() == "pay"',true,'<code>intern()</code> returns the pooled instance'],
+  ['"pa" + "y" == "pay"',true,'both parts are constants, so javac joins them at compile time'],
+  ['a + "y" == "pay"   // String a = "pa";',false,'built at runtime → a new String object'],
+  ['new String("pay").equals("pay")',true,'<code>equals()</code> compares characters — always use it for Strings']];
+ box.innerHTML=Q.map((q,i)=>`<div><div class="q" data-i="${i}"><span>${q[0]}</span><button data-v="1">true</button><button data-v="0">false</button></div><div class="why"></div></div>`).join('');
+ box.onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;const row=b.closest('.q'),q=Q[+row.dataset.i],ok=(b.dataset.v==='1')===q[1];
+  row.classList.remove('right','wrong');row.classList.add(ok?'right':'wrong');const w=row.nextElementSibling;w.style.display='block';w.innerHTML=`${ok?'✅ Correct':'❌ Not quite'} — it's <b>${q[1]}</b>: ${q[2]}.`;};
+})();
+
+// ===================================================== 5.2 stack overflow
+(function(){
+ const st=document.getElementById('so-stack');if(!st)return;
+ const out=document.getElementById('so-out'),seg=document.getElementById('so-xss');let lim=8,depth=0,timer=null,boom=false;
+ function draw(){const h=300-8;st.innerHTML=Array.from({length:depth},(_,i)=>`<b>recurse(${i+1})</b>`).join('')+`<div class="lim" style="bottom:${4+lim*((h-4)/14)}px"></div>`;}
+ function call(){if(boom)return;depth++;if(depth>lim){boom=true;depth=lim;st.classList.add('boom');stop();
+   out.innerHTML=`<b style="color:#B91C1C">java.lang.StackOverflowError</b> after ${lim} frames — the thread's stack is full. Usually runaway recursion; <code>-Xss</code> only moves the limit.`;}
+  else out.innerHTML=`Frame ${depth} pushed: <code>recurse(${depth})</code> calls itself again and never returns, so no frame is ever popped.`;draw();}
+ const stop=()=>{clearInterval(timer);timer=null;document.getElementById('so-auto').textContent='▶ keep calling';};
+ document.getElementById('so-call').onclick=call;
+ document.getElementById('so-auto').onclick=e=>{if(timer){stop();return;}e.target.textContent='⏸ stop';timer=setInterval(call,450);};
+ document.getElementById('so-reset').onclick=()=>{stop();depth=0;boom=false;st.classList.remove('boom');out.innerHTML='Each call pushes a new frame onto this thread\'s stack.';draw();};
+ seg.onclick=e=>{const b=e.target.closest('[data-x]');if(!b)return;lim=+b.dataset.x;seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));document.getElementById('so-reset').click();};
+ draw();
+})();
+
+// ===================================================== 6.1 JIT tiers
+(function(){
+ const tiers=document.getElementById('jit-tiers');if(!tiers)return;
+ const TI=[['L0','Interpreter','profiling'],['L1','C1','trivial'],['L2','C1','light profile'],['L3','C1','full profile'],['L4','C2','optimised']];
+ const SPEED={0:8,3:35,4:100};let calls=0,tier=0,deopts=0;
+ const stats=document.getElementById('jit-stats'),out=document.getElementById('jit-out');
+ function draw(msg){tiers.innerHTML=TI.map((t,i)=>`<div class="${i===tier?'on':(i<tier&&i!==1&&i!==2)?'past':''}"><b>${t[0]}</b>${t[1]}<br>${t[2]}</div>`).join('');
+  const sp=SPEED[tier];stats.innerHTML=`<div>calls<b>${calls.toLocaleString()}</b></div><div>running in<b>${['Interpreter','','','C1 (L3)','C2 (L4)'][tier]}</b></div><div>speed<div class="speedbar"><i style="width:${sp}%"></i></div></div>`;
+  if(msg)out.innerHTML=msg;}
+ function add(n){const before=tier;calls+=n;
+  if(tier===0&&calls>=200){tier=3;}
+  if(tier===3&&calls>=5000){tier=4;}
+  let m=`${n.toLocaleString()} more calls.`;
+  if(before!==tier&&tier===3)m='🔥 Hot! Invocation counter passed the threshold → <b>C1</b> compiles it with full profiling (tier 3). Code goes to the Code Cache.';
+  else if(before!==tier&&tier===4)m='🚀 Very hot → <b>C2</b> recompiles it using the profile: inlining, escape analysis, loop opts (tier 4).';
+  else if(tier===0)m=`Still interpreted (${calls} calls). The interpreter counts invocations and loop back-edges.`;
+  else if(tier===3)m=`C1 code runs and keeps profiling (${calls.toLocaleString()} calls)…`;
+  else m=`Running optimised C2 code. ${deopts?'':'Try “break an assumption”.'}`;
+  draw(m);}
+ tiers.closest('.box').querySelectorAll('[data-j]').forEach(b=>b.onclick=()=>add(+b.dataset.j));
+ document.getElementById('jit-deopt').onclick=()=>{if(tier<3){draw('Nothing compiled yet — call it more first.');return;}deopts++;tier=0;calls=0;
+  draw('💥 <b>Deoptimisation</b>: C2 assumed only one <code>Notifier</code> type was ever passed in; a new subclass showed up, the assumption broke, so the JVM falls back to the interpreter and re-profiles.');};
+ document.getElementById('jit-reset').onclick=()=>{calls=0;tier=0;deopts=0;draw('Methods start in the interpreter. Press ×100.');};
+ draw('Methods start in the interpreter. Press ×100.');
+})();
+
+// ===================================================== 7.1 roots & reachability
+(function(){
+ const g=document.getElementById('rt-graph');if(!g)return;
+ const N0={r1:['main() stack: o',14,14,'root'],r2:['static cache',13,58,'root'],a:['Order',43,14],b:['Customer',66,14],c:['Address',87,38],d:['Cache map',43,58],e:['Entry',68,58],f:['Temp list',40,86],gx:['Item',70,86]};
+ const E0=[['r1','a'],['a','b'],['b','c'],['r2','d'],['d','e'],['f','gx'],['gx','f']];
+ let N,E,state='idle';
+ const out=document.getElementById('rt-out');
+ function reach(){const live=new Set(Object.keys(N).filter(k=>N[k][3]==='root'));let ch=true;while(ch){ch=false;E.forEach(e=>{if(!e.cut&&live.has(e[0])&&!live.has(e[1])){live.add(e[1]);ch=true;}});}return live;}
+ function draw(){const live=state!=='idle'?reach():null;
+  g.innerHTML='<svg></svg>'+Object.entries(N).map(([k,v])=>`<div class="nd ${v[3]==='root'?'root':live?(live.has(k)?'alive':'dead'):''} ${v[4]?'gone':''}" data-k="${k}" style="left:${v[1]}%;top:${v[2]}%">${v[0]}</div>`).join('');
+  // arrows run from box edge to box edge, so they never cover a label
+  const gr=g.getBoundingClientRect();if(!gr.width)return;
+  const box=k=>{const r=g.querySelector(`[data-k="${k}"]`).getBoundingClientRect();return {x:r.left-gr.left+r.width/2,y:r.top-gr.top+r.height/2,w:r.width/2+5,h:r.height/2+5};};
+  const edge=(a,b)=>{const dx=b.x-a.x,dy=b.y-a.y,t=1/Math.max(Math.abs(dx)/a.w,Math.abs(dy)/a.h);return [a.x+dx*t,a.y+dy*t];};
+  let s='<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#64748B"/></marker></defs>';
+  E.forEach((e,i)=>{if(N[e[0]][4]||N[e[1]][4])return;const A=box(e[0]),B=box(e[1]),p=edge(A,B),q=edge(B,A);
+   const off=E.some(x=>x[0]===e[1]&&x[1]===e[0])?(e[0]<e[1]?-5:5):0; // two-way references: draw side by side
+   s+=`<line x1="${p[0]}" y1="${p[1]+off}" x2="${q[0]}" y2="${q[1]+off}" class="${e.cut?'cut':''}" marker-end="url(#ar)"/><line data-e="${i}" class="hit" x1="${p[0]}" y1="${p[1]+off}" x2="${q[0]}" y2="${q[1]+off}"><title>click to cut this reference</title></line>`;});
+  g.querySelector('svg').innerHTML=s;}
+ document.addEventListener('slide-fitted',e=>{if(e.detail.contains(g))draw();});
+ function reset(){N=JSON.parse(JSON.stringify(N0));E=E0.map(e=>Object.assign([...e],{cut:false}));state='idle';out.innerHTML='Objects reachable from a root are live; everything else is garbage — even <b>Temp list ⇄ Item</b>, which point to each other.';draw();}
+ g.addEventListener('click',e=>{const l=e.target.closest('[data-e]');if(!l)return;const ed=E[+l.dataset.e];ed.cut=!ed.cut;state='idle';out.innerHTML=ed.cut?`Cut <b>${N[ed[0]][0]} → ${N[ed[1]][0]}</b>. Press Mark to see what is still reachable.`:'Reference restored.';draw();});
+ document.getElementById('rt-mark').onclick=()=>{state='marked';draw();const dead=Object.keys(N).filter(k=>!N[k][4]&&!reach().has(k));
+  out.innerHTML=`<b>Mark:</b> start at the roots and follow every reference → <span style="color:#166534;font-weight:700">green = live</span>. ${dead.length?`Unreachable: ${dead.map(k=>N[k][0]).join(', ')}.`:'Everything is reachable.'}`;};
+ document.getElementById('rt-sweep').onclick=()=>{if(state!=='marked'){out.innerHTML='Mark first — the GC has to know what is live before it can free anything.';return;}
+  const live=reach();let n=0;Object.keys(N).forEach(k=>{if(!live.has(k)&&!N[k][4]){N[k][4]=1;n++;}});state='swept';draw();out.innerHTML=`<b>Sweep:</b> ${n} unreachable object${n===1?'':'s'} freed. (G1 actually <i>copies</i> live objects out and frees whole regions.)`;};
+ document.getElementById('rt-reset').onclick=reset;reset();
+})();
+
+// ===================================================== 7.4 collector chooser
+(function(){
+ const box=document.getElementById('gc-pick');if(!box)return;
+ const O=[['A typical Spring Boot service, 2–8 GB heap','g1','<b>G1</b> — the default. Good balance of pause time and throughput; just set <code>-Xmx</code> and maybe <code>MaxGCPauseMillis</code>.'],
+  ['Pauses must stay under ~1 ms, heap is 30 GB+','zgc','<b>ZGC</b> (generational) — almost all work is concurrent; pauses stay tiny even with huge heaps.'],
+  ['Nightly batch job, only total time matters','par','<b>Parallel</b> — uses all cores in longer pauses for the best throughput.'],
+  ['Tiny container: 1 CPU, 256 MB','ser','<b>Serial</b> — single-threaded and lightweight; the JVM picks it itself on very small machines.'],
+  ['Performance test without any GC interference','eps','<b>Epsilon</b> — allocates but never frees; the app dies when the heap is full. Testing only.']];
+ box.innerHTML=O.map((o,i)=>`<button data-i="${i}">${o[0]}</button>`).join('');
+ box.onclick=e=>{const b=e.target.closest('[data-i]');if(!b)return;const o=O[+b.dataset.i];box.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('#gc-table tr[data-g]').forEach(r=>r.classList.toggle('on',r.dataset.g===o[1]));document.getElementById('gc-out').innerHTML=o[2];};
+ document.getElementById('gc-out').innerHTML='Pick a situation — the recommended collector is highlighted in the table.';
+})();
+
+// ===================================================== 8.1 the whole JVM, live
+(function(){
+ const $=id=>document.getElementById(id);if(!$('lv-play'))return;
+ const EDEN=24,SURV=10,OLD=28,TEN=2,HOT=4;
+ let st,timer=null,speed=0.5;
+ function reset(){st={tick:0,classes:[],code:[],calls:{},eden:[],surv:[],old:[],th:[[],[]],gc:'no GC yet',ygc:0,mgc:0,cl:'idle',stw:false,id:0,logs:[]};draw();}
+ const log=(t)=>{st.logs.unshift(t);st.logs=st.logs.slice(0,30);};
+ const flash=id=>{const el=$(id).closest('.lp');el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),500);};
+ function draw(){
+  $('lv-cl').innerHTML=st.cl;$('lv-meta').innerHTML=st.classes.map(c=>`<span>${c}</span>`).join('')||'<span style="background:none;color:#94A3B8">empty</span>';$('lv-mn').textContent=st.classes.length+' classes';
+  $('lv-code').innerHTML=st.code.map(c=>`<span>${c}</span>`).join('')||'<span style="background:none;color:#94A3B8">nothing compiled</span>';
+  $('lv-th').innerHTML=st.th.map((f,i)=>`<div class="thr"><b>http-exec-${i+1}</b>${f.map(x=>`<span class="fr2">${x}</span>`).join('')||'<div style="color:#94A3B8">idle</div>'}</div>`).join('');
+  const dots=a=>a.map(o=>`<i class="${o.live?'':'dead'}${st.mark?(o.live?' mk':' mkd'):''}" title="${o.n} age ${o.age}"></i>`).join('');
+  $('lv-eden').innerHTML=dots(st.eden);$('lv-surv').innerHTML=dots(st.surv);$('lv-old').innerHTML=dots(st.old);
+  $('lv-hn').textContent=`Eden ${st.eden.length}/${EDEN} · Survivor ${st.surv.length}/${SURV} · Old ${st.old.length}/${OLD}`;
+  $('lv-gc').innerHTML=st.gc;$('lv-log').innerHTML=st.logs.map(l=>`<div>${l}</div>`).join('');
+  const s=$('lv-status');s.className='status'+(st.stw?' stw':'');s.textContent=st.stw?'⏸ STOP-THE-WORLD':(timer?'running':'paused');}
+ const obj=(n,live=true)=>({n,live,age:0,id:++st.id});
+ function youngGC(){st.ygc++;st.stw=true;st.mark=true;log(`Young GC #${st.ygc}: mark live objects`);st.gc=`<b>Young GC #${st.ygc}</b> — marking…`;draw();flash('lv-gc');
+  return ()=>{st.mark=false;const young=[...st.eden,...st.surv].filter(o=>o.live);const freed=st.eden.length+st.surv.length-young.length;st.eden=[];st.surv=[];let prom=0;
+   young.forEach(o=>{o.age++;if(o.age>=TEN||st.surv.length>=SURV){st.old.push(o);prom++;}else st.surv.push(o);});
+   st.stw=false;st.gc=`<b>Young GC #${st.ygc}</b>: freed ${freed}, survivors copied, ${prom} promoted to Old`;log(`  freed ${freed} · ${prom} promoted`);
+   if(st.old.length>=OLD*0.45&&st.old.some(o=>!o.live))st.pendingMixed=true;};}
+ function mixedGC(){st.mgc++;st.stw=true;st.mark=true;st.gc=`<b>Mixed GC #${st.mgc}</b> — old ≥ 45% → marking old regions too…`;log(`Mixed GC #${st.mgc} (old regions with most garbage)`);draw();flash('lv-gc');
+  return ()=>{st.mark=false;const before=st.old.length;st.old=st.old.filter(o=>o.live);const f=before-st.old.length;const y=youngGC();y();st.gc=`<b>Mixed GC #${st.mgc}</b>: ${f} old objects freed + young cleaned`;st.stw=false;st.pendingMixed=false;};}
+ let pending=null;
+ function step(){
+  if(pending){const p=pending;pending=null;p();draw();return;}
+  st.tick++;const t=st.tick;
+  // class loading on first requests
+  const need=t===1?['OrderController','OrderService','Order']:t===3?['NotificationService','SlackNotifier']:t===6?['ReportBuilder']:[];
+  if(need.length){st.cl=`loading <b>${need.join(', ')}</b> → linking → &lt;clinit&gt;`;need.forEach(c=>st.classes.push(c));log(`Class loader: ${need.join(', ')} → Metaspace`);flash('lv-meta');}
+  else st.cl='idle';
+  // a request on a thread
+  const ti=t%2,th=st.th[ti];
+  if(th.length){ // finish request: frames popped, objects become garbage
+   th.length=0;st.eden.concat(st.surv).forEach(o=>{if(o.req===ti&&Math.random()<0.85)o.live=false;});log(`http-exec-${ti+1}: request done → frames popped, its objects unreachable`);}
+  else{ th.push('handle()','orderTotal()','new Order…');
+   const n=4+Math.floor(Math.random()*3);
+   if(st.eden.length+n>EDEN){pending=youngGC();draw();return;}
+   for(let i=0;i<n;i++){const o=obj(['Order','DTO','String','List','JSON'][i%5]);o.req=ti;st.eden.push(o);}
+   if(t%5===0){const c=obj('CacheEntry');st.eden.push(c);} // long-lived
+   st.calls.orderTotal=(st.calls.orderTotal||0)+1;log(`http-exec-${ti+1}: request → ${n} objects in Eden`);
+   if(st.calls.orderTotal===HOT){st.code.push('orderTotal() C1');log('JIT: orderTotal() is hot → C1 → Code Cache');flash('lv-code');}
+   if(st.calls.orderTotal===HOT*3){st.code=st.code.map(c=>c.replace('C1','C2'));log('JIT: orderTotal() recompiled by C2');flash('lv-code');}
+   if(t===9){st.code.push('notify() C1');}}
+  if(st.pendingMixed&&!pending){pending=mixedGC();}
+  if(st.old.length>OLD){st.old=st.old.filter(o=>o.live);log('Full GC (fallback): old was full');}
+  draw();}
+ function play(){if(timer){clearInterval(timer);timer=null;$('lv-play').textContent='▶ Play';draw();return;}$('lv-play').textContent='⏸ Pause';timer=setInterval(step,1300/speed);draw();}
+ $('lv-play').onclick=play;$('lv-step').onclick=()=>{if(!timer)step();};
+ $('lv-reset').onclick=()=>{if(timer){clearInterval(timer);timer=null;$('lv-play').textContent='▶ Play';}pending=null;reset();};
+ $('lv-speed').onclick=e=>{const b=e.target.closest('[data-s]');if(!b)return;speed=+b.dataset.s;$('lv-speed').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));if(timer){clearInterval(timer);timer=setInterval(step,1300/speed);}};
+ reset();
+})();
+
+// ===================================================== "completed" checkbox
+(function(){
+ const KEY='prep-done',ID='java:JVM Memory & Architecture';
+ const get=()=>{try{return new Set(JSON.parse(localStorage.getItem(KEY)||'[]'));}catch(e){return new Set();}};
+ const boxes=[...document.querySelectorAll('.topic-done')];
+ const draw=()=>{const on=get().has(ID);boxes.forEach(b=>{b.checked=on;b.closest('.donebox').classList.toggle('on',on);});};
+ boxes.forEach(b=>b.addEventListener('change',()=>{const s=get();b.checked?s.add(ID):s.delete(ID);try{localStorage.setItem(KEY,JSON.stringify([...s]));}catch(e){}draw();}));
+ draw();
+})();
+
+// ===================================================== 9.1 interview Q&A
+(function(){
+ const list=document.getElementById('qa-list');if(!list)return;
+ const PILL={'1':['#64748B','#334155'],'2':['#3B82F6','#1D4ED8'],'3':['#F97316','#C2410C'],'4':['#9333EA','#7E22CE'],'5':['#EF4444','#B91C1C'],'6':['#22C55E','#15803D'],'7':['#F59E0B','#B45309'],'8':['#EC4899','#BE185D']};
+ const Q=[
+  ['What are the main JVM memory areas?','Heap (objects), Metaspace (class metadata), thread stacks (frames), Code Cache (JIT code), plus other native memory (direct buffers, GC data).',['1.1']],
+  ['What is stored on the stack vs the heap?','Stack: frames with primitive locals and references, per thread. Heap: every object and array, shared by all threads.',['1.2','5.1']],
+  ['Where are static variables stored?','In the class\'s <code>Class</code> mirror object on the heap (not in Metaspace, not PermGen).',['1.2','3.2']],
+  ['Explain class loading and parent delegation.','A loader first asks its parent (Application → Platform → Bootstrap); only if the parent can\'t find the class does it search itself.',['2.1']],
+  ['Why parent delegation?','Security and consistency: core classes like <code>java.lang.String</code> always come from Bootstrap and can\'t be replaced.',['2.1']],
+  ['Loading, linking, initialization — what happens in each?','Load bytes → Verify / Prepare (defaults) / Resolve → run <code>&lt;clinit&gt;</code> (static initializers).',['2.2']],
+  ['ClassNotFoundException vs NoClassDefFoundError?','CNFE: class requested by name not found. NCDFE: class existed at compile time but is missing or failed to initialize at runtime.',['2.2']],
+  ['How is the heap organised in G1?','Equal-size regions with dynamic roles: Eden, Survivor, Old, Humongous, Free. Young gen size adapts to the pause goal.',['3.1']],
+  ['Why "most objects die young" matters?','Young GCs only copy the few survivors, so cleaning Eden is fast and frees whole regions.',['3.2','7.3']],
+  ['What is a TLAB?','Thread-Local Allocation Buffer: each thread allocates in its own chunk of Eden with a pointer bump — no locking.',['3.2']],
+  ['What are humongous objects?','Objects ≥ half a region; G1 puts them straight into contiguous old regions.',['3.1','3.2']],
+  ['Metaspace vs PermGen?','PermGen was a fixed heap area (removed in Java 8). Metaspace is native memory that grows on demand, capped by <code>MaxMetaspaceSize</code>.',['4.1']],
+  ['What causes OutOfMemoryError: Metaspace?','Usually a class-loader leak: old loaders still referenced (redeploys, static caches, ThreadLocals) so classes can\'t unload.',['4.1','8.2']],
+  ['Where is the String pool?','The interned String objects are on the heap; the native StringTable indexes them.',['4.2']],
+  ['<code>new String("a") == "a"</code>?','false — <code>new</code> creates a separate object. Use <code>equals()</code>; <code>intern()</code> returns the pooled one.',['4.2']],
+  ['What is the Code Cache?','Native memory holding JIT-compiled machine code; if it fills up, compilation stops and the app slows down.',['4.2','6.1']],
+  ['What is a stack frame made of?','Local variables, operand stack and frame data (return address, constant-pool link).',['5.1']],
+  ['What causes StackOverflowError?','The thread\'s stack is full — usually runaway recursion. <code>-Xss</code> only moves the limit.',['5.2']],
+  ['Platform vs virtual threads?','Platform = OS thread with a fixed stack. Virtual = JVM-scheduled, unmounts on blocking I/O (frames move to heap), millions possible.',['5.2']],
+  ['What does the PC register hold?','The address of the current bytecode instruction for that thread (undefined while running native code).',['5.2']],
+  ['Interpreter vs JIT?','The interpreter runs bytecode immediately but slowly; the JIT compiles hot methods to machine code.',['6.1']],
+  ['What is tiered compilation?','Methods move from interpreter (L0) to C1 with profiling (L3) to C2 (L4) as they get hotter.',['6.1']],
+  ['What is deoptimisation?','When a speculative C2 assumption breaks, the method falls back to the interpreter and is re-profiled.',['6.1']],
+  ['What is escape analysis?','If an object never leaves a method, C2 can skip the heap allocation and keep its fields in registers.',['6.2']],
+  ['What are GC roots?','Starting points of reachability: stack locals, static fields, JNI references, JVM internals.',['7.1']],
+  ['Can two objects that reference each other leak?','No — if neither is reachable from a root, both are garbage. Java GC isn\'t reference counting.',['7.1']],
+  ['Strong, soft, weak, phantom references?','Strong: never cleared. Soft: cleared under memory pressure. Weak: cleared next GC. Phantom: post-mortem cleanup.',['7.1']],
+  ['Explain the G1 cycle.','Young GCs → old ≥ IHOP → concurrent mark → remark/cleanup → mixed GCs → back to young-only. Full GC only as a fallback.',['7.2']],
+  ['What are remembered sets?','Per-region records of incoming references (kept by write barriers) so a Young GC needn\'t scan the whole old generation.',['7.2']],
+  ['What is stop-the-world?','A pause where all application threads stop so the GC can work safely; G1 keeps them short, ZGC tiny.',['7.2','7.3']],
+  ['Which GC would you choose and why?','G1 by default; ZGC for very low latency / huge heaps; Parallel for batch throughput; Serial for tiny containers.',['7.4']],
+  ['Minor vs Major vs Full GC?','In G1 terms: Young GC (young regions), Mixed GC (young + some old), Full GC (whole heap, fallback). "Major" is ambiguous.',['7.2']],
+  ['How do you investigate a memory leak?','Heap dump (<code>jcmd GC.heap_dump</code> or <code>HeapDumpOnOutOfMemoryError</code>) → find the biggest retainers → fix the reference.',['8.2']],
+  ['Is <code>System.gc()</code> guaranteed to run GC?','No — it\'s only a hint, and can be disabled.',['7.2']],
+  ['What changed in Java 25 HotSpot?','Generational ZGC, compact object headers, AOT cache for faster start-up; G1 still the default.',['8.2']]];
+ list.innerHTML=Q.map(([q,a,refs],i)=>`<div class="aq" data-i="${i}"><div class="qh" tabindex="0"><span class="qn">${i+1}</span><span>${q}</span><span class="ref">${refs.map(r=>{const c=PILL[r[0]];return `<button data-go="${r}" style="border-color:${c[0]};color:${c[1]}" title="open slide ${r}">${r}</button>`;}).join('')}</span><span class="chev">▶</span></div><div class="ans">${a}</div></div>`).join('');
+ const items=[...list.querySelectorAll('.aq')],cnt=document.getElementById('qa-count'),find=document.getElementById('qa-find');
+ const open=el=>{items.forEach(x=>x.classList.toggle('open',x===el&&!x.classList.contains('open')));};
+ list.addEventListener('click',e=>{if(e.target.closest('[data-go]'))return;const h=e.target.closest('.qh');if(h)open(h.parentElement);});
+ list.addEventListener('keydown',e=>{const h=e.target.closest('.qh');if(h&&(e.key==='Enter'||e.key===' ')){e.preventDefault();open(h.parentElement);}});
+ function filter(){const t=find.value.trim().toLowerCase();let n=0;items.forEach(x=>{const ok=!t||x.textContent.toLowerCase().includes(t);x.classList.toggle('hide',!ok);if(ok)n++;});cnt.textContent=`${n} question${n===1?'':'s'}`;}
+ find.addEventListener('input',filter);
+ document.getElementById('qa-random').onclick=()=>{const vis=items.filter(x=>!x.classList.contains('hide'));if(!vis.length)return;const el=vis[Math.floor(Math.random()*vis.length)];items.forEach(x=>x.classList.remove('open'));el.classList.add('open');el.scrollIntoView({block:'center',behavior:'smooth'});};
+ filter();
+})();
+
+</script>
+</body></html>

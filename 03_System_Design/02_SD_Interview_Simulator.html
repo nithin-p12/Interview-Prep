@@ -1,0 +1,1138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Design Simulator</title>
+<link rel="stylesheet" href="../_shared/design-tokens.css">
+<style>
+/* ===== theme (light default, dark optional) ===== */
+:root{
+ --bg:#F4F6FA;--panel:#FFFFFF;--panel2:#F8FAFC;--ink:#0F172A;--text:#334155;--muted:#64748B;--faint:#94A3B8;
+ --line:#E2E8F0;--line2:#CBD5E1;--edge:#CBD5E1;--grid:#E8ECF3;--node:#FFFFFF;--hl:#FEF9C3;
+ --uA:#3B82F6;--uB:#9333EA;--uC:#10B981;--uS:#6366F1;
+ --ok:#16A34A;--ok-bg:#DCFCE7;--fail:#DC2626;--fail-bg:#FEE2E2;--pend:#D97706;--pend-bg:#FEF3C7;
+ --code-bg:#1E1E1E;--shadow:0 1px 3px rgba(15,23,42,.08),0 4px 14px rgba(15,23,42,.06);
+ --font:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;--mono:"Cascadia Mono",Consolas,Menlo,monospace;
+ --sw:204px;--rw:312px;--top:46px;
+}
+:root[data-theme="dark"]{
+ --bg:#0B1020;--panel:#121829;--panel2:#0F1524;--ink:#E7EAF1;--text:#C3CAD8;--muted:#8C96AA;--faint:#5D6679;
+ --line:#232B3E;--line2:#334058;--edge:#2F3A52;--grid:#161D30;--node:#161E31;--hl:#3B3410;
+ --ok-bg:#0F2A1A;--fail-bg:#33141A;--pend-bg:#33260C;--shadow:0 1px 3px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font:14px/1.45 var(--font)}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0}
+.mono{font-family:var(--mono)}
+a{color:inherit}
+
+/* ===== top bar ===== */
+#top{position:fixed;inset:0 0 auto 0;height:var(--top);display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line);z-index:20}
+.brand{display:flex;align-items:center;gap:8px;text-decoration:none;font-weight:700;color:var(--ink);white-space:nowrap}
+.brand i{font-style:normal;width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;font-size:12px;background:linear-gradient(135deg,#3B82F6,#9333EA)}
+.brand span{font-weight:600;color:var(--muted);font-size:13px}
+.tb{height:30px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);display:inline-flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap}
+.tb:hover{border-color:var(--uA);color:var(--uA)}
+.tb.on{background:var(--uA);border-color:var(--uA);color:#fff}
+.crumb{flex:1;min-width:0;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden}
+.crumb b{color:var(--ink);font-size:15px}
+.crumb .sep{color:var(--faint)}
+.crumb .cur{color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.tright{display:flex;gap:6px;align-items:center}
+
+/* ===== home ===== */
+#home{position:absolute;top:var(--top);inset-inline:0;bottom:0;padding:16px 24px 14px;display:flex;flex-direction:column;gap:10px;overflow:auto}
+#home h1{margin:0;font-size:22px;color:var(--ink)}
+#home .sub{margin:0;color:var(--muted);font-size:13.5px}
+.hgrid{flex:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:minmax(118px,1fr);gap:12px;min-height:0}
+.hcard{position:relative;border:1.5px solid var(--line);border-radius:14px;background:var(--panel);padding:12px 16px;display:flex;flex-direction:column;gap:5px;box-shadow:var(--shadow);text-align:left;transition:transform .15s,border-color .15s}
+.hcard .hn{position:absolute;top:12px;right:14px;font-size:11px;font-weight:700;color:var(--faint)}
+.hcard .hi{font-size:20px;line-height:1}
+.hcard h3{margin:0;font-size:16px;color:var(--ink);display:flex;align-items:center;gap:9px}
+.hcard p{margin:0;font-size:12.5px;color:var(--muted)}
+.hcard .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:auto}
+.hcard .tags span{font-size:11px;padding:1px 7px;border-radius:99px;background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+.hcard .hst{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.hcard.live{border-color:var(--uA);cursor:pointer}
+.hcard.live:hover{transform:translateY(-2px)}
+.hcard.live .hst{color:var(--ok)}
+.hcard.queued{cursor:pointer}.hcard.queued .hst{color:var(--pend)}
+.hcard.soon{border-style:dashed;box-shadow:none;opacity:.7}.hcard.soon .hst{color:var(--faint)}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--panel);padding:8px 16px;border-radius:10px;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:50}
+#toast.show{opacity:1;transform:translateX(-50%)}
+
+/* ===== presentation shell ===== */
+#pres{position:absolute;top:var(--top);inset-inline:0;bottom:0;display:grid;grid-template-columns:var(--sw) minmax(0,1fr) var(--rw);transition:grid-template-columns .25s}
+#pres.noside{--sw:0px}#pres.nostate{--rw:0px}
+#side{background:var(--panel);border-right:1px solid var(--line);overflow:auto;padding:10px 8px;min-width:0}
+#pres.noside #side,#pres.nostate #state{padding:0;border:0;overflow:hidden}
+.sgrp{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:700;padding:10px 8px 4px}
+.sitem{display:flex;gap:8px;align-items:flex-start;width:100%;padding:5px 8px;border-radius:8px;text-align:left;font-size:13px;color:var(--text)}
+.sitem:hover{background:var(--panel2)}
+.sitem.cur{background:color-mix(in srgb,var(--uA) 12%,transparent);color:var(--ink);font-weight:600}
+.sitem .sn{flex:0 0 22px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:11px;font-weight:700;background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+.sitem.cur .sn{background:var(--uA);border-color:var(--uA);color:#fff}
+.sitem>span:last-child{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sitem small{display:block;font-weight:400;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis}
+
+#main{display:flex;flex-direction:column;min-width:0;min-height:0}
+#cap{flex:0 0 auto;min-height:66px;display:flex;gap:12px;align-items:center;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+.stepn{font-size:11px;font-weight:700;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:2px 7px;white-space:nowrap}
+.who{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;font-size:12px;flex:0 0 26px}
+.capm{flex:1;min-width:0}
+.ct{font-weight:700;color:var(--ink);font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ca{font-size:12.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cw{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}.chip.fail{background:var(--fail-bg);color:var(--fail)}.chip.pend{background:var(--pend-bg);color:var(--pend)}.chip.info{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+
+#cvwrap{flex:1;min-height:0;position:relative;background-color:var(--bg);background-image:radial-gradient(var(--grid) 1.2px,transparent 1.2px);background-size:20px 20px}
+#cv{position:absolute;inset:0;width:100%;height:100%}
+#clock{position:absolute;top:10px;left:12px;font:600 12.5px var(--mono);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:3px 9px;color:var(--ink);box-shadow:var(--shadow)}
+#legend{position:absolute;top:10px;right:12px;display:flex;gap:10px;font-size:11.5px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 10px}
+#legend i{display:inline-block;width:22px;height:0;border-top:2.5px solid var(--muted);vertical-align:middle;margin-right:4px}
+#legend i.d{border-top-style:dashed}
+#cvwrap.picking::after{content:"";position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 45%,transparent);z-index:1}
+#pick{z-index:2}
+.cw.dec{color:var(--pend);font-weight:600}
+.box.dec{border-color:var(--pend);background:var(--pend-bg);color:var(--ink);font-size:12.5px}
+.box.dec .bt{color:var(--pend)}
+.endb{display:flex;gap:6px;flex:0 0 auto}.endb .cb1{height:28px;font-size:12px;padding:0 9px}
+.ph .rt{text-transform:none;letter-spacing:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62%}
+#callout{position:absolute;left:12px;bottom:10px;max-width:min(560px,70%);display:none;background:var(--panel);border:1.5px solid var(--pend);border-left-width:5px;border-radius:10px;padding:8px 12px;font-size:13px;color:var(--ink);box-shadow:var(--shadow)}
+#callout.show{display:block}
+#callout b{color:var(--pend)}
+#callout.end{border-color:var(--ok)}#callout.end b{color:var(--ok)}
+#callout .cb{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+#pick{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:none;background:var(--panel);border:1.5px solid var(--line2);border-radius:14px;padding:10px 12px;box-shadow:var(--shadow);width:min(640px,92%)}
+#pick.show{display:block}
+#pick h4{margin:0 0 8px;font-size:13.5px;color:var(--ink)}
+.bopts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bopt{text-align:left;border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel2)}
+.bopt:hover{border-color:var(--c)}
+.bopt b{display:block;color:var(--c);font-size:13px}
+.bopt span{font-size:12px;color:var(--muted)}
+
+/* svg */
+.edge{stroke:var(--edge);stroke-width:1.6}
+.edge.dim{opacity:.35}
+.arch .edge{stroke-dasharray:4 6;animation:flow 1.6s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-20}}
+.node .nb{fill:var(--node);stroke:var(--line2);stroke-width:1.2}
+.node .nt{font:600 13px var(--font);fill:var(--ink)}
+.node .ns{font:11px var(--font);fill:var(--muted)}
+.node{transition:opacity .3s;cursor:default}
+.node.dim{opacity:.28}
+.node.src .nb{stroke:var(--c);stroke-width:1.8}
+.node.act .nb{stroke:var(--c);stroke-width:2.6;fill:color-mix(in srgb,var(--c) 9%,var(--node))}
+.node.act{filter:drop-shadow(0 0 7px color-mix(in srgb,var(--c) 55%,transparent))}
+.node.pulse .ring{animation:ring 1.2s ease-out infinite}
+.node .ring{transform-box:fill-box;transform-origin:center;fill:none;stroke:var(--c);stroke-width:2;opacity:0}
+@keyframes ring{0%{opacity:.8;transform:scale(1)}100%{opacity:0;transform:scale(1.18)}}
+.arch .node{cursor:pointer}
+.ovp{fill:none;stroke-width:2.6;stroke-linecap:round}
+.ovp.res{stroke-dasharray:7 5}
+.ovp.past{opacity:.3}
+.ovp.fut{opacity:0}
+.pl{transition:transform .35s ease}
+.pl rect{rx:7}
+.pl text{font:600 11.5px var(--mono);fill:#fff}
+
+/* timeline + toolbar */
+#tl{flex:0 0 auto;display:flex;align-items:center;gap:4px;padding:6px 12px;background:var(--panel);border-top:1px solid var(--line);overflow-x:auto;min-height:36px}
+.tc{flex:0 0 auto;min-width:24px;height:22px;border-radius:6px;border:1.5px solid var(--line2);font-size:10.5px;font-weight:700;color:var(--muted);background:var(--panel2);border-bottom-width:3px}
+.tc.done{color:var(--ink)}
+.tc.cur{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.tc.ok{border-bottom-color:var(--ok)}.tc.fail{border-bottom-color:var(--fail)}.tc.pend{border-bottom-color:var(--pend)}
+.tc.init{padding:0 6px}
+.tfork{flex:0 0 auto;font-size:15px;color:var(--faint);padding:0 2px}
+.tbr{flex:0 0 auto;height:22px;padding:0 9px;border-radius:99px;border:1.5px dashed var(--c);color:var(--c);font-size:11.5px;font-weight:600}
+.tbr.on{border-style:solid;background:var(--c);color:#fff}
+#bar{flex:0 0 auto;height:48px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--panel);border-top:1px solid var(--line)}
+.cb1{height:32px;min-width:34px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-size:13px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.cb1:hover{border-color:var(--uA)}
+.cb1.pri{background:var(--uA);border-color:var(--uA);color:#fff;font-weight:600;min-width:92px;justify-content:center}
+.cb1:disabled{opacity:.4;cursor:default}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{height:30px;padding:0 10px;font-size:12.5px;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--ink);color:var(--panel)}
+.tog{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer;user-select:none}
+.tog input{accent-color:var(--uA)}
+.sp{flex:1}
+.kbd{font-size:11px;color:var(--faint)}
+
+/* state panel */
+#state{background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:10px;min-width:0}
+.ph{display:flex;align-items:center;justify-content:space-between;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--faint);margin:2px 2px 6px}
+.box{border:1px solid var(--line);border-radius:10px;background:var(--panel2);padding:8px 10px;margin-bottom:8px}
+.box.chg{border-color:var(--pend);box-shadow:0 0 0 2px color-mix(in srgb,var(--pend) 18%,transparent)}
+.bt{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.bt .ic{font-size:13px}
+.bt{cursor:pointer}
+.box.mini{padding:6px 10px}.box.mini .bt{margin:0}
+.sumln{font:11.5px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.bt em{margin-left:auto;font-style:normal;font-weight:600;font-size:10.5px;color:var(--faint)}
+.op{font:11px/1.5 var(--mono);background:var(--code-bg);color:#D4D4D4;border-radius:8px;padding:8px 10px;margin:0;white-space:pre-wrap;word-break:break-word}
+.op .k{color:#9CDCFE}.op .c{color:#6A9955}
+.res{margin-top:6px;font:600 12px var(--mono)}
+.res.ok{color:var(--ok)}.res.fail{color:var(--fail)}.res.pend{color:var(--pend)}
+.doc{font:11.5px/1.55 var(--mono);border-left:2px solid var(--line2);padding-left:8px;margin:4px 0}
+.doc .id{color:var(--muted)}
+.doc .ins{font:700 10px var(--font);color:var(--ok);background:var(--ok-bg);border-radius:4px;padding:0 5px;margin-left:4px}
+.f{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.f .key{color:var(--muted)}
+.f.ch{background:var(--hl);border-radius:4px;margin:0 -4px;padding:0 4px}
+.f s{color:var(--faint)}
+.f.gone{opacity:.6}
+.v-AVAILABLE,.v-SUCCEEDED,.v-CONFIRMED,.v-succeeded{color:var(--ok);font-weight:700}
+.v-LOCKED,.v-PROCESSING,.v-REQUIRES_ACTION,.v-requires_action,.v-REFUND_PENDING,.v-pending,.v-REFUND_REQUIRED,.v-CREATED{color:var(--pend);font-weight:700}
+.v-BOOKED{color:var(--uA);font-weight:700}
+.v-REJECTED{color:var(--fail);font-weight:700}
+.empty{font-size:12px;color:var(--faint);font-style:italic}
+.urow{display:flex;gap:8px;align-items:center;font-size:12.5px;padding:3px 4px;border-radius:6px}
+.urow.ch{background:var(--hl)}
+.urow .dot{width:8px;height:8px;border-radius:50%;flex:0 0 8px;background:var(--faint)}
+.urow .dot.ok{background:var(--ok)}.urow .dot.fail{background:var(--fail)}.urow .dot.pend{background:var(--pend)}
+.klog{display:flex;gap:3px;margin:4px 0;flex-wrap:wrap}
+.kc{border:1px solid var(--line2);border-radius:6px;padding:2px 6px;font:11px var(--mono);background:var(--panel);position:relative}
+.kc.new{border-color:var(--ok);background:var(--ok-bg)}
+.kc b{color:var(--muted);margin-right:4px}
+.kmeta{font:11.5px var(--mono);color:var(--muted)}
+.kmeta .ch{background:var(--hl);border-radius:4px;padding:0 3px}
+.info h3{margin:0 0 2px;font-size:16px;color:var(--ink)}
+.info .tag{font-size:12px;color:var(--muted);margin-bottom:8px}
+.info dl{margin:0;display:grid;gap:6px}
+.info dt{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--faint)}
+.info dd{margin:0;font-size:13px}
+
+/* custom slides */
+#custom{flex:1;min-height:0;display:none;overflow:hidden;padding:14px 16px}
+#main.cust #cap,#main.cust #cvwrap,#main.cust #tl,#main.cust #bar{display:none}
+#main.cust #custom{display:flex;flex-direction:column}
+.h2{display:flex;align-items:baseline;gap:10px;margin:0 0 10px}
+.h2 h2{margin:0;font-size:19px;color:var(--ink)}
+.h2 span{color:var(--muted);font-size:13px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:12px 14px;min-height:0}
+.card h4{margin:0 0 8px;font-size:13.5px;color:var(--ink);display:flex;align-items:center;gap:6px}
+.mac{background:var(--code-bg);border-radius:10px;overflow:hidden}
+.mac .bar{height:24px;background:#2C2C2E;display:flex;align-items:center;gap:6px;padding:0 10px;font:11px var(--font);color:#9AA0A6}
+.mac .bar i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.mac pre{margin:0;padding:9px 12px;font:12px/1.5 var(--mono);color:#D4D4D4;white-space:pre-wrap}
+.mac .k{color:#569CD6}.mac .s{color:#CE9178}.mac .c{color:#6A9955}.mac .n{color:#B5CEA8}.mac .p{color:#9CDCFE}
+
+/* model slide */
+.mgrid{flex:1;min-height:0;display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:12px}
+.sm-t{cursor:pointer}
+.sm-t path{fill:none;stroke:var(--line2);stroke-width:2}
+.sm-t text{font:600 11.5px var(--font);fill:var(--muted)}
+.sm-t:hover path,.sm-t.on path{stroke:var(--uA);stroke-width:2.6}
+.sm-t:hover text,.sm-t.on text{fill:var(--uA)}
+.sm-s rect{stroke-width:2}
+.sm-s text{font:700 12.5px var(--font)}
+.coll{font:11.5px/1.5 var(--mono);color:var(--text);margin:0 0 6px;white-space:pre}
+.coll .c{color:var(--faint)}
+.ix{font-size:12px;color:var(--muted);margin:0 0 8px}
+.ix code{font:11.5px var(--mono);background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--ink)}
+.apil>div{padding:5px 0;border-bottom:1px solid var(--line)}
+.ap{font:700 11.5px var(--mono);color:var(--ink)}.ad{font-size:12px;color:var(--muted);margin-top:1px}
+table.api td{padding:5px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+table.api td:first-child{font:700 11px var(--mono);white-space:nowrap}
+.mth{display:inline-block;font:700 10px var(--mono);border-radius:4px;padding:0 5px;color:#fff;margin-right:4px}
+.GET{background:#16A34A}.POST{background:#3B82F6}.DELETE{background:#DC2626}
+
+/* interview */
+.igrid{flex:1;min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr);gap:12px}
+.ilist{display:flex;flex-direction:column;gap:4px;overflow:auto}
+.ib{display:flex;gap:8px;align-items:center;text-align:left;padding:7px 9px;border-radius:9px;border:1px solid var(--line);background:var(--panel);font-size:13px}
+.ib b{flex:0 0 22px;height:22px;border-radius:6px;display:grid;place-items:center;background:var(--panel2);font-size:11px;color:var(--muted);border:1px solid var(--line)}
+.ib.cur{border-color:var(--uA);color:var(--ink);font-weight:600}
+.ib.cur b{background:var(--uA);color:#fff;border-color:var(--uA)}
+.ichat{display:flex;flex-direction:column;min-height:0}
+.itools{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.ilines{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:4px 4px 10px}
+.ln{max-width:78%;padding:8px 12px;border-radius:12px;font-size:14px;line-height:1.5;animation:pop .25s ease}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}}
+.ln small{display:block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:2px}
+.ln.I{align-self:flex-start;background:var(--panel);border:1px solid var(--line);border-top-left-radius:4px}
+.ln.I small{color:var(--muted)}
+.ln.C{align-self:flex-end;background:color-mix(in srgb,var(--uA) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--uA) 35%,transparent);border-top-right-radius:4px;color:var(--ink)}
+.ln.C small{color:var(--uA)}
+.ln.C.hid{cursor:pointer}
+.ln.C.hid .tx{filter:blur(5px);user-select:none}
+.ln.P{align-self:center;max-width:90%;background:var(--pend-bg);color:var(--pend);border:1px dashed var(--pend);font-size:12.5px;padding:5px 12px;border-radius:99px}
+.timer{font:700 20px var(--mono);color:var(--ink);min-width:62px;text-align:center}
+.sum{font-size:15px;line-height:1.7;color:var(--ink)}
+
+/* follow-ups */
+.fgrid{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px}
+.fchips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.fchip{height:26px;padding:0 10px;border-radius:99px;border:1.5px solid var(--c);color:var(--c);font-size:12px;font-weight:600}
+.fchip.on{background:var(--c);color:#fff}
+.fsearch{margin-left:auto;height:28px;border:1px solid var(--line);border-radius:8px;padding:0 10px;background:var(--panel);color:var(--ink);font:inherit;font-size:13px;width:200px}
+.flist{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px}
+.fq{flex-shrink:0;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:10px}
+.fq>button{width:100%;display:flex;gap:10px;align-items:center;padding:8px 12px;text-align:left;font-size:14px;color:var(--ink);font-weight:600}
+.fq>button .g{font-size:10.5px;font-weight:700;color:var(--c);white-space:nowrap;text-transform:uppercase;letter-spacing:.05em}
+.fq>button .ar{margin-left:auto;color:var(--faint);transition:transform .2s}
+.fq.open>button .ar{transform:rotate(90deg)}
+.fa{display:none;padding:0 12px 10px;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.fq.open .fa{display:grid}
+.fa div{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px}
+.fa div b{display:block;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:2px}
+.fa .w b{color:var(--uA)}.fa .y b{color:var(--uB)}.fa .h b{color:var(--ok)}.fa .t b{color:var(--pend)}
+.fa .viz{grid-column:1/-1;display:flex;justify-content:flex-end;background:none;border:0;padding:0}
+
+@media (max-width:1100px){:root{--sw:180px;--rw:270px}}
+@media (max-width:860px){:root{--sw:0px;--rw:0px}.hgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.mgrid,.igrid{grid-template-columns:1fr}.fa{grid-template-columns:1fr 1fr}#legend{display:none}}
+</style>
+</head>
+<body>
+<header id="top">
+ <a class="brand" href="../00_Index.html" title="All concepts"><i>NP</i>Interview Prep <span>/ NITHIN P</span></a>
+ <button class="tb" id="homeBtn" style="display:none">← Home</button>
+ <div class="crumb" id="crumb"><b>System Design Simulator</b></div>
+ <div class="tright">
+  <button class="tb" id="tSide" title="Show / hide slide list" style="display:none">☰ Slides</button>
+  <button class="tb" id="tState" title="Show / hide live state panel" style="display:none">▤ State</button>
+  <label class="tb" id="tDone" style="display:none" title="Marks this topic completed on the System Design hub"><input type="checkbox" id="done" style="accent-color:var(--ok);margin:0">Completed</label>
+  <button class="tb" id="tTheme" title="Light / dark">🌙 Dark</button>
+ </div>
+</header>
+
+<section id="home">
+ <h1>System Design Interview Simulator</h1>
+ <p class="sub">Pick a design. Each one is an interactive simulator: watch requests travel between services, step through races and failures, then practise the interview script aloud.</p>
+ <div class="hgrid" id="hgrid"></div>
+</section>
+
+<section id="pres" style="display:none">
+ <aside id="side"></aside>
+ <div id="main">
+  <div id="cap"></div>
+  <div id="cvwrap">
+   <svg id="cv" viewBox="0 0 1000 480" preserveAspectRatio="xMidYMid meet"></svg>
+   <div id="clock"></div>
+   <div id="legend"><span><i></i>request</span><span><i class="d"></i>response</span></div>
+   <div id="callout"></div>
+   <div id="pick"></div>
+  </div>
+  <div id="tl"></div>
+  <div id="bar">
+   <button class="cb1" id="bReset" title="Reset (R)">⟲ Reset</button>
+   <button class="cb1" id="bPrev" title="Previous event (←)">◀ Prev</button>
+   <button class="cb1 pri" id="bPlay" title="Play / pause (Space)">▶ Play</button>
+   <button class="cb1" id="bNext" title="Next event (→)">Next ▶</button>
+   <span class="seg" id="speed"><button data-s="0.5">0.5×</button><button data-s="1" class="on">1×</button><button data-s="2">2×</button></span>
+   <label class="tog" title="Auto-play pauses at decision points"><input type="checkbox" id="stopAt" checked>Pause at decisions</label>
+   <span class="sp"></span>
+   <span class="kbd">← → step · Space play · ↑ ↓ slide</span>
+  </div>
+  <div id="custom"></div>
+ </div>
+ <aside id="state"></aside>
+</section>
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+   DATA — one object per design. Engine below is design-agnostic.
+   Event: ev('a>b>c', kind, user, {...})  kind: req | res | int
+     t  title · api  request/response line · op  code shown in the state panel
+     st ok|fail|pend · why  one-line reason · pause  decision text
+     clock  sets simulated time · fx(state)  mutates state when the packet arrives
+   ===================================================================== */
+const ev=(path,k,u,o)=>Object.assign({path:path.split('>'),k,u},o);
+const SEAT='42:A12';
+const setU=(s,u,txt,t)=>{s.users[u]={s:txt,t:t||'idle'};};
+const seat=s=>s.mongo.seats[SEAT];
+const lock=(s,u,h,exp)=>{const d=seat(s);d.status='LOCKED';d.lockedBy=u;d.holdId=h;d.lockExpiresAt=exp;d.version++;};
+const book=(s,b)=>{const d=seat(s);d.status='BOOKED';d.bookingId=b;delete d.lockExpiresAt;d.version++;};
+const release=s=>{const d=seat(s);d.status='AVAILABLE';delete d.lockedBy;delete d.holdId;delete d.lockExpiresAt;d.version++;};
+const rd=(s,v)=>{s.redis['seatmap:42'].A12=v;};
+const kpush=(s,o,v)=>{s.kafka.log.push({o,v});};
+
+const OP={
+ lock:(u,h,exp)=>`db.seats.updateOne(
+  { _id: "42:A12",
+    status: "AVAILABLE" },
+  { $set: { status: "LOCKED",
+            lockedBy: "${u}",
+            holdId: "${h}",
+            lockExpiresAt: ${exp} },
+    $inc: { version: 1 } })`,
+ lockOr:(u,h,exp)=>`db.seats.updateOne(
+  { _id: "42:A12",
+    $or: [ { status: "AVAILABLE" },
+           { status: "LOCKED",
+             lockExpiresAt: { $lt: now } } ] },
+  { $set: { status: "LOCKED",
+            lockedBy: "${u}",
+            holdId: "${h}",
+            lockExpiresAt: ${exp} },
+    $inc: { version: 1 } })`,
+ confirm:(h,b,ev)=>`session.withTransaction(() -> {
+ seats.updateOne(
+  { _id: "42:A12", status: "LOCKED",
+    holdId: "${h}",
+    lockExpiresAt: { $gt: now } },
+  { $set: { status: "BOOKED",
+            bookingId: "${b}" },
+    $unset: { lockExpiresAt: "" },
+    $inc: { version: 1 } })
+ // modifiedCount != 1 → abortTransaction()
+ bookings.insertOne({ _id: "${b}",
+                      holdId: "${h}", … })
+ outbox.insertOne({ _id: "${ev}",
+                    type: "BookingConfirmed" })
+})`
+};
+
+// shared node layout (ticket design) — viewBox 1000 × 480
+const NODES={
+ userA:{x:8,y:40,w:124,h:50,label:'User A',icon:'user',user:'A',kind:'user'},
+ userB:{x:8,y:215,w:124,h:50,label:'User B',icon:'user',user:'B',kind:'user'},
+ userC:{x:8,y:390,w:124,h:50,label:'User C',icon:'user',user:'C',kind:'user'},
+ gateway:{x:166,y:212,w:126,h:56,label:'API Gateway',sub:'auth · limits',icon:'shield',kind:'edge'},
+ booking:{x:330,y:212,w:138,h:56,label:'Booking Svc',sub:'seats · holds',icon:'svc',kind:'svc'},
+ redis:{x:330,y:34,w:138,h:56,label:'Redis',sub:'seat-map cache',icon:'bolt',kind:'cache'},
+ payment:{x:330,y:390,w:138,h:56,label:'Payment Svc',sub:'webhooks',icon:'svc',kind:'svc'},
+ mongo:{x:530,y:212,w:142,h:56,label:'MongoDB',sub:'source of truth',icon:'mongo',kind:'db'},
+ sweeper:{x:530,y:34,w:142,h:56,label:'Expiry Sweeper',sub:'every 30 s',icon:'clock',kind:'job'},
+ provider:{x:530,y:390,w:142,h:56,label:'Provider',sub:'Stripe / Razorpay',icon:'card',kind:'ext'},
+ relay:{x:712,y:34,w:128,h:56,label:'Outbox Relay',sub:'change stream',icon:'relay',kind:'job'},
+ kafka:{x:712,y:212,w:128,h:56,label:'Kafka',sub:'booking-events',icon:'kafka',kind:'queue'},
+ notif:{x:712,y:390,w:128,h:56,label:'Notification',sub:'consumer group',icon:'svc',kind:'svc'},
+ email:{x:872,y:390,w:118,h:56,label:'Email',sub:'SES / SMTP',icon:'mail',kind:'ext'}
+};
+const EDGES=[['userA','gateway'],['userB','gateway'],['userC','gateway'],['gateway','booking'],['gateway','payment'],['booking','redis'],['booking','mongo'],['booking','payment'],['payment','provider'],['payment','mongo'],['sweeper','mongo'],['sweeper','redis'],['mongo','relay'],['relay','kafka'],['kafka','notif'],['notif','email'],['notif','mongo']];
+
+const PANELS_ALL=[['users','Users','users','👤'],['mongo.seats','MongoDB · seats','docs','🍃'],['redis','Redis','docs','⚡'],['pay','Payment Svc · payments','docs','💳'],['prov','Payment provider','docs','🏦'],['mongo.bookings','MongoDB · bookings','docs','🍃'],['mongo.outbox','MongoDB · outbox','docs','🍃'],['kafka','Kafka','kafka','≋']];
+const P_=(...keys)=>PANELS_ALL.filter(p=>keys.includes(p[0]));
+
+const baseState=(o)=>{const s={clock:'19:00:00',users:{},mongo:{seats:{[SEAT]:{status:'AVAILABLE',version:7}},bookings:{},outbox:{},notification_log:{}},redis:{'seatmap:42':{A12:'AVAILABLE',A13:'BOOKED'}},pay:{},prov:{},kafka:{topic:'booking-events',part:1,key:'42',group:'notification-svc',log:[{o:41,v:'evt-9000 BookingConfirmed'}],committed:42}};return o?o(s)||s:s;};
+
+/* ---------- Ticket Booking scenarios ---------- */
+const S_ARCH={mode:'tour',goal:'Click any component (or press Next) to see what it owns and how it fails.',initial:baseState(),prefix:[
+ ev('userA','int','A',{t:'Users',info:{tag:'Browser / mobile app',role:'Pick seats from a seat map, hold them, pay, receive the ticket.',owns:'Nothing authoritative — the client only shows state.',tech:'Web / Android / iOS · JWT from the identity provider',scale:'Waiting room token for hot on-sales.',fails:'Client retries with the same Idempotency-Key; polls GET /holds/{id} if the page reloads.'}}),
+ ev('gateway','int','S',{t:'API Gateway',info:{tag:'Entry point',role:'Validates JWT, rate-limits per user/IP, routes to services, terminates TLS.',owns:'No business state.',tech:'Spring Cloud Gateway / Kong / NGINX',scale:'Stateless — scale horizontally behind a load balancer.',fails:'A bad gateway pod is removed by health checks; rate limits shed load during on-sale spikes.'}}),
+ ev('booking','int','S',{t:'Booking Service',info:{tag:'Core domain service',role:'Serves the seat map, locks seats (holds), confirms bookings after payment.',owns:'seats, bookings and outbox collections.',tech:'Spring Boot · MongoDB driver · Redis client',scale:'Stateless pods; correctness comes from conditional updates in MongoDB, not from JVM locks.',fails:'Crash mid-request is safe: every write is conditional and idempotent, retries are allowed.'}}),
+ ev('mongo','int','S',{t:'MongoDB (source of truth)',info:{tag:'Replica set · w:"majority"',role:'Stores one document per seat per show; atomic single-document conditional updates decide who gets a seat.',owns:'seats · bookings · outbox (and notification_log for the notifier).',tech:'MongoDB replica set (transactions need a replica set or sharded cluster).',scale:'Shard by showId so one show\'s seat map stays on one shard.',fails:'Primary failover takes seconds; retryable writes + idempotent requests cover the gap.'}}),
+ ev('redis','int','S',{t:'Redis (seat-map cache)',info:{tag:'Read path only',role:'Hash seatmap:{showId} → seat status for fast seat-map reads.',owns:'Nothing authoritative — a cache can be stale.',tech:'Redis hash + TTL safety net',scale:'Replicas for read throughput.',fails:'Stale/missing entries only cause a 409 at lock time; reads fall back to MongoDB.'}}),
+ ev('sweeper','int','S',{t:'Expiry Sweeper',info:{tag:'Scheduled job',role:'Every 30 s resets LOCKED seats whose lockExpiresAt has passed, so the seat map looks right.',owns:'No state of its own.',tech:'@Scheduled + ShedLock (one runner) or a Kubernetes CronJob',scale:'One updateMany per run using index {status:1, lockExpiresAt:1}.',fails:'If it stops, correctness is unaffected — the lock query also accepts expired locks. Only the seat map looks stale.'}}),
+ ev('payment','int','S',{t:'Payment Service',info:{tag:'Talks to the provider',role:'Creates payments with an Idempotency-Key, verifies signed webhooks, triggers confirm or refund.',owns:'payments collection (unique idempotency key).',tech:'Provider SDK · signature verification · reconciliation job',scale:'Stateless pods; webhooks are retried by the provider.',fails:'Lost webhook → reconciliation polls the provider. Late success on an expired hold → refund.'}}),
+ ev('provider','int','S',{t:'Payment Provider (external)',info:{tag:'Stripe / Razorpay style',role:'Charges the card / UPI, sends webhooks, processes refunds.',owns:'The real money movement.',tech:'REST API + webhooks; supports idempotency keys on create calls (e.g. Stripe Idempotency-Key header).',scale:'Not ours — respect its rate limits.',fails:'Webhooks may be delayed, duplicated or out of order — design for all three.'}}),
+ ev('relay','int','S',{t:'Outbox Relay',info:{tag:'Mongo → Kafka bridge',role:'Watches the outbox collection (change stream) and publishes each event to Kafka, then marks it published.',owns:'Change-stream resume token.',tech:'Change stream or polling publisher; Kafka idempotent producer, acks=all',scale:'One active relay per outbox partition / shard.',fails:'Crash before marking → republishes → consumers must dedupe by eventId (at-least-once).'}}),
+ ev('kafka','int','S',{t:'Kafka',info:{tag:'topic booking-events',role:'Durable, replayable event log; key = showId keeps one show\'s events ordered within a partition.',owns:'Events + consumer-group offsets.',tech:'Partitions × replication factor 3, min.insync.replicas=2',scale:'Add partitions and consumers per group.',fails:'Redelivers from the last committed offset → duplicates are possible.'}}),
+ ev('notif','int','S',{t:'Notification Service',info:{tag:'Consumer group notification-svc',role:'Consumes BookingConfirmed / RefundInitiated and sends email (and push).',owns:'notification_log (dedupe by eventId).',tech:'Spring Kafka listener · manual offset commit after processing',scale:'One consumer per partition at most within the group.',fails:'Crash after send, before commit → redelivery → dedupe log; still at-least-once.'}}),
+ ev('email','int','S',{t:'Email provider (external)',info:{tag:'Amazon SES / SMTP',role:'Delivers the ticket email.',owns:'Delivery.',tech:'SES SendEmail / SMTP',scale:'Sending quotas per second.',fails:'No general-purpose send idempotency key — a repeated call sends a second email.'}})
+]};
+
+const S_HAPPY={goal:'User A books seat A12 end to end: seat map → lock → pay → webhook → transaction → outbox → Kafka → email.',
+ panels:P_('users','mongo.seats','redis','pay','prov','mongo.bookings','mongo.outbox','kafka'),
+ initial:baseState(s=>{setU(s,'A','Browsing show 42');}),
+ prefix:[
+ ev('userA>gateway>booking','req','A',{t:'A opens the seat map',api:'GET /shows/42/seats',why:'Gateway validates the JWT and rate-limits, then routes to Booking Service.',lb:'GET /shows/42/seats'}),
+ ev('booking>redis','req','A',{t:'Read the seat map from cache',op:'HGETALL seatmap:42',api:'HGETALL seatmap:42',why:'Seat-map reads are the hot path — served from a Redis hash.'}),
+ ev('redis>booking','res','A',{t:'Cache hit',api:'{ A12: AVAILABLE, A13: BOOKED, … }',st:'ok',lb:'HIT',why:'The cache is a read view only. It never decides who gets a seat.'}),
+ ev('booking>gateway>userA','res','A',{t:'Seat map shown',api:'200 OK · A12 is available',st:'ok',lb:'200 OK',fx:s=>setU(s,'A','Sees A12 available')}),
+ ev('userA>gateway>booking','req','A',{t:'A taps seat A12',api:'POST /seats/lock { showId: 42, seatId: "A12" }',lb:'POST /seats/lock',fx:s=>setU(s,'A','Locking A12…','pend')}),
+ ev('booking>mongo','req','A',{t:'Conditional update on the seat document',op:OP.lock('A','H-901','19:10:02'),api:'updateOne({ _id, status: "AVAILABLE" }) → LOCKED',lb:'updateOne (if AVAILABLE)',clock:'19:00:02',
+   pause:'The filter matches only while the seat is still AVAILABLE. Matching + updating one document is atomic in MongoDB — this is the compare-and-set.',fx:s=>lock(s,'A','H-901','19:10:02')}),
+ ev('mongo>booking','res','A',{t:'Lock acquired',api:'{ matchedCount: 1, modifiedCount: 1 }',st:'ok',lb:'modifiedCount=1'}),
+ ev('booking>redis','req','A',{t:'Update the cache (best effort)',op:'HSET seatmap:42 A12 LOCKED',api:'HSET seatmap:42 A12 LOCKED',why:'If this write fails the cache is stale for a while — safe, because locks are decided in MongoDB.',fx:s=>rd(s,'LOCKED')}),
+ ev('booking>gateway>userA','res','A',{t:'Hold returned to A',api:'200 OK { holdId: "H-901", expiresAt: "19:10:02" }',st:'ok',lb:'200 OK H-901',fx:s=>setU(s,'A','Holding A12 until 19:10','pend')}),
+ ev('userA>gateway>payment','req','A',{t:'A clicks Pay',api:'POST /payments { holdId: "H-901" }  ·  Idempotency-Key: pay-H-901',lb:'POST /payments',clock:'19:01:30',
+   fx:s=>{s.pay['pay-H-901']={holdId:'H-901',amount:'₹350',status:'CREATED'};}}),
+ ev('payment>provider','req','A',{t:'Create the payment at the provider',op:'POST /v1/payment_intents\nIdempotency-Key: pay-H-901\n{ amount: 35000, currency: "inr",\n  metadata: { holdId: "H-901" } }',api:'POST /v1/payment_intents (Idempotency-Key: pay-H-901)',lb:'create intent',why:'Provider-side idempotency key: a retried create returns the same intent instead of a second charge.',
+   fx:s=>{s.prov.pi_77={amount:35000,metadata:'H-901',status:'requires_action'};}}),
+ ev('provider>payment>gateway>userA','res','A',{t:'Checkout opens for A',api:'201 { paymentId: "pi_77", status: "requires_action" }',st:'pend',lb:'201 pi_77',fx:s=>{s.pay['pay-H-901'].providerRef='pi_77';s.pay['pay-H-901'].status='PROCESSING';setU(s,'A','On payment page','pend');}}),
+ ev('provider','int','A',{t:'A completes UPI / card authentication',api:'pi_77 → succeeded',st:'ok',lb:'payment succeeded',clock:'19:03:40',fx:s=>{s.prov.pi_77.status='succeeded';setU(s,'A','Paid · waiting for ticket','pend');}}),
+ ev('provider>payment','req','S',{t:'Signed webhook from the provider',api:'POST /webhooks/payments · payment_intent.succeeded (pi_77)',lb:'webhook succeeded',why:'Payment Service verifies the signature. Webhooks can arrive late, twice, or out of order.',fx:s=>{s.pay['pay-H-901'].status='SUCCEEDED';}}),
+ ev('payment>booking','req','S',{t:'Ask Booking Service to confirm the hold',api:'POST /internal/holds/H-901/confirm { paymentId: "pi_77" }',lb:'confirm H-901'}),
+ ev('booking>mongo','req','S',{t:'One transaction: seat + booking + outbox',op:OP.confirm('H-901','B-5001','evt-9001'),api:'withTransaction: seat → BOOKED, insert booking, insert outbox',lb:'transaction',clock:'19:03:41',
+   pause:'Three documents change together → a multi-document transaction (replica set). The seat filter re-checks holdId AND expiry: payment success alone is not enough.',
+   fx:s=>{book(s,'B-5001');s.mongo.bookings['B-5001']={user:'A',seat:'A12',holdId:'H-901',paymentId:'pi_77',status:'CONFIRMED'};s.mongo.outbox['evt-9001']={type:'BookingConfirmed',bookingId:'B-5001',published:false};}}),
+ ev('mongo>booking','res','S',{t:'Commit OK',api:'seat modifiedCount: 1 · commitTransaction ✓',st:'ok',lb:'commit ✓'}),
+ ev('booking>redis','req','S',{t:'Cache → BOOKED',op:'HSET seatmap:42 A12 BOOKED',api:'HSET seatmap:42 A12 BOOKED',fx:s=>rd(s,'BOOKED')}),
+ ev('booking>payment>provider','res','S',{t:'Acknowledge the webhook',api:'200 OK (booking B-5001 confirmed)',st:'ok',lb:'200 OK',why:'Ack only after the commit — if anything failed before, no 2xx means the provider retries.'}),
+ ev('booking>gateway>userA','res','A',{t:'A\'s status poll sees the booking',api:'GET /holds/H-901 → 200 { status: "CONFIRMED", bookingId: "B-5001" }',st:'ok',lb:'CONFIRMED',fx:s=>setU(s,'A','Booked A12 ✓','ok')}),
+ ev('mongo>relay>kafka','req','S',{t:'Outbox relay publishes the event',op:'outbox.watch()  → evt-9001\nproducer.send("booking-events", key "42", evt-9001)\n  acks=all, enable.idempotence=true\noutbox.updateOne({_id:"evt-9001"}, {$set:{published:true}})',api:'produce → partition 1 · offset 42',lb:'produce evt-9001',
+   fx:s=>{kpush(s,42,'evt-9001 BookingConfirmed');s.mongo.outbox['evt-9001'].published=true;}}),
+ ev('kafka>notif','res','S',{t:'Notification consumer polls',api:'poll() → partition 1, offset 42 (group notification-svc)',lb:'offset 42',st:'pend'}),
+ ev('notif>email','req','S',{t:'Send ticket email, then commit the offset',op:'ses.sendEmail(to: A, ticket B-5001)\nconsumer.commitSync({ p1: 43 })',api:'SendEmail → MessageId 0101-a · commit offset 43',lb:'send ticket',st:'ok',
+   fx:s=>{s.kafka.committed=43;setU(s,'A','Booked ✓ · ticket emailed','ok');}})
+ ]};
+
+const S_RACE={goal:'A and B tap the same seat in the same instant. Compare the atomic conditional update with the broken read-then-write.',
+ panels:P_('users','mongo.seats','redis'),
+ initial:baseState(s=>{setU(s,'A','Sees A12 available');setU(s,'B','Sees A12 available');}),
+ prefix:[
+ ev('userA>gateway>booking','req','A',{t:'A taps A12',api:'POST /seats/lock { showId: 42, seatId: "A12" }',lb:'POST /seats/lock',fx:s=>setU(s,'A','Locking A12…','pend')}),
+ ev('userB>gateway>booking','req','B',{t:'B taps A12 in the same instant',api:'POST /seats/lock { showId: 42, seatId: "A12" }',lb:'POST /seats/lock',why:'The two requests may land on different Booking pods — synchronized / a JVM lock would not help.',fx:s=>setU(s,'B','Locking A12…','pend')})
+ ],
+ branches:[
+  {id:'correct',label:'✅ Conditional update',desc:'updateOne with status:"AVAILABLE" in the filter (atomic compare-and-set).',tone:'ok',events:[
+   ev('booking>mongo','req','A',{t:'A\'s conditional update runs first',op:OP.lock('A','H-901','19:10:00'),api:'updateOne({ _id, status: "AVAILABLE" }) by A',lb:'updateOne (A)',
+     pause:'MongoDB applies writes to a single document one at a time. Whichever update runs first wins.',fx:s=>lock(s,'A','H-901','19:10:00')}),
+   ev('booking>mongo','req','B',{t:'B\'s identical update finds no match',op:OP.lock('B','H-902','19:10:00'),api:'updateOne({ _id, status: "AVAILABLE" }) by B',lb:'updateOne (B)',why:'The filter status:"AVAILABLE" no longer matches — nothing changes.'}),
+   ev('mongo>booking','res','A',{t:'A wins',api:'{ matchedCount: 1, modifiedCount: 1 }',st:'ok',lb:'modifiedCount=1'}),
+   ev('mongo>booking','res','B',{t:'B loses',api:'{ matchedCount: 0, modifiedCount: 0 }',st:'fail',lb:'modifiedCount=0'}),
+   ev('booking>gateway>userA','res','A',{t:'A gets the hold',api:'200 OK { holdId: "H-901", expiresAt: "19:10:00" }',st:'ok',lb:'200 OK',fx:s=>setU(s,'A','Holding A12 ✓','ok')}),
+   ev('booking>gateway>userB','res','B',{t:'B is told the seat is gone',api:'409 Conflict { error: "SEAT_UNAVAILABLE" }',st:'fail',lb:'409 Conflict',fx:s=>setU(s,'B','Seat taken → picks another','fail')}),
+   ev('booking>redis','req','S',{t:'Update cache',op:'HSET seatmap:42 A12 LOCKED',api:'HSET seatmap:42 A12 LOCKED',fx:s=>rd(s,'LOCKED')})
+  ]},
+  {id:'wrong',label:'❌ Read, then write',desc:'findOne() → check status in Java → save(). Two separate steps.',tone:'fail',events:[
+   ev('booking>mongo','req','A',{t:'A: read the seat',op:'Seat seat = repo.findById("42:A12")',api:'findOne({ _id: "42:A12" })',lb:'findOne (A)'}),
+   ev('booking>mongo','req','B',{t:'B: read the seat',op:'Seat seat = repo.findById("42:A12")',api:'findOne({ _id: "42:A12" })',lb:'findOne (B)'}),
+   ev('mongo>booking','res','A',{t:'A sees AVAILABLE',api:'{ status: "AVAILABLE", version: 7 }',st:'ok',lb:'AVAILABLE'}),
+   ev('mongo>booking','res','B',{t:'B also sees AVAILABLE',api:'{ status: "AVAILABLE", version: 7 }',st:'ok',lb:'AVAILABLE',pause:'Both requests passed the "is it available?" check. Check and write are separate steps — the classic check-then-act race.'}),
+   ev('booking>mongo','req','A',{t:'A: save(seat) — locked by A',op:'seat.setStatus(LOCKED); seat.setLockedBy("A");\nrepo.save(seat)   // replaces the document,\n                  // no condition, no @Version',api:'replaceOne({ _id }) → LOCKED by A',lb:'save (A)',fx:s=>lock(s,'A','H-901','19:10:00')}),
+   ev('booking>mongo','req','B',{t:'B: save(seat) silently overwrites A',op:'seat.setStatus(LOCKED); seat.setLockedBy("B");\nrepo.save(seat)   // last write wins',api:'replaceOne({ _id }) → LOCKED by B',lb:'save (B)',st:'fail',why:'Last write wins. A still believes they hold the seat.',fx:s=>{const d=seat(s);d.lockedBy='B';d.holdId='H-902';}}),
+   ev('booking>gateway>userA','res','A',{t:'A gets 200',api:'200 OK { holdId: "H-901" }',st:'ok',lb:'200 OK',fx:s=>setU(s,'A','Thinks A12 is held','pend')}),
+   ev('booking>gateway>userB','res','B',{t:'B also gets 200',api:'200 OK { holdId: "H-902" }',st:'ok',lb:'200 OK',fx:s=>setU(s,'B','Holds A12','pend'),
+     pause:'Two users hold the same seat → both may pay → refunds or a double-booked seat. Fix: a conditional update, or @Version (Spring Data adds the version to the filter and throws OptimisticLockingFailureException).'})
+  ]}
+ ]};
+
+const S_EXPIRY={goal:'A\'s hold expires while the bank is slow. C grabs the seat. Then pick what happens next.',
+ panels:P_('users','mongo.seats','pay','prov','redis','mongo.bookings','mongo.outbox'),
+ initial:baseState(s=>{s.clock='19:08:00';lock(s,'A','H-901','19:10:00');rd(s,'LOCKED');s.pay['pay-H-901']={holdId:'H-901',providerRef:'pi_77',status:'PROCESSING'};s.prov.pi_77={status:'processing'};setU(s,'A','Bank OTP slow… still paying','pend');setU(s,'C','Browsing show 42');}),
+ prefix:[
+ ev('mongo','int','S',{t:'19:10:00 — A\'s hold expires',clock:'19:10:00',api:'lockExpiresAt (19:10:00) ≤ now',st:'pend',lb:'hold expired',why:'Nothing is deleted. Seat documents are permanent — no TTL index on seats; expiry is a timestamp comparison.',
+   pause:'The hold is logically expired, but A\'s payment is still in flight at the provider.'}),
+ ev('sweeper>mongo','req','S',{t:'Sweeper releases expired holds',clock:'19:10:30',op:'db.seats.updateMany(\n  { status: "LOCKED",\n    lockExpiresAt: { $lt: now } },\n  { $set: { status: "AVAILABLE" },\n    $unset: { lockedBy: "", holdId: "",\n              lockExpiresAt: "" },\n    $inc: { version: 1 } })',api:'updateMany(expired LOCKED) → AVAILABLE',lb:'updateMany expired',fx:s=>release(s)}),
+ ev('mongo>sweeper','res','S',{t:'One seat released',api:'{ modifiedCount: 1 }',st:'ok',lb:'modifiedCount=1'}),
+ ev('sweeper>redis','req','S',{t:'Seat map shows A12 free again',op:'HSET seatmap:42 A12 AVAILABLE',api:'HSET seatmap:42 A12 AVAILABLE',fx:s=>rd(s,'AVAILABLE')}),
+ ev('userC>gateway>booking','req','C',{t:'C taps A12',clock:'19:11:00',api:'POST /seats/lock { showId: 42, seatId: "A12" }',lb:'POST /seats/lock',fx:s=>setU(s,'C','Locking A12…','pend')}),
+ ev('booking>mongo','req','C',{t:'Lock query also accepts an expired lock',op:OP.lockOr('C','H-902','19:21:00'),api:'updateOne($or: AVAILABLE | expired LOCKED) by C',lb:'updateOne (C)',why:'The $or means correctness never depends on the sweeper having run — the sweeper only keeps the seat map fresh.',fx:s=>lock(s,'C','H-902','19:21:00')}),
+ ev('mongo>booking>gateway>userC','res','C',{t:'C holds the seat',api:'modifiedCount: 1 → 200 OK { holdId: "H-902", expiresAt: "19:21:00" }',st:'ok',lb:'200 OK H-902',fx:s=>setU(s,'C','Holding A12 until 19:21','pend')})
+ ],
+ branches:[
+  {id:'lateA',label:'A\'s late payment succeeds',desc:'Provider approves pi_77 at 19:12 → booking validation fails → refund.',tone:'fail',events:[
+   ev('provider>payment','req','S',{t:'A\'s bank finally approves',clock:'19:12:10',api:'webhook payment_intent.succeeded (pi_77)',lb:'webhook pi_77',fx:s=>{s.prov.pi_77.status='succeeded';s.pay['pay-H-901'].status='SUCCEEDED';setU(s,'A','Charged ₹350 · waiting','pend');}}),
+   ev('payment>booking','req','S',{t:'Confirm hold H-901',api:'POST /internal/holds/H-901/confirm { paymentId: "pi_77" }',lb:'confirm H-901'}),
+   ev('booking>mongo','req','S',{t:'Transaction re-checks the hold',op:OP.confirm('H-901','B-5001','evt-9001'),api:'seats.updateOne({ holdId: "H-901", lockExpiresAt > now }) inside txn',lb:'transaction',
+     pause:'Payment succeeded, but hold H-901 no longer owns the seat (holdId is now H-902). Payment success alone never books a seat.'}),
+   ev('mongo>booking','res','S',{t:'No match → abort',api:'{ matchedCount: 0, modifiedCount: 0 } → abortTransaction()',st:'fail',lb:'modifiedCount=0'}),
+   ev('booking>payment','res','S',{t:'Booking rejects the confirm',api:'409 Conflict { error: "HOLD_EXPIRED" }',st:'fail',lb:'409 HOLD_EXPIRED',fx:s=>{s.pay['pay-H-901'].status='REFUND_REQUIRED';}}),
+   ev('payment>provider','req','S',{t:'Initiate a refund',op:'POST /v1/refunds\nIdempotency-Key: refund-pi_77\n{ payment_intent: "pi_77" }',api:'POST /v1/refunds (Idempotency-Key: refund-pi_77)',lb:'refund pi_77',why:'The idempotency key stops a retried refund call from refunding twice.'}),
+   ev('provider>payment','res','S',{t:'Refund accepted by the provider',api:'201 { refund: "re_31", status: "pending" }',st:'pend',lb:'201 re_31',fx:s=>{s.prov.pi_77.refund='re_31 pending';s.pay['pay-H-901'].status='REFUND_PENDING';}}),
+   ev('payment>mongo','req','S',{t:'Record the outcome + outbox event (one transaction)',op:'payments.updateOne({_id:"pay-H-901"}, {$set:{status:"REFUND_PENDING"}})\noutbox.insertOne({ _id:"evt-9002", type:"RefundInitiated", user:"A" })',api:'insert outbox evt-9002 RefundInitiated',lb:'outbox evt-9002',fx:s=>{s.mongo.outbox['evt-9002']={type:'RefundInitiated',user:'A',published:false};}}),
+   ev('mongo>relay>kafka>notif>email','req','S',{t:'A is told: seat expired, refund initiated',api:'evt-9002 → Kafka → Notification → email to A',st:'ok',lb:'notify A',fx:s=>{s.mongo.outbox['evt-9002'].published=true;setU(s,'A','Seat lost · refund initiated (bank: days)','fail');}})
+  ]},
+  {id:'cPays',label:'C pays within the hold',desc:'C completes payment before 19:21 → seat becomes BOOKED by C.',tone:'ok',events:[
+   ev('userC>gateway>payment>provider','req','C',{t:'C pays',clock:'19:13:00',api:'POST /payments { holdId: "H-902" } · Idempotency-Key: pay-H-902',lb:'POST /payments',fx:s=>{s.pay['pay-H-902']={holdId:'H-902',providerRef:'pi_88',status:'PROCESSING'};s.prov.pi_88={status:'requires_action'};setU(s,'C','On payment page','pend');}}),
+   ev('provider>payment','req','S',{t:'C\'s payment succeeds',clock:'19:14:20',api:'webhook payment_intent.succeeded (pi_88)',lb:'webhook pi_88',fx:s=>{s.prov.pi_88.status='succeeded';s.pay['pay-H-902'].status='SUCCEEDED';}}),
+   ev('payment>booking','req','S',{t:'Confirm hold H-902',api:'POST /internal/holds/H-902/confirm { paymentId: "pi_88" }',lb:'confirm H-902'}),
+   ev('booking>mongo','req','S',{t:'Transaction: hold still valid',op:OP.confirm('H-902','B-5002','evt-9003'),api:'holdId H-902 matches · 19:21 > 19:14',lb:'transaction',
+     pause:'C\'s hold is valid: holdId matches and lockExpiresAt 19:21 > now 19:14. The seat becomes BOOKED by C.',
+     fx:s=>{book(s,'B-5002');s.mongo.bookings['B-5002']={user:'C',seat:'A12',holdId:'H-902',status:'CONFIRMED'};s.mongo.outbox['evt-9003']={type:'BookingConfirmed',published:false};}}),
+   ev('mongo>booking','res','S',{t:'Commit OK',api:'modifiedCount: 1 · commitTransaction ✓',st:'ok',lb:'commit ✓'}),
+   ev('booking>redis','req','S',{t:'Cache → BOOKED',op:'HSET seatmap:42 A12 BOOKED',api:'HSET seatmap:42 A12 BOOKED',fx:s=>rd(s,'BOOKED')}),
+   ev('booking>gateway>userC','res','C',{t:'C sees the booking',api:'200 { status: "CONFIRMED", bookingId: "B-5002" }',st:'ok',lb:'CONFIRMED',fx:s=>setU(s,'C','Booked A12 ✓','ok')}),
+   ev('mongo>relay>kafka>notif>email','req','S',{t:'Ticket email to C',api:'evt-9003 → Kafka → Notification → email to C',st:'ok',lb:'ticket to C',why:'If A\'s payment still succeeds later, it follows the other branch: confirm fails → refund.',fx:s=>{s.mongo.outbox['evt-9003'].published=true;setU(s,'C','Booked ✓ · ticket emailed','ok');}})
+  ]}
+ ]};
+
+const S_IDEM={goal:'Double-click on Pay and a redelivered webhook. Neither may charge twice or book twice.',
+ panels:P_('users','pay','prov','mongo.seats','mongo.bookings'),
+ initial:baseState(s=>{s.clock='19:03:00';lock(s,'A','H-901','19:10:00');rd(s,'LOCKED');setU(s,'A','Holding A12 · clicks Pay','pend');}),
+ prefix:[
+ ev('userA>gateway>payment','req','A',{t:'A clicks Pay',api:'POST /payments { holdId: "H-901" } · Idempotency-Key: pay-H-901',lb:'POST /payments #1'}),
+ ev('userA>gateway>payment','req','A',{t:'A double-clicks (or the app retries after a timeout)',api:'POST /payments { holdId: "H-901" } · Idempotency-Key: pay-H-901',lb:'POST /payments #2',why:'Same Idempotency-Key — the client generates it once per hold, not per click.'}),
+ ev('payment>mongo','req','A',{t:'Request #1 claims the key',op:'payments.insertOne({ _id: "pay-H-901",\n  holdId: "H-901", status: "CREATED" })   // _id is unique',api:'insertOne({ _id: "pay-H-901" })',lb:'insert key #1',fx:s=>{s.pay['pay-H-901']={holdId:'H-901',status:'CREATED'};}}),
+ ev('payment>mongo','req','A',{t:'Request #2 hits the unique key',op:'payments.insertOne({ _id: "pay-H-901", … })\n→ E11000 duplicate key error',api:'insertOne → E11000 duplicate key',lb:'insert key #2',st:'fail',why:'Duplicate key → read the stored record and return its result instead of charging again.'}),
+ ev('mongo>payment','res','A',{t:'Only #1 proceeds',api:'#1 inserted ✓ · #2 E11000 duplicate key',st:'ok',lb:'#1 ✓ · #2 dup',pause:'Only request #1 talks to the provider. Request #2 returns the stored outcome (or 409 "in progress" until it exists).'}),
+ ev('payment>provider','req','A',{t:'Create the intent once',op:'POST /v1/payment_intents\nIdempotency-Key: pay-H-901',api:'POST /v1/payment_intents (Idempotency-Key: pay-H-901)',lb:'create intent',fx:s=>{s.prov.pi_77={status:'requires_action'};}}),
+ ev('provider>payment>gateway>userA','res','A',{t:'Both requests get the same paymentId',api:'201 { paymentId: "pi_77" } — returned for #1 and #2',st:'pend',lb:'201 pi_77',fx:s=>{s.pay['pay-H-901'].providerRef='pi_77';s.pay['pay-H-901'].status='PROCESSING';setU(s,'A','On payment page (one charge)','pend');}}),
+ ev('provider','int','A',{t:'A pays',clock:'19:04:10',api:'pi_77 → succeeded',st:'ok',lb:'paid',fx:s=>{s.prov.pi_77.status='succeeded';}}),
+ ev('provider>payment>booking','req','S',{t:'Webhook evt_1 → confirm H-901',api:'payment_intent.succeeded (evt_1, pi_77) → confirm H-901',lb:'webhook evt_1',fx:s=>{s.pay['pay-H-901'].status='SUCCEEDED';}}),
+ ev('booking>mongo','req','S',{t:'Confirm transaction',op:OP.confirm('H-901','B-5001','evt-9001'),api:'withTransaction → seat BOOKED, booking B-5001',lb:'transaction',
+   fx:s=>{book(s,'B-5001');s.mongo.bookings['B-5001']={user:'A',holdId:'H-901',status:'CONFIRMED'};s.mongo.outbox['evt-9001']={type:'BookingConfirmed',published:false};}}),
+ ev('mongo>booking>payment','res','S',{t:'Committed',api:'commit ✓ → 200 confirmed',st:'ok',lb:'commit ✓',fx:s=>setU(s,'A','Booked A12 ✓','ok')}),
+ ev('payment>provider','res','S',{t:'Our 200 ack is lost (network timeout)',api:'200 OK … ✖ provider never received it',st:'fail',lb:'ack lost ✖',why:'No 2xx seen by the provider → it will redeliver the same event.'}),
+ ev('provider>payment>booking','req','S',{t:'Same webhook redelivered',clock:'19:05:10',api:'payment_intent.succeeded (evt_1 again) → confirm H-901',lb:'webhook evt_1 again',pause:'Duplicate delivery. The confirm must be idempotent — not a second booking, not a refund.'}),
+ ev('booking>mongo','req','S',{t:'Conditional confirm matches nothing → look at the seat',op:'seats.updateOne({ _id:"42:A12", status:"LOCKED", holdId:"H-901", … })\n→ matchedCount 0\nseats.findOne({ _id:"42:A12" })\n→ { status:"BOOKED", holdId:"H-901", bookingId:"B-5001" }',api:'matched 0 → seat already BOOKED for the same hold H-901',lb:'check seat',why:'Already BOOKED by this same holdId → it is a replay, not a conflict. (bookings also has a unique index on holdId.)'}),
+ ev('mongo>booking>payment>provider','res','S',{t:'Replay answered with the existing booking',api:'200 OK (already CONFIRMED B-5001) — no second booking, no refund',st:'ok',lb:'200 (replay)'})
+ ]};
+
+const S_OUTBOX={goal:'Booking is committed with an outbox event. Follow it to Kafka and watch a consumer crash cause a redelivery.',
+ panels:P_('users','mongo.outbox','kafka','mongo.bookings'),
+ initial:baseState(s=>{s.clock='19:03:41';book(s,'B-5001');s.mongo.seats[SEAT].holdId='H-901';s.mongo.bookings['B-5001']={user:'A',seat:'A12',status:'CONFIRMED'};s.mongo.outbox['evt-9001']={type:'BookingConfirmed',bookingId:'B-5001',published:false};setU(s,'A','Booked ✓ · waiting for email','pend');}),
+ prefix:[
+ ev('mongo>relay','req','S',{t:'Change stream delivers the outbox insert',op:'outbox.watch([{ $match: { operationType: "insert" } }])\n→ evt-9001 BookingConfirmed',api:'change event: insert evt-9001',lb:'change event',why:'The event was committed in the same transaction as the booking — no dual write from the service.'}),
+ ev('relay>kafka','req','S',{t:'Produce to booking-events',op:'producer.send(topic "booking-events",\n  key "42", value evt-9001)\nacks=all · enable.idempotence=true',api:'produce key "42" → partition 1',lb:'produce',fx:s=>kpush(s,42,'evt-9001 BookingConfirmed')}),
+ ev('kafka>relay>mongo','res','S',{t:'Broker ack → mark published',api:'ack offset 42 → outbox.published = true',st:'ok',lb:'ack · mark',why:'Crash before marking → the relay republishes → downstream duplicates. Consumers dedupe by eventId.',fx:s=>{s.mongo.outbox['evt-9001'].published=true;}}),
+ ev('kafka>notif','res','S',{t:'Consumer polls',api:'poll() → partition 1, offset 42 (evt-9001)',st:'pend',lb:'offset 42'})
+ ],
+ branches:[
+  {id:'nodedupe',label:'❌ No dedupe',desc:'Send email, crash before committing the offset.',tone:'fail',events:[
+   ev('notif>email','req','S',{t:'Send ticket email',op:'ses.sendEmail(to A, ticket B-5001)\n→ MessageId 0101-a',api:'SendEmail → MessageId 0101-a',lb:'send #1',fx:s=>setU(s,'A','1 ticket email','ok')}),
+   ev('notif','int','S',{t:'Pod crashes before committing the offset',api:'✖ OOMKilled — committed offset is still 42',st:'fail',lb:'crash ✖',pause:'The email went out, but Kafka does not know. Committed offset 42 means "resume from 42".'}),
+   ev('kafka>notif','res','S',{t:'Rebalance: new pod resumes at the committed offset',api:'poll() → offset 42 again (evt-9001)',st:'pend',lb:'offset 42 again'}),
+   ev('notif>email','req','S',{t:'Email sent a second time',op:'ses.sendEmail(to A, ticket B-5001)\n→ MessageId 0101-b',api:'SendEmail → MessageId 0101-b',lb:'send #2',st:'fail',why:'SES / SMTP have no general send-idempotency key — the provider happily sends a second copy.',fx:s=>setU(s,'A','2 identical ticket emails','fail')}),
+   ev('notif>kafka','req','S',{t:'Commit the offset',op:'consumer.commitSync({ p1: 43 })',api:'commit offset 43',lb:'commit 43',st:'ok',fx:s=>{s.kafka.committed=43;}})
+  ]},
+  {id:'dedupe',label:'✅ Dedupe log by eventId',desc:'Check a log before sending, write it after sending.',tone:'ok',events:[
+   ev('notif>mongo','req','S',{t:'Check the dedupe log',op:'notification_log.findOne({ _id: "evt-9001" })\n→ null',api:'findOne evt-9001 → null',lb:'check log'}),
+   ev('notif>email','req','S',{t:'Send ticket email',op:'ses.sendEmail(to A, ticket B-5001)\n→ MessageId 0101-a',api:'SendEmail → MessageId 0101-a',lb:'send',fx:s=>setU(s,'A','1 ticket email','ok')}),
+   ev('notif>mongo','req','S',{t:'Record that it was sent',op:'notification_log.insertOne({ _id: "evt-9001",\n  messageId: "0101-a" })',api:'insert notification_log evt-9001',lb:'write log',fx:s=>{s.mongo.notification_log['evt-9001']={messageId:'0101-a'};}}),
+   ev('notif','int','S',{t:'Pod crashes before committing the offset',api:'✖ OOMKilled — committed offset is still 42',st:'fail',lb:'crash ✖'}),
+   ev('kafka>notif','res','S',{t:'Redelivered after rebalance',api:'poll() → offset 42 again (evt-9001)',st:'pend',lb:'offset 42 again'}),
+   ev('notif>mongo','req','S',{t:'Dedupe log hit → skip sending',op:'notification_log.findOne({ _id: "evt-9001" })\n→ found → skip send',api:'evt-9001 already sent → skip',st:'ok',lb:'log hit',
+     pause:'Duplicate suppressed. Remaining gap: a crash between sendEmail() and insertOne() still sends twice. This is at-least-once with dedupe — not exactly-once.'}),
+   ev('notif>kafka','req','S',{t:'Commit the offset',op:'consumer.commitSync({ p1: 43 })',api:'commit offset 43',lb:'commit 43',st:'ok',fx:s=>{s.kafka.committed=43;}})
+  ]}
+ ]};
+// outbox scenario also shows the dedupe log
+S_OUTBOX.panels.splice(2,0,['mongo.notification_log','MongoDB · notification_log','docs','🍃']);
+
+const S_STALE={goal:'Redis still says A12 is AVAILABLE after A booked it. Show why that is only a UX problem, not a double booking.',
+ panels:P_('users','redis','mongo.seats'),
+ initial:baseState(s=>{s.clock='19:20:00';lock(s,'A','H-901','19:10:02');book(s,'B-5001');setU(s,'B','Browsing show 42');}),
+ prefix:[
+ ev('userB>gateway>booking','req','B',{t:'B opens the seat map',api:'GET /shows/42/seats',lb:'GET /shows/42/seats'}),
+ ev('booking>redis','req','B',{t:'Read the cache',op:'HGETALL seatmap:42',api:'HGETALL seatmap:42',lb:'HGETALL'}),
+ ev('redis>booking','res','B',{t:'Cache says AVAILABLE — stale!',api:'{ A12: AVAILABLE } (DB says BOOKED)',st:'pend',lb:'A12 AVAILABLE ⚠',why:'The HSET after A\'s booking failed during a Redis blip. Cache and DB disagree.'}),
+ ev('booking>gateway>userB','res','B',{t:'B sees A12 as free',api:'200 OK · A12 shown available',st:'ok',lb:'200 OK',fx:s=>setU(s,'B','Sees A12 available (stale)','pend')}),
+ ev('userB>gateway>booking','req','B',{t:'B taps A12',api:'POST /seats/lock { showId: 42, seatId: "A12" }',lb:'POST /seats/lock',fx:s=>setU(s,'B','Locking A12…','pend')}),
+ ev('booking>mongo','req','B',{t:'The decision is made in MongoDB',op:OP.lockOr('B','H-903','19:30:00'),api:'updateOne($or: AVAILABLE | expired LOCKED)',lb:'updateOne (B)',pause:'MongoDB, not Redis, decides. Status is BOOKED → the filter matches nothing.'}),
+ ev('mongo>booking','res','B',{t:'No match',api:'{ matchedCount: 0, modifiedCount: 0 }',st:'fail',lb:'modifiedCount=0'}),
+ ev('booking>redis','req','B',{t:'Repair the cache entry',op:'status = seats.findOne({_id:"42:A12"}).status\nHSET seatmap:42 A12 BOOKED   (+ TTL safety net)',api:'HSET seatmap:42 A12 BOOKED',lb:'repair cache',fx:s=>rd(s,'BOOKED')}),
+ ev('booking>gateway>userB','res','B',{t:'B gets a clear conflict',api:'409 Conflict { error: "SEAT_UNAVAILABLE", status: "BOOKED" }',st:'fail',lb:'409 Conflict',fx:s=>setU(s,'B','A12 shown taken → picks A14','fail')})
+ ]};
+
+/* ---------- interview script ---------- */
+const INTERVIEW=[
+ {t:'Clarifying questions',lines:[
+  ['I','Let\'s design a ticket booking system — think BookMyShow or Ticketmaster.'],
+  ['C','Sure. Before I draw anything, can I ask a few questions to pin down the scope?'],
+  ['I','Go ahead.'],
+  ['C','Are users picking specific seats on a seat map, or is it general admission?'],
+  ['I','Specific seats. Movies and concerts.'],
+  ['C','What scale should I design for — a normal day, and the worst on-sale moment?'],
+  ['I','About 50,000 shows a day and a few thousand bookings a minute. A big concert can bring 200,000 users in the first five minutes.'],
+  ['C','How long should a seat stay held while the user pays, and is payment through an external gateway?'],
+  ['I','Ten minutes. Yes — an external provider like Stripe or Razorpay.'],
+  ['C','Should I cover search, pricing and recommendations, or focus on seat selection through to the confirmed ticket?'],
+  ['I','Focus on selecting, holding, paying and confirming.'],
+  ['P','Write on the board: 50k shows/day · ~50 bookings/s · 200k users on a hot on-sale · 10-min hold']]},
+ {t:'Assumptions to confirm',lines:[
+  ['C','Let me confirm a few assumptions. First, a seat must never be sold twice — on the booking path I\'ll choose consistency over availability.'],
+  ['I','Agreed.'],
+  ['C','Second, the seat map can be a few seconds stale. The real check happens when the seat is locked.'],
+  ['I','That\'s fine.'],
+  ['C','Third, payments are asynchronous: a webhook can arrive late, twice, or after the hold expired — so I\'ll need refunds for that case.'],
+  ['I','Good point.'],
+  ['C','And notifications are at-least-once. A duplicate email is possible but rare — I won\'t promise exactly-once.'],
+  ['I','What about several seats in one booking?'],
+  ['C','I\'ll explain one seat first, then extend it: several seats are locked together inside one transaction, all-or-nothing.'],
+  ['P','Keep the assumptions in a corner of the board — you will point back to them']]},
+ {t:'Requirements',lines:[
+  ['C','Functional: view the seat map, hold seats for ten minutes, pay, confirm the booking, release expired holds, and send the ticket.'],
+  ['C','Non-functional: no double booking — that\'s the big one. Seat-map reads under about 200 ms at p99, lock and confirm under about 500 ms excluding the payment page, 99.95% availability, and payments we can audit and reconcile.'],
+  ['I','Any thoughts on load?'],
+  ['C','Fifty bookings a second is easy. The hard part is concentration: 200k users on one show means thousands of lock attempts per second on a few hundred seat documents. For hot shows I\'d put a virtual waiting room in front.'],
+  ['P','Pause — check the interviewer agrees before you draw']]},
+ {t:'Introduce the architecture',lines:[
+  ['C','I\'ll draw the main path left to right.'],
+  ['P','Draw: Users → Gateway → Booking Service → MongoDB. Redis above, Payment below, Kafka on the right'],
+  ['C','Clients go through an API gateway for auth and rate limiting. Booking Service owns seats and holds. MongoDB is the source of truth — one document per seat per show.'],
+  ['C','Redis caches the seat map for fast reads, but it never decides who gets a seat.'],
+  ['C','Payment Service talks to the provider and receives its webhooks. When a booking is confirmed, I write an outbox event in the same Mongo transaction; a relay publishes it to Kafka and Notification Service sends the ticket.'],
+  ['C','And a small sweeper job releases expired holds so the seat map stays fresh.'],
+  ['I','Why one document per seat instead of one per show?'],
+  ['C','Contention. With one document per show, every lock for that show fights over one document. Per-seat documents mean two users only conflict when they want the same seat.']]},
+ {t:'Walk the positive flow',lines:[
+  ['C','Let me walk one happy booking. User A loads the seat map — that\'s served from Redis.'],
+  ['C','A taps seat A12. Booking Service runs one conditional update: match the seat only if its status is AVAILABLE, and set it to LOCKED with lockedBy A, a holdId, and an expiry ten minutes out.'],
+  ['P','Point at the arrow to MongoDB when you say "conditional"'],
+  ['C','modifiedCount is 1, so A gets a 200 with the holdId. A pays; I create the payment with an idempotency key tied to the hold.'],
+  ['C','When the provider\'s webhook arrives, one transaction re-checks that the hold is still valid, marks the seat BOOKED, inserts the booking and inserts an outbox event.'],
+  ['C','The relay publishes the event to Kafka; the notification consumer emails the ticket and then commits its offset.']]},
+ {t:'Concurrency & failures',lines:[
+  ['I','What if two users tap the same seat at the same moment?'],
+  ['C','Both run the same conditional update. MongoDB updates a single document atomically, so only one matches. The winner gets modifiedCount 1 and HTTP 200; the other gets 0 and I return 409.'],
+  ['I','And if the hold expires while the user is still paying?'],
+  ['C','The hold is a timestamp, not a TTL delete — seat documents are permanent. After expiry another user\'s lock can take the seat. If A\'s payment succeeds later, the confirm re-checks holdId and expiry, matches nothing, and I refund A.'],
+  ['P','Say it clearly: payment success alone does not mean the seat is yours'],
+  ['I','What if the webhook arrives twice?'],
+  ['C','Confirm is idempotent: if the seat is already BOOKED for the same holdId, I return the existing booking. Payment creation also uses an idempotency key, so a double click doesn\'t charge twice.'],
+  ['I','What if the service crashes after the commit but before publishing to Kafka?'],
+  ['C','That\'s why I use the outbox: the event is committed with the booking and the relay retries until Kafka acknowledges. Delivery is at-least-once, so the consumer dedupes by eventId — an email could still be duplicated in a rare crash window.']]},
+ {t:'Conclude',lines:[
+  ['C','To sum up: MongoDB is the source of truth with per-seat documents and conditional updates, so a seat can\'t be double booked. Holds expire by timestamp, and every confirm re-validates the hold — late payments are refunded.'],
+  ['C','Reliability comes from idempotency keys, an idempotent confirm, and the outbox with at-least-once delivery plus dedupe.'],
+  ['C','With more time I\'d add a virtual waiting room for hot shows, shard seats by showId, push seat changes over WebSockets, and run a reconciliation job against the payment provider.'],
+  ['C','I\'d monitor the lock-conflict rate, hold-to-booking conversion, late-payment refunds and consumer lag.'],
+  ['I','Great, thanks.']]}
+];
+const SUMMARY60='Users go through a gateway to a Booking Service. MongoDB is the source of truth with one document per seat. To hold a seat I run a conditional update — only if status is AVAILABLE — so with two concurrent users exactly one gets modifiedCount 1 and a 200, the other gets 409. The hold has a lockExpiresAt timestamp; expired holds are reclaimed by the next lock query and cleaned up by a sweeper — no TTL index, because seat documents are permanent. Payment uses an idempotency key. On the webhook, one transaction re-checks the hold, marks the seat BOOKED, inserts the booking and an outbox event; if the hold has expired, I refund. A relay publishes the outbox to Kafka, and the notification consumer dedupes by eventId, so delivery is at-least-once. Redis only caches the seat map. For hot shows I add a waiting room and shard by showId.';
+
+/* ---------- follow-up questions ---------- */
+const FGROUPS=[['cc','Concurrency & consistency','#3B82F6'],['db','Database failures','#16A34A'],['ca','Cache failures','#DC2626'],['mq','Messaging failures','#9333EA'],['sc','Scalability','#F97316'],['pf','Performance','#0EA5E9'],['rr','Reliability & recovery','#14B8A6'],['tt','Technology trade-offs','#64748B']];
+const FOLLOW=[
+ {g:'cc',q:'Two users lock the same seat in the same millisecond — who wins?',w:'Both run updateOne({_id, status:"AVAILABLE"}, …). Exactly one gets modifiedCount=1; the other gets 0 → HTTP 409.',y:'MongoDB applies a single-document update atomically, and the filter is evaluated against the current document.',h:'Conditional update (compare-and-set) on the seat document. Never read-then-write.',t:'The loser only learns after clicking — keep the seat map fresh and suggest nearby seats.',viz:['race','correct']},
+ {g:'cc',q:'Why is findOne() then save() wrong, and how does @Version help?',w:'Both requests read AVAILABLE and both save — last write wins, both get 200.',y:'Check and write are two operations; another request slips in between.',h:'Conditional update, or Spring Data @Version: save() adds the version to the filter and throws OptimisticLockingFailureException on mismatch.',t:'Optimistic locking needs a retry or 409 path; under heavy contention most retries fail.',viz:['race','wrong']},
+ {g:'cc',q:'How do you hold 4 seats atomically?',w:'Locking one by one can leave a partial hold when seat 3 is already taken.',y:'Each single-document update is atomic, but several documents are not all-or-nothing without a transaction.',h:'Inside a transaction: updateMany({_id:{$in:[…]}, status:"AVAILABLE"}, …) and abort unless modifiedCount == 4. Or lock in sorted order and release on failure (compensation).',t:'Transactions add latency and abort on write conflicts (retry); compensation is simpler but briefly shows partial holds.'},
+ {g:'cc',q:'Can clock skew between pods break the expiry check?',w:'One pod may think a hold expired while another thinks it is still valid.',y:'lockExpiresAt is compared with "now" — and every server has its own clock.',h:'Use one time source: compare with database time ($$NOW in an $expr filter), or NTP-synced servers plus a small grace period on confirm.',t:'A grace period slightly lengthens holds; DB-time filters make queries a bit more complex.'},
+ {g:'db',q:'Why not a MongoDB TTL index to expire holds?',w:'A TTL index deletes the whole document once it expires.',y:'Seat documents are permanent — deleting one loses the seat. The TTL monitor also runs only about every 60 s, so timing is not precise.',h:'Keep lockExpiresAt as a field: lock queries treat expired LOCKED as free and a sweeper resets them. (TTL is fine on a separate, disposable holds collection.)',t:'You run a sweeper and need an index on {status, lockExpiresAt}.',viz:['expiry']},
+ {g:'db',q:'The Mongo primary fails during a lock request — what happens?',w:'The write may time out while a new primary is elected (usually seconds).',y:'Replica set failover; writes acknowledged with w:"majority" survive, unacknowledged ones may be rolled back.',h:'Retryable writes in the driver; the client retries POST /seats/lock with the same idempotency key; the conditional update makes the retry safe.',t:'A few seconds of write unavailability; w:"majority" adds latency to every lock.'},
+ {g:'db',q:'The confirm transaction aborts with a write conflict — then what?',w:'MongoDB aborts one of two transactions that touch the same seat.',y:'Concurrent transactions on one document conflict; the loser gets a TransientTransactionError.',h:'withTransaction retries automatically. Because the seat filter re-checks holdId and expiry, a retry either succeeds once or correctly fails.',t:'Retries add latency — keep transactions short, with no HTTP calls inside.'},
+ {g:'ca',q:'Redis shows a seat AVAILABLE but it is already BOOKED — can we double book?',w:'No. The user sees a stale seat, tries to lock, and gets 409.',y:'The cache update after the commit failed; Redis is a view, not the source of truth.',h:'All decisions in MongoDB; repair the cache entry on conflict; short TTL on seat-map keys; optionally refresh from the change stream.',t:'Occasional bad UX: a 409 after choosing a seat.',viz:['stale']},
+ {g:'ca',q:'Redis is completely down — is booking down?',w:'Seat-map reads lose their cache; locking still works.',y:'Locks never read Redis; reads fall through to MongoDB, which can be overloaded at peak.',h:'Serve the seat map from MongoDB with a projection and a rate limit (or from secondaries — stale reads are acceptable here); circuit-break the cache client.',t:'Higher DB load and latency until Redis recovers.'},
+ {g:'mq',q:'The service crashes after the commit but before kafka.send() — is the event lost?',w:'With a direct send after commit, yes: the booking exists but nobody is notified.',y:'MongoDB and Kafka cannot be updated atomically together — the dual-write problem.',h:'Transactional outbox: insert the event in the same Mongo transaction; a relay (change stream or poller) publishes it and marks it published.',t:'Extra collection and relay; delivery becomes at-least-once because the relay can republish.',viz:['outbox','dedupe']},
+ {g:'mq',q:'Kafka redelivers the same event — does the user get two emails?',w:'Without dedupe, yes: crash after sending, before the offset commit → redelivery.',y:'Kafka consumers are at-least-once here, and SES/SMTP sending has no general idempotency key.',h:'Dedupe log keyed by eventId: check before sending, write after sending, commit the offset after processing.',t:'A crash between send and the log write can still duplicate — rare, not zero.',viz:['outbox','nodedupe']},
+ {g:'mq',q:'Kafka is down for 10 minutes — do bookings fail?',w:'No. Bookings commit; outbox rows pile up.',y:'Kafka is not on the critical booking path.',h:'The relay retries with backoff and resumes from the stored resume token / unpublished rows.',t:'Tickets arrive late — alert on the age of the oldest unpublished outbox event.'},
+ {g:'sc',q:'200,000 users open the same concert at 10:00 — what breaks first?',w:'Thousands of lock attempts per second on a few hundred seat documents, plus a seat-map read storm.',y:'All load lands on one show, i.e. on one shard\'s hot documents.',h:'Virtual waiting room that admits users in batches; seat map from Redis; per-user rate limits at the gateway.',t:'Users wait in a queue — fairness and queue UX matter.'},
+ {g:'sc',q:'How would you shard the seats collection?',w:'Shard key on showId (hashed or zoned), with _id "showId:seatId".',y:'The seat-map query needs all seats of one show — keeping a show on one shard avoids scatter-gather.',h:'Different shows spread across shards; each show\'s seats live together.',t:'One very hot show is limited by one shard\'s write capacity — the waiting room protects it.'},
+ {g:'pf',q:'How do other users see a seat turn grey in real time?',w:'Polling the seat map every few seconds wastes capacity at scale.',y:'Seat changes are small and frequent during an on-sale.',h:'Publish seat changes (change stream or Kafka) to a WebSocket/SSE gateway; clients patch their map.',t:'Many open connections; still need the 409 path because pushes can lag.'},
+ {g:'pf',q:'What is in the latency budget of the lock call?',w:'Gateway → Booking → one Mongo update → response.',y:'A single _id update with w:"majority" is a few milliseconds within one region.',h:'Keep the lock path free of other calls (no payment, no Kafka); update Redis best-effort after the DB write.',t:'The cache can lag the DB briefly.'},
+ {g:'rr',q:'Payment succeeded but the hold already expired — what do you do?',w:'Confirm finds a holdId/expiry mismatch → modifiedCount=0.',y:'Payment success alone doesn\'t prove the seat is still reserved for this user.',h:'Abort, mark the payment REFUND_REQUIRED, refund with an idempotency key, notify the user. Optionally offer another seat.',t:'Unhappy user and a refund that takes days. Reduce it by expiring the checkout session before the hold where the provider allows it.',viz:['expiry','lateA']},
+ {g:'rr',q:'User double-clicks Pay or the app retries — charged twice?',w:'Two POST /payments for the same hold.',y:'Retries and impatient clicks are normal.',h:'Client sends an Idempotency-Key per hold; Payment Service stores it under a unique index; the provider call reuses the same key (e.g. Stripe\'s Idempotency-Key).',t:'Keys must be stored for a retention window, and be per intent, not per click.',viz:['idem']},
+ {g:'rr',q:'The webhook never arrives — is the user stuck?',w:'The provider says succeeded; our payment stays PROCESSING.',y:'Webhooks can be delayed, or stop after the provider\'s retries run out.',h:'A reconciliation job queries the provider for payments PROCESSING longer than N minutes and replays the (idempotent) confirm; the client polls GET /holds/{id}.',t:'Extra provider API calls; a late reconcile can hit an expired hold → refund.'},
+ {g:'tt',q:'Why MongoDB and not PostgreSQL?',w:'Both work.',y:'Postgres: UPDATE seats SET status=\'LOCKED\' WHERE id=? AND status=\'AVAILABLE\' (or SELECT … FOR UPDATE) with natural multi-row transactions. Mongo: per-seat documents + conditional updates; multi-document transactions need a replica set.',h:'Pick by stack and team; the compare-and-set idea is the same in both.',t:'Mongo transactions cost more than single updates; scaling Postgres writes needs partitioning or sharding work.'},
+ {g:'tt',q:'Why Kafka and not RabbitMQ for booking events?',w:'Several consumers (notification, analytics, loyalty) need the same events.',y:'Kafka keeps a replayable log, ordering per key within a partition, and independent consumer groups.',h:'Key by showId; one consumer group per downstream service.',t:'More operational overhead; RabbitMQ is simpler for plain work queues.'},
+ {g:'tt',q:'Can you guarantee exactly-once ticket emails?',w:'No.',y:'Kafka exactly-once covers read-process-write inside Kafka. An email is an external side effect without a send-idempotency key.',h:'At-least-once + dedupe log by eventId; make duplicates rare and harmless.',t:'Very rare duplicates remain; true exactly-once would need the receiver to dedupe.',viz:['outbox','dedupe']}
+];
+
+const MODEL={
+ trans:{
+  lock:{t:'lock (AVAILABLE → LOCKED)',code:OP.lock('A','H-901','now + 10m')+'\n<c>// modifiedCount 1 → 200 · 0 → 409</c>'},
+  reclaim:{t:'reclaim expired (LOCKED → LOCKED by someone else)',code:OP.lockOr('C','H-902','now + 10m')},
+  expire:{t:'sweeper (LOCKED → AVAILABLE)',code:'db.seats.updateMany(\n  { status: "LOCKED", lockExpiresAt: { $lt: now } },\n  { $set: { status: "AVAILABLE" },\n    $unset: { lockedBy: "", holdId: "", lockExpiresAt: "" },\n    $inc: { version: 1 } })\n<c>// index { status: 1, lockExpiresAt: 1 }</c>'},
+  confirm:{t:'confirm (LOCKED → BOOKED, in a transaction)',code:OP.confirm('H-901','B-5001','evt-9001')},
+  cancel:{t:'cancel booking (BOOKED → AVAILABLE)',code:'withTransaction:\n  seats.updateOne({ _id: "42:A12", status: "BOOKED",\n                    bookingId: "B-5001" },\n    { $set: { status: "AVAILABLE" },\n      $unset: { lockedBy:"", holdId:"", bookingId:"" } })\n  bookings.updateOne({ _id: "B-5001" },\n    { $set: { status: "CANCELLED" } })\n  outbox.insertOne({ type: "BookingCancelled" })  <c>// → refund</c>'}
+ }
+};
+
+const DESIGNS=[
+ {id:'url',n:1,title:'URL Shortener',icon:'🔗',desc:'Key generation, redirects, hot-key caching, analytics.',tags:['Base62','Redis','Kafka'],status:'queued'},
+ {id:'rate',n:2,title:'Rate Limiter',icon:'⏱',desc:'Token bucket vs sliding window in a distributed gateway.',tags:['Redis Lua','Gateway'],status:'queued'},
+ {id:'notify',n:3,title:'Notification System',icon:'🔔',desc:'Fan-out, retries, preferences, provider failover.',tags:['Kafka','SES','DLQ'],status:'queued'},
+ {id:'ticket',n:4,title:'Ticket Booking',icon:'🎟',desc:'Seat locks, races, expiring holds, late payments, outbox.',tags:['MongoDB CAS','Payments','Outbox'],status:'live'},
+ {id:'files',n:5,title:'File Upload & Storage',icon:'📁',desc:'Presigned URLs, multipart upload, virus scan, metadata.',tags:['S3','Presigned','Events'],status:'queued'},
+ {id:'chat',n:6,title:'Chat System',icon:'💬',desc:'WebSockets, ordering, delivery receipts, presence.',tags:['WebSocket','Kafka','Fan-out'],status:'queued'},
+ {id:'shop',n:7,title:'E-commerce Order System',icon:'🛒',desc:'Inventory reservation, saga, payment, idempotency.',tags:['Saga','Outbox','Inventory'],status:'queued'},
+ {id:'jobs',n:8,title:'Distributed Job Scheduler',icon:'⏰',desc:'Leases, at-least-once runs, retries, fencing tokens.',tags:['Leases','Fencing','Retries'],status:'queued'},
+ {id:'feed',n:9,title:'News Feed',icon:'📰',desc:'Fan-out on write vs read, ranking.',tags:[],status:'soon'},
+ {id:'search',n:10,title:'Search System',icon:'🔍',desc:'Inverted index, indexing pipeline.',tags:[],status:'soon'},
+ {id:'video',n:11,title:'Video Streaming',icon:'🎬',desc:'Transcoding, CDN, adaptive bitrate.',tags:[],status:'soon'},
+ {id:'cache',n:12,title:'Distributed Cache',icon:'⚡',desc:'Consistent hashing, eviction, replication.',tags:[],status:'soon'}
+];
+const TICKET={id:'ticket',title:'Ticket Booking',nodes:NODES,edges:EDGES,slides:[
+ {grp:'Overview',type:'scenario',title:'Architecture',sub:'click each component',sc:S_ARCH,arch:true},
+ {grp:'Overview',type:'model',title:'Data model & APIs',sub:'seat state machine'},
+ {grp:'Scenarios',type:'scenario',id:'happy',title:'Happy path booking',sub:'User A, end to end',sc:S_HAPPY},
+ {grp:'Scenarios',type:'scenario',id:'race',title:'Race for the same seat',sub:'A vs B · 200 vs 409',sc:S_RACE},
+ {grp:'Scenarios',type:'scenario',id:'expiry',title:'Expiry & late payment',sub:'A expires, C grabs · 2 outcomes',sc:S_EXPIRY},
+ {grp:'Scenarios',type:'scenario',id:'idem',title:'Duplicate requests',sub:'double click · webhook replay',sc:S_IDEM},
+ {grp:'Scenarios',type:'scenario',id:'outbox',title:'Outbox & redelivery',sub:'crash before offset commit',sc:S_OUTBOX},
+ {grp:'Scenarios',type:'scenario',id:'stale',title:'Stale seat-map cache',sub:'Redis ≠ source of truth',sc:S_STALE},
+ {grp:'Interview',type:'interview',title:'Interview script',sub:'practise aloud · 60 s summary'},
+ {grp:'Interview',type:'followups',title:'Follow-up questions',sub:FOLLOW.length+' Q&A · visualize failures'}
+]};
+const IMPL={ticket:TICKET};
+
+/* =====================================================================
+   ENGINE
+   ===================================================================== */
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const clone=o=>JSON.parse(JSON.stringify(o));
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const UC={A:'var(--uA)',B:'var(--uB)',C:'var(--uC)',S:'var(--uS)'};
+const UHEX={A:'#3B82F6',B:'#9333EA',C:'#10B981',S:'#6366F1'};
+const KC={user:null,edge:'#64748B',svc:'#6366F1',cache:'#DC382D',db:'#47A248',job:'#14B8A6',ext:'#D97706',queue:'#475569'};
+const ST={design:null,si:0,step:-1,branch:null,playing:false,speed:1,stopAt:true,raf:0,timer:0,anim:null,sel:null};
+const store={get(k,d){try{const v=localStorage.getItem('sdsim-'+k);return v===null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem('sdsim-'+k,JSON.stringify(v));}catch(e){}}};
+
+/* ---- icons ---- */
+const ICON={
+ user:c=>`<circle cx="12" cy="8" r="4" fill="none" stroke="${c}" stroke-width="2"/><path d="M4 21c0-4.2 3.6-6.5 8-6.5s8 2.3 8 6.5" fill="none" stroke="${c}" stroke-width="2"/>`,
+ shield:c=>`<path d="M12 2l8 3v6c0 5-3.4 9-8 11-4.6-2-8-6-8-11V5z" fill="none" stroke="${c}" stroke-width="2"/><path d="M8.5 12l2.5 2.5 4.5-5" fill="none" stroke="${c}" stroke-width="2"/>`,
+ svc:c=>`<path d="M12 2l9 5v10l-9 5-9-5V7z M3 7l9 5 9-5 M12 12v10" fill="none" stroke="${c}" stroke-width="1.8" stroke-linejoin="round"/>`,
+ bolt:c=>`<path d="M13 2L4 14h7l-1 8 10-13h-7z" fill="${c}"/>`,
+ mongo:c=>`<path fill="${c}" d="M17.193 9.555c-1.264-5.58-4.252-7.414-4.573-8.115-.28-.394-.53-.954-.735-1.44-.036.495-.055.685-.523 1.184-.723.566-4.438 3.682-4.74 10.02-.282 5.912 4.27 9.435 4.888 9.884l.07.05A73.49 73.49 0 0111.91 24h.481c.114-1.032.284-2.056.51-3.07.417-.296.604-.463.85-.693a11.342 11.342 0 003.639-8.464c.01-.814-.103-1.662-.197-2.218zm-5.336 8.195s0-8.291.275-8.29c.213 0 .49 10.695.49 10.695-.381-.045-.765-1.76-.765-2.405z"/>`,
+ clock:c=>`<circle cx="12" cy="12" r="9" fill="none" stroke="${c}" stroke-width="2"/><path d="M12 7v5l3.5 2" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"/>`,
+ card:c=>`<rect x="2" y="5" width="20" height="14" rx="2.5" fill="none" stroke="${c}" stroke-width="2"/><path d="M2 10h20M6 15h4" stroke="${c}" stroke-width="2"/>`,
+ relay:c=>`<path d="M4 8h14l-3.5-3.5M20 16H6l3.5 3.5" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+ kafka:c=>`<circle cx="7" cy="5" r="2.4" fill="none" stroke="${c}" stroke-width="1.8"/><circle cx="7" cy="12" r="3" fill="none" stroke="${c}" stroke-width="1.8"/><circle cx="7" cy="19" r="2.4" fill="none" stroke="${c}" stroke-width="1.8"/><circle cx="17" cy="8" r="2.4" fill="none" stroke="${c}" stroke-width="1.8"/><circle cx="17" cy="16" r="2.4" fill="none" stroke="${c}" stroke-width="1.8"/><path d="M7 7.4v1.6M7 15v1.6M9.8 10.9l4.9-1.9M9.8 13.1l4.9 1.9" stroke="${c}" stroke-width="1.6"/>`,
+ mail:c=>`<rect x="2" y="5" width="20" height="14" rx="2.5" fill="none" stroke="${c}" stroke-width="2"/><path d="M3 6.5l9 6.5 9-6.5" fill="none" stroke="${c}" stroke-width="2"/>`
+};
+
+/* ---- geometry ---- */
+const D=()=>IMPL[ST.design];
+const box=id=>D().nodes[id];
+const ctr=b=>[b.x+b.w/2,b.y+b.h/2];
+function edgePt(b,tx,ty,gap){const[cx,cy]=ctr(b),dx=tx-cx,dy=ty-cy;const sx=dx?(b.w/2+gap)/Math.abs(dx):1e9,sy=dy?(b.h/2+gap)/Math.abs(dy):1e9,s=Math.min(sx,sy);return[cx+dx*s,cy+dy*s];}
+function seg(a,b,off){const A=box(a),B=box(b),[ax,ay]=ctr(A),[bx,by]=ctr(B);let p=edgePt(A,bx,by,3),q=edgePt(B,ax,ay,6);if(off){const L=Math.hypot(bx-ax,by-ay),nx=-(by-ay)/L*off,ny=(bx-ax)/L*off;p=[p[0]+nx,p[1]+ny];q=[q[0]+nx,q[1]+ny];}return[p,q];}
+
+/* ---- scenario helpers ---- */
+const slide=()=>D().slides[ST.si];
+const scen=()=>slide().sc;
+function evs(){const s=scen();if(!s)return[];let a=s.prefix.slice();if(ST.branch&&s.branches){const b=s.branches.find(x=>x.id===ST.branch);if(b)a=a.concat(b.events);}return a;}
+function stateAt(i){const s=scen(),st=clone(s.initial),e=evs();for(let k=0;k<=i&&k<e.length;k++){if(e[k].clock)st.clock=e[k].clock;if(e[k].fx)e[k].fx(st);}return st;}
+const hasBranches=()=>!!(scen()&&scen().branches&&scen().branches.length);
+const atBranch=()=>hasBranches()&&!ST.branch&&ST.step===scen().prefix.length-1;
+const atEnd=()=>ST.step===evs().length-1&&!atBranch();
+const colOf=e=>UC[e.u]||UC.S;
+function usedNodes(s){const set=new Set();const add=l=>l.forEach(e=>e.path.forEach(n=>set.add(n)));add(s.prefix);(s.branches||[]).forEach(b=>add(b.events));return set;}
+
+/* ---- canvas ---- */
+function buildCanvas(){
+ const s=scen(),d=D(),used=slide().arch?null:usedNodes(s),cv=$('#cv');
+ let h='<defs>'+Object.entries(UHEX).map(([u,c])=>`<marker id="m-${u}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`).join('')+'</defs>';
+ h+='<g id="edges">'+d.edges.map(([a,b])=>{const[p,q]=seg(a,b,0),dim=used&&!(used.has(a)&&used.has(b));return `<line class="edge${dim?' dim':''}" x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}"/>`;}).join('')+'</g><g id="ov"></g><g id="nodes">';
+ for(const[id,n]of Object.entries(d.nodes)){
+  const c=n.user?UHEX[n.user]:KC[n.kind],dim=used&&!used.has(id);
+  h+=`<g class="node${dim?' dim':''}" data-id="${id}" style="--c:${c}" transform="translate(${n.x},${n.y})">
+   <rect class="ring" width="${n.w}" height="${n.h}" rx="11"/>
+   <rect class="nb" width="${n.w}" height="${n.h}" rx="11"/>
+   <rect x="0" y="10" width="3.5" height="${n.h-20}" rx="1.75" fill="${c}"/>
+   <g transform="translate(12,${n.h/2-11}) scale(.92)">${ICON[n.icon](c)}</g>
+   <text class="nt" x="42" y="${n.h/2-3}">${n.label}</text>
+   <text class="ns" x="42" y="${n.h/2+13}">${n.sub||''}</text></g>`;
+ }
+ h+='</g><g id="pk" style="display:none"><circle id="pkc" r="7"/></g><g class="pl" id="pl" style="display:none"><rect id="plr" height="20" y="-20"/><text id="plt" y="-6"></text></g>';
+ cv.innerHTML=h;cv.classList.toggle('arch',!!slide().arch);
+ cv.querySelectorAll('.node').forEach(g=>g.addEventListener('click',()=>{if(!slide().arch)return;const i=scen().prefix.findIndex(e=>e.path[0]===g.dataset.id);if(i>=0){stopAll();ST.step=i;render(false);}}));
+}
+function setUsers(st){
+ $$('#cv .node').forEach(g=>{const n=D().nodes[g.dataset.id];if(!n.user)return;const u=st.users[n.user],t=g.querySelector('.ns');
+  const txt=u?u.s:(slide().arch?'browser / app':'—');t.textContent=txt;
+  for(let L=txt.length;L>4&&t.getComputedTextLength()>n.w-48;L--)t.textContent=txt.slice(0,L-1)+'…'; // fit the box; full text is in the state panel
+  t.style.fill=u&&u.t!=='idle'?`var(--${u.t})`:'';t.style.fontWeight=u&&u.t!=='idle'?600:'';});
+}
+function hops(e){const out=[];for(let i=0;i<e.path.length-1;i++)out.push(seg(e.path[i],e.path[i+1],6).map(p=>p.slice()));return out;}
+// offset is relative to travel direction, so a request and its response run on opposite sides of the edge
+function drawOverlay(e){
+ const ov=$('#ov');ov.innerHTML='';$$('#cv .node').forEach(g=>g.classList.remove('act','src','pulse'));
+ if(!e){$('#pk').style.display='none';$('#pl').style.display='none';return;}
+ const c=colOf(e);
+ if(e.path.length===1){const g=nodeEl(e.path[0]);g.classList.add('act','pulse');g.style.setProperty('--c',stHex(e.st)||UHEX[e.u]||UHEX.S);return;}
+ hops(e).forEach(([p,q],i)=>{ov.insertAdjacentHTML('beforeend',`<path class="ovp ${e.k} fut" data-i="${i}" d="M${p[0]},${p[1]} L${q[0]},${q[1]}" style="stroke:${c}" marker-end="url(#m-${e.u||'S'})"/>`);});
+}
+const nodeEl=id=>$(`#cv .node[data-id="${id}"]`);
+const stHex=st=>({ok:'#16A34A',fail:'#DC2626',pend:'#D97706'})[st];
+function resetNodeColors(){$$('#cv .node').forEach(g=>{const n=D().nodes[g.dataset.id];g.style.setProperty('--c',n.user?UHEX[n.user]:KC[n.kind]);});}
+function setHop(e,i){
+ $$('#ov .ovp').forEach(p=>{const k=+p.dataset.i;p.classList.toggle('past',k<i);p.classList.toggle('fut',k>i);});
+ $$('#cv .node').forEach(g=>g.classList.remove('act','src'));
+ const a=nodeEl(e.path[i]),b=nodeEl(e.path[i+1]),c=UHEX[e.u]||UHEX.S;
+ [a,b].forEach(g=>g.style.setProperty('--c',c));a.classList.add('src');b.classList.add('act');labelAt(e,i);
+}
+// the label stays still at the middle of the current hop (above the boxes on horizontal hops) so it is readable at any speed
+function labelAt(e,i){
+ let x,y;
+ if(e.path.length===1){const n=box(e.path[0]);x=n.x+n.w/2;y=n.y-6;}
+ else{const a=box(e.path[i]),b=box(e.path[i+1]),[p,q]=hops(e)[i];x=(p[0]+q[0])/2;y=Math.abs(q[1]-p[1])<30?Math.min(a.y,b.y)-6:(p[1]+q[1])/2+10;}
+ $('#pl').style.transform=`translate(${x}px,${y}px)`;
+}
+function packetLabel(e){
+ const pk=$('#pk'),c=UHEX[e.u]||UHEX.S,res=e.k==='res'||e.k==='int';
+ const txt=e.lb||(e.api||e.t).split('\n')[0].slice(0,30);
+ const bg=res?(stHex(e.st)||'#64748B'):c;
+ $('#pkc').style.fill=e.k==='res'?'var(--node)':c;$('#pkc').setAttribute('stroke',c);$('#pkc').setAttribute('stroke-width',e.k==='res'?3:0);
+ $('#plt').textContent=txt;pk.style.display=e.k==='int'?'none':'';const pl=$('#pl');pl.style.display='';pl.style.transition='none';labelAt(e,0);pl.getBoundingClientRect();pl.style.transition='';
+ const w=$('#plt').getComputedTextLength()+16;$('#plr').setAttribute('width',w);$('#plr').setAttribute('x',-w/2);$('#plr').setAttribute('fill',bg);$('#plt').setAttribute('x',-w/2+8);
+}
+function placeAt(e,k){ // k: 0..1 along all hops
+ const H=hops(e),L=H.map(([p,q])=>Math.hypot(q[0]-p[0],q[1]-p[1])),T=L.reduce((a,b)=>a+b,0);
+ let d=k*T,i=0;while(i<L.length-1&&d>L[i]){d-=L[i];i++;}
+ const[p,q]=H[i],f=L[i]?Math.min(1,d/L[i]):1;$('#pk').setAttribute('transform',`translate(${p[0]+(q[0]-p[0])*f},${p[1]+(q[1]-p[1])*f})`);return i;
+}
+function placeInt(e){labelAt(e,0);}
+
+/* ---- render a step ---- */
+function render(animate){
+ const e=evs(),cur=e[ST.step],prevS=stateAt(ST.step-1),curS=stateAt(ST.step);
+ resetNodeColors();drawOverlay(cur);renderCaption(cur);renderTimeline();renderBarState();
+ $('#pick').className='';$('#cvwrap').classList.remove('picking');
+ if(!cur){setUsers(curS);$('#clock').textContent='🕐 '+curS.clock;renderPanel(curS,null,null);return;}
+ if(animate&&cur.path.length>1){
+  setUsers(prevS);$('#clock').textContent='🕐 '+prevS.clock;renderPanel(prevS,null,cur,true);
+  packetLabel(cur);const dur=2500/ST.speed,travel=dur*Math.min(1.1,.42+.2*(cur.path.length-1)),t0=performance.now();let hop=-1;
+  const f=t=>{const k=Math.min(1,(t-t0)/travel),ek=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2,i=placeAt(cur,ek);if(i!==hop){hop=i;setHop(cur,i);}
+   if(k<1)ST.raf=requestAnimationFrame(f);else{ST.raf=0;arrive(cur,prevS,curS,dur-travel);}};
+  ST.raf=requestAnimationFrame(f);
+ }else{
+  if(cur.path.length>1){packetLabel(cur);placeAt(cur,1);setHop(cur,cur.path.length-2);}else{packetLabel(cur);placeInt(cur);}
+  if(animate){ST.timer=setTimeout(()=>arrive(cur,prevS,curS,2500/ST.speed*.55),2500/ST.speed*.45);}else arrive(cur,prevS,curS,null);
+ }
+}
+function arrive(cur,prevS,curS,dwell){
+ setUsers(curS);$('#clock').textContent='🕐 '+curS.clock;renderPanel(curS,prevS,cur);
+ const s=scen();
+ if(atBranch()){ST.wasPlaying=ST.playing;showPick();setPlaying(false);return;}
+ renderCaption(cur,true);
+ if(atEnd()){setPlaying(false);return;}
+ if(dwell!==null&&ST.playing){if(cur.pause&&ST.stopAt&&!s.mode){setPlaying(false);return;}ST.timer=setTimeout(()=>next(true),dwell);}
+}
+function endButtons(){
+ const s=scen();let b=`<button class="cb1" onclick="reset()" title="Replay from the initial state">⟲ Replay</button>`;
+ if(hasBranches()){const o=s.branches.find(x=>x.id!==ST.branch);b+=`<button class="cb1" onclick="ST.wasPlaying=true;chooseBranch('${o.id}',false)" title="Play the other outcome">⑂ ${esc(o.label.replace(/^[✅❌] /,''))}</button>`;}
+ if(ST.si<D().slides.length-1)b+=`<button class="cb1 pri" style="min-width:0" onclick="goSlide(${ST.si+1})">Next slide ▸</button>`;
+ return `<span class="endb">${b}</span>`;
+}
+function showPick(){
+ const s=scen(),p=$('#pick');
+ p.innerHTML=`<h4>⑂ Two things can happen now — choose an outcome</h4><div class="bopts">${s.branches.map(b=>`<button class="bopt" style="--c:${b.tone==='ok'?'var(--ok)':'var(--fail)'}" onclick="chooseBranch('${b.id}')"><b>${esc(b.label)}</b><span>${esc(b.desc)}</span></button>`).join('')}</div>`;
+ p.className='show';$('#cvwrap').classList.add('picking');
+}
+function chooseBranch(id,restart){
+ stopAll();const s=scen();ST.branch=id;
+ if(restart||ST.step>s.prefix.length-1)ST.step=Math.min(ST.step,s.prefix.length-1);
+ if(restart){setPlaying(false);render(false);}
+ else{ST.step=s.prefix.length;setPlaying(ST.wasPlaying);render(true);}
+}
+
+/* ---- caption / timeline / bar ---- */
+function renderCaption(e,arrived){
+ const s=scen(),n=evs().length,cap=$('#cap'),tot=hasBranches()&&!ST.branch?`${n}+`:n;
+ if(!e){cap.innerHTML=`<span class="stepn">${s.mode==='tour'?'TOUR':'START'}</span><div class="capm"><div class="ct">${slide().arch?'Architecture — who owns what':'Initial state'}</div><div class="cw">${esc(s.goal)}</div></div><span class="chip info">Press Play or Next ▶</span>`;return;}
+ const who=e.u&&e.u!=='S'?`<span class="who" style="background:${UC[e.u]}">${e.u}</span>`:`<span class="who" style="background:var(--uS)">⚙</span>`;
+ const st=e.st?`<span class="chip ${e.st}">${{ok:'success',fail:'failed',pend:'pending'}[e.st]}</span>`:`<span class="chip info">${e.k==='req'?'request':e.k==='res'?'response':'event'}</span>`;
+ const route=e.path.map(id=>D().nodes[id].label).join(' → ');
+ const end=arrived&&atEnd()&&s.mode!=='tour';
+ const third=arrived&&e.pause?`<div class="cw dec">⚑ Decision point — ${esc(e.pause)}</div>`:e.why?`<div class="cw">${esc(e.why)}</div>`:end?'<div class="cw" style="color:var(--ok)">✓ Scenario complete — final user and system state is on the right.</div>':'';
+ if(s.mode==='tour'){cap.innerHTML=`<span class="stepn">${ST.step+1}/${n}</span><div class="capm"><div class="ct">${esc(e.t)}</div><div class="cw">${esc(e.info.role)}</div></div>`;return;}
+ cap.innerHTML=`<span class="stepn">${ST.step+1}/${tot}</span>${who}<div class="capm"><div class="ct">${esc(e.t)} <span style="font-weight:400;color:var(--faint);font-size:12px">· ${esc(route)}</span></div>${e.api?`<div class="ca mono">${esc(e.api.replace(/\n/g,' · '))}</div>`:''}${third}</div>${end?endButtons():st}`;
+}
+function renderTimeline(){
+ const s=scen(),tl=$('#tl'),chip=(e,i)=>`<button class="tc ${i<ST.step?'done':''} ${i===ST.step?'cur':''} ${e.st||''}" style="border-color:${i===ST.step?'':UHEX[e.u]||UHEX.S}" title="${esc(e.t)}" onclick="jump(${i})">${i+1}</button>`;
+ let h=`<button class="tc init ${ST.step===-1?'cur':''}" onclick="jump(-1)" title="Initial state">init</button>`;
+ h+=s.prefix.map(chip).join('');
+ if(hasBranches()){h+='<span class="tfork">⑂</span>'+s.branches.map(b=>`<button class="tbr ${ST.branch===b.id?'on':''}" style="--c:${b.tone==='ok'?'var(--ok)':'var(--fail)'}" onclick="chooseBranch('${b.id}',true)">${esc(b.label)}</button>`).join('');
+  if(ST.branch){const b=s.branches.find(x=>x.id===ST.branch);h+=b.events.map((e,j)=>chip(e,s.prefix.length+j)).join('');}}
+ tl.innerHTML=h;const c=tl.querySelector('.cur');if(c)c.scrollIntoView({block:'nearest',inline:'nearest'});
+}
+function renderBarState(){$('#bPrev').disabled=ST.step<0;$('#bNext').disabled=atEnd()||(atBranch());}
+function setPlaying(p){ST.playing=p;$('#bPlay').innerHTML=p?'⏸ Pause':'▶ Play';}
+
+/* ---- controls ---- */
+function stopAll(){cancelAnimationFrame(ST.raf);ST.raf=0;clearTimeout(ST.timer);}
+function next(auto){
+ stopAll();if(!scen())return;
+ if(atBranch()){showPick();setPlaying(false);return;}
+ if(atEnd()){setPlaying(false);return;}
+ ST.step++;render(true);
+}
+function prev(){stopAll();setPlaying(false);if(ST.step<0)return;ST.step--;render(false);}
+function reset(){stopAll();setPlaying(false);ST.step=-1;render(false);}
+function jump(i){stopAll();setPlaying(false);ST.step=i;render(false);}
+function togglePlay(){
+ if(ST.playing){stopAll();setPlaying(false);
+  // finish the current event instantly so state is consistent
+  render(false);return;}
+ if(atBranch()){showPick();return;}
+ if(atEnd())ST.step=-1;
+ setPlaying(true);next(true);
+}
+
+/* ---- state panel ---- */
+const getP=(o,p)=>p.split('.').reduce((a,k)=>a==null?a:a[k],o);
+const fmt=v=>v===null?'<span style="color:var(--faint)">null</span>':typeof v==='string'?`<span class="v-${esc(v.split(' ')[0])}">"${esc(v)}"</span>`:typeof v==='boolean'?`<span style="color:${v?'var(--ok)':'var(--pend)'}">${v}</span>`:esc(JSON.stringify(v));
+function docsHTML(cur,prev){
+ const ids=[...new Set([...Object.keys(cur||{}),...Object.keys(prev||{})])];
+ if(!ids.length)return '<div class="empty">(empty)</div>';
+ let changed=false;
+ const html=ids.map(id=>{const c=(cur||{})[id],p=prev?(prev[id]):undefined,isNew=prev&&!p&&c;if(isNew)changed=true;
+  if(!c)return '';
+  const keys=[...new Set([...Object.keys(c),...Object.keys(p||{})])];
+  return `<div class="doc"><div class="id">${esc(id)}${isNew?'<span class="ins">+ inserted</span>':''}</div>${keys.map(k=>{
+   const has=k in c,was=p&&k in p,ch=prev&&p&&JSON.stringify(c[k])!==JSON.stringify(p[k]);if(ch)changed=true;
+   if(!has)return `<div class="f ch gone"><span class="key">${esc(k)}:</span> <s>${fmt(p[k])}</s> <i style="color:var(--faint)">$unset</i></div>`;
+   return `<div class="f ${ch?'ch':''}"><span class="key">${esc(k)}:</span> ${ch&&was?`<s>${fmt(p[k])}</s> → `:''}${fmt(c[k])}</div>`;}).join('')}</div>`;}).join('');
+ return {html,changed};
+}
+function usersHTML(cur,prev){let changed=false;const ks=Object.keys(cur);if(!ks.length)return{html:'<div class="empty">(no users)</div>',changed};
+ const html=ks.map(u=>{const c=cur[u],p=prev&&prev[u],ch=prev&&JSON.stringify(c)!==JSON.stringify(p);if(ch)changed=true;
+  return `<div class="urow ${ch?'ch':''}"><span class="who" style="background:${UC[u]};width:20px;height:20px;flex-basis:20px;font-size:11px">${u}</span><span class="dot ${c.t}"></span><span>${ch&&p?`<s style="color:var(--faint)">${esc(p.s)}</s> → `:''}${esc(c.s)}</span></div>`;}).join('');return{html,changed};}
+function kafkaHTML(c,p){const ch=p&&JSON.stringify(c)!==JSON.stringify(p),leo=c.log[c.log.length-1].o+1,newO=p?p.log.map(x=>x.o):[];
+ return{changed:ch,html:`<div class="kmeta">topic <b>${c.topic}</b> · key "${c.key}" → partition ${c.part}</div><div class="klog">${c.log.map(x=>`<span class="kc ${p&&!newO.includes(x.o)?'new':''}"><b>${x.o}</b>${esc(x.v)}</span>`).join('')}<span class="kc" style="border-style:dashed;color:var(--faint)">${leo} …</span></div>
+ <div class="kmeta">group <b>${c.group}</b> committed=<span class="${p&&p.committed!==c.committed?'ch':''}">${c.committed}</span> · lag=${leo-c.committed}</div>`};}
+function renderPanel(cur,prev,e,travelling){
+ const el=$('#state'),s=scen();
+ if(s.mode==='tour'){const i=e&&e.info;el.innerHTML=`<div class="ph">Component</div>`+(i?`<div class="box info"><h3>${esc(e.t)}</h3><div class="tag">${esc(i.tag)}</div><dl><dt>Role</dt><dd>${esc(i.role)}</dd><dt>Owns</dt><dd>${esc(i.owns)}</dd><dt>Tech</dt><dd>${esc(i.tech)}</dd><dt>Scales by</dt><dd>${esc(i.scale)}</dd><dt>If it fails</dt><dd>${esc(i.fails)}</dd></dl></div>`:`<div class="box"><div class="empty">Click a box on the diagram or press Next ▶ to tour the components.</div></div><div class="box"><div class="bt">Colour key</div><div class="urow"><span class="who" style="background:var(--uA);width:18px;height:18px;flex-basis:18px;font-size:10px">A</span>User A <span class="who" style="background:var(--uB);width:18px;height:18px;flex-basis:18px;font-size:10px">B</span>User B <span class="who" style="background:var(--uC);width:18px;height:18px;flex-basis:18px;font-size:10px">C</span>User C</div><div class="urow"><span class="dot ok"></span>success <span class="dot fail"></span>failure <span class="dot pend"></span>pending</div></div>`);return;}
+ let h='';
+ if(e&&e.pause&&!travelling)h+=`<div class="box dec"><div class="bt">⚑ Decision point</div>${esc(e.pause)}</div>`;
+ if(e&&(e.op||(!travelling&&e.api))){h+=`<div class="ph">${travelling?'In flight…':'Operation'}<span class="rt">${esc(e.path.map(id=>D().nodes[id].label).join(' → '))}</span></div><div class="box">${e.op?`<pre class="op">${esc(e.op)}</pre>`:''}${!travelling&&e.api?`<div class="res ${e.st||''}">${e.op?'→ ':''}${esc(e.api.replace(/\n/g,' · '))}</div>`:''}</div>`;}
+ else if(!e)h+=`<div class="ph">Initial state</div><div class="box" style="font-size:12.5px">${esc(s.goal)}</div>`;
+ h+=`<div class="ph">Live state ${prev?'<span style="text-transform:none;letter-spacing:0;font-weight:600">highlight = changed by this event</span>':''}</div>`;
+ for(const[p,title,kind,ic]of s.panels){
+  const c=getP(cur,p),pv=prev?getP(prev,p):null;
+  const r=kind==='users'?usersHTML(c,pv):kind==='kafka'?kafkaHTML(c,pv):docsHTML(c,pv);
+  const html=typeof r==='string'?r:r.html,ch=typeof r==='string'?false:r.changed;
+  // long scenarios: users + seats always open, other sections open when this event changed them (or pinned)
+  const open=s.panels.length<=4||p==='users'||p==='mongo.seats'||ch||PIN.has(p);
+  h+=`<div class="box ${ch?'chg':''} ${open?'':'mini'}" data-p="${p}"><div class="bt" onclick="pin('${p}')" title="Click to keep this section open"><span class="ic">${ic}</span>${title}${ch?'<em>changed</em>':`<em>${PIN.has(p)?'📌':open?'':'▸'}</em>`}</div>${open?html:`<div class="sumln">${esc(summary(c,kind))}</div>`}</div>`;
+ }
+ el.innerHTML=h;const f=el.querySelector('.box.chg');if(f&&prev)f.scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+
+const PIN=new Set();
+function pin(p){PIN.has(p)?PIN.delete(p):PIN.add(p);render(false);}
+function summary(c,kind){
+ if(kind==='kafka'){const leo=c.log[c.log.length-1].o+1;return `offsets ${c.log[0].o}–${leo-1} · committed ${c.committed} · lag ${leo-c.committed}`;}
+ const ids=Object.keys(c||{});if(!ids.length)return '(empty)';
+ return ids.map(id=>{const d=c[id];return typeof d!=='object'?`${id}: ${d}`:id+(d.status?` · ${d.status}`:d.published!==undefined?` · published=${d.published}`:Object.keys(d).length?' · '+Object.entries(d).map(([k,v])=>k+':'+v).join(' '):'');}).join('  |  ');
+}
+
+/* ---- custom slides ---- */
+function renderModel(){
+ const T=MODEL.trans;
+ $('#custom').innerHTML=`<div class="h2"><h2>Data model & APIs</h2><span>One permanent document per seat · click a transition to see the exact update</span></div>
+ <div class="mgrid">
+  <div class="card" style="display:flex;flex-direction:column;gap:8px">
+   <h4>🎟 Seat state machine</h4>
+   <svg viewBox="0 0 400 200" style="width:100%;flex:0 0 auto">
+    <defs><marker id="sm-a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" style="fill:var(--line2)"/></marker></defs>
+    <g class="sm-t" data-t="lock"><path d="M98,62 Q160,20 222,62" marker-end="url(#sm-a)"/><text x="160" y="30" text-anchor="middle">lock</text></g>
+    <g class="sm-t" data-t="expire"><path d="M222,92 Q160,128 98,92" marker-end="url(#sm-a)"/><text x="160" y="126" text-anchor="middle">expire (sweeper)</text></g>
+    <g class="sm-t" data-t="reclaim"><path d="M262,58 C250,8 320,8 302,58" marker-end="url(#sm-a)"/><text x="282" y="16" text-anchor="middle">reclaim expired</text></g>
+    <g class="sm-t" data-t="confirm"><path d="M282,96 L282,140" marker-end="url(#sm-a)"/><text x="292" y="124">confirm (txn)</text></g>
+    <g class="sm-t" data-t="cancel"><path d="M232,168 Q80,190 60,98" marker-end="url(#sm-a)" stroke-dasharray="5 4"/><text x="120" y="186" text-anchor="middle">cancel → refund</text></g>
+    <g class="sm-s"><rect x="10" y="58" width="90" height="36" rx="10" style="fill:var(--ok-bg);stroke:var(--ok)"/><text x="55" y="81" text-anchor="middle" style="fill:var(--ok)">AVAILABLE</text></g>
+    <g class="sm-s"><rect x="232" y="58" width="100" height="36" rx="10" style="fill:var(--pend-bg);stroke:var(--pend)"/><text x="282" y="81" text-anchor="middle" style="fill:var(--pend)">LOCKED</text></g>
+    <g class="sm-s"><rect x="232" y="144" width="100" height="36" rx="10" style="fill:color-mix(in srgb,var(--uA) 12%,var(--panel));stroke:var(--uA)"/><text x="282" y="167" text-anchor="middle" style="fill:var(--uA)">BOOKED</text></g>
+   </svg>
+   <div id="smt" style="font-size:12.5px;font-weight:700;color:var(--ink)"></div>
+   <div class="mac" style="flex:1;min-height:0;overflow:auto"><div class="bar"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i>&nbsp; BookingRepository (simplified)</div><pre id="smc"></pre></div>
+  </div>
+  <div class="card" style="overflow:auto">
+   <h4>🍃 Collections</h4>
+   <pre class="coll"><span class="c">// seats — one per seat per show, never deleted</span>
+{ _id: "42:A12", showId: 42, seat: "A12",
+  status: "LOCKED", lockedBy: "A",
+  holdId: "H-901", lockExpiresAt: ISODate(…),
+  bookingId: null, version: 8 }</pre>
+   <p class="ix">Index <code>{showId:1}</code> for the seat map · <code>{status:1, lockExpiresAt:1}</code> for the sweeper. <b>No TTL index</b> — TTL would delete the seat.</p>
+   <pre class="coll"><span class="c">// bookings</span>
+{ _id: "B-5001", holdId: "H-901", user: "A",
+  seats: ["A12"], paymentId: "pi_77",
+  status: "CONFIRMED" }</pre>
+   <p class="ix">Unique index <code>{holdId:1}</code> — one booking per hold, even on replays.</p>
+   <pre class="coll"><span class="c">// outbox  (same transaction as the booking)</span>
+{ _id: "evt-9001", type: "BookingConfirmed",
+  bookingId: "B-5001", published: false }</pre>
+   <pre class="coll"><span class="c">// payments  (Payment Service)</span>
+{ _id: "pay-H-901" <span class="c">/* Idempotency-Key */</span>,
+  holdId: "H-901", providerRef: "pi_77",
+  status: "PROCESSING" }</pre>
+  </div>
+  <div class="card" style="overflow:auto">
+   <h4>🔌 APIs</h4>
+   <div class="apil"><div><div class="ap"><span class="mth GET">GET</span>/shows/{id}/seats</div><div class="ad">Seat map (Redis, falls back to Mongo)</div></div><div><div class="ap"><span class="mth POST">POST</span>/seats/lock</div><div class="ad">{showId, seatId} → 200 {holdId, expiresAt} · 409 taken</div></div><div><div class="ap"><span class="mth GET">GET</span>/holds/{holdId}</div><div class="ad">PENDING · CONFIRMED · EXPIRED (client polls)</div></div><div><div class="ap"><span class="mth DELETE">DELETE</span>/holds/{holdId}</div><div class="ad">Release early (conditional on holdId)</div></div><div><div class="ap"><span class="mth POST">POST</span>/payments</div><div class="ad">{holdId} + <b>Idempotency-Key</b> → 201 paymentId</div></div><div><div class="ap"><span class="mth POST">POST</span>/webhooks/payments</div><div class="ad">Provider → us, signature verified, may repeat</div></div><div><div class="ap"><span class="mth POST">POST</span>/internal/holds/{id}/confirm</div><div class="ad">Payment → Booking; idempotent; 409 HOLD_EXPIRED</div></div></div>
+   <p class="ix" style="margin-top:10px"><b>Remember:</b> every state change is a <i>conditional</i> update on the seat document — the filter is the lock.</p>
+  </div>
+ </div>`;
+ const show=k=>{$$('.sm-t').forEach(g=>g.classList.toggle('on',g.dataset.t===k));$('#smt').textContent=T[k].t;$('#smc').innerHTML=esc(T[k].code).replace(/(&lt;c&gt;.*?&lt;\/c&gt;)|(\/\/[^\n]*)|("[^"\n]*")|(\$\w+)/g,(m,c,cm,st,op)=>c?`<span class="c">${c.slice(9,-10)}</span>`:cm?`<span class="c">${cm}</span>`:st?`<span class="s">${st}</span>`:`<span class="k">${op}</span>`);};
+ $$('.sm-t').forEach(g=>g.addEventListener('click',()=>show(g.dataset.t)));show('lock');
+}
+
+const IV={sec:0,shown:0,hide:false,timer:0,left:60};
+function renderInterview(){
+ const isSum=IV.sec===INTERVIEW.length;
+ $('#custom').innerHTML=`<div class="h2"><h2>Interview script</h2><span>Read the interviewer, answer aloud, then reveal the candidate line</span></div>
+ <div class="igrid"><div class="ilist">${INTERVIEW.map((s,i)=>`<button class="ib ${i===IV.sec?'cur':''}" data-i="${i}"><b>${i+1}</b>${esc(s.t)}</button>`).join('')}<button class="ib ${isSum?'cur':''}" data-i="${INTERVIEW.length}"><b>⏱</b>60-second summary</button></div>
+ <div class="card ichat"><div class="itools" id="itools"></div><div class="ilines" id="ilines"></div></div></div>`;
+ $$('.ib').forEach(b=>b.onclick=()=>{IV.sec=+b.dataset.i;IV.shown=0;clearInterval(IV.timer);IV.left=60;renderInterview();});
+ if(isSum){
+  $('#itools').innerHTML=`<button class="cb1 pri" id="ist">▶ Start 60 s</button><span class="timer" id="itm">1:00</span><span style="font-size:12.5px;color:var(--muted)">Say it from memory first, then compare.</span><label class="tog" style="margin-left:auto"><input type="checkbox" id="ihs" ${IV.hide?'checked':''}>Hide text</label>`;
+  $('#ilines').innerHTML=`<div class="sum" style="${IV.hide?'filter:blur(6px)':''}" id="isum">${esc(SUMMARY60)}</div>`;
+  $('#ihs').onchange=e=>{IV.hide=e.target.checked;$('#isum').style.filter=IV.hide?'blur(6px)':'';};
+  $('#ist').onclick=()=>{clearInterval(IV.timer);IV.left=60;const tick=()=>{$('#itm').textContent=`${Math.floor(IV.left/60)}:${String(IV.left%60).padStart(2,'0')}`;$('#itm').style.color=IV.left<=10?'var(--fail)':'';};tick();IV.timer=setInterval(()=>{IV.left--;tick();if(IV.left<=0){clearInterval(IV.timer);$('#itm').textContent='Time!';}},1000);};
+  return;
+ }
+ const L=INTERVIEW[IV.sec].lines;
+ $('#itools').innerHTML=`<button class="cb1 pri" id="inx">Next line ▶</button><button class="cb1" id="iall">Show all</button><button class="cb1" id="irs">⟲ Restart</button><label class="tog"><input type="checkbox" id="ihd" ${IV.hide?'checked':''}>Practice: hide my answers (click to reveal)</label><span class="sp"></span><span style="font-size:12px;color:var(--faint)">${IV.shown}/${L.length}</span>`;
+ const lines=$('#ilines');
+ lines.innerHTML=L.slice(0,IV.shown).map(([w,t])=>w==='P'?`<div class="ln P">⏸ ${esc(t)}</div>`:`<div class="ln ${w} ${w==='C'&&IV.hide?'hid':''}"><small>${w==='I'?'Interviewer':'You (candidate)'}</small><span class="tx">${esc(t)}</span></div>`).join('')||'<div style="color:var(--faint);font-size:13px;margin:auto">Press <b>Next line ▶</b> (or →) to start the conversation.</div>';
+ lines.querySelectorAll('.ln.hid').forEach(b=>b.onclick=()=>b.classList.remove('hid'));
+ lines.scrollTop=lines.scrollHeight;
+ $('#inx').disabled=IV.shown>=L.length;
+ $('#inx').onclick=()=>ivNext(1);$('#iall').onclick=()=>{IV.shown=L.length;renderInterview();};$('#irs').onclick=()=>{IV.shown=0;renderInterview();};
+ $('#ihd').onchange=e=>{IV.hide=e.target.checked;renderInterview();};
+}
+function ivNext(d){if(IV.sec>=INTERVIEW.length)return;const L=INTERVIEW[IV.sec].lines;IV.shown=Math.max(0,Math.min(L.length,IV.shown+d));renderInterview();}
+
+const FU={g:'all',q:'',open:-1};
+function renderFollow(){
+ const col=g=>FGROUPS.find(x=>x[0]===g)[2];
+ $('#custom').innerHTML=`<div class="h2"><h2>Follow-up questions</h2><span>What happens · Why · How we handle it · What trade-off remains</span></div>
+ <div class="fgrid"><div class="fchips"><button class="fchip ${FU.g==='all'?'on':''}" style="--c:var(--ink)" data-g="all">All ${FOLLOW.length}</button>${FGROUPS.map(([g,n,c])=>`<button class="fchip ${FU.g===g?'on':''}" style="--c:${c}" data-g="${g}">${n} ${FOLLOW.filter(f=>f.g===g).length}</button>`).join('')}<input class="fsearch" id="fs" placeholder="Filter questions…" value="${esc(FU.q)}"></div><div class="flist" id="fl"></div></div>`;
+ $$('.fchip').forEach(b=>b.onclick=()=>{FU.g=b.dataset.g;FU.open=-1;renderFollow();});
+ $('#fs').oninput=e=>{FU.q=e.target.value;drawList();};
+ function drawList(){
+  const q=FU.q.toLowerCase();
+  $('#fl').innerHTML=FOLLOW.map((f,i)=>({f,i})).filter(({f})=>(FU.g==='all'||f.g===FU.g)&&(!q||(f.q+f.w+f.y+f.h+f.t).toLowerCase().includes(q))).map(({f,i})=>`<div class="fq ${FU.open===i?'open':''}" style="--c:${col(f.g)}"><button data-i="${i}"><span class="g">${FGROUPS.find(x=>x[0]===f.g)[1]}</span>${esc(f.q)}<span class="ar">▶</span></button>
+   <div class="fa"><div class="w"><b>What happens</b>${esc(f.w)}</div><div class="y"><b>Why</b>${esc(f.y)}</div><div class="h"><b>How we handle it</b>${esc(f.h)}</div><div class="t"><b>Trade-off</b>${esc(f.t)}</div>${f.viz?`<div class="viz"><button class="cb1 pri" onclick="visualize('${f.viz[0]}','${f.viz[1]||''}')">▶ Visualize failure</button></div>`:''}</div></div>`).join('')||'<div class="empty">No question matches.</div>';
+  $$('#fl .fq>button').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;FU.open=FU.open===i?-1:i;drawList();});
+ }
+ drawList();
+}
+function visualize(id,branch){const i=D().slides.findIndex(s=>s.id===id);goSlide(i,branch||null,true);}
+
+/* ---- navigation ---- */
+function renderSide(){
+ let g='',h='';
+ D().slides.forEach((s,i)=>{if(s.grp!==g){g=s.grp;h+=`<div class="sgrp">${g}</div>`;}h+=`<button class="sitem ${i===ST.si?'cur':''}" onclick="goSlide(${i})"><span class="sn">${i+1}</span><span>${esc(s.title)}<small>${esc(s.sub||'')}</small></span></button>`;});
+ $('#side').innerHTML=h;
+}
+function goSlide(i,branch,autoplay){
+ stopAll();setPlaying(false);ST.si=Math.max(0,Math.min(D().slides.length-1,i));ST.step=-1;ST.branch=branch||null;
+ const s=slide();location.hash=`${ST.design}/${ST.si+1}`;
+ $('#crumb').innerHTML=`<b>${esc(D().title)}</b><span class="sep">›</span><span class="cur">${ST.si+1}. ${esc(s.title)}</span>`;
+ renderSide();const m=$('#main');
+ if(s.type==='scenario'){m.classList.remove('cust');$('#pres').classList.toggle('nostate',!store.get('state',true));buildCanvas();render(false);if(autoplay){setPlaying(true);next(true);}}
+ else{m.classList.add('cust');$('#pres').classList.add('nostate');clearInterval(IV.timer);
+  if(s.type==='model')renderModel();else if(s.type==='interview'){IV.shown=0;renderInterview();}else renderFollow();}
+ $('#tState').style.display=s.type==='scenario'?'':'none';
+}
+const DONE_ID='sd:System Design Interview Simulator';
+const getDone=()=>{try{return new Set(JSON.parse(localStorage.getItem('prep-done')||'[]'));}catch(e){return new Set();}};
+$('#done').onchange=e=>{const d=getDone();e.target.checked?d.add(DONE_ID):d.delete(DONE_ID);try{localStorage.setItem('prep-done',JSON.stringify([...d]));}catch(x){}};
+function openDesign(id){
+ ST.design=id;$('#tDone').style.display='';$('#done').checked=getDone().has(DONE_ID);$('#home').style.display='none';$('#pres').style.display='';$('#homeBtn').style.display='';$('#tSide').style.display='';
+ $('#pres').classList.toggle('noside',!store.get('side',true));
+}
+function goHome(){stopAll();setPlaying(false);clearInterval(IV.timer);ST.design=null;$('#home').style.display='';$('#pres').style.display='none';$('#homeBtn').style.display='none';$('#tSide').style.display='none';$('#tState').style.display='none';$('#tDone').style.display='none';$('#crumb').innerHTML='<b>System Design Simulator</b>';history.replaceState(null,'',location.pathname);}
+function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('show'),2200);}
+function renderHome(){
+ $('#hgrid').innerHTML=DESIGNS.map(d=>`<button class="hcard ${d.status}" data-id="${d.id}"><span class="hn">${String(d.n).padStart(2,'0')}</span><h3><span class="hi">${d.icon}</span>${d.title}</h3><p>${d.desc}</p><div class="tags">${d.tags.map(t=>`<span>${t}</span>`).join('')}</div><span class="hst">${d.status==='live'?'● Ready · '+IMPL[d.id].slides.length+' slides':d.status==='queued'?'◔ Next — after review':'Coming soon'}</span></button>`).join('');
+ $$('.hcard').forEach(b=>b.onclick=()=>{const d=DESIGNS.find(x=>x.id===b.dataset.id);if(d.status==='live'){openDesign(d.id);goSlide(0);}else if(d.status==='queued')toast(d.title+' is built next, once Ticket Booking is approved.');else toast(d.title+' — coming soon.');});
+}
+function fromHash(){const m=location.hash.match(/^#(\w+)\/(\d+)/);if(m&&IMPL[m[1]]){openDesign(m[1]);goSlide(+m[2]-1);}else goHome();}
+
+/* ---- wiring ---- */
+$('#bNext').onclick=()=>{setPlaying(false);next(false);};
+$('#bPrev').onclick=prev;$('#bReset').onclick=reset;$('#bPlay').onclick=togglePlay;
+$$('#speed button').forEach(b=>b.onclick=()=>{ST.speed=+b.dataset.s;$$('#speed button').forEach(x=>x.classList.toggle('on',x===b));store.set('speed',ST.speed);});
+$('#stopAt').onchange=e=>{ST.stopAt=e.target.checked;store.set('stopAt',ST.stopAt);};
+$('#homeBtn').onclick=goHome;
+$('#tSide').onclick=()=>{const on=$('#pres').classList.toggle('noside');store.set('side',!on);};
+$('#tState').onclick=()=>{const on=$('#pres').classList.toggle('nostate');store.set('state',!on);};
+function applyTheme(t){document.documentElement.dataset.theme=t;$('#tTheme').innerHTML=t==='dark'?'☀ Light':'🌙 Dark';store.set('theme',t);}
+$('#tTheme').onclick=()=>applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
+document.addEventListener('keydown',e=>{
+ if(!ST.design||(e.target.matches&&e.target.matches('input,textarea')))return;const s=slide();
+ if(e.key==='ArrowUp'){e.preventDefault();goSlide(ST.si-1);}
+ else if(e.key==='ArrowDown'){e.preventDefault();goSlide(ST.si+1);}
+ else if(s.type==='scenario'){
+  if(e.key==='ArrowRight'){e.preventDefault();setPlaying(false);next(false);}
+  else if(e.key==='ArrowLeft'){e.preventDefault();prev();}
+  else if(e.key===' '){e.preventDefault();togglePlay();}
+  else if(e.key==='r'||e.key==='R')reset();
+ }else if(s.type==='interview'){if(e.key==='ArrowRight'){e.preventDefault();ivNext(1);}else if(e.key==='ArrowLeft'){e.preventDefault();ivNext(-1);}}
+});
+window.addEventListener('hashchange',()=>{const m=location.hash.match(/^#(\w+)\/(\d+)/);if(m&&IMPL[m[1]]&&(m[1]!==ST.design||+m[2]-1!==ST.si)){openDesign(m[1]);goSlide(+m[2]-1);}});
+
+ST.speed=store.get('speed',1);$$('#speed button').forEach(x=>x.classList.toggle('on',+x.dataset.s===ST.speed));
+ST.stopAt=store.get('stopAt',true);$('#stopAt').checked=ST.stopAt;
+applyTheme(store.get('theme','light'));
+renderHome();fromHash();
+</script>
+</body>
+</html>

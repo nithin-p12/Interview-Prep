@@ -1,0 +1,1043 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design Patterns Interview</title>
+<style>
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+html,body{margin:0;background:#fff;color:#334155;font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif}
+code{font-family:"Cascadia Mono",Consolas,monospace;font-size:.9em}
+b{color:#0F172A}
+.top{max-width:1600px;margin:0 auto;padding:26px clamp(14px,3vw,30px) 4px}
+.top a.home{font-size:14px;color:#2563EB;text-decoration:none;font-weight:600}
+.top h1{margin:4px 0 0;font-size:clamp(24px,3vw,34px);color:#0F172A;letter-spacing:-.3px}
+.top p{margin:6px 0 0;color:#64748B;font-size:16px}
+.nav{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.96);backdrop-filter:blur(4px);border-bottom:1px solid #E2E8F0;margin-top:14px}
+.nav .in{max-width:1600px;margin:0 auto;padding:10px clamp(14px,3vw,30px);display:flex;gap:8px;flex-wrap:wrap}
+.nav a{font-size:14px;font-weight:600;padding:7px 13px;border-radius:999px;border:1.5px solid;text-decoration:none;background:#fff}
+
+.page{max-width:1600px;margin:0 auto;padding:30px clamp(14px,3vw,30px) 34px;scroll-margin-top:64px}
+.page+.page{border-top:2px dashed #CBD5E1}
+.ph{display:flex;align-items:center;gap:16px;margin-bottom:8px;flex-wrap:wrap}
+.ph .n{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:24px;font-weight:700;flex:none}
+.ph h1{margin:0;font-size:clamp(25px,2.8vw,34px);color:#0F172A;letter-spacing:-.3px}
+.ph .tag{margin-left:auto;font-size:15px;color:#64748B;font-weight:600}
+.lede{margin:0 0 16px 64px;font-size:17px;color:#64748B}
+.legend{display:flex;gap:10px;margin:0 0 18px 64px;flex-wrap:wrap}
+.badge{display:inline-block;font-size:12.5px;font-weight:800;letter-spacing:.6px;padding:4px 10px;border-radius:999px;text-transform:uppercase}
+.must{background:#0F172A;color:#fff}
+.good{background:#fff;color:#475569;border:1.5px solid #94A3B8}
+
+/* must-know card */
+.card{border:2px solid;border-radius:16px;padding:20px 22px 22px;margin-bottom:22px}
+.card h2{margin:0;font-size:28px;color:#0F172A;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.lbl{font-size:13px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;margin:16px 0 8px}
+.problem{font-size:17.5px;line-height:1.55;margin:0;color:#1E293B;background:#fff;border:1.5px solid;border-radius:12px;padding:12px 16px}
+.vs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
+.col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.col .mac:last-child{flex:1}
+.side{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:5px 12px;border-radius:999px;align-self:flex-start}
+.side.bad{background:#FEE2E2;color:#991B1B;border:1.5px solid #FCA5A5}
+.side.ok{background:#DCFCE7;color:#166534;border:1.5px solid #86EFAC}
+.below{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:6px}
+.list{margin:0;padding:12px 16px 12px 34px;background:#fff;border:1.5px solid;border-radius:12px;font-size:16px;line-height:1.55}
+.list li{margin:3px 0}
+.list.pro li::marker{content:"✔  ";color:#16A34A}
+.list.con li::marker{content:"⚠  ";color:#C2410C}
+.qa{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.qa li{background:#fff;border:1.5px solid;border-radius:10px;padding:10px 14px;font-size:15.5px;line-height:1.5}
+.qa .q{display:block;color:#0F172A;font-size:16px;font-weight:700;margin-bottom:3px}
+
+/* mac window */
+.mac{background:#1E1E1E;border-radius:12px;box-shadow:0 10px 24px rgba(15,23,42,.18),0 2px 6px rgba(15,23,42,.12);overflow:hidden;border:1px solid #0B0B0B;display:flex;flex-direction:column;min-width:0}
+.mac .bar{height:36px;flex:none;background:linear-gradient(#3A3A3C,#2C2C2E);display:flex;align-items:center;padding:0 14px;position:relative;border-bottom:1px solid #111}
+.mac .dots{display:flex;gap:8px}
+.mac .dots i{width:13px;height:13px;border-radius:50%;display:block}
+.mac .dots i:nth-child(1){background:#FF5F57}.mac .dots i:nth-child(2){background:#FEBC2E}.mac .dots i:nth-child(3){background:#28C840}
+.mac .fn{position:absolute;left:0;right:0;text-align:center;color:#C7C7CC;font-size:13.5px;font-weight:600;pointer-events:none}
+.mac pre{margin:0;padding:14px 18px 16px;font-family:"Cascadia Mono",Consolas,Menlo,monospace;font-size:14px;line-height:1.6;color:#D4D4D4;white-space:pre;overflow:auto;flex:1}
+.k{color:#569CD6}.s{color:#CE9178}.c{color:#6A9955;font-style:italic}.cb{color:#F48771;font-style:italic}.cg{color:#89D185;font-style:italic}.a{color:#C586C0}.t{color:#4EC9B0}.nu{color:#B5CEA8}.f{color:#DCDCAA}.y{color:#9CDCFE}
+
+.runex{background:#fff;border:2px dashed;border-radius:14px;padding:14px 16px 16px;margin-bottom:22px}
+/* good to know */
+.gh{display:flex;align-items:center;gap:12px;margin:28px 0 14px}
+.gh h3{margin:0;font-size:24px;color:#0F172A}
+.ggrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+.gcard{border:1.5px dashed;border-radius:14px;padding:16px;background:#fff;display:flex;flex-direction:column;gap:10px;min-width:0}
+.gcard h4{margin:0;font-size:20px;color:#0F172A}
+.gcard p{margin:0;font-size:16px;line-height:1.5;color:#1E293B}
+.gcard .mac pre{font-size:14px;padding:12px 14px;white-space:pre-wrap;word-break:break-word}
+.gcard .qa{grid-template-columns:1fr}
+.gcard .qa li{font-size:14.5px}
+.gcard .qa .q{font-size:15px}
+
+/* png export mode */
+body.png .top,body.png .nav{display:none}
+body.png .page{width:1600px;max-width:none;padding:30px}
+body.png .mac pre{overflow:hidden}
+
+@media (max-width:1150px){.vs,.below{grid-template-columns:minmax(0,1fr)}.ggrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1499px){.vs .mac pre{font-size:13.2px;padding:14px 14px 16px}}@media (max-width:800px){.qa{grid-template-columns:1fr}.mac pre{white-space:pre-wrap}}
+@media (max-width:720px){.ggrid{grid-template-columns:1fr}.lede,.legend{margin-left:0}.ph .tag{margin-left:0;width:100%}.card{padding:16px 14px}.card h2{font-size:23px}.mac pre{font-size:13px}.problem{font-size:16px}}
+@media print{.nav{display:none}.card{break-inside:auto}.mac{break-inside:avoid}}
+</style>
+</head>
+<body>
+<header class="top"><a class="home" href="../../00_Index.html">🏠 Interview Prep · NITHIN P</a><h1>Design Patterns — Interview Guide</h1><p>All examples use one running scenario: FireFlink suite-execution notifications (Email, Slack, Teams). Each pattern: problem → code without vs with the pattern → advantages, trade-offs, interview questions.</p></header>
+<nav class="nav"><div class="in" id="nav"></div></nav>
+<div id="root"></div>
+<script>
+const COL={blue:{bg:'#EEF5FF',bd:'#3B82F6',dk:'#1D4ED8',lt:'#BFDBFE'},purple:{bg:'#F7F0FF',bd:'#9333EA',dk:'#7E22CE',lt:'#E9D5FF'},
+ orange:{bg:'#FFF6EC',bd:'#F97316',dk:'#C2410C',lt:'#FED7AA'},red:{bg:'#FFF1F1',bd:'#EF4444',dk:'#B91C1C',lt:'#FECACA'},green:{bg:'#EFFCF3',bd:'#22C55E',dk:'#15803D',lt:'#BBF7D0'}};
+// ---------- highlighter ----------
+const ESC=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const KW='public|private|protected|static|final|class|interface|enum|record|extends|implements|new|return|if|else|try|catch|throw|throws|void|int|double|long|boolean|var|this|super|for|switch|case|default|abstract|null|true|false';
+const RE={java:new RegExp(String.raw`(\/\/.*$)|("(?:[^"\\]|\\.)*")|(@\w+)|\b(${KW})\b|\b([A-Z][A-Za-z0-9_]*)\b|\b(\d[\d_.]*[LlFfDd]?)\b|([a-z_]\w*)(?=\()`,'gm'),
+ yaml:/(#.*$)|^(\s*-?\s*[\w.\-]+)(?=:)|("(?:[^"\\]|\\.)*")|\b(true|false)\b|\b(\d[\w.]*)\b/gm,text:/(#.*$)/gm};
+const CLS={java:['c','s','a','k','t','nu','f'],yaml:['c','y','s','k','nu'],text:['c']};
+function hl(src,lang){const re=RE[lang],cls=CLS[lang];let out='',last=0,m;re.lastIndex=0;
+ while((m=re.exec(src))){if(m[0]===''){re.lastIndex++;continue;}out+=ESC(src.slice(last,m.index));const g=m.slice(1).findIndex(x=>x!==undefined);
+  let c=cls[g];if(c==='c'){if(m[0].includes('❌'))c='cb';else if(m[0].includes('✅'))c='cg';}
+  out+=`<span class="${c}">${ESC(m[0])}</span>`;last=m.index+m[0].length;}
+ return out+ESC(src.slice(last));}
+// On normal screens: tighten comment padding; long lines get the comment on its own line above.
+const WIDE=new URLSearchParams(location.search).has('png')||window.innerWidth>=1500;
+function tidy(src){if(WIDE)return src;return src.split('\n').map(l=>{const m=l.match(/^(\s*)(.*?\S)(\s+)(\/\/ .*|# .*)$/);if(!m)return l;const s=m[1]+m[2]+'  '+m[4];return s.length>64?m[1]+m[4]+'\n'+m[1]+m[2]:s;}).join('\n');}
+const mac=(file,lang,src)=>`<div class="mac"><div class="bar"><div class="dots"><i></i><i></i><i></i></div><div class="fn">${file}</div></div><pre>${hl(tidy(src.replace(/^\n|\n\s*$/g,'')),lang)}</pre></div>`;
+
+// ---------- content ----------
+// Running example shared by every pattern (simplified FireFlink suite-execution notifications)
+const RUNEX=['RunningExample.java','java',`
+// Simplified from FireFlink suite-execution notifications
+// (NotificationDetails -> EmailData / SlackData / MSTeamsData)
+public record ExecutionResult(String runId, String suiteId, String suiteName,
+                              String status, int passed, int failed) {}
+
+public interface Notifier {
+    void send(ExecutionResult result);
+}
+
+@Component("EMAIL") class EmailNotifier implements Notifier { ... } // SMTP
+@Component("SLACK") class SlackNotifier implements Notifier { ... } // webhook
+@Component("TEAMS") class TeamsNotifier implements Notifier { ... } // webhook`];
+
+const PAGES=[
+{id:'creational',n:1,col:'blue',title:'Creational Patterns',lede:'How objects get created — control instance count, hide concrete classes, build complex objects cleanly.',
+ must:[
+ {name:'Singleton',
+  problem:'Every <code>EmailNotifier.send()</code> creates its own template loader, which reads <b>all email templates from MongoDB</b>. After a big regression run, thousands of emails mean thousands of identical DB reads and copies in memory.',
+  bad:['EmailNotifier.java','java',`
+class EmailNotifier implements Notifier {
+    public void send(ExecutionResult r) {
+        EmailTemplates t = new EmailTemplates(); // ❌ new copy per email
+        mailSender.send(t.render("run-completed", r));
+    }
+}
+
+class EmailTemplates {
+    private final Map<String, String> templates;
+
+    EmailTemplates() {
+        templates = loadAllFromDb();            // ❌ DB read every time
+    }
+}
+// ❌ 5,000 emails after a big run = 5,000 identical DB reads
+
+// ❌ naive lazy init is NOT thread-safe:
+// if (instance == null) instance = new EmailTemplates();
+// two threads can both see null and create two copies`],
+  good:[['EmailTemplates.java','java',`
+public final class EmailTemplates {
+    private final Map<String, String> templates;
+
+    private EmailTemplates() { templates = loadAllFromDb(); } // ✅ once
+
+    private static class Holder {              // ✅ loaded on first use
+        static final EmailTemplates INSTANCE = new EmailTemplates();
+    }
+    public static EmailTemplates get() {       // ✅ thread-safe, no locks
+        return Holder.INSTANCE;
+    }
+    public String render(String name, ExecutionResult r) { ... }
+}
+
+class EmailNotifier implements Notifier {
+    public void send(ExecutionResult r) {
+        String html = EmailTemplates.get().render("run-completed", r);
+        mailSender.send(html);                 // ✅ shared, no DB read
+    }
+}
+// Spring way: make EmailTemplates a @Component -> singleton bean`]],
+  adv:['One shared instance → one DB read, less memory','Expensive setup runs only once','Holder idiom / enum give lazy, thread-safe creation without locks'],
+  cons:['Cached templates go stale when someone edits them — add a refresh / evict','Global state hides dependencies — in Spring prefer an injected bean'],
+  qa:[['How do you make a Singleton thread-safe?','Holder idiom or enum — JVM class loading is thread-safe. Or double-checked locking with a <code>volatile</code> field.'],
+      ['How can a Singleton be broken?','Reflection, serialization (fix: <code>readResolve()</code>), cloning, or multiple class loaders. An enum blocks reflection and serialization.'],
+      ['Spring singleton vs GoF singleton?','Spring: one per ApplicationContext. GoF: one per class loader. Spring beans must be stateless or thread-safe.']]},
+ {name:'Factory Method',
+  problem:'Each suite has saved integrations — an email group, a Slack webhook, a Teams webhook. Code that builds the right notifier with <code>new</code> + if/else is <b>copied into the execution, scheduler and manual "send report" flows</b>.',
+  bad:['ExecutionService.java','java',`
+// in ExecutionService ... and again in Scheduler, ManualReport
+for (ChannelConfig cfg : suite.channels()) {
+    Notifier n;
+    if (cfg.type().equals("EMAIL")) {
+        n = new EmailNotifier(cfg.recipients());
+    } else if (cfg.type().equals("SLACK")) {
+        n = new SlackNotifier(cfg.webhookUrl());
+    } else {
+        n = new TeamsNotifier(cfg.webhookUrl());
+    }
+    n.send(result);
+}
+// ❌ same if/else copied in 3 flows
+// ❌ adding WhatsApp = edit all 3 (easy to miss one)
+// ❌ callers know every class and its constructor arguments`],
+  good:[['NotifierFactory.java','java',`
+public final class NotifierFactory {
+
+    public static Notifier create(ChannelConfig cfg) {   // ✅ ONE place
+        return switch (cfg.type()) {
+            case "EMAIL" -> new EmailNotifier(cfg.recipients());
+            case "SLACK" -> new SlackNotifier(cfg.webhookUrl());
+            case "TEAMS" -> new TeamsNotifier(cfg.webhookUrl());
+            default -> throw new IllegalArgumentException(cfg.type());
+        };
+    }
+}
+
+// execution, scheduler and manual report all do just this:
+for (ChannelConfig cfg : suite.channels()) {
+    NotifierFactory.create(cfg).send(result);  // ✅ only the interface
+}
+// ✅ WhatsApp = one new case here, callers untouched`]],
+  adv:['Creation logic lives in one place','Callers depend only on <code>Notifier</code>','New channel = change one factory; easy to mock in tests'],
+  cons:['Extra indirection for very simple cases','The switch itself still needs editing for each new type'],
+  qa:[['Simple Factory vs Factory Method vs Abstract Factory?','Simple factory: one method with a switch (above). Factory Method: subclasses override a create method. Abstract Factory: creates a family of related objects.'],
+      ['Factory vs Strategy — aren\'t they the same here?','Factory <i>creates</i> objects (here from saved config). Strategy <i>picks</i> among ready-made behaviours at runtime — see the Strategy card.']]},
+ {name:'Builder',
+  problem:'A notification request has many optional parts — PDF / HTML / test-data attachments, recipients, start / end / fail flags (just like <code>NotificationDetails</code>). An 8-argument constructor is unreadable; setters allow a <b>half-built request</b>.',
+  bad:['ReportService.java','java',`
+// ❌ which boolean is which?
+NotificationRequest req = new NotificationRequest(
+        runId, "Smoke Suite", true, false, true, null, recipients, false);
+
+// ❌ setters: mutable, and can be sent half-built
+NotificationRequest r2 = new NotificationRequest();
+r2.setRunId(runId);
+r2.setPdfAttachment(true);
+// forgot setRecipients() -> email goes to nobody, no error
+
+// ❌ every new option = another constructor overload`],
+  good:[['NotificationRequest.java','java',`
+NotificationRequest req = NotificationRequest.builder()
+        .runId(runId)                         // ✅ every value is named
+        .suiteName("Smoke Suite")
+        .pdfAttachment(true)
+        .htmlAttachment(true)
+        .recipient("qa-team@company.com")
+        .build();                             // ✅ complete & immutable
+
+// Lombok writes the builder (NotificationDetails uses @Builder too)
+@Builder
+@Getter
+public class NotificationRequest {
+    @NonNull private final String runId;      // ✅ null check in build()
+    private final String suiteName;
+    private final boolean pdfAttachment;
+    private final boolean htmlAttachment;
+    @Singular private final List<String> recipients;
+}`]],
+  adv:['Readable: every value is named','Result is immutable and never half-built','Optional fields are easy to add'],
+  cons:['Boilerplate if hand-written (Lombok removes it)','Overkill for 2–3 fields — a <code>record</code> is enough'],
+  qa:[['Why Builder instead of setters?','Setters leave the object mutable and possibly incomplete. Builder returns a complete, immutable object in one step.'],
+      ['What does Lombok @Builder generate?','A static inner Builder class with one fluent method per field and a <code>build()</code> that calls the all-args constructor.'],
+      ['Builder vs Factory?','Factory decides <i>which</i> class to create. Builder decides <i>how</i> to assemble one complex object.']]}
+ ],
+ good:[
+ {name:'Abstract Factory',why:'Creates a matching <b>family</b> of objects — e.g. a channel\'s formatter + sender — so they always fit together.',
+  code:['ChannelKit.java','java',`
+interface ChannelKit {
+    MessageFormatter formatter();
+    MessageSender sender();
+}
+ChannelKit kit = new SlackKit();   // or TeamsKit, EmailKit
+kit.sender().send(kit.formatter().format(result));`],qa:[['When over Factory Method?','When several related objects must always be created together and stay consistent.']]},
+ {name:'Prototype',why:'Creates new objects by <b>copying</b> a pre-configured one — e.g. new suite settings copied from a project default.',
+  code:['Settings.java','java',`
+NotificationSettings s = new NotificationSettings(projectDefaults);
+s.setSlackEnabled(true);   // tweak the copy only`],qa:[['Shallow vs deep copy?','Shallow copies references (shared lists!); deep copies the whole object graph.'],['Is Spring "prototype" scope this?','No — it just creates a new bean per lookup.']]}
+ ]},
+
+{id:'structural',n:2,col:'purple',title:'Structural Patterns',lede:'How classes and objects are wrapped and combined — without changing existing code.',
+ must:[
+ {name:'Adapter',
+  problem:'We want <b>WhatsApp</b> next to Email, Slack and Teams. The WhatsApp Business client has its own API — different method, phone format, template names — and does not implement our <code>Notifier</code>.',
+  bad:['NotificationService.java','java',`
+public void notify(ExecutionResult r, List<String> channels) {
+    for (String ch : channels) {
+        if (ch.equals("WHATSAPP")) {
+            // ❌ vendor-specific code inside our service
+            whatsAppClient.sendTemplateMessage(
+                    "+91" + user.phone(),          // ❌ format rules here
+                    "run_completed",
+                    Map.of("suite", r.suiteName(), "status", r.status()));
+        } else {
+            notifiers.get(ch).send(r);
+        }
+    }
+}
+// ❌ every caller that wants WhatsApp repeats this
+// ❌ change WhatsApp provider = edit all callers`],
+  good:[['WhatsAppNotifier.java','java',`
+// Third-party SDK — we can't change it
+class WhatsAppClient {
+    void sendTemplateMessage(String phoneE164, String template,
+                             Map<String, String> params) { ... }
+}
+
+@Component("WHATSAPP")
+class WhatsAppNotifier implements Notifier {      // ✅ the adapter
+    private final WhatsAppClient client;
+    private final String phone;                   // constructor omitted
+
+    public void send(ExecutionResult r) {         // ✅ OUR interface
+        client.sendTemplateMessage(phone, "run_completed",
+                Map.of("suite", r.suiteName(), "status", r.status()));
+    }
+}
+
+// ✅ callers treat it like Email / Slack / Teams
+notifiers.get("WHATSAPP").send(result);`]],
+  adv:['Use a third-party API without changing it','Vendor details live in one class','Swap providers or mock in tests easily'],
+  cons:['One more class to maintain','Can hide the wrapped API\'s cost or limits (WhatsApp is paid per message)'],
+  qa:[['Adapter vs Facade?','Adapter <i>converts</i> one interface into another (WhatsApp → Notifier). Facade <i>simplifies</i> many classes behind one entry point.'],
+      ['Object adapter vs class adapter?','Object adapter holds the client (composition, shown here). Class adapter extends it — limited in Java (single inheritance).']]},
+ {name:'Decorator',
+  problem:'We want <b>logging and an audit trail</b> for notifications — sometimes for every channel, sometimes only Slack. Putting it inside each notifier duplicates code; subclasses like <code>AuditedLoggedSlackNotifier</code> explode.',
+  bad:['SlackNotifier.java','java',`
+class SlackNotifier implements Notifier {
+    public void send(ExecutionResult r) {
+        log.info("Sending {} to Slack", r.runId());     // ❌ logging copied
+        webhook.post(toSlackBlocks(r));
+        auditRepo.save(new Audit("SLACK", r.runId()));  // ❌ audit copied
+    }
+}
+
+class TeamsNotifier implements Notifier {
+    public void send(ExecutionResult r) {
+        log.info("Sending {} to Teams", r.runId());     // ❌ same again
+        webhook.post(toAdaptiveCard(r));
+        auditRepo.save(new Audit("TEAMS", r.runId()));  // ❌ and again
+    }
+}
+// ❌ or subclasses: LoggedSlackNotifier, AuditedLoggedSlackNotifier ...`],
+  good:[['NotifierDecorators.java','java',`
+class LoggingNotifier implements Notifier {
+    private final Notifier inner;
+    LoggingNotifier(Notifier inner) { this.inner = inner; }
+
+    public void send(ExecutionResult r) {
+        log.info("Sending run {}", r.runId());
+        inner.send(r);                        // ✅ add behaviour, delegate
+    }
+}
+
+class AuditNotifier implements Notifier {
+    private final Notifier inner;
+    AuditNotifier(Notifier inner) { this.inner = inner; }
+
+    public void send(ExecutionResult r) {
+        inner.send(r);
+        auditRepo.save(new Audit(r.runId())); // ✅ audit after success
+    }
+}
+
+// ✅ chain at runtime, in any combination
+Notifier slack = new AuditNotifier(new LoggingNotifier(new SlackNotifier()));
+Notifier teams = new LoggingNotifier(new TeamsNotifier());  // log only`]],
+  adv:['Combine features at runtime per channel','Each feature is one small class','Add new wrappers (Retry, Metrics…) without touching the notifiers'],
+  cons:['Order matters — Audit outside Logging behaves differently','Many small wrapper objects; deeper stack traces'],
+  qa:[['Decorator vs inheritance?','Inheritance fixes the combination at compile time and multiplies subclasses. Decorators combine freely at runtime.'],
+      ['Decorator vs Proxy?','Same wrapper shape. Decorator <i>adds</i> features and you build the chain; a Proxy <i>controls access</i> and is usually invisible (Spring AOP).']]},
+ {name:'Proxy',
+  problem:'Sending Email, Slack and Teams takes seconds. If the execution thread sends them itself the run finishes late; doing <b>manual threading + error handling</b> in every method buries the real logic.',
+  bad:['ExecutionResultService.java','java',`
+public void onRunCompleted(ExecutionResult r) {
+    executor.submit(() -> {                    // ❌ manual threading
+        try {
+            emailNotifier.send(r);
+        } catch (Exception e) {
+            log.error("Email failed", e);      // ❌ copied error handling
+        }
+    });
+    executor.submit(() -> {                    // ❌ same block again
+        try { slackNotifier.send(r); }
+        catch (Exception e) { log.error("Slack failed", e); }
+    });
+}
+// ❌ plumbing hides the business logic
+// ❌ every new async method repeats this`],
+  good:[['NotificationService.java','java',`
+@Service
+public class NotificationService {
+
+    @Async("notificationExecutor")   // ✅ Spring proxy runs it on another thread
+    public void sendAll(ExecutionResult r) {
+        notifiers.values().forEach(n -> n.send(r)); // ✅ business logic only
+    }
+}
+
+// What Spring's proxy does, conceptually:
+class NotificationServiceProxy extends NotificationService {
+    public void sendAll(ExecutionResult r) {
+        executor.submit(() -> super.sendAll(r));    // ✅ caller returns at once
+    }
+}
+// same mechanism: @Transactional, @Cacheable, @PreAuthorize`]],
+  adv:['Business code stays clean; behaviour added by annotation','Same handling everywhere — nothing forgotten','Powers @Async, @Transactional, @Cacheable, @PreAuthorize, lazy loading'],
+  cons:['"Magic": self-calls and private / final methods are not intercepted','Small overhead per call; harder to debug'],
+  qa:[['Why doesn\'t @Async (or @Transactional) work on a self-call?','<code>this.sendAll()</code> calls the real object, not the proxy. Call it from another bean.'],
+      ['JDK dynamic proxy vs CGLIB?','JDK proxy needs an interface. CGLIB subclasses the class (Spring Boot default), so final / private methods can\'t be proxied.'],
+      ['Where do exceptions from a void @Async method go?','To the <code>AsyncUncaughtExceptionHandler</code>. Return <code>CompletableFuture</code> if the caller must see them.']]},
+ {name:'Facade',
+  problem:'When a run ends we must load the suite\'s notification settings, generate the PDF report, resolve recipient groups, drop blocked emails, send to each channel and save history. <b>Execution, Scheduler and the manual "send report" button all repeat these steps.</b>',
+  bad:['ExecutionResultService.java','java',`
+// here ... and again in Scheduler and ManualReportService
+NotificationDetails cfg = settingsRepo.findBySuite(r.suiteId());
+if (cfg.getNotifyOnExecutionEnd()) {               // ❌ knows every step
+    byte[] pdf = reportService.generatePdf(r.runId());
+    List<String> to = recipientService.resolve(cfg);
+    to.removeAll(blockedEmails.findAll());
+    emailSender.send(r, to, pdf);
+    slackNotifier.send(r);
+    historyRepo.save(new NotificationHistory(r.runId()));
+}
+// ❌ 3 copies of the same 7 steps
+// ❌ change one step (add HTML report) = edit all 3`],
+  good:[['ExecutionNotificationFacade.java','java',`
+@Service
+public class ExecutionNotificationFacade {
+    // settings, reports, recipients, blocked, email, slack, history injected
+
+    public void notifyRunCompleted(ExecutionResult r) {  // ✅ one entry point
+        NotificationDetails cfg = settings.forSuite(r.suiteId());
+        if (!cfg.getNotifyOnExecutionEnd()) return;
+        byte[] pdf = reports.generatePdf(r.runId());
+        List<String> to = blocked.removeBlocked(recipients.resolve(cfg));
+        email.send(r, to, pdf);
+        slack.send(r);
+        history.save(new NotificationHistory(r.runId()));
+    }
+}
+
+// execution, scheduler, manual "send report" button:
+notificationFacade.notifyRunCompleted(result);   // ✅ one line each`]],
+  adv:['One simple entry point for a complex flow','Callers don\'t know the internal steps','Flow changes in one place'],
+  cons:['Can grow into a "god class" — keep it orchestration only','Extra layer if there is only one caller'],
+  qa:[['Does a Facade stop clients using the subsystem directly?','No — it\'s a convenience, not a lock. Callers can still use the services for special cases.'],
+      ['What\'s the risk of a Facade?','It becomes a god class. Keep it thin: orchestration only; rules stay in the services.']]}
+ ],
+ good:[
+ {name:'Composite',why:'Treats a <b>single item and a group</b> the same way — a suite containing scripts and sub-suites.',
+  code:['Node.java','java',`
+interface Node { int count(); }
+record Script(String n) implements Node {
+    public int count() { return 1; }
+}
+record Suite(List<Node> kids) implements Node {
+    public int count() {
+        return kids.stream().mapToInt(Node::count).sum();
+    }
+}`],qa:[['Where in the JDK?','AWT <code>Container</code> holding <code>Component</code>s; Jackson <code>JsonNode</code>.']]},
+ {name:'Flyweight',why:'<b>Shares</b> identical immutable objects to save memory instead of creating duplicates.',
+  code:['Main.java','java',`
+Integer a = 127, b = 127;
+System.out.println(a == b);   // true  (cached)
+Integer c = 128, d = 128;
+System.out.println(c == d);   // false (new objects)`],qa:[['Classic trap: why is 128 false?','<code>Integer.valueOf</code> caches −128…127 only. Always compare wrappers with <code>equals()</code>.']]},
+ {name:'Bridge',why:'Separates <b>what</b> you send (alert type) from <b>how</b> (channel) so both vary independently.',
+  code:['Alert.java','java',`
+abstract class Alert {                    // abstraction
+    protected final Notifier channel;     // implementation
+    Alert(Notifier channel) { this.channel = channel; }
+    abstract void raise(ExecutionResult r);
+}
+new FailureAlert(new SlackNotifier()).raise(result);
+// any alert type x any channel, no N x M classes`],qa:[['Bridge vs Adapter?','Bridge is designed up-front so both sides can evolve; Adapter fixes existing incompatible code.']]}
+ ]},
+
+{id:'behavioral',n:3,col:'orange',title:'Behavioral Patterns',lede:'How objects talk to each other and share responsibility — swap logic, react to events, pass requests along.',
+ must:[
+ {name:'Strategy',
+  problem:'Each suite enables a different set of channels. One method that <b>formats and sends for every channel in an if/else</b> grows with each new channel and can\'t be tested one channel at a time.',
+  bad:['NotificationService.java','java',`
+public void notify(ExecutionResult r, List<String> channels) {
+    for (String ch : channels) {
+        if (ch.equals("EMAIL")) {
+            mailSender.send(buildHtml(r));          // email logic inline
+        } else if (ch.equals("SLACK")) {
+            slackWebhook.post(buildSlackJson(r));   // slack logic inline
+        } else if (ch.equals("TEAMS")) {
+            teamsWebhook.post(buildTeamsCard(r));   // teams logic inline
+        }
+    }
+    // ❌ every new channel edits this method
+    // ❌ can't unit-test Slack without Email & Teams
+    // ❌ the method keeps growing
+}`],
+  good:[['NotificationService.java','java',`
+// EmailNotifier, SlackNotifier, TeamsNotifier each implement Notifier
+// and are @Component("EMAIL"), @Component("SLACK"), @Component("TEAMS")
+
+@Service
+public class NotificationService {
+    private final Map<String, Notifier> notifiers;  // ✅ Spring injects all
+
+    public NotificationService(Map<String, Notifier> notifiers) {
+        this.notifiers = notifiers;
+    }
+
+    public void notify(ExecutionResult r, List<String> channels) {
+        channels.stream()
+                .map(notifiers::get)                // ✅ pick at runtime
+                .filter(Objects::nonNull)
+                .forEach(n -> n.send(r));
+    }
+}
+// ✅ new channel = new @Component, nothing else changes`]],
+  adv:['Open/Closed: add channels without editing existing code','Each channel is a small class you can unit-test','Choose behaviour at runtime from the suite\'s settings'],
+  cons:['More classes for a few simple cases','Caller must know the key ("SLACK") to pick a strategy'],
+  qa:[['How do you replace a long if-else / switch?','One class per branch + a Map lookup (Strategy). Adding a branch = adding a bean.'],
+      ['Strategy vs State?','Strategy: the <i>client</i> picks the algorithm. State: the object <i>changes its own</i> behaviour as its state changes.']]},
+ {name:'Observer',
+  problem:'When a run completes we must send notifications, build the report, refresh dashboards and write an audit. Calling all of them from the result service <b>couples it to everything</b> and slows down saving the result.',
+  bad:['ExecutionResultService.java','java',`
+public void complete(ExecutionResult r) {
+    resultRepo.save(r);
+    reportService.generate(r);          // ❌ knows every follow-up
+    notificationFacade.notifyRunCompleted(r);
+    dashboardService.refresh(r);
+    auditService.log(r);                // ❌ new follow-up = edit here
+    // ❌ slow Slack / PDF delays marking the run complete
+    // ❌ a Slack failure can fail the whole method
+}`],
+  good:[['ExecutionResultService.java','java',`
+public record RunCompletedEvent(ExecutionResult result) {}
+
+public void complete(ExecutionResult r) {
+    resultRepo.save(r);
+    events.publishEvent(new RunCompletedEvent(r));   // ✅ just announce it
+}
+
+@Component class NotificationListener {
+    @Async @EventListener                  // ✅ off the request thread
+    void on(RunCompletedEvent e) {
+        notificationFacade.notifyRunCompleted(e.result());
+    }
+}
+
+@Component class AuditListener {
+    @TransactionalEventListener            // ✅ only after the save commits
+    void on(RunCompletedEvent e) { audit.log(e.result()); }
+}
+// ✅ new follow-up = new listener; across services use Kafka`]],
+  adv:['Result service decoupled from follow-up actions','Add listeners without touching the publisher','Listeners can run async or after commit'],
+  cons:['Flow is harder to follow and debug','In-process events are lost on a crash — use Kafka + outbox for durability'],
+  qa:[['Is @EventListener sync or async?','Synchronous, same thread and transaction by default. Use <code>@Async</code>, or <code>@TransactionalEventListener</code> to run after commit.'],
+      ['Observer vs Pub/Sub?','Observer is in-process. Pub/Sub puts a broker (Kafka) in between, so publisher and subscribers are separate services.']]},
+ {name:'Template Method',
+  problem:'Email, Slack and Teams follow the <b>same steps</b> — check the suite\'s settings, build the message, deliver it, save history. Only "build" and "deliver" differ, yet each class repeats the whole flow.',
+  bad:['SlackNotifier.java','java',`
+class SlackNotifier implements Notifier {
+    public void send(ExecutionResult r) {
+        if (!settings.notifyOnEnd(r.suiteId())) return;  // ❌ duplicated
+        webhook.post(toSlackBlocks(r));
+        history.save(r.runId(), "SLACK");               // ❌ duplicated
+    }
+}
+
+class TeamsNotifier implements Notifier {
+    public void send(ExecutionResult r) {
+        if (!settings.notifyOnEnd(r.suiteId())) return;  // ❌ same again
+        webhook.post(toAdaptiveCard(r));
+        history.save(r.runId(), "TEAMS");               // ❌ fix in N places
+    }
+}`],
+  good:[['AbstractNotifier.java','java',`
+public abstract class AbstractNotifier implements Notifier {
+
+    public final void send(ExecutionResult r) {      // ✅ fixed order
+        if (!settings.notifyOnEnd(r.suiteId())) return;
+        String body = format(r);                      // ✅ varies
+        deliver(body);                                // ✅ varies
+        history.save(r.runId(), channel());
+    }
+
+    protected abstract String format(ExecutionResult r);
+    protected abstract void deliver(String body);
+    protected abstract String channel();
+}
+
+class SlackNotifier extends AbstractNotifier {
+    protected String format(ExecutionResult r) { return toSlackBlocks(r); }
+    protected void deliver(String body)       { webhook.post(body); }
+    protected String channel()                { return "SLACK"; }
+}`]],
+  adv:['Common flow written once','Steps always run in the right order (<code>final</code>)','New channel = fill in the varying steps only'],
+  cons:['Inheritance-based: one base class, tighter coupling','If many steps vary, Strategy (composition) fits better'],
+  qa:[['Why is the template method final?','So subclasses can change only the hook steps, never the order of the algorithm.'],
+      ['Template Method vs Strategy?','Template varies <i>steps</i> via inheritance. Strategy swaps the <i>whole algorithm</i> via composition — usually preferred.']]},
+ {name:'Chain of Responsibility',
+  problem:'Before sending, a notification must pass several checks — is the channel enabled, remove blocked emails, don\'t send twice for the same run. One method with all checks <b>keeps growing</b>, and the checks can\'t be reused or reordered.',
+  bad:['NotificationSender.java','java',`
+public void send(Notification n) {
+    if (!settings.isEnabled(n.suiteId(), n.channel())) return; // ❌ check 1
+    n.recipients().removeIf(blocked::contains);                // ❌ check 2
+    if (n.recipients().isEmpty()) return;
+    if (history.alreadySent(n.runId(), n.channel())) return;   // ❌ check 3
+    notifiers.get(n.channel()).send(n.result());
+}
+// ❌ new rule (e.g. quiet hours) = edit this method again
+// ❌ checks can't be reused or reordered for other flows`],
+  good:[['NotificationPipeline.java','java',`
+public interface NotificationHandler {
+    boolean handle(Notification n);              // false = stop the chain
+}
+
+@Component @Order(1) class SettingsCheck implements NotificationHandler {
+    public boolean handle(Notification n) {
+        return settings.isEnabled(n.suiteId(), n.channel());
+    }
+}
+@Component @Order(2) class BlockedFilter implements NotificationHandler {
+    public boolean handle(Notification n) {
+        n.recipients().removeIf(blocked::contains);
+        return !n.recipients().isEmpty();
+    }
+}
+@Component @Order(3) class DuplicateCheck implements NotificationHandler {
+    public boolean handle(Notification n) {
+        return !history.alreadySent(n.runId(), n.channel());
+    }
+}
+
+@Service class NotificationPipeline {
+    private final List<NotificationHandler> chain;   // ✅ sorted by @Order
+    public void send(Notification n) {
+        for (NotificationHandler h : chain) {
+            if (!h.handle(n)) return;                // ✅ any handler can stop
+        }
+        notifiers.get(n.channel()).send(n.result());
+    }
+}`]],
+  adv:['Each check is one small class','Add, remove or reorder checks without touching others','Same idea as Servlet filters / Spring Security filter chain'],
+  cons:['Wrong order = subtle bugs (e.g. duplicate check before settings)','Harder to see which handler stopped a request — log it'],
+  qa:[['How is the order controlled?','<code>@Order</code> on each bean — Spring injects the <code>List</code> already sorted. For filters: <code>FilterRegistrationBean.setOrder()</code>.'],
+      ['Where does Spring itself use this?','Servlet <code>FilterChain</code>, the Spring Security filter chain and <code>HandlerInterceptor</code>s.']]}
+ ],
+ good:[
+ {name:'Command',why:'Wraps an action as an <b>object</b> → queue it, retry it, log it, undo it.',
+  code:['Main.java','java',`
+Runnable job = () -> runSuite(suiteId);   // the command
+executor.submit(job);                     // queue & run later`],qa:[['Real uses?','ExecutorService tasks, job queues, undo/redo stacks.']]},
+ {name:'State',why:'Object behaves differently <b>per state</b>; each state decides the next valid transition.',
+  code:['RunStatus.java','java',`
+enum RunStatus {
+    QUEUED  { RunStatus next() { return RUNNING; } },
+    RUNNING { RunStatus next() { return PASSED; } },
+    PASSED  { RunStatus next() { return this; } };
+    abstract RunStatus next();
+}`],qa:[['Why not if-else on status?','Invalid transitions become impossible and rules live with each state.']]},
+ {name:'Iterator',why:'Walks a collection <b>without exposing</b> its internal structure.',
+  code:['Main.java','java',`
+Iterator<String> it = recipients.iterator();
+while (it.hasNext()) {
+    if (blocked.contains(it.next())) it.remove(); // safe
+}`],qa:[['Fail-fast vs fail-safe?','ArrayList iterators throw <code>ConcurrentModificationException</code> on modification; <code>CopyOnWriteArrayList</code> iterates a snapshot.']]}
+ ]},
+
+{id:'resilience',n:4,col:'red',title:'Resilience4j Patterns',lede:'Keep one slow or failing dependency (Slack, Teams, SMTP, WhatsApp) from taking the notification service down.',
+ must:[
+ {name:'Circuit Breaker',
+  problem:'If Slack\'s webhook is down, every run-completed notification still <b>waits for the timeout</b>. Notification threads pile up and Email / Teams notifications get stuck behind them.',
+  bad:['SlackNotifier.java','java',`
+@Component("SLACK")
+class SlackNotifier implements Notifier {
+    public void send(ExecutionResult r) {
+        webhook.post(toSlackBlocks(r));
+    }
+}
+
+// ❌ Slack is down -> every send waits for the 10 s timeout
+// ❌ 500 runs finish -> 500 threads stuck waiting on Slack
+// ❌ Email & Teams notifications queue behind them
+// ❌ we keep hammering Slack while it is recovering`],
+  good:[['SlackNotifier.java','java',`
+@CircuitBreaker(name = "slack", fallbackMethod = "saveForLater")
+public void send(ExecutionResult r) {
+    webhook.post(toSlackBlocks(r));
+}
+
+// ✅ when OPEN: no HTTP call at all, fallback runs instantly
+private void saveForLater(ExecutionResult r, Throwable ex) {
+    pendingRepo.save(new PendingNotification("SLACK", r.runId()));
+}`],['application.yml','yaml',`
+resilience4j.circuitbreaker:
+  instances:
+    slack:
+      sliding-window-size: 10                # judge the last 10 calls
+      failure-rate-threshold: 50             # >= 50% failed -> OPEN
+      slow-call-duration-threshold: 3s       # slow calls count too
+      wait-duration-in-open-state: 30s       # then HALF_OPEN
+      permitted-number-of-calls-in-half-open-state: 3`]],
+  adv:['Fails fast instead of blocking threads','Slack outage doesn\'t delay Email / Teams','Tests Slack again automatically (HALF_OPEN) and recovers'],
+  cons:['Thresholds need tuning per channel','Saved notifications need a job to resend them later'],
+  qa:[['Explain the three states.','CLOSED: calls flow, failures counted. OPEN: calls rejected instantly, fallback runs. HALF_OPEN: a few trial calls decide CLOSED or OPEN.'],
+      ['Circuit Breaker vs Retry?','Retry handles <i>brief</i> glitches by trying again. Circuit Breaker handles <i>sustained</i> failure by not calling at all.']]},
+ {name:'Retry',
+  problem:'The Teams webhook sometimes returns a <b>502 / 503 or times out</b> for a moment. Without retry the notification is lost; a hand-written loop also retries permanent errors like a deleted webhook, with no backoff.',
+  bad:['TeamsNotifier.java','java',`
+public void send(ExecutionResult r) {
+    webhook.post(toAdaptiveCard(r));   // ❌ one 503 -> notification lost
+}
+
+// ❌ hand-written retry loop, copied into every notifier
+for (int i = 1; i <= 3; i++) {
+    try {
+        webhook.post(toAdaptiveCard(r));
+        return;
+    } catch (Exception e) {     // ❌ also retries 404 "webhook deleted"
+        sleep(500);             // ❌ fixed wait, no backoff
+    }
+}`],
+  good:[['TeamsNotifier.java','java',`
+@Retry(name = "teams", fallbackMethod = "saveForLater")
+public void send(ExecutionResult r) {
+    webhook.post(toAdaptiveCard(r));
+}
+
+// ✅ runs only after all attempts failed
+private void saveForLater(ExecutionResult r, Throwable ex) {
+    pendingRepo.save(new PendingNotification("TEAMS", r.runId()));
+}`],['application.yml','yaml',`
+resilience4j.retry:
+  instances:
+    teams:
+      max-attempts: 3                    # 1 call + 2 retries
+      wait-duration: 1s
+      enable-exponential-backoff: true   # 1s, 2s, 4s ...
+      exponential-backoff-multiplier: 2
+      retry-exceptions:                  # 5xx and timeouts only
+        - org.springframework.web.client.HttpServerErrorException
+        - org.springframework.web.client.ResourceAccessException
+      ignore-exceptions:                 # 4xx: bad URL, never retry
+        - org.springframework.web.client.HttpClientErrorException`]],
+  adv:['Survives short Teams outages automatically','Backoff avoids hammering the webhook','Retries only errors that can succeed later'],
+  cons:['Adds delay to failing notifications','A retried message may post twice if Teams got it but the response was lost'],
+  qa:[['Which failures should NOT be retried?','4xx errors such as a deleted webhook or bad payload — they fail again and only add load.'],
+      ['What must be true before you retry?','The call should be <b>idempotent</b> — otherwise a retry can repeat a side effect (a duplicate message, a double charge).']]},
+ {name:'Time Limiter (Timeout)',
+  problem:'The SMTP server sometimes <b>hangs</b>. Each stuck email holds a thread — enough of them and no notification goes out at all.',
+  bad:['EmailNotifier.java','java',`
+public void send(ExecutionResult r) {
+    mailSender.send(buildEmail(r));
+}
+
+// ❌ SMTP server hangs -> this thread waits (maybe minutes)
+// ❌ 50 stuck emails = 50 blocked threads -> pool exhausted
+// ❌ Slack & Teams notifications queue behind them`],
+  good:[['EmailNotifier.java','java',`
+@TimeLimiter(name = "email", fallbackMethod = "queueEmail")
+public CompletableFuture<Void> sendAsync(ExecutionResult r) {
+    return CompletableFuture.runAsync(() -> mailSender.send(buildEmail(r)));
+}
+
+// ✅ after 5 s: stop waiting, resend later from the queue
+private CompletableFuture<Void> queueEmail(ExecutionResult r, Throwable ex) {
+    pendingRepo.save(new PendingNotification("EMAIL", r.runId()));
+    return CompletableFuture.completedFuture(null);
+}`],['application.yml','yaml',`
+resilience4j.timelimiter:
+  instances:
+    email:
+      timeout-duration: 5s
+      cancel-running-future: true`]],
+  adv:['Bounded wait → predictable latency','Frees the caller instead of blocking','Pairs with a fallback (queue and resend)'],
+  cons:['Needs an async return type (<code>CompletableFuture</code>)','The SMTP call may keep running — also set mail connect / read timeouts'],
+  qa:[['Why does @TimeLimiter need CompletableFuture?','It must run the call on another thread to stop waiting for it. For blocking clients, also set client timeouts (e.g. <code>mail.smtp.timeout</code>).']]},
+ {name:'Bulkhead',
+  problem:'Emails with a <b>PDF report</b> are heavy (generate PDF + attach). After a big regression run hundreds start at once and use every thread — Slack, Teams and even the API stop responding.',
+  bad:['ReportEmailService.java','java',`
+public void sendReportEmail(ExecutionResult r) {
+    byte[] pdf = reportService.generatePdf(r.runId());  // ~20 s, heavy
+    mailSender.send(buildEmail(r, pdf));
+}
+
+// ❌ 300 suites finish together -> 300 threads generating PDFs
+// ❌ Slack / Teams / API requests wait for a free thread
+// ❌ one heavy feature slows the whole service`],
+  good:[['ReportEmailService.java','java',`
+@Bulkhead(name = "pdfEmail", fallbackMethod = "queueReport")
+public void sendReportEmail(ExecutionResult r) {
+    byte[] pdf = reportService.generatePdf(r.runId()); // ✅ max 10 at once
+    mailSender.send(buildEmail(r, pdf));
+}
+
+private void queueReport(ExecutionResult r, Throwable ex) {
+    pendingRepo.save(new PendingNotification("EMAIL_PDF", r.runId()));
+}
+// ✅ remaining threads stay free for Slack, Teams and the API`],['application.yml','yaml',`
+resilience4j.bulkhead:
+  instances:
+    pdfEmail:
+      max-concurrent-calls: 10     # 11th caller goes to the fallback
+      max-wait-duration: 0         # don't queue, fail fast`]],
+  adv:['Heavy work can\'t starve everything else','Protects critical paths (API, Slack, Teams)','Predictable capacity per feature'],
+  cons:['Calls beyond the limit go to the fallback','Limit needs sizing via load tests'],
+  qa:[['Semaphore vs thread-pool bulkhead?','Semaphore (default) limits concurrent calls on the caller\'s thread. Thread-pool runs calls on a separate bounded pool and returns <code>CompletableFuture</code>.']]},
+ {name:'Rate Limiter',
+  problem:'WhatsApp messages are <b>paid per message</b> and the provider caps our send rate. A loop bug or thousands of parallel runs could send thousands of messages — a big bill, and the provider throttles or blocks us.',
+  bad:['WhatsAppNotifier.java','java',`
+public void send(ExecutionResult r) {
+    client.sendTemplateMessage(phone, "run_completed", params(r));
+}
+
+// ❌ a loop bug or 2,000 parallel runs -> 2,000 paid messages
+// ❌ provider throttles or blocks our account
+// ❌ nothing protects us or the provider`],
+  good:[['WhatsAppNotifier.java','java',`
+@RateLimiter(name = "whatsapp", fallbackMethod = "sendLater")
+public void send(ExecutionResult r) {
+    client.sendTemplateMessage(phone, "run_completed", params(r));
+}   // ✅ max 20 per second
+
+private void sendLater(ExecutionResult r, Throwable ex) {
+    pendingRepo.save(new PendingNotification("WHATSAPP", r.runId()));
+}`],['application.yml','yaml',`
+resilience4j.ratelimiter:
+  instances:
+    whatsapp:
+      limit-for-period: 20         # 20 calls ...
+      limit-refresh-period: 1s     # ... per second
+      timeout-duration: 0          # over the limit -> fallback at once`]],
+  adv:['Protects cost and the provider\'s limits','Stops runaway loops from flooding users','Fair share across tenants'],
+  cons:['Limit is per instance — 3 pods = 3× the limit (use a gateway / shared limiter for a global cap)','Legitimate bursts are delayed'],
+  qa:[['Rate Limiter vs Bulkhead?','Rate Limiter caps calls <i>per time window</i>. Bulkhead caps calls running <i>at the same moment</i>.']]}
+ ],
+ good:[
+ {name:'Setup',why:'One starter + AOP; config per instance in YAML; see live state in Actuator.',
+  code:['pom.xml','yaml',`
+# io.github.resilience4j : resilience4j-spring-boot3
+# org.springframework.boot : spring-boot-starter-aop
+# Actuator: /actuator/circuitbreakers
+#           /actuator/health  (circuit breaker health)`],qa:[['Where do fallbacks live?','In the same class, same return type, extra <code>Throwable</code> parameter.']]},
+ {name:'Annotation order',why:'Several annotations on one method are applied in a <b>fixed order</b> (outermost first).',
+  code:['order','text',`
+Retry
+  ( CircuitBreaker
+    ( RateLimiter
+      ( TimeLimiter
+        ( Bulkhead ( yourMethod ) ) ) ) )`],qa:[['Why does it matter?','Retry is outermost, so every retry attempt is also counted by the circuit breaker.']]},
+ {name:'Fallback rules',why:'A fallback should return something <b>safe and cheap</b>: save for later, a default, or a clear error.',
+  code:['Tip','text',`
+# good : save to a pending table, cached value, "queued"
+# bad  : calling another slow remote service
+# match exceptions: specific Throwable types first`],qa:[['Fallback vs Circuit Breaker?','Fallback is <i>what</i> you do; the breaker decides <i>when</i> to stop calling.']]}
+ ]},
+
+{id:'distributed',n:5,col:'green',title:'Distributed Transactions & Messaging (Kafka)',lede:'Keep data consistent across services and make "run completed" notifications reliable — no lost, duplicate or stuck messages.',
+ must:[
+ {name:'Saga',
+  problem:'Starting a suite run touches three services with <b>their own databases</b>: License (reserve a parallel-run slot), Device (allocate a machine / device) and Execution. If device allocation fails after the slot was reserved, the slot leaks and the license looks full.',
+  bad:['ExecutionService.java','java',`
+@Transactional                 // ❌ only covers the Execution DB
+public void startRun(RunRequest req) {
+    runRepo.save(Run.queued(req));
+    licenseClient.reserveSlot(req.licenseId());   // remote, own DB
+    deviceClient.allocate(req.deviceType());      // ❌ fails here ...
+}
+
+// ❌ run row rolled back, but the license slot stays reserved
+// ❌ license looks "full" -> customer can't start any run
+// ❌ 2PC across services isn't practical`],
+  good:[['RunStartSaga.java','java',`
+public void startRun(RunRequest req) {
+    Run run = runs.createQueued(req);              // step 1 (local tx)
+    try {
+        license.reserveSlot(req.licenseId());      // step 2
+        try {
+            devices.allocate(run);                 // step 3
+            runs.start(run);
+        } catch (Exception e) {
+            license.releaseSlot(req.licenseId());  // ✅ compensate step 2
+            throw e;
+        }
+    } catch (Exception e) {
+        runs.markFailed(run, e.getMessage());      // ✅ compensate step 1
+        notifier.send(failureResult(run));         // tell the user
+    }
+}
+// Real systems: steps via Kafka events, saga state saved,
+// every step idempotent.`]],
+  adv:['Consistency across services without distributed locks','Each service keeps its own database','Failures are handled explicitly with compensations'],
+  cons:['Eventual consistency — a run is briefly "queued" with a slot held','Compensation logic is extra code and must be idempotent'],
+  qa:[['Why not two-phase commit (2PC)?','2PC locks resources across services and needs all participants up; Kafka and MongoDB setups rarely support it.'],
+      ['Choreography vs Orchestration?','Choreography: services react to events — simple but the flow is hidden. Orchestration: one coordinator (above) — easier to see and monitor.'],
+      ['Can every step be compensated?','No (e.g. a notification already sent). Put irreversible steps last and make compensations idempotent.']]},
+ {name:'Transactional Outbox',
+  problem:'When a run finishes we save the result <b>and</b> publish "run completed" so the notification service emails the team. DB and Kafka are two systems (dual write) — one can succeed while the other fails.',
+  bad:['ExecutionResultService.java','java',`
+@Transactional
+public void complete(ExecutionResult r) {
+    resultRepo.save(r);
+    notificationKafkaProducer.send("run-completed", r);
+}
+
+// ❌ event sent, then the DB commit fails
+//    -> "run passed" email for a run that was never saved
+// ❌ DB commits, pod restarts before the send
+//    -> nobody is ever notified`],
+  good:[['ExecutionResultService.java','java',`
+@Transactional
+public void complete(ExecutionResult r) {
+    resultRepo.save(r);
+    outboxRepo.save(new OutboxEvent("run-completed", r.runId(), toJson(r)));
+}   // ✅ both rows commit together, or neither does
+
+// Relay publishes pending rows (or use Debezium CDC)
+@Scheduled(fixedDelay = 1000)
+public void publishOutbox() {
+    for (var e : outboxRepo.findTop100BySentFalseOrderByCreatedAt()) {
+        kafka.send(e.topic(), e.key(), e.payload()).join(); // ✅ wait for ack
+        e.markSent();
+        outboxRepo.save(e);
+    }
+}`]],
+  adv:['Result and event are saved atomically','No lost notifications — the relay keeps retrying','Events can be replayed from the table'],
+  cons:['Extra table and a relay job','At-least-once: duplicates possible, so the consumer must be idempotent'],
+  qa:[['Why not send to Kafka inside @Transactional?','Send and commit are separate: a failed commit leaves a ghost event; a crash after commit loses the event.'],
+      ['Can the outbox publish duplicates?','Yes — a crash after sending but before marking sent. That\'s why the notification consumer must be idempotent.']]},
+ {name:'Idempotent Consumer (Inbox)',
+  problem:'Kafka is <b>at-least-once</b>: the same "run completed" event can arrive twice (producer retry, rebalance, crash before the offset commit). Without a check, the team gets <b>every Slack message and email twice</b>.',
+  bad:['RunCompletedListener.java','java',`
+@KafkaListener(topics = "run-completed", groupId = "notification-service")
+public void onRunCompleted(RunCompletedEvent e) {
+    notificationFacade.notifyRunCompleted(e.result());
+}
+
+// ❌ same event delivered twice (rebalance / producer retry)
+// ❌ team gets the Slack message and the email twice
+// ❌ looks unprofessional to customers`],
+  good:[['RunCompletedListener.java','java',`
+@KafkaListener(topics = "run-completed", groupId = "notification-service")
+public void onRunCompleted(RunCompletedEvent e) {
+    try {
+        processedRepo.insert(new ProcessedEvent(e.eventId())); // ✅ claim it
+    } catch (DuplicateKeyException dup) {
+        return;                                    // ✅ already handled
+    }
+    try {
+        notificationFacade.notifyRunCompleted(e.result());
+    } catch (RuntimeException ex) {
+        processedRepo.deleteById(e.eventId());     // ✅ let the retry run
+        throw ex;
+    }
+}
+// unique index on eventId -> two parallel duplicates can't both pass`]],
+  adv:['Safe under at-least-once delivery','Retries and rebalances become harmless','Customers never get duplicate notifications'],
+  cons:['Processed-ID collection grows — add a TTL index','One extra DB write per message'],
+  qa:[['Why do duplicates happen in Kafka?','Producer retries after a lost ack, or the consumer processes a record but crashes / rebalances before committing the offset.'],
+      ['Doesn\'t Kafka have exactly-once?','Only for Kafka-to-Kafka flows. Side effects like an email or a Slack post still need idempotency.']]},
+ {name:'Dead Letter Topic (DLQ)',
+  problem:'A <b>bad event</b> — a deleted suite, a null webhook URL — fails every time. It either blocks the partition while retried, or is skipped and that team <b>silently never gets the report</b>.',
+  bad:['RunCompletedListener.java','java',`
+@KafkaListener(topics = "run-completed", groupId = "notification-service")
+public void onRunCompleted(RunCompletedEvent e) {
+    notificationFacade.notifyRunCompleted(e.result());
+}
+
+// ❌ event with a deleted suite / null webhook fails every time
+// ❌ default handler retries it ~10 times, then just logs & skips
+//    -> that team silently never gets the report
+// ❌ no record of what failed or why`],
+  good:[['RunCompletedListener.java','java',`
+@RetryableTopic(
+    attempts = "4",                                   // 1 try + 3 retries
+    backoff = @Backoff(delay = 1000, multiplier = 2)  // 1s, 2s, 4s
+)
+@KafkaListener(topics = "run-completed", groupId = "notification-service")
+public void onRunCompleted(RunCompletedEvent e) {
+    notificationFacade.notifyRunCompleted(e.result()); // ✅ non-blocking retries
+}
+
+@DltHandler
+public void onDeadLetter(RunCompletedEvent e) {
+    failedRepo.save(new FailedNotification(e));   // ✅ keep it for replay
+    alerts.notifySupport(e.result().runId());     // ✅ someone finds out
+}`]],
+  adv:['Bad events are isolated','Other teams\' notifications keep flowing','Failures are visible and can be replayed after a fix'],
+  cons:['Retry topics lose strict ordering','The DLT needs monitoring and a replay process'],
+  qa:[['Blocking vs non-blocking retries?','Blocking retries (<code>DefaultErrorHandler</code>) hold the partition. <code>@RetryableTopic</code> uses retry topics so others keep flowing — but ordering is lost.'],
+      ['What do you do with DLT messages?','Alert, inspect, fix the data or bug, then replay to the main topic. Never silently drop them.']]}
+ ],
+ good:[
+ {name:'Competing Consumers',why:'Several notification-service pods in <b>one consumer group</b> share the work — each partition goes to one pod.',
+  code:['application.yml','yaml',`
+spring.kafka.consumer:
+  group-id: notification-service   # same id = share load
+# 6 partitions -> up to 6 active pods`],qa:[['Max parallelism?','= number of partitions; extra consumers sit idle.']]},
+ {name:'Message Ordering',why:'Kafka keeps order <b>only within a partition</b>; same key → same partition.',
+  code:['Producer.java','java',`
+// "started" always before "completed" for one run
+kafka.send("run-events", runId, event);`],qa:[['How to keep order per entity?','Use the entity ID (runId) as the message key.']]},
+ {name:'Request-Reply',why:'Send a request over Kafka and <b>wait for the correlated reply</b>.',
+  code:['Client.java','java',`
+RequestReplyFuture<String, Req, Res> f =
+    replyingKafkaTemplate.sendAndReceive(record);
+Res res = f.get(5, TimeUnit.SECONDS).value();`],qa:[['When to avoid it?','When plain REST is enough — it adds latency and complexity over async events.']]}
+ ]}
+];
+
+// ---------- render ----------
+const qaList=(qa,c)=>`<ul class="qa">${qa.map(([q,a])=>`<li style="border-color:${c.lt}"><span class="q">Q. ${q}</span>${a}</li>`).join('')}</ul>`;
+function mustCard(p,c){
+  return `<article class="card" style="background:${c.bg};border-color:${c.bd}">
+   <h2><span class="badge must">Must know</span>${p.name}</h2>
+   <div class="lbl" style="color:${c.dk}">Problem</div>
+   <p class="problem" style="border-color:${c.lt}">${p.problem}</p>
+   <div class="lbl" style="color:${c.dk}">Code — without vs with the pattern</div>
+   <div class="vs">
+     <div class="col"><span class="side bad">✗ Without pattern</span>${mac(p.bad[0],p.bad[1],p.bad[2])}</div>
+     <div class="col"><span class="side ok">✓ With ${p.name}</span>${p.good.map(([f,l,s])=>mac(f,l,s)).join('')}</div>
+   </div>
+   <div class="below">
+     <div><div class="lbl" style="color:${c.dk}">Advantages</div><ul class="list pro" style="border-color:${c.lt}">${p.adv.map(a=>`<li>${a}</li>`).join('')}</ul></div>
+     <div><div class="lbl" style="color:${c.dk}">Trade-offs</div><ul class="list con" style="border-color:${c.lt}">${p.cons.map(a=>`<li>${a}</li>`).join('')}</ul></div>
+   </div>
+   <div class="lbl" style="color:${c.dk}">Interview questions</div>
+   ${qaList(p.qa,c)}
+  </article>`;
+}
+function goodCard(g,c){
+  return `<div class="gcard" style="border-color:${c.bd}"><h4>${g.name}</h4><p>${g.why}</p>${mac(g.code[0],g.code[1],g.code[2])}${qaList(g.qa,c)}</div>`;
+}
+function page(P){
+  const c=COL[P.col];
+  return `<div class="page" id="${P.id}">
+   <div class="ph"><div class="n" style="background:${c.bd}">${P.n}</div><h1>${P.title}</h1><div class="tag">Design Patterns for Java Interviews · ${P.n} / ${PAGES.length}</div></div>
+   <p class="lede">${P.lede}</p>
+   <div class="legend"><span class="badge must">Must know · ${P.must.length}</span><span class="badge good">Good to know · ${P.good.length}</span></div>
+   <div class="runex" style="border-color:${c.bd}"><div class="lbl" style="color:${c.dk};margin-top:0">Running example — every pattern below builds on this</div>${mac(RUNEX[0],RUNEX[1],RUNEX[2])}</div>
+   ${P.must.map(p=>mustCard(p,c)).join('')}
+   <div class="gh"><span class="badge good">Good to know</span><h3>${P.id==='resilience'?'Setup & rules of thumb':'If you have time'}</h3></div>
+   <div class="ggrid">${P.good.map(g=>goodCard(g,c)).join('')}</div>
+  </div>`;
+}
+const only=new URLSearchParams(location.search).get('png');
+const list=only?PAGES.filter(p=>p.id===only):PAGES;
+document.getElementById('root').innerHTML=list.map(page).join('');
+if(only){document.body.classList.add('png');}
+else{document.getElementById('nav').innerHTML=PAGES.map(p=>{const c=COL[p.col];return `<a href="#${p.id}" style="color:${c.dk};border-color:${c.bd}">${p.n}. ${p.title.replace(' Patterns','').replace(' & Messaging (Kafka)','')}</a>`;}).join('');}
+document.documentElement.setAttribute('data-h',Math.ceil(document.getElementById('root').getBoundingClientRect().height));
+</script>
+</body></html>

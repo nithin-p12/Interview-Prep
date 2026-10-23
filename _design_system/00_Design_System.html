@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design System · Interview Prep</title>
+<link rel="stylesheet" href="../_shared/design-tokens.css">
+<link rel="stylesheet" href="../_shared/prep.css">
+<style>
+body{font-family:var(--font-sans);font-size:var(--fs-base);line-height:var(--lh-body);color:var(--text)}
+code{font-family:var(--font-mono);font-size:.92em;background:rgba(15,23,42,.06);padding:1px 5px;border-radius:5px}
+b{color:var(--ink)}
+.dsnav{position:sticky;top:60px;z-index:10;background:rgba(255,255,255,.97);border-bottom:1px solid var(--line)}
+.dsnav .in{max-width:1400px;margin:0 auto;padding:8px clamp(12px,3vw,28px);display:flex;gap:6px;flex-wrap:wrap}
+.dsnav a{font-size:var(--fs-sm);font-weight:var(--fw-bold);padding:5px 11px;border-radius:var(--r-pill);border:var(--border) solid var(--line-strong);text-decoration:none;color:var(--text);background:#fff}
+.wrap{max-width:1400px;margin:0 auto;padding:var(--sp-6) clamp(12px,3vw,28px) 60px}
+h1{font-size:var(--fs-2xl);color:var(--ink);margin:0}
+.lead{color:var(--muted);margin:4px 0 var(--sp-6)}
+section{border:var(--border-strong) solid;border-radius:var(--r-xl);padding:var(--sp-6) var(--sp-6) var(--sp-7);margin-bottom:var(--sp-7);scroll-margin-top:110px}
+section>h2{margin:0 0 var(--sp-5);font-size:var(--fs-xl);color:var(--ink);display:flex;align-items:center;gap:10px}
+section>h2 .n{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;color:#fff;font-size:var(--fs-md)}
+h3{font-size:var(--fs-md);color:var(--ink);margin:var(--sp-6) 0 var(--sp-4)}
+.grid{display:grid;gap:var(--sp-5)}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g4{grid-template-columns:repeat(4,minmax(0,1fr))}.g5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.box{background:#fff;border:var(--border) solid var(--line);border-radius:var(--r-lg);padding:var(--sp-4) var(--sp-5)}
+.box h4{margin:0 0 var(--sp-2);font-size:var(--fs-md);color:var(--ink)}
+.note{font-size:var(--fs-sm);color:var(--muted)}
+/* colour swatches */
+.pal{border:var(--border) solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:#fff}
+.pal .top{height:54px;display:flex;align-items:flex-end;padding:6px 10px;color:#fff;font-weight:var(--fw-bold)}
+.pal .row{display:flex;font-family:var(--font-mono);font-size:11px}
+.pal .row span{flex:1;padding:5px 6px;text-align:center}
+.pal .use{padding:6px 10px;font-size:var(--fs-xs);color:var(--muted)}
+.sw{display:flex;align-items:center;gap:10px}
+.sw i{width:34px;height:34px;border-radius:var(--r-md);border:1px solid var(--line);flex:none}
+.sw b{display:block;font-size:var(--fs-sm)}.sw span{font-family:var(--font-mono);font-size:11.5px;color:var(--muted)}
+/* typography table */
+.ty{width:100%;border-collapse:collapse;background:#fff}
+.ty td,.ty th{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:middle}
+.ty th{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.ty td:first-child{font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--blue-dk);white-space:nowrap}
+/* spacing */
+.sp{display:flex;align-items:center;gap:12px;font-family:var(--font-mono);font-size:var(--fs-xs)}
+.sp i{display:block;height:14px;background:var(--blue);border-radius:3px}
+/* sample components (same look as the study pages) */
+.btn{font:inherit;font-size:13px;font-weight:var(--fw-bold);padding:5px 10px;border-radius:var(--r-md);border:var(--border) solid var(--line-strong);background:#fff;cursor:pointer;color:var(--text)}
+.btn.p{color:#fff;background:var(--blue);border-color:var(--blue)}
+.btn:disabled{opacity:.45}
+.seg{display:inline-flex;border:var(--border) solid var(--line-strong);border-radius:var(--r-md);overflow:hidden}
+.seg button{font:inherit;font-size:13px;font-weight:var(--fw-bold);padding:5px 10px;border:0;background:#fff;color:#475569}
+.seg button.on{background:var(--ink);color:#fff}
+.tg{font:inherit;font-size:13px;font-weight:var(--fw-bold);padding:6px 11px;border-radius:var(--r-md);background:var(--ink);color:#fff;border:0}
+.tab{font:inherit;font-size:12.5px;font-weight:var(--fw-bold);padding:5px 10px;border-radius:var(--r-pill);border:var(--border) solid;background:#fff}
+.chip{display:inline-flex;font-size:var(--fs-xs);font-weight:var(--fw-heavy);border-radius:var(--r-pill);padding:2px 9px}
+.pills{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pills span{background:#fff;border:var(--border) solid var(--line-strong);border-radius:var(--r-pill);padding:4px 11px;font-weight:var(--fw-semibold);font-size:13.5px;color:var(--ink)}
+.pills em{font-style:normal;color:var(--muted);font-weight:var(--fw-heavy)}
+.sec{border-radius:var(--r-xl);border:var(--border-strong) solid var(--blue);background:var(--blue-bg);padding:var(--sp-5) var(--sp-6)}
+.sh{display:flex;align-items:center;gap:10px;margin-bottom:var(--sp-4)}
+.sn{display:grid;place-items:center;min-width:40px;height:30px;border-radius:var(--r-pill);color:#fff;font-weight:var(--fw-heavy);font-size:13px;background:var(--blue)}
+.sh h5{margin:0;font-size:var(--fs-xl);color:var(--ink)}
+.hnav{font:inherit;font-size:13px;font-weight:var(--fw-heavy);border:2px solid;border-radius:var(--r-pill);padding:4px 12px;background:#fff}
+.take{font-size:13.5px;background:#fff;border:var(--border) solid var(--blue);border-left-width:6px;border-radius:10px;padding:7px 11px;color:#1E293B}
+.msg{font-size:13.5px;background:#fff;border:var(--border) solid var(--line);border-left:6px solid var(--blue);border-radius:10px;padding:7px 11px}
+.fstep{display:flex;gap:8px;align-items:flex-start;background:#fff;border:var(--border) solid var(--line);border-radius:10px;padding:4px 9px;margin-bottom:4px;font-size:13.5px}
+.fstep i{font-style:normal;display:grid;place-items:center;min-width:21px;height:21px;border-radius:50%;background:var(--line);color:#475569;font-weight:var(--fw-heavy);font-size:11px}
+.fstep.done{border-color:#86EFAC;background:#F0FDF4}.fstep.done i{background:var(--success);color:#fff}
+.fstep.cur{border-color:var(--warning);background:var(--warning-bg);box-shadow:0 0 0 3px #FDE68A}.fstep.cur i{background:var(--warning);color:#fff}
+.fstep small{color:var(--muted);font-size:var(--fs-sm);margin-left:4px}
+.mac{background:var(--code-bg);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-md)}
+.mac .bar{height:28px;background:linear-gradient(#3A3A3C,#2C2C2E);display:flex;align-items:center;padding:0 12px;position:relative}
+.mac .bar i{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:7px}
+.mac .bar span{position:absolute;left:0;right:0;text-align:center;color:#C7C7CC;font-size:12.5px;font-weight:var(--fw-semibold)}
+.mac pre{margin:0;padding:8px 12px 10px;font-family:var(--font-mono);font-size:var(--fs-sm);line-height:var(--lh-code);color:var(--code-text)}
+.aq{background:#fff;border:var(--border) solid var(--indigo-lt);border-radius:11px}
+.aq .qh{display:flex;align-items:center;gap:10px;padding:9px 13px;font-weight:var(--fw-bold);color:var(--ink)}
+.aq .qn{display:grid;place-items:center;min-width:28px;height:24px;border-radius:7px;background:var(--indigo-lt);color:var(--indigo-dk);font-size:12px;font-weight:var(--fw-heavy)}
+.aq .ans{padding:0 13px 11px 51px;font-size:14.5px}
+.aq.open{border-color:var(--indigo);box-shadow:0 0 0 3px var(--indigo-lt)}
+.console{background:#0B1220;color:#CBD5E1;border-radius:10px;padding:9px 11px;font-family:var(--font-mono);font-size:11.8px;line-height:1.55}
+.donebox{display:inline-flex;align-items:center;gap:8px;font-size:14.5px;font-weight:var(--fw-heavy);border:2px solid #86EFAC;background:var(--success-bg);color:#166534;border-radius:var(--r-pill);padding:6px 14px}
+.do,.dont{border:var(--border) solid;border-radius:var(--r-lg);padding:var(--sp-4) var(--sp-5) var(--sp-4) 34px;background:#fff;position:relative;font-size:13.5px}
+.do{border-color:#86EFAC}.dont{border-color:#FCA5A5}
+.do::before,.dont::before{position:absolute;left:11px;top:8px;font-weight:var(--fw-heavy)}
+.do::before{content:"✓";color:var(--success)}.dont::before{content:"✗";color:var(--danger)}
+.ic{display:flex;align-items:center;gap:10px;font-size:var(--fs-sm)}
+@media (max-width:1100px){.g4,.g5{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:700px){.g2,.g3,.g4,.g5{grid-template-columns:1fr}}
+</style>
+</head><body>
+<div id="nav"></div>
+<nav class="dsnav"><div class="in">
+ <a href="#colors">1 · Colours</a><a href="#type">2 · Typography</a><a href="#space">3 · Spacing &amp; shape</a><a href="#icons">4 · Icons</a><a href="#comp">5 · Components</a><a href="#layout">6 · Page layout</a><a href="#rules">7 · Guidelines</a>
+</div></nav>
+<main class="wrap">
+ <h1>Design System</h1>
+ <p class="lead">One look for every Interview Prep page. Tokens live in <code>_shared/design-tokens.css</code> — change a value there, never inside a page.</p>
+
+ <!-- 1 COLOURS -->
+ <section id="colors" style="border-color:var(--blue);background:var(--blue-bg)">
+  <h2><span class="n" style="background:var(--blue)">1</span>Colour palette</h2>
+  <h3>Category colours — each section / subject uses one</h3>
+  <div class="grid g5" id="pal"></div>
+  <p class="note" style="margin-top:8px">Every colour has 4 shades: <b>border</b> (main), <b>bg</b> light fill for the section, <b>dk</b> dark for titles/text, <b>lt</b> soft line for inner boxes. Inside a coloured section, boxes are white with the <b>lt</b> border.</p>
+  <h3>Neutrals &amp; semantic</h3>
+  <div class="grid g4" id="neu"></div>
+ </section>
+
+ <!-- 2 TYPOGRAPHY -->
+ <section id="type" style="border-color:var(--purple);background:var(--purple-bg)">
+  <h2><span class="n" style="background:var(--purple)">2</span>Typography</h2>
+  <div class="grid g2">
+   <div class="box"><h4>Font families</h4>
+    <p style="font-family:var(--font-sans);font-size:20px;margin:6px 0">Segoe UI — text &amp; headings</p>
+    <p style="font-family:var(--font-mono);font-size:17px;margin:6px 0">Cascadia Mono / Consolas — code &amp; flags</p>
+    <p class="note">Fallbacks: system-ui, Arial · Menlo. No web fonts — pages must work offline.</p></div>
+   <div class="box"><h4>Weights &amp; line height</h4>
+    <p style="margin:4px 0"><span style="font-weight:400">400 regular</span> · <span style="font-weight:600">600 semibold</span> · <span style="font-weight:700">700 bold</span> · <span style="font-weight:800">800 heavy</span></p>
+    <p class="note">Body line-height 1.5 · headings 1.25 · code 1.45. Bold = key words only; heavy = badges / labels.</p></div>
+  </div>
+  <h3>Type scale (fixed — never zoomed to fill space)</h3>
+  <table class="ty"><tr><th>Token</th><th>Size</th><th>Used for</th><th>Sample</th></tr>
+   <tr><td>--fs-2xl</td><td>28px</td><td>page title (h1)</td><td style="font-size:28px;font-weight:700;color:var(--ink)">JVM Memory</td></tr>
+   <tr><td>--fs-xl</td><td>21px</td><td>slide title (h2)</td><td style="font-size:21px;font-weight:700;color:var(--ink)">G1 heap regions</td></tr>
+   <tr><td>--fs-lg</td><td>17px</td><td>section title, brand</td><td style="font-size:17px;font-weight:700;color:var(--ink)">Interview Prep</td></tr>
+   <tr><td>--fs-md</td><td>14.5px</td><td>box title (h4), questions</td><td style="font-size:14.5px;font-weight:700;color:var(--ink)">Why parent delegation?</td></tr>
+   <tr><td>--fs-base</td><td>14px</td><td>body text</td><td style="font-size:14px">Objects live on the heap; references live in the frame.</td></tr>
+   <tr><td>--fs-sm</td><td>12.5px</td><td>secondary text, code</td><td style="font-size:12.5px;color:var(--muted)">usually lazily, on first use</td></tr>
+   <tr><td>--fs-xs</td><td>12px</td><td>badges, captions</td><td><span class="chip" style="background:var(--success-bg);color:#166534">NEW STYLE</span></td></tr>
+   <tr><td>--fs-2xs</td><td>11px</td><td>tiny tags, numbers</td><td style="font-size:11px;font-weight:800;color:var(--muted)">step 3 / 5</td></tr>
+  </table>
+ </section>
+
+ <!-- 3 SPACING -->
+ <section id="space" style="border-color:var(--orange);background:var(--orange-bg)">
+  <h2><span class="n" style="background:var(--orange)">3</span>Spacing, radius &amp; elevation</h2>
+  <div class="grid g3">
+   <div class="box"><h4>Spacing scale (4 px grid)</h4><div id="sps" style="display:flex;flex-direction:column;gap:6px"></div></div>
+   <div class="box"><h4>Radius</h4><div class="grid" style="grid-template-columns:repeat(5,1fr);gap:8px;margin-top:6px" id="rad"></div>
+    <h4 style="margin-top:14px">Borders</h4><p class="note" style="margin:0">1.5px inner boxes · 2.5px sections · dashed = logical / "to do"</p></div>
+   <div class="box"><h4>Fit-to-screen spacing (<code>--k</code>)</h4>
+    <p style="margin:4px 0;font-size:13.5px">Spare height on a slide is shared out by raising <code>--k</code>, which multiplies <b>padding and gaps only</b>. Fonts never change. Too tall? <code>--k</code> goes below 1 first.</p>
+    <div class="sp" style="margin-top:8px"><span style="width:58px">k = 1</span><i style="width:60px"></i></div>
+    <div class="sp" style="margin-top:4px"><span style="width:58px">k = 1.8</span><i style="width:108px"></i></div>
+    <h4 style="margin-top:12px">Elevation</h4><div style="display:flex;gap:14px"><div class="box" style="box-shadow:var(--shadow-sm)">shadow-sm</div><div class="box" style="box-shadow:var(--shadow-md)">shadow-md</div></div></div>
+  </div>
+ </section>
+
+ <!-- 4 ICONS -->
+ <section id="icons" style="border-color:var(--green);background:var(--green-bg)">
+  <h2><span class="n" style="background:var(--green)">4</span>Icons</h2>
+  <div class="grid g2">
+   <div class="box"><h4>Brand logos — simple-icons, inline SVG, brand colour</h4><div class="grid g3" id="logos" style="margin-top:6px"></div>
+    <p class="note" style="margin:8px 0 0">Sizes: 16 (inside text) · 22 (titles) · 26 (nav subject) · 40 (index cards). Only for real technologies.</p></div>
+   <div class="box"><h4>Symbols — plain characters, no icon font</h4>
+    <div class="pills" style="margin-top:6px"><span>▶ try it / play</span><span>◀ ▶ navigate</span><span>✓ done / correct</span><span>✗ wrong / garbage</span><span>⚠ trade-off</span><span>❌ / ✅ in code comments</span><span>🎲 random</span><span>📚 all subjects</span><span>🧩 design patterns</span></div>
+    <p class="note" style="margin:8px 0 0">Emoji are used sparingly as markers, never as decoration.</p></div>
+  </div>
+ </section>
+
+ <!-- 5 COMPONENTS -->
+ <section id="comp" style="border-color:var(--red);background:var(--red-bg)">
+  <h2><span class="n" style="background:var(--red)">5</span>Components</h2>
+  <div class="grid g3">
+   <div class="box"><h4>Buttons &amp; controls</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn p">Next ▶</button><button class="btn">▶ Auto play</button><button class="btn">↺ Reset</button><button class="btn" disabled>◀ Back</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center"><span class="seg"><button>0.25×</button><button class="on">0.5×</button><button>1×</button><button>2×</button></span><button class="tg">&lt;/&gt; Code: on</button><button class="tg">▭ Slides: on</button></div>
+    <p class="note" style="margin:8px 0 0">Primary = filled in the section colour. Speed switch always 0.25 / 0.5 / 1 / 2, default 0.5.</p></div>
+   <div class="box"><h4>Navigation</h4>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="tab" style="border-color:var(--teal);color:var(--teal-dk)">Contents</button><button class="tab" style="background:var(--blue);border-color:var(--blue);color:#fff">Class loading</button><button class="tab" style="border-color:var(--orange);color:var(--orange-dk)">Heap</button></div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="hnav" style="border-color:var(--blue);color:var(--blue-dk)">◀ 2.1</button><button class="hnav" style="border-color:var(--blue);color:var(--blue-dk)">2.3 ▶</button><button class="hnav" style="border-color:var(--orange);background:var(--orange);color:#fff">3. Heap ▶</button></div>
+    <p class="note" style="margin:8px 0 0">Tabs = categories. Heading arrows show the previous / next slide number; at a category end the next button is filled in the next category's colour.</p></div>
+   <div class="box"><h4>Chips &amp; badges</h4>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip" style="background:#DBEAFE;color:#1E40AF">NEW STYLE</span><span class="chip" style="background:var(--success-bg);color:#166534">DONE</span><span class="chip" style="background:var(--warning-bg);color:#92400E">OLD VERSION</span><span class="chip" style="background:#F1F5F9;color:var(--faint)">TO DO</span></div>
+    <div class="pills" style="margin-top:10px"><span>new Object()</span><em>→</em><span>Eden</span><em>→</em><span>Survivor</span></div>
+    <div style="margin-top:10px"><span class="donebox">☑ Completed</span></div></div>
+  </div>
+  <div class="grid g2" style="margin-top:12px">
+   <div class="sec"><div class="sh"><span class="sn">3.1</span><h5>Slide section</h5></div>
+    <div class="grid g2" style="gap:10px"><div class="box" style="border-color:var(--blue-lt)"><h4>Box</h4>White card with the soft <code>lt</code> border.</div><div class="box" style="border-color:var(--blue-lt)"><h4>▶ Try it</h4>Interactive boxes always start with ▶.</div></div>
+    <p class="take" style="margin:10px 0 0"><b>Remember:</b> one-line takeaway at the end of a slide.</p>
+    <div class="msg" style="margin-top:8px">Explanation / simulator message box.</div></div>
+   <div class="grid" style="gap:10px">
+    <div class="mac"><div class="bar"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i><span>NotifierFactory.java</span></div><pre><span style="color:var(--code-kw)">public static</span> <span style="color:var(--code-type)">Notifier</span> <span style="color:var(--code-fn)">create</span>(<span style="color:var(--code-type)">ChannelConfig</span> cfg) {
+    <span style="color:var(--code-com);font-style:italic">// ✅ creation in ONE place</span>
+    <span style="color:var(--code-kw)">return switch</span> (cfg.type()) { … };
+}</pre></div>
+    <div><div class="fstep done"><i>1</i><div><b>Verify</b><small>bytecode is valid</small></div></div><div class="fstep cur"><i>2</i><div><b>Prepare</b><small>defaults → count = 0</small></div></div><div class="fstep"><i>3</i><div><b>Resolve</b><small>symbolic → direct refs</small></div></div></div>
+    <div class="aq open"><div class="qh"><span class="qn">7</span>How do you activate a profile? <span class="chip" style="border:1.5px solid var(--purple);color:var(--purple-dk);background:#fff">2.2</span></div><div class="ans">-Dspring.profiles.active=dev, env SPRING_PROFILES_ACTIVE, or --spring.profiles.active.</div></div>
+    <div class="console"><span style="color:#64748B">10:15:02.114</span> INFO [main] Tomcat started on port 8080<br><span style="color:#FDE047">▸ explanation lines are yellow</span></div>
+   </div>
+  </div>
+ </section>
+
+ <!-- 6 LAYOUT -->
+ <section id="layout" style="border-color:var(--teal);background:var(--teal-bg)">
+  <h2><span class="n" style="background:var(--teal)">6</span>Page layout</h2>
+  <div class="grid g3">
+   <div class="box"><h4>Site structure</h4><div class="pills"><span>Index (subject cards)</span><em>→</em><span>Subject hub (numbered topics)</span><em>→</em><span>Study page (slides)</span></div><p class="note" style="margin:8px 0 0">Nav bar on every page: brand left · subject centre · progress / toggles right. No breadcrumbs.</p></div>
+   <div class="box"><h4>Study page</h4><div class="pills"><span>0 Contents</span><em>→</em><span>topic categories</span><em>→</em><span>All in action</span><em>→</em><span>Interview Q&amp;A</span></div><p class="note" style="margin:8px 0 0">One idea per slide · max 2 columns · each slide fits ~1365×620 with no page scroll (only the Q&amp;A list scrolls inside its box).</p></div>
+   <div class="box"><h4>Slide anatomy</h4><p style="margin:0;font-size:13.5px">◀ prev · <b>number badge</b> · title · subtitle · next ▶ → explanation + visual / "▶ Try it" → code (toggle) → <b>Remember</b>.</p></div>
+  </div>
+ </section>
+
+ <!-- 7 GUIDELINES -->
+ <section id="rules" style="border-color:var(--indigo);background:var(--indigo-bg)">
+  <h2><span class="n" style="background:var(--indigo)">7</span>Guidelines</h2>
+  <div class="grid g2">
+   <div class="do">Fill spare height with <b>padding and gaps</b> (the <code>--k</code> multiplier).</div>
+   <div class="dont">Zoom or enlarge fonts to fill space.</div>
+   <div class="do">Use the subject's category colour for the section; white boxes inside.</div>
+   <div class="dont">Plain white slides, or more than one strong colour in a box.</div>
+   <div class="do">Show it working: steppers, simulators, quizzes with "▶ Try it".</div>
+   <div class="dont">Long paragraphs or internal JDK/framework source code.</div>
+   <div class="do">Examples from FireFlink work (notifications, Kafka events, license DBs) — marked "simplified".</div>
+   <div class="dont">Claim illustrative code is the real code.</div>
+   <div class="do">Arrows end at box edges; labels never overlap shapes; text wraps inside its box.</div>
+   <div class="dont">Fixed-width boxes that let words spill out at smaller screens.</div>
+   <div class="do">Check every slide at 1365×620: no overflow, no clipped text, no JS errors.</div>
+   <div class="dont">Deliver without looking at screenshots of the slides you changed.</div>
+  </div>
+ </section>
+</main>
+<script src="../_shared/prep.js"></script>
+<script>
+const P=window.PREP;
+document.getElementById('nav').innerHTML=P.nav('../',{name:'Design System',col:'slate',icon:'🎨',items:[]});P.refreshProgress();
+const css=getComputedStyle(document.documentElement),v=n=>css.getPropertyValue(n).trim();
+const CAT=[['blue','Java Core, class loader'],['purple','Design Patterns, native memory'],['orange','System Design, heap'],['green','Spring, JIT'],['red','Data, threads, shutdown'],['teal','Messaging, Contents'],['indigo','Interview Q&A'],['amber','GC'],['pink','All in action'],['slate','overview, neutral groups']];
+document.getElementById('pal').innerHTML=CAT.map(([c,use])=>`<div class="pal"><div class="top" style="background:${v('--'+c)}">${c}</div><div class="row"><span style="background:${v('--'+c+'-bg')}">bg</span><span style="background:${v('--'+c+'-lt')}">lt</span><span style="background:${v('--'+c+'-dk')};color:#fff">dk</span></div><div class="use">${use}</div></div>`).join('');
+const NEU=[['--ink','headings'],['--text','body'],['--muted','secondary'],['--faint','disabled'],['--line','borders'],['--subtle','quiet panels'],['--success','done / correct'],['--warning','current step'],['--danger','error / wrong'],['--info','reads / info'],['--code-bg','code window'],['--brand-grad','brand mark']];
+document.getElementById('neu').innerHTML=NEU.map(([n,u])=>`<div class="sw"><i style="background:${v(n)}"></i><div><b>${u}</b><span>${n}</span></div></div>`).join('');
+document.getElementById('sps').innerHTML=[1,2,3,4,5,6,7,8].map(i=>`<div class="sp"><span style="width:62px">--sp-${i}</span><i style="width:${parseInt(v('--sp-'+i))*3}px"></i><span>${v('--sp-'+i)}</span></div>`).join('');
+document.getElementById('rad').innerHTML=[['sm','--r-sm'],['md','--r-md'],['lg','--r-lg'],['xl','--r-xl'],['pill','--r-pill']].map(([l,n])=>`<div style="text-align:center"><div style="height:44px;border:2px solid var(--blue);background:#fff;border-radius:${v(n)}"></div><span class="note">${l}</span></div>`).join('');
+document.getElementById('logos').innerHTML=['openjdk','spring','springboot','mongodb','apachekafka','docker','kubernetes','elasticsearch','git'].map(n=>`<div class="ic">${P.logo(n,22)}<span>${n}</span></div>`).join('');
+</script>
+</body></html>

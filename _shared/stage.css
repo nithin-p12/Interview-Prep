@@ -1,0 +1,48 @@
+/* =====================================================================
+   BIG PICTURE STAGE — one architecture diagram shared by many slides.
+   Load after deck.css. See stage.js for the page contract.
+   ===================================================================== */
+/* stage slides: the section becomes a column so the stage takes all spare height.
+   --k is pinned to 1 (fitSlide may still set it; !important wins over the inline value). */
+.slide.stg>.sec{display:flex;flex-direction:column;--k:1!important}
+.slide.stg>.sec>.sh{flex:none}
+.stage-slot{position:relative;flex:1;min-height:0;background:#fff;border:1.5px solid var(--lt);border-radius:14px;overflow:hidden}
+.stage-wrap{position:absolute;inset:0}
+.stage-wrap>svg,.stage-slot>svg.stg-clone{width:100%;height:100%;display:block}
+/* focus slide: diagram left, explanation right */
+.focus{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,58fr) minmax(0,42fr);gap:14px}
+.focus>.stage-slot{min-height:0}
+.focus>.fx{display:flex;flex-direction:column;gap:8px;min-width:0;justify-content:center}
+.fx .lead{font-size:13.5px}
+.fx ul.pts{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.fx ul.pts li{background:#fff;border:1.5px solid var(--lt);border-left:5px solid var(--bd);border-radius:10px;padding:6px 10px;font-size:13px;line-height:1.45}
+.fx ul.pts li b:first-child{color:var(--dk)}
+/* show-all mode: fixed heights, static clones */
+body.all .stage-slot{flex:none;height:440px}
+body.all .focus{flex:none;height:440px}
+body.all .stage-wrap .stg-bar{display:flex}
+
+/* diagram parts */
+.stage-wrap [data-node],.stg-clone [data-node]{transition:opacity .8s ease}
+.stage-wrap [data-flow],.stg-clone [data-flow]{transition:opacity .8s ease}
+.stg-dots circle{transition:opacity .8s ease}
+.stg-dim{opacity:.13}
+.stg-foc{filter:drop-shadow(0 0 7px rgba(250,204,21,.75))}
+.stage-wrap.tips [data-tip]{cursor:help}
+
+/* control bar (moves with the diagram) */
+.stg-bar{position:absolute;top:4px;left:50%;transform:translateX(-50%);z-index:3;display:flex;gap:4px;align-items:center;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:9px;padding:2px 5px;box-shadow:0 2px 8px rgba(15,23,42,.08);opacity:.75;transition:opacity .2s}
+.stg-bar:hover{opacity:1}
+.stg-bar button{font:inherit;font-size:11.5px;font-weight:700;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:6px;padding:1px 7px;cursor:pointer}
+.stg-bar button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.stg-bar label{display:flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:var(--muted);cursor:pointer;padding:0 2px}
+.stg-bar label.on{color:var(--ink)}
+.stg-tip{position:absolute;z-index:4;pointer-events:none;max-width:260px;background:#0F172A;color:#E2E8F0;font-size:12.5px;line-height:1.45;border-radius:9px;padding:7px 10px;box-shadow:0 6px 18px rgba(15,23,42,.25);opacity:0;transition:opacity .15s}
+.stg-tip b{color:#fff;display:block;margin-bottom:2px}
+.stg-tip.on{opacity:1}
+@media (max-width:900px){.focus{grid-template-columns:1fr;grid-template-rows:minmax(220px,1fr) auto}}
+/* STAGE.pulse(node): brief glow on the node's first shape */
+.stg-pulse>rect:first-of-type{animation:stgPulse .9s ease}
+@keyframes stgPulse{0%{stroke-width:2}35%{stroke-width:7}100%{stroke-width:2}}
+/* the diagram waits off-screen until stage.js moves it into the first visible slot */
+body>.stage-wrap{position:fixed;left:-10000px;top:0;width:1200px;height:560px}

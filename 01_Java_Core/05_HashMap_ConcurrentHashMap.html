@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HashMap &amp; ConcurrentHashMap · Interview Prep</title>
+<link rel="stylesheet" href="../_shared/design-tokens.css">
+<link rel="stylesheet" href="../_shared/deck.css">
+<style>
+/* steppers: don't animate padding (it scales with --k, so the fit would measure mid-transition) */
+/* 1.1 hash calculator */
+.bits{font-family:var(--font-mono);font-size:12.5px;background:#fff;border:1.5px solid var(--line);border-radius:10px;padding:calc(6px*var(--k)) 10px;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;align-items:center}
+.bits span:nth-child(odd){color:var(--muted);font-weight:700;white-space:nowrap}
+.bits b{color:var(--ink);letter-spacing:.5px;white-space:nowrap}
+.bits i{font-style:normal;background:#FEF08A;color:#713F12;border-radius:3px}
+.bits .res{color:var(--blue-dk);font-size:14px}
+.keys{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.keys input{font:inherit;font-size:13px;padding:4px 9px;border:1.5px solid var(--line-strong);border-radius:9px;width:130px}
+.steps3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:calc(6px*var(--k))}
+.steps3 div{background:#fff;border:1.5px solid var(--lt);border-radius:10px;padding:calc(5px*var(--k)) 9px;font-size:13px}
+.steps3 b{display:block;color:var(--dk)}
+/* 1.2 playground */
+.stats{display:flex;gap:6px;flex-wrap:wrap}
+.stat{background:#fff;border:1.5px solid var(--line);border-radius:9px;padding:2px 9px;font-size:11.5px;color:var(--muted);font-weight:700}
+.stat b{display:block;font-size:15px;color:var(--ink);font-family:var(--font-mono)}
+.meter{height:6px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:2px;width:90px}
+.meter i{display:block;height:100%;transition:width .3s}
+.hmg{display:grid;grid-template-columns:repeat(16,minmax(0,1fr));gap:3px}
+.hc{border:1.5px solid var(--line-strong);border-radius:6px;padding:1px 3px;min-height:calc(42px*var(--k));background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:1px;min-width:0;overflow:hidden;transition:box-shadow .2s}
+.hmg.dense .hc{min-height:calc(24px*var(--k))}
+.hc .ix{font-size:10px;font-weight:800;color:var(--faint);font-family:var(--font-mono)}
+.hc .n{font-family:var(--font-mono);font-size:10px;background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;border-radius:4px;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hc .cnt{font-family:var(--font-mono);font-size:10.5px;font-weight:800;color:var(--blue-dk)}
+.hc.used{border-color:#93C5FD;background:#EFF6FF}
+.hc.tree{border-color:#4ADE80;background:#F0FDF4}.hc.tree .n{background:#DCFCE7;border-color:#86EFAC;color:#166534}.hc.tree .cnt{color:#15803D}
+.hc.sel{box-shadow:0 0 0 2.5px var(--blue)}
+.hc.flash{box-shadow:0 0 0 3px #FACC15}
+.detail{background:#fff;border:1.5px dashed var(--line-strong);border-radius:10px;padding:calc(6px*var(--k)) 9px;min-height:calc(70px*var(--k))}
+.detail h4{margin:0 0 6px;font-size:13px;color:var(--ink)}
+.chain{display:flex;align-items:center;flex-wrap:wrap;gap:5px}
+.nb{display:grid;grid-template-columns:auto auto;border:1.5px solid #F59E0B;border-radius:7px;overflow:hidden;font-family:var(--font-mono);font-size:11px;background:#FFFBEB;cursor:pointer}
+.nb>div{padding:2px 6px}.nb>div+div{border-left:1px solid #FCD34D}
+.nb:hover{border-color:var(--danger);background:#FEF2F2}
+.nb small{display:block;font-size:9px;color:#92400E;font-weight:700;text-transform:uppercase}
+.ar{color:var(--muted);font-weight:800}
+.hlog{height:calc(118px*var(--k));min-height:70px}
+.hlog div{border-bottom:1px solid #1E293B;padding:1px 0}
+.hlog .ev{color:#FDE047}.hlog .tr{color:#4ADE80}.hlog .rz{color:#F472B6}.hlog .rm{color:#F87171}
+.treesvg{display:block;width:100%;height:auto;max-height:150px}
+/* 1.3 split + treeify */
+.split{display:flex;flex-direction:column;gap:calc(6px*var(--k))}
+.brow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:#fff;border:1.5px solid var(--line);border-radius:9px;padding:calc(4px*var(--k)) 8px;min-height:36px}
+.brow>b{font-family:var(--font-mono);font-size:12.5px;min-width:78px;color:var(--blue-dk)}
+.kc{font-family:var(--font-mono);font-size:11.5px;font-weight:700;border:1.5px solid #F59E0B;background:#FEF3C7;color:#92400E;border-radius:6px;padding:1px 6px}
+.kc.hi{border-color:#DB2777;background:#FCE7F3;color:#9D174D}
+.kc small{font-weight:600;opacity:.8}
+.verdict{font-weight:800;font-size:14px;border-radius:9px;padding:calc(5px*var(--k)) 10px;border:1.5px solid}
+.verdict.list{background:#FFFBEB;border-color:#FCD34D;color:#92400E}
+.verdict.rz{background:#FDF2F8;border-color:#F9A8D4;color:#9D174D}
+.verdict.tree{background:#F0FDF4;border-color:#86EFAC;color:#166534}
+input[type=range]{accent-color:var(--bd);width:160px}
+/* 2.3 lock simulator */
+.lgrid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:4px;padding:8px 6px 6px;border-radius:12px;border:3px solid transparent;transition:border-color .2s,background .2s;position:relative;background:#fff}
+.lgrid.locked{border-color:#EF4444;background:#FEF2F2}
+.lgrid .gl{position:absolute;top:-12px;left:12px;background:#EF4444;color:#fff;font-size:11.5px;font-weight:800;padding:1px 9px;border-radius:99px;display:none}
+.lgrid.locked .gl{display:block}
+.lcell{border:1.5px solid var(--line-strong);border-radius:8px;background:#fff;min-height:calc(66px*var(--k));padding:2px 4px;display:flex;flex-direction:column;gap:2px;font-size:11px;min-width:0}
+.lcell .ix{font-family:var(--font-mono);font-weight:800;color:var(--faint);font-size:10.5px}
+.lcell .nd{display:flex;gap:2px}.lcell .nd i{width:8px;height:8px;border-radius:50%;background:#F59E0B;display:block}
+.lcell.lk{border-color:#EF4444;background:#FEF2F2}
+.lt{font-weight:800;border-radius:5px;padding:0 3px;white-space:nowrap;font-size:10.5px;overflow:hidden;text-overflow:ellipsis}
+.lt.l{background:#EF4444;color:#fff}.lt.r{background:#0EA5E9;color:#fff}.lt.w{background:#E2E8F0;color:#475569;border:1px dashed #94A3B8}.lt.c{background:#FACC15;color:#713F12}
+.grow{display:grid;grid-template-columns:118px 1fr;gap:6px;align-items:center;margin:calc(3px*var(--k)) 0}
+.grow .gn{font-family:var(--font-mono);font-size:11.5px;font-weight:700;color:var(--ink);white-space:nowrap}
+.gtrack{position:relative;height:20px;background:#fff;border-radius:6px;border:1px solid var(--line)}
+.gtrack .wt{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,#FECACA,#FECACA 5px,#FEE2E2 5px,#FEE2E2 10px);border-radius:5px}
+.gtrack .rn{position:absolute;top:0;bottom:0;border-radius:5px;color:#fff;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap}
+.gtrack .rn.put{background:#6366F1}.gtrack .rn.get{background:#0EA5E9}.gtrack .rn.cas{background:#CA8A04}
+.phd{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);pointer-events:none}
+.legend2{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#475569}
+.legend2 span{display:inline-flex;align-items:center;gap:5px}
+.legend2 i{width:15px;height:10px;border-radius:3px;display:inline-block}
+/* 3.2 counter bug */
+.bars{display:flex;flex-direction:column;gap:calc(5px*var(--k))}
+.bar{display:grid;grid-template-columns:52px 1fr 92px;gap:8px;align-items:center;font-family:var(--font-mono);font-size:12.5px;font-weight:700}
+.bar .tr{height:16px;background:#fff;border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative}
+.bar .tr i{position:absolute;top:0;bottom:0;left:0;border-radius:5px;transition:width .4s}
+.bar .tr em{position:absolute;top:0;bottom:0;border-left:2px dashed var(--ink)}
+.total{font-family:var(--font-mono);font-size:22px;font-weight:800}
+</style>
+</head>
+<body data-topic="java:HashMap · ConcurrentHashMap · synchronizedMap">
+<header class="topbar">
+ <a class="tbrand" href="../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="00_Java_Core.html" title="All Java Core topics" style="color:#1D4ED8"><svg class="lg" data-logo="openjdk"></svg>Java Core</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<!-- ===================================================== 0. CONTENTS -->
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2><svg class="lg" data-logo="openjdk"></svg>HashMap · ConcurrentHashMap · synchronizedMap</h2><span class="sub">how buckets work, and how to share a map between threads</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="toc" id="toc"></div>
+ <div class="howuse"><span><b>← →</b> keys move between slides</span><span><b>▶ Try it</b> boxes are interactive</span><span>Examples are <b>simplified from FireFlink</b> parallel suite runs</span></div>
+</div>
+</section>
+
+<!-- ===================================================== 1. HASHMAP -->
+<section class="cat" data-name="1. HashMap inside" data-col="b">
+<h1 class="cat-title">1. HashMap inside</h1>
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.1</span><h2>From key to bucket</h2><span class="sub">pick a key and watch the bits</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="keys" id="hk-keys"><input id="hk-in" placeholder="type a key…" maxlength="20"><button class="btn" data-k="apple">"apple"</button><button class="btn" data-k="Aa">"Aa"</button><button class="btn" data-k="BB">"BB"</button><button class="btn" data-i="65536">Integer 65536</button><button class="btn" data-i="131072">Integer 131072</button></div>
+   <div class="ctrl"><span style="font-size:12.5px;font-weight:700;color:var(--muted)">capacity n =</span><span class="seg" id="hk-cap"><button class="on" data-n="16">16</button><button data-n="64">64</button></span></div>
+   <div class="bits" id="hk-bits"></div>
+   <div class="msg" id="hk-msg"></div>
+  </div>
+  <div class="stack">
+   <div class="steps3">
+    <div><b>1 · hash</b><code>key.hashCode()</code> then spread the high bits down</div>
+    <div><b>2 · index</b><code>(n - 1) &amp; hash</code> — a fast <code>%</code> because n is a power of 2</div>
+    <div><b>3 · store</b>empty → new node, same key → replace value, else append</div>
+   </div>
+   <div class="code"><script type="text/plain" data-mac="HashMap.java (JDK, trimmed)">
+static final int hash(Object key) {
+    int h;
+    return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
+}
+// get(key): same hash → same bucket → walk it:
+//   hash equal?  then  key.equals(k)?  → found</script></div>
+   <p class="take"><b>Remember:</b> the <b>hash</b> picks the bucket, <b>equals()</b> picks the entry inside it. Equal keys must have equal hashCodes, and a key must not change after it is put.</p>
+   <div class="gtk"><b>Good to know</b> A <code>null</code> key has hash 0 → always bucket 0. HashMap allows one null key and many null values.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.2</span><h2>▶ HashMap playground</h2><span class="sub">add keys, force collisions, watch resize and treeify</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="keys"><input id="hm-key" placeholder="type a key…" maxlength="24"><button class="btn p" id="hm-put">put(key)</button><button class="btn" id="hm-rand">+ 5 random keys</button><button class="btn" id="hm-coll" style="border-color:#DB2777;color:#9D174D">+ colliding key</button><button class="btn" id="hm-reset">↺ Reset</button></div>
+   <div class="stats" id="hm-stats"></div>
+   <div class="hmg" id="hm-grid"></div>
+  </div>
+  <div class="stack">
+   <div class="detail" id="hm-detail"></div>
+   <div class="console hlog" id="hm-log"></div>
+   <p class="take" style="margin:0"><b>Try:</b> press <b>+ colliding key</b> 9 times (they all share hashCode −540425984). The 9th triggers a <b>resize</b>, not a tree, until capacity reaches <b>64</b>.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.3</span><h2>Resize and treeify rules</h2><span class="sub">the numbers interviewers ask for</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="box"><h4>▶ Resize 16 → 32: who moves?</h4>
+    <div class="ctrl" style="margin-bottom:6px"><button class="btn p" id="sp-go">resize() → 32</button><button class="btn" id="sp-reset">↺ Reset</button></div>
+    <div class="split" id="sp-rows"></div>
+    <p class="msg" id="sp-msg" style="margin:6px 0 0"></p></div>
+   <table class="t">
+    <tr><th>Constant</th><th>Value</th><th>Meaning</th></tr>
+    <tr><td>default capacity</td><td><b>16</b></td><td>always a power of 2</td></tr>
+    <tr><td>load factor</td><td><b>0.75</b></td><td>resize when size &gt; capacity × 0.75 (13th put at 16)</td></tr>
+    <tr><td>TREEIFY_THRESHOLD</td><td><b>8</b></td><td>bucket longer than 8 → tree…</td></tr>
+    <tr><td>MIN_TREEIFY_CAPACITY</td><td><b>64</b></td><td>…only if table ≥ 64, else resize</td></tr>
+    <tr><td>UNTREEIFY_THRESHOLD</td><td><b>6</b></td><td>tree shrinks to ≤ 6 on split → list again</td></tr>
+   </table>
+  </div>
+  <div class="stack">
+   <div class="box"><h4>▶ One bucket keeps growing — what happens?</h4>
+    <div class="ctrl"><span style="font-size:13px">nodes in bucket <b id="tf-nv">9</b></span><input type="range" id="tf-n" min="1" max="12" value="9"><span class="seg" id="tf-cap"><button data-c="16">cap 16</button><button data-c="32">32</button><button class="on" data-c="64">64</button></span></div>
+    <div class="verdict" id="tf-v" style="margin-top:8px"></div></div>
+   <p class="take"><b>Remember:</b> resize <b>doubles</b> the table and costs O(n). Each entry either <b>stays</b> at index j or moves to <b>j + oldCap</b> — decided by one bit of the hash, no re-hashing. Trees keep a terrible <code>hashCode()</code> at O(log n) instead of O(n).</p>
+   <div class="gtk"><b>Good to know</b> <code>new HashMap&lt;&gt;(100)</code> gives a table of 128 that still resizes at 97 entries. To hold 100 without resizing use <code>HashMap.newHashMap(100)</code> (Java 19+).</div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 2. THREADS -->
+<section class="cat" data-name="2. Sharing between threads" data-col="p">
+<h1 class="cat-title">2. Sharing between threads</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.1</span><h2>Why a plain HashMap breaks</h2><span class="sub">two threads, one empty bucket</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="flow" data-step>
+    <div class="fstep"><i>1</i><div><b>T1: bucket 5 is empty</b><small>read table[5] → null</small></div></div>
+    <div class="fstep"><i>2</i><div><b>T2: bucket 5 is still empty</b><small>T1 hasn't written yet</small></div></div>
+    <div class="fstep"><i>3</i><div><b>T1 writes "run-41"</b><small>table[5] = node(run-41)</small></div></div>
+    <div class="fstep stopx"><i>4</i><div><b>T2 writes "run-42"</b><small>table[5] = node(run-42) → <b>run-41 is lost</b></small></div></div>
+    <div class="fstep"><i>5</i><div><b>size++ races too</b><small>both read 7, both write 8 → size() wrong</small></div></div>
+   </div>
+   <p class="take"><b>Remember:</b> HashMap has no locks. Concurrent writes lose entries, corrupt <code>size()</code>, and a write during resize can hide entries from readers. (Before Java 8 a concurrent resize could even create an infinite loop.)</p>
+  </div>
+  <div class="stack">
+   <table class="t">
+    <tr><th></th><th>Hashtable</th><th>synchronizedMap</th><th>ConcurrentHashMap</th></tr>
+    <tr><td><b>Lock</b></td><td>whole map</td><td>whole map</td><td>CAS / one bucket</td></tr>
+    <tr><td><b>Reads lock?</b></td><td><span class="chip bad">yes</span></td><td><span class="chip bad">yes</span></td><td><span class="chip ok">no</span></td></tr>
+    <tr><td><b>null key/value</b></td><td>✗</td><td>as the wrapped map</td><td>✗</td></tr>
+    <tr><td><b>Iterator</b></td><td>fail-fast</td><td>fail-fast — <b>you</b> must lock it</td><td>weakly consistent</td></tr>
+    <tr><td><b>Atomic compound ops</b></td><td>✗</td><td>✗</td><td><code>merge</code>, <code>compute…</code></td></tr>
+    <tr><td><b>Use today?</b></td><td><span class="chip bad">legacy</span></td><td><span class="chip warn">rarely</span></td><td><span class="chip ok">default choice</span></td></tr>
+   </table>
+   <div class="gtk"><b>Good to know</b> <code>Collections.synchronizedMap(m)</code> wraps every call in <code>synchronized(mutex)</code>. Fine for low traffic, a bottleneck under parallel load.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.2</span><h2>How ConcurrentHashMap stays fast (Java 8+)</h2><span class="sub">pick a case to see which lines run</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="seg" id="ch-case"><button class="on" data-c="empty">put → empty bucket</button><button data-c="busy">put → busy bucket</button><button data-c="moved">during resize</button><button data-c="null">put(k, null)</button><button data-c="size">size()</button></div>
+   <div class="code" id="ch-code"></div>
+  </div>
+  <div class="stack">
+   <div class="msg" id="ch-msg"></div>
+   <div class="box"><h4>Three rules</h4><ul>
+    <li>⚡ <b>Empty bucket</b> → one <b>CAS</b>, no lock</li>
+    <li>🔒 <b>Busy bucket</b> → <code>synchronized</code> on its <b>first node</b> only</li>
+    <li>👁 <b>get()</b> never locks — <code>volatile</code> reads of the table and node values</li></ul></div>
+   <p class="take"><b>Remember:</b> no global lock (the Java 7 "16 segments" design is gone). Threads writing to different buckets never wait for each other.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.3</span><h2>▶ Lock simulator</h2><span class="sub">same 6 threads, two maps — press Play, then switch</span></div>
+ <div class="ctrl"><span class="seg" id="ls-mode"><button data-m="chm">ConcurrentHashMap</button><button data-m="sync">synchronizedMap / Hashtable</button></span><button class="btn p" id="ls-play">▶ Play</button><button class="btn" id="ls-reset">↺ Reset</button><span style="font-family:var(--font-mono);font-weight:700;color:var(--ink)" id="ls-t"></span></div>
+ <div class="cols even" style="margin-top:calc(12px*var(--k))">
+  <div class="stack">
+   <div class="lgrid" id="ls-grid"></div>
+   <div class="legend2"><span><i style="background:repeating-linear-gradient(45deg,#FECACA,#FECACA 3px,#FEE2E2 3px,#FEE2E2 6px)"></i>waiting</span><span><i style="background:#6366F1"></i>put (lock held)</span><span><i style="background:#CA8A04"></i>put via CAS</span><span><i style="background:#0EA5E9"></i>get</span></div>
+  </div>
+  <div class="stack">
+   <div id="ls-gantt"></div>
+   <div class="msg" id="ls-res"></div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.4</span><h2>Atomic methods and safe iteration</h2><span class="sub">each call is thread-safe, two calls in a row are not</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="StepStats.java">
+// ❌ check-then-act: another thread can run in between
+if (!byRun.containsKey(runId)) byRun.put(runId, new ArrayList<>());
+hits.put(status, hits.get(status) + 1);         // ❌ lost +1s
+
+// ✅ one atomic call each
+byRun.computeIfAbsent(runId, id -> new ArrayList<>()).add(step);
+hits.merge(status, 1, Integer::sum);
+locks.putIfAbsent(deviceId, new Semaphore(1));</script></div>
+   <div class="gtk"><b>Good to know</b> keep the function in <code>compute…</code> short and never touch the <b>same map</b> inside it — it runs while the bucket is locked.</div>
+  </div>
+  <div class="stack">
+   <div class="box"><h4>▶ Remove while iterating</h4>
+    <div class="seg" id="it-m" style="margin-bottom:6px"><button class="on" data-m="hm">HashMap</button><button data-m="chm">ConcurrentHashMap</button></div>
+    <div class="code" id="it-code"></div>
+    <div class="console" id="it-out" style="margin-top:6px"></div></div>
+   <p class="take"><b>Remember:</b> HashMap iterators are <b>fail-fast</b> (throw CME on change). CHM iterators are <b>weakly consistent</b> — never throw, may or may not see concurrent changes.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 3. ALL IN ACTION -->
+<section class="cat" data-name="3. All in action" data-col="k">
+<h1 class="cat-title">3. All in action</h1>
+<div class="slide c-k">
+ <div class="sh"><span class="sn">3.1</span><h2>Predict the output</h2><span class="sub">map traps</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="pqs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="pq" data-opts="null 1|1 2|null 2" data-ans="null 1"><pre>Map&lt;String,Integer&gt; m = new HashMap&lt;&gt;();
+System.out.println(
+    m.put("a", 1) + " " + m.put("a", 2));</pre><div class="why"><code>put</code> returns the <b>previous</b> value — null first, then 1.</div></div>
+  <div class="pq" data-opts="1|2" data-ans="2"><pre>// "Aa".hashCode() == "BB".hashCode()
+m.put("Aa", 1);
+m.put("BB", 2);
+System.out.println(m.size());</pre><div class="why">Same bucket, but <code>equals()</code> says different keys → chained, size 2. <a class="go" data-go="1.1">1.1</a></div></div>
+  <div class="pq" data-opts="1|2|NPE" data-ans="1"><pre>Map&lt;String,Integer&gt; m = new HashMap&lt;&gt;();
+m.put(null, 1);
+m.put(null, 2);
+System.out.println(m.size());</pre><div class="why">One null key allowed (bucket 0); the second put replaces the value.</div></div>
+  <div class="pq" data-opts="stores null|NPE" data-ans="NPE"><pre>Map&lt;String,String&gt; m =
+    new ConcurrentHashMap&lt;&gt;();
+m.put("suite-7", null);</pre><div class="why">CHM rejects null keys and values: <code>get()</code> returning null must mean "absent", since you can't follow it with an atomic <code>containsKey</code>. <a class="go" data-go="2.2">2.2</a></div></div>
+  <div class="pq" data-opts="v|null" data-ans="null"><pre>List&lt;String&gt; key = new ArrayList&lt;&gt;();
+m.put(key, "v");
+key.add("tag");
+System.out.println(m.get(key));</pre><div class="why">The key's hashCode changed → <code>get</code> looks in a different bucket. Never mutate a key.</div></div>
+  <div class="pq" data-opts="100|128|256" data-ans="128"><pre>// table length after the first put?
+Map&lt;String,Run&gt; m =
+    new HashMap&lt;&gt;(100);</pre><div class="why">Capacity is rounded up to the next power of 2 → 128 (threshold 96). <a class="go" data-go="1.3">1.3</a></div></div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">3.2</span><h2>Production bug: "the run summary lost steps"</h2><span class="sub">8 executor threads update one status counter</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="seg" id="pb-m"><button class="on" data-m="hm">HashMap get+put</button><button data-m="cg">CHM get+put</button><button data-m="mg">CHM merge</button><button data-m="la">CHM + LongAdder</button></div>
+   <div class="code" id="pb-code"></div>
+  </div>
+  <div class="stack">
+   <div class="ctrl"><button class="btn p" id="pb-run">▶ Run 1000 steps on 8 threads</button><span class="total" id="pb-total"></span><span class="chip no" id="pb-chip">not run</span></div>
+   <div class="bars" id="pb-bars"></div>
+   <div class="msg" id="pb-msg"></div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 4. INTERVIEW Q&A -->
+<section class="cat" data-name="4. Interview Q&amp;A" data-col="i">
+<h1 class="cat-title">4. Interview Q&amp;A</h1>
+<div class="slide c-i">
+ <div class="sh"><span class="sn">4.1</span><h2>Interview questions</h2><span class="sub">click a question to reveal the answer · pill = slide that explains it</span></div>
+ <div class="qbar"><input id="qa-find" type="search" placeholder="Filter questions… (e.g. resize, CAS, null)"><span class="chip ok" id="qa-count"></span><button class="btn" id="qa-random">🎲 Random question</button><label class="donebox" style="margin-left:auto"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="acc" id="qa-list"></div>
+</div>
+</section>
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <span class="kbd">← → keys</span>
+</footer>
+
+<script src="../_shared/deck.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const jHash=s=>{let h=0;for(const ch of s)h=(Math.imul(31,h)+ch.charCodeAt(0))|0;return h;};
+const spread=h=>(h^(h>>>16));
+const segPick=(el,fn)=>el.onclick=e=>{const b=e.target.closest('button');if(!b)return;el.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));fn(b);};
+
+// ===================================================== 1.1 key → bucket
+(function(){
+ let key='apple',isInt=false,n=16;
+ function draw(){const h=isInt?+key:jHash(key),sp=spread(h),lb=Math.log2(n),i=sp&(n-1),raw=h&(n-1);
+  const B=v=>{const s=(v>>>0).toString(2).padStart(32,'0');return s.slice(0,32-lb).replace(/(.{4})(?=.)/g,'$1 ')+' <i>'+s.slice(32-lb)+'</i>';};
+  $('hk-bits').innerHTML=`<span>key</span><b>${isInt?'Integer '+key:'"'+ESC(key)+'"'}</b>
+   <span>h = hashCode()</span><b>${B(h)}</b><span>h &gt;&gt;&gt; 16</span><b>${B(h>>>16)}</b>
+   <span>hash = h ^ (h&gt;&gt;&gt;16)</span><b>${B(sp)}</b><span>n − 1 = ${n-1}</span><b>${B(n-1)}</b>
+   <span>index = hash &amp; (n−1)</span><b class="res">${i}</b>`;
+  $('hk-msg').innerHTML=`hashCode = <code>${h}</code> → <b>bucket ${i}</b> of ${n}. Only the <b>last ${lb} bits</b> (yellow) pick the bucket.`+
+   (raw!==i?`<br>Without the <code>^ (h&gt;&gt;&gt;16)</code> spread it would be bucket <b>${raw}</b>.`:'')+
+   (isInt?`<br>Integers 65536 and 131072 differ only in <b>high</b> bits — without spreading both land in bucket <b>0</b>. Spreading mixes high bits into the low ones.`:'')+
+   (key==='Aa'||key==='BB'?`<br><b>"Aa"</b> and <b>"BB"</b> share hashCode 2112 → same bucket, <code>equals()</code> tells them apart.`:'');}
+ $('hk-keys').onclick=e=>{const b=e.target.closest('button');if(!b)return;isInt=!!b.dataset.i;key=b.dataset.i||b.dataset.k;draw();};
+ $('hk-in').oninput=e=>{const v=e.target.value;if(!v)return;key=v;isInt=false;draw();};
+ segPick($('hk-cap'),b=>{n=+b.dataset.n;draw();});
+ draw();
+})();
+
+// ===================================================== 1.2 playground (kept from the old page)
+function treeSVG(keys,opt={}){
+ const ks=[...keys].sort((a,b)=>{const ha=spread(jHash(a)),hb=spread(jHash(b));return ha!==hb?ha-hb:(a<b?-1:a>b?1:0);});
+ const nodes=[];let maxD=0;
+ (function b(lo,hi,d,p){if(lo>hi)return;const m=(lo+hi)>>1;const n={k:ks[m],x:m,d,p};nodes.push(n);maxD=Math.max(maxD,d);b(lo,m-1,d+1,n);b(m+1,hi,d+1,n);})(0,ks.length-1,0,null);
+ const perfect=ks.length===(1<<(maxD+1))-1;
+ const W=84,H=44,w=ks.length*W+10,h=(maxD+1)*H+6;
+ let s=`<svg class="treesvg" viewBox="0 0 ${w} ${h}" style="font-family:Consolas,monospace">`;
+ const X=n=>n.x*W+W/2+5,Y=n=>n.d*H+18;
+ nodes.forEach(n=>{if(n.p)s+=`<line x1="${X(n.p)}" y1="${Y(n.p)}" x2="${X(n)}" y2="${Y(n)}" stroke="#94A3B8" stroke-width="2"/>`;});
+ nodes.forEach(n=>{const fill=!perfect&&n.d===maxD?'#DC2626':'#1E293B';
+  s+=`<g data-k="${n.k}" style="cursor:pointer"><rect x="${X(n)-W/2+4}" y="${Y(n)-13}" width="${W-8}" height="26" rx="13" fill="${fill}"/><text x="${X(n)}" y="${Y(n)+4.5}" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">${n.k}</text></g>`;});
+ return s+'</svg>';}
+const FAM=[];(function g(p,d){if(d===4){FAM.push(p);return;}g(p+'Aa',d+1);g(p+'BB',d+1);})('',0); // 16 keys, same hashCode
+(function(){
+ const WORDS=['suite-1','run-42','login','checkout','cart','search','profile','logout','payment','signup','orders','wishlist','reports','android','ios','chrome','firefox','safari','edge','env-qa','env-prod','tenant-a','tenant-b','step-7','step-9','api-get','api-post','visual','mobile','web','smoke','regression','sanity','nightly','retry','flaky','pass','fail','skip','warn'];
+ let cap,size,thr,tab,sel,flash,collI,logs,wordI;
+ const log=(m,c='')=>{logs.unshift(`<div class="${c}">${m}</div>`);if(logs.length>60)logs.pop();};
+ const idx=(sp,n)=>sp&(n-1);
+ function reset(){cap=16;size=0;thr=12;tab=Array(cap).fill(null);sel=null;flash=null;collI=0;wordI=0;logs=[];log('new HashMap&lt;&gt;() → 16 buckets, threshold 12','ev');render();}
+ function put(key){const h=jHash(key),sp=spread(h),i=idx(sp,cap);let bin=tab[i];
+  log(`put("${key}") hash=${sp} → ${sp} &amp; ${cap-1} = <b>${i}</b>`);
+  if(bin&&bin.nodes.some(n=>n.k===key)){log(`  key exists → value replaced, size unchanged`,'ev');sel=flash=i;render();return;}
+  if(!bin){tab[i]=bin={type:'list',nodes:[]};}
+  else log(`  collision: bucket ${i} has ${bin.nodes.length} → ${bin.type==='tree'?'tree insert':'append at tail'}`);
+  bin.nodes.push({k:key,sp});
+  if(bin.type==='list'&&bin.nodes.length>8){
+   if(cap<64){log(`  ⚠ ${bin.nodes.length} nodes &gt; 8 but capacity ${cap} &lt; 64 → resize() instead of treeify`,'rz');resize();}
+   else{bin.type='tree';log(`  🌳 ${bin.nodes.length} nodes &gt; 8, capacity ≥ 64 → TREEIFY`,'tr');}}
+  size++;
+  if(size>thr){log(`  ⚠ size ${size} &gt; threshold ${thr} → resize()`,'rz');resize();}
+  sel=flash=idx(sp,cap);render();}
+ function resize(){const old=tab,oc=cap;cap*=2;thr=Math.floor(cap*0.75);tab=Array(cap).fill(null);let moved=0;
+  old.forEach((bin,j)=>{if(!bin)return;const lo=[],hi=[];bin.nodes.forEach(n=>((n.sp&oc)===0?lo:hi).push(n));moved+=hi.length;
+   [[lo,j],[hi,j+oc]].forEach(([arr,t])=>{if(!arr.length)return;let type=bin.type;
+    if(type==='tree'&&arr.length<=6){type='list';log(`  ↩ tree split → ${arr.length} nodes at ${t} → UNTREEIFY`,'tr');}
+    tab[t]={type,nodes:arr};});});
+  log(`  ↗ resized ${oc} → ${cap}, threshold ${thr}. ${moved} node(s) moved to j+${oc}`,'rz');}
+ function remove(key){const sp=spread(jHash(key)),i=idx(sp,cap),bin=tab[i];if(!bin)return;
+  bin.nodes=bin.nodes.filter(n=>n.k!==key);size--;log(`remove("${key}") from bucket ${i}`,'rm');
+  if(!bin.nodes.length)tab[i]=null;
+  else if(bin.type==='tree'&&bin.nodes.length<=6){bin.type='list';log(`  ↩ tree now ${bin.nodes.length} nodes → back to a list`,'tr');}
+  sel=flash=i;render();}
+ function render(){const lf=size/cap,dense=cap>32;
+  $('hm-stats').innerHTML=`<div class="stat">capacity<b>${cap}</b></div><div class="stat">size<b>${size}</b></div><div class="stat">threshold<b>${thr}</b></div><div class="stat">load<b>${lf.toFixed(2)}</b><div class="meter"><i style="width:${Math.min(100,lf/0.75*100)}%;background:${lf>0.7?'#F97316':'#3B82F6'}"></i></div></div><div class="stat">tree bins<b>${tab.filter(b=>b&&b.type==='tree').length}</b></div><div class="stat">longest<b>${Math.max(0,...tab.map(b=>b?b.nodes.length:0))}</b></div>`;
+  const g=$('hm-grid');g.classList.toggle('dense',dense);
+  g.innerHTML=tab.map((b,i)=>{const n=b?b.nodes:[];const cls=['hc',b?(b.type==='tree'?'tree':'used'):'',i===sel?'sel':'',i===flash?'flash':''].join(' ');
+   const body=dense?(n.length?`<span class="cnt">${b.type==='tree'?'🌳':''}${n.length}</span>`:''):n.slice(0,2).map(x=>`<span class="n">${x.k}</span>`).join('')+(n.length>2?`<span class="cnt">+${n.length-2}</span>`:'');
+   return `<div class="${cls}" data-i="${i}" title="bucket ${i}"><span class="ix">${i}${!dense&&b&&b.type==='tree'?'🌳':''}</span>${body}</div>`;}).join('');
+  const d=$('hm-detail');
+  if(sel==null||!tab[sel])d.innerHTML=`<h4>Bucket detail</h4><span style="color:var(--muted);font-size:13px">${sel==null?'Click a bucket to see its nodes.':'Bucket '+sel+' is empty (null).'}</span>`;
+  else{const b=tab[sel];
+   d.innerHTML=b.type==='list'?`<h4>Bucket ${sel} — linked list, ${b.nodes.length} node${b.nodes.length>1?'s':''} · click a node to remove it</h4><div class="chain">${b.nodes.map(n=>`<div class="nb" data-k="${n.k}" title="remove"><div><small>hash</small>${n.sp}</div><div><small>key</small>"${n.k}"</div></div>`).join('<span class="ar">→</span>')}<span class="ar">→ null</span></div>`
+    :`<h4>Bucket ${sel} — 🌳 red-black tree, ${b.nodes.length} nodes · click one to remove it</h4>${treeSVG(b.nodes.map(n=>n.k))}`;}
+  $('hm-log').innerHTML=logs.join('');
+  setTimeout(()=>{flash=null;g.querySelectorAll('.flash').forEach(e=>e.classList.remove('flash'));},700);}
+ $('hm-put').onclick=()=>{const k=$('hm-key').value.trim();if(k){put(k);$('hm-key').value='';}};
+ $('hm-key').onkeydown=e=>{if(e.key==='Enter')$('hm-put').click();};
+ $('hm-rand').onclick=()=>{for(let n=0;n<5;n++){let w;do{w=wordI<WORDS.length?WORDS[wordI]:'key-'+wordI;wordI++;}while(tab.some(b=>b&&b.nodes.some(x=>x.k===w)));put(w);}};
+ $('hm-coll').onclick=()=>{if(collI>=FAM.length){log('All 16 colliding keys are in the map.','ev');render();return;}put(FAM[collI++]);};
+ $('hm-reset').onclick=reset;
+ $('hm-grid').onclick=e=>{const c=e.target.closest('.hc');if(c){sel=+c.dataset.i;render();}};
+ $('hm-detail').onclick=e=>{const n=e.target.closest('[data-k]');if(n)remove(n.dataset.k);};
+ reset();
+})();
+
+// ===================================================== 1.3 split + treeify decision
+(function(){
+ const K=[];for(let i=1;K.length<5&&i<500;i++){const k='TC-'+i,sp=spread(jHash(k));if((sp&15)===1&&(K.filter(x=>(x.sp&16)).length<3||!(sp&16)))K.push({k,sp});}
+ let done=false;
+ const chip=(x,show)=>`<span class="kc ${show&&(x.sp&16)?'hi':''}">"${x.k}"${show?` <small>bit16=${x.sp&16?1:0}</small>`:''}</span>`;
+ function draw(){
+  $('sp-rows').innerHTML=done?`<div class="brow"><b>[1]</b>${K.filter(x=>!(x.sp&16)).map(x=>chip(x,1)).join('')}</div><div class="brow"><b>[17]</b>${K.filter(x=>x.sp&16).map(x=>chip(x,1)).join('')}</div>`
+   :`<div class="brow"><b>[1] of 16</b>${K.map(x=>chip(x,0)).join('')}</div>`;
+  $('sp-msg').innerHTML=done?'Bit 16 of the hash is <b>0 → stays at 1</b>, <b>1 → moves to 1 + 16 = 17</b>. One bit test per node, no <code>hashCode()</code> calls, order kept.':'Five keys share bucket 1 in a 16-slot table. Guess which ones move.';
+  $('sp-go').disabled=done;}
+ $('sp-go').onclick=()=>{done=true;draw();};$('sp-reset').onclick=()=>{done=false;draw();};draw();
+ let cap=64;
+ function tf(){const n=+$('tf-n').value;$('tf-nv').textContent=n;const v=$('tf-v');
+  if(n<=8){v.className='verdict list';v.innerHTML=`📋 linked list — ${n} node${n>1?'s':''} is fine (≤ 8)`;}
+  else if(cap<64){v.className='verdict rz';v.innerHTML=`↗ resize to ${cap*2} instead — table &lt; 64, so spreading keys out is cheaper than a tree`;}
+  else{v.className='verdict tree';v.innerHTML=`🌳 treeify — red-black tree, lookups O(log n). Back to a list at ≤ 6`;}}
+ $('tf-n').oninput=tf;segPick($('tf-cap'),b=>{cap=+b.dataset.c;tf();});tf();
+})();
+
+// ===================================================== 2.2 CHM putVal
+(function(){
+ const SRC=`final V putVal(K key, V value) {
+    if (key == null || value == null) throw new NullPointerException();
+    int hash = spread(key.hashCode());
+    for (Node<K,V>[] tab = table;;) {
+        Node<K,V> f = tabAt(tab, i = (n - 1) & hash);   // volatile read
+        if (f == null) {
+            if (casTabAt(tab, i, null, new Node<>(hash, key, value)))
+                break;                                  // no lock at all
+        } else if (f.hash == MOVED) {
+            tab = helpTransfer(tab, f);                 // help the resize
+        } else {
+            synchronized (f) {                          // lock bucket head only
+                // append to list / insert in tree / replace value
+            }
+        }
+    }
+    addCount(1L, binCount);                             // counter cells
+}`;
+ const C={empty:[[5,6,7,8],'⚡ Bucket empty → <b>CAS</b> the new node in. If another thread won the race, the loop simply retries. No lock taken.'],
+  busy:[[5,12,13,14],'🔒 Bucket has nodes → <code>synchronized</code> on the <b>first node</b>. Only threads writing the <b>same bucket</b> wait; <code>get()</code> on it still goes through.'],
+  moved:[[9,10],'↗ A <b>forwarding node</b> (hash = MOVED) means a resize is running → this thread <b>helps move buckets</b> instead of waiting.'],
+  null:[[2],'✗ <b>NullPointerException</b>. In a concurrent map <code>get()</code> returning null must mean "absent" — a null value would be ambiguous.'],
+  size:[[17],'Σ Counts go to <code>baseCount</code> or per-thread <b>CounterCells</b> (the LongAdder idea) → no hot spot. <code>size()</code> sums them — an <b>estimate</b> while writers run. Prefer <code>mappingCount()</code> for big maps.']};
+ $('ch-code').innerHTML=macHTML('ConcurrentHashMap.java (JDK, simplified)',SRC,'java');
+ const mac=$('ch-code').querySelector('.mac');
+ const pick=c=>{markLines(mac,C[c][0],true);$('ch-msg').innerHTML=C[c][1];};
+ segPick($('ch-case'),b=>pick(b.dataset.c));pick('empty');
+})();
+
+// ===================================================== 2.3 lock simulator (kept from the old page)
+(function(){
+ const SCEN=[{t:'T1',op:'put',b:3,at:0},{t:'T2',op:'put',b:3,at:0.3},{t:'T3',op:'put',b:10,at:0.6},{t:'T4',op:'get',b:3,at:0.9},{t:'T5',op:'get',b:7,at:1.2},{t:'T6',op:'put',b:5,at:1.5}];
+ const OCC={1:2,3:3,7:1,10:2,12:1,14:1},DUR={put:2,get:1};
+ function schedule(mode){const free={};let gfree=0;
+  return SCEN.map(s=>{const d=DUR[s.op];let start,kind=s.op;
+   if(mode==='sync'){start=Math.max(s.at,gfree);gfree=start+d;}
+   else if(s.op==='get')start=s.at;
+   else if(!OCC[s.b]&&!(free[s.b]>s.at)){start=s.at;kind='cas';free[s.b]=start+d;}
+   else{start=Math.max(s.at,free[s.b]||0);free[s.b]=start+d;}
+   return {...s,start,end:start+d,kind};});}
+ let mode='chm',t=0,playing=false,last=0,sch=schedule(mode);
+ const T=Math.max(...schedule('sync').map(x=>x.end));
+ function draw(){
+  $('ls-t').textContent=`t = ${t.toFixed(1)}`;
+  $('ls-mode').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.m===mode));
+  const st=sch.map(s=>({...s,state:t<s.at?'idle':t<s.start?'wait':t<s.end?'run':'done'}));
+  const holder=mode==='sync'?st.find(s=>s.state==='run'):null;
+  let g=`<div class="gl">🔒 MAP LOCK held by ${holder?holder.t:''}</div>`;
+  for(let i=0;i<16;i++){const runP=st.filter(s=>s.b===i&&s.state==='run'),wt=st.filter(s=>s.b===i&&s.state==='wait');
+   const n=(OCC[i]||0)+st.filter(s=>s.b===i&&s.op==='put'&&s.state==='done').length;
+   g+=`<div class="lcell ${runP.some(s=>s.kind==='put')?'lk':''}"><span class="ix">${i}</span><span class="nd">${'<i></i>'.repeat(n)}</span>${runP.map(s=>s.kind==='put'?`<span class="lt l">🔒${s.t}</span>`:s.kind==='cas'?`<span class="lt c">⚡${s.t}</span>`:`<span class="lt r">👁${s.t}</span>`).join('')}${wt.map(s=>`<span class="lt w">⏳${s.t}</span>`).join('')}</div>`;}
+  const gr=$('ls-grid');gr.innerHTML=g;gr.classList.toggle('locked',!!holder);
+  const pc=x=>(x/T*100).toFixed(2)+'%';
+  $('ls-gantt').innerHTML=st.map(s=>`<div class="grow"><span class="gn">${s.t} ${s.op} → b${s.b}</span><div class="gtrack"><div class="phd" style="left:${pc(Math.min(t,T))}"></div>${s.start>s.at?`<div class="wt" style="left:${pc(s.at)};width:${pc(Math.max(0,Math.min(t,s.start)-s.at))}"></div>`:''}${t>s.start?`<div class="rn ${s.kind}" style="left:${pc(s.start)};width:${pc(Math.min(t,s.end)-s.start)}">${t>=s.end&&s.start>s.at?'waited '+(s.start-s.at).toFixed(1):''}</div>`:''}</div></div>`).join('');
+  const fin=Math.max(...sch.map(s=>s.end)),wait=sch.reduce((a,s)=>a+(s.start-s.at),0);
+  $('ls-res').innerHTML=t>=fin?`✔ All 6 threads done at <b>t = ${fin.toFixed(1)}</b> · total waiting <b>${wait.toFixed(1)}</b> — ${mode==='chm'?'only T2 waits (same bucket as T1). T6 used CAS on empty bucket 5; readers never waited.':'everyone queues behind <b>one lock</b>, even readers of other buckets.'}`
+   :(mode==='chm'?'<b>ConcurrentHashMap:</b> T1 and T3 write different buckets in parallel. Press <b>▶ Play</b>.':'<b>synchronizedMap:</b> one mutex around every call. Press <b>▶ Play</b>.');}
+ const stop=()=>{playing=false;$('ls-play').textContent='▶ Play';};
+ function frame(ts){if(!playing)return;const dt=last?(ts-last)/1000:0;last=ts;t=Math.min(T,t+dt*1.1);draw();if(t>=T){stop();return;}requestAnimationFrame(frame);}
+ $('ls-mode').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;mode=b.dataset.m;sch=schedule(mode);t=0;stop();draw();};
+ $('ls-reset').onclick=()=>{t=0;stop();draw();};
+ $('ls-play').onclick=()=>{if(playing){stop();return;}if(t>=T)t=0;playing=true;last=0;$('ls-play').textContent='⏸ Pause';requestAnimationFrame(frame);};
+ draw();
+})();
+
+// ===================================================== 2.4 remove while iterating
+(function(){
+ const M={hm:['Map<String,Run> runs = new HashMap<>(active);','<span class="dim">removing run-2…</span>\n<span class="err">Exception in thread "cleanup" java.util.ConcurrentModificationException\n    at java.util.HashMap$HashIterator.nextNode(HashMap.java:1605)</span>\n<span class="nar">Fix: runs.keySet().removeIf(id -> isFinished(id)); or it.remove()</span>'],
+  chm:['Map<String,Run> runs = new ConcurrentHashMap<>(active);','<span class="dim">removing run-2…</span>\n<span class="okc">done — 2 runs left, no exception</span>\n<span class="nar">Weakly consistent: other threads may add/remove meanwhile; the loop may or may not see it.</span>']};
+ const SRC=d=>`${d}
+for (String id : runs.keySet())
+    if (isFinished(id)) runs.remove(id);   // modify while looping`;
+ const draw=m=>{$('it-code').innerHTML=macHTML('RunCleanup.java',SRC(M[m][0]),'java');$('it-out').innerHTML=M[m][1];};
+ segPick($('it-m'),b=>draw(b.dataset.m));draw('hm');
+})();
+
+// ===================================================== 3.2 production bug: lost counts
+(function(){
+ const CODE={
+  hm:['Map<String,Integer> counts = new HashMap<>();','// ❌ not thread-safe at all\n    counts.put(status, counts.getOrDefault(status, 0) + 1);'],
+  cg:['Map<String,Integer> counts = new ConcurrentHashMap<>();','// ❌ safe map, unsafe logic: get and put are two calls\n    counts.put(status, counts.getOrDefault(status, 0) + 1);'],
+  mg:['Map<String,Integer> counts = new ConcurrentHashMap<>();','// ✅ atomic read-modify-write\n    counts.merge(status, 1, Integer::sum);'],
+  la:['Map<String,LongAdder> counts = new ConcurrentHashMap<>();','// ✅ atomic, low contention on hot keys\n    counts.computeIfAbsent(status, s -> new LongAdder()).increment();']};
+ const MSG={hm:'❌ Lost updates <b>and</b> unsafe structure — a concurrent resize can even drop a whole status key. Every run shows a different total.',
+  cg:'❌ Still wrong! Each call is thread-safe, but <b>get then put</b> is two calls: two threads read 41, both write 42. "We already use ConcurrentHashMap" is the trap.',
+  mg:'✅ Exactly 1000 every run. <code>merge</code> does read + add + write under the bucket lock.',
+  la:'✅ Exactly 1000. <code>LongAdder</code> spreads hot increments over cells — best when 8 threads hammer the same 3 keys.'};
+ const EXP={PASS:800,FAIL:150,SKIP:50},COL={PASS:'#22C55E',FAIL:'#EF4444',SKIP:'#94A3B8'};
+ let m='hm',res=null;
+ const src=k=>`${CODE[k][0]}
+
+// called by 8 parallel executor threads, once per finished step
+void onStepFinished(String runId, String status) {
+    ${CODE[k][1]}
+}`;
+ function run(){const atomic=m==='mg'||m==='la',q=[];Object.entries(EXP).forEach(([s,n])=>{for(let i=0;i<n;i++)q.push(s);});
+  q.sort(()=>Math.random()-.5);
+  const c={PASS:0,FAIL:0,SKIP:0},thr=Array.from({length:8},(_,i)=>({q:q.slice(i*125,i*125+125),pend:null}));
+  while(thr.some(x=>x.q.length||x.pend)){const t=thr[Math.floor(Math.random()*8)];
+   if(t.pend){c[t.pend.s]=t.pend.v+1;t.pend=null;continue;}
+   if(!t.q.length)continue;const s=t.q.shift();
+   if(atomic||Math.random()>0.03)c[s]++;else t.pend={s,v:c[s]};}
+  if(m==='hm'&&Math.random()<0.3)c.SKIP=0;
+  res=c;draw();}
+ function draw(){$('pb-code').innerHTML=macHTML('RunSummaryService.java',src(m),'java');
+  const tot=res?res.PASS+res.FAIL+res.SKIP:0;
+  $('pb-bars').innerHTML=Object.keys(EXP).map(s=>`<div class="bar"><span>${s}</span><div class="tr"><i style="width:${res?res[s]/EXP.PASS*100:0}%;background:${COL[s]}"></i><em style="left:${EXP[s]/EXP.PASS*100}%"></em></div><span>${res?res[s]:'–'} / ${EXP[s]}</span></div>`).join('');
+  $('pb-total').textContent=res?`${tot} / 1000`:'';
+  const ok=res&&tot===1000,chip=$('pb-chip');chip.className='chip '+(!res?'no':ok?'ok':'bad');chip.textContent=!res?'not run':ok?'correct':`${1000-tot} lost`;
+  $('pb-msg').innerHTML=res?MSG[m]+(res&&m==='hm'&&res.SKIP===0?'<br>This run the <b>SKIP</b> entry vanished during a resize.':''):'Run it a few times with each version. The dashed line is the real number of steps.';}
+ segPick($('pb-m'),b=>{m=b.dataset.m;res=null;draw();});
+ $('pb-run').onclick=run;draw();
+})();
+
+// ===================================================== 4.1 interview Q&A
+DECK.qa([
+ ['How does HashMap put() work?','<code>hash = h ^ (h>>>16)</code>, index = <code>(n-1) &amp; hash</code>. Empty bucket → new node; same key (hash and equals match) → replace value; otherwise append to the list or insert into the tree. Then resize if size &gt; threshold.',['1.1','1.2']],
+ ['Why does HashMap spread the hash with h ^ (h >>> 16)?','The index uses only the low bits. XOR-ing the high 16 bits into the low ones stops keys that differ only in high bits from piling into one bucket.',['1.1']],
+ ['Why is the capacity always a power of two?','So <code>(n-1) &amp; hash</code> equals <code>hash % n</code> — a cheap bit mask — and so a resize can split each bucket with one bit test.',['1.1','1.3']],
+ ['What happens on a collision?','Entries share the bucket as a linked list (appended at the tail since Java 8). Lookup compares hash, then <code>equals()</code>.',['1.2']],
+ ['When does a bucket become a tree?','When it has more than 8 nodes AND the table has at least 64 buckets; below 64 the map resizes instead. It turns back into a list at 6 or fewer.',['1.3']],
+ ['What is the load factor and what happens on resize?','0.75 by default. When size exceeds capacity × 0.75 the table doubles; each node stays at index j or moves to j + oldCap based on one hash bit. O(n).',['1.3']],
+ ['Can HashMap have null keys? ConcurrentHashMap?','HashMap: one null key (bucket 0), many null values. CHM: none — a null from get() must mean "absent" because you can\'t check containsKey atomically afterwards.',['1.1','2.2']],
+ ['What happens if you mutate a key after putting it?','Its hashCode changes, so get() searches the wrong bucket and the entry is effectively lost (a memory leak too). Use immutable keys.',['3.1']],
+ ['Why is HashMap not thread-safe?','No locking: concurrent puts lose entries, size() goes wrong, resize can hide entries. Java 7 could even loop forever during concurrent resize.',['2.1']],
+ ['Hashtable vs synchronizedMap vs ConcurrentHashMap?','Hashtable and synchronizedMap lock the whole map for every call, including reads. CHM uses CAS for empty buckets, locks only one bucket head for writes, never locks reads.',['2.1','2.3']],
+ ['How does ConcurrentHashMap work in Java 8+?','No segments. CAS into empty bins, <code>synchronized</code> on the first node of a busy bin, volatile reads for get(), threads help with resize, size kept in counter cells.',['2.2']],
+ ['Is ConcurrentHashMap enough to make my code thread-safe?','Only per call. Check-then-act or get-then-put still race; use <code>putIfAbsent</code>, <code>computeIfAbsent</code>, <code>compute</code> or <code>merge</code>.',['2.4','3.2']],
+ ['How would you count events from many threads?','<code>map.merge(key, 1, Integer::sum)</code> on a CHM, or <code>computeIfAbsent(key, k -> new LongAdder()).increment()</code> for very hot keys.',['3.2']],
+ ['Fail-fast vs weakly consistent iterators?','Fail-fast (HashMap) throws ConcurrentModificationException if the map changes structurally during iteration. Weakly consistent (CHM) never throws and may or may not reflect concurrent changes.',['2.4']],
+ ['How do you safely iterate a synchronizedMap?','Wrap the whole loop in <code>synchronized (map) { … }</code> — the wrapper locks single calls, not iteration.',['2.1']],
+ ['Is ConcurrentHashMap.size() exact?','It\'s a sum of counter cells — exact when quiet, an estimate while writers run. Use <code>mappingCount()</code> for very large maps (returns long).',['2.2']]
+]);
+</script>
+</body></html>

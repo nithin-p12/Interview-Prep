@@ -1,0 +1,1133 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capabilities · Interview Prep</title>
+<link rel="stylesheet" href="../_shared/design-tokens.css">
+<link rel="stylesheet" href="../_shared/deck.css">
+<style>
+/* cost badges */
+.cost{font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px;border:1.5px solid;white-space:nowrap}
+.cost.lo{background:#F0FDF4;border-color:#86EFAC;color:#166534}
+.cost.md{background:#FFFBEB;border-color:#FCD34D;color:#92400E}
+.cost.hi{background:#FEF2F2;border-color:#FCA5A5;color:#991B1B}
+.stage{display:block;width:100%;height:auto;background:#fff;border:1.5px solid var(--lt);border-radius:12px}
+.stage text{font-family:var(--font-sans);font-size:13px;fill:#0F172A}
+.stage text.sm{font-size:11px;fill:#64748B}
+.stage text.b{font-weight:800}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chips button{font:inherit;font-size:12px;font-weight:700;border:1.5px solid var(--line-strong);background:#fff;border-radius:999px;padding:2px 9px;cursor:pointer;color:#475569}
+.chips button.on{background:var(--bd);border-color:var(--bd);color:#fff}
+.kv{display:flex;gap:6px;flex-wrap:wrap;font-size:12.5px}
+.kv span{background:#fff;border:1.5px solid var(--line);border-radius:8px;padding:2px 8px}
+.kv b{font-family:var(--font-mono)}
+.msg{min-height:calc(36px*var(--k))}
+/* 1.1 data flow */
+.nd rect{fill:#fff;stroke:#CBD5E1;stroke-width:2;transition:all .3s}
+.nd.hit rect{stroke:#F59E0B;fill:#FFFBEB}
+.wire{fill:none;stroke:#E2E8F0;stroke-width:2.5}
+.wire.on{stroke:var(--wc,#3B82F6)}
+#pk text{font-size:12px;font-weight:800;paint-order:stroke;stroke:#fff;stroke-width:4px}
+/* 1.2 kafka */
+.kl{fill:none;stroke-width:2}
+.kl.rb{stroke:#CBD5E1!important;stroke-dasharray:5 5}
+/* 1.3 heap */
+.heap{position:relative;height:calc(4*34px);border-radius:10px;background:
+ repeating-linear-gradient(90deg,transparent 0 calc(10% - 1px),#E2E8F0 calc(10% - 1px) 10%),
+ repeating-linear-gradient(0deg,transparent 0 33px,#E2E8F0 33px 34px);border:1.5px solid var(--line);background-color:#fff}
+.hobj{position:absolute;width:calc(10% - 4px);height:30px;margin:2px;border-radius:6px;display:grid;place-items:center;font-size:11px;font-weight:700;font-family:var(--font-mono);background:#DBEAFE;color:#1E3A8A;border:1.5px solid #93C5FD;transition:left .7s ease,top .7s ease,opacity .4s,transform .4s,background .3s,border-color .3s}
+.hobj.live{background:#DCFCE7;border-color:#22C55E;color:#14532D}
+.hobj.dead{background:#FEE2E2;border-color:#FCA5A5;color:#991B1B;text-decoration:line-through}
+.hobj.gone{opacity:0;transform:scale(.5)}
+.hobj.big{background:#F3E8FF;border-color:#A855F7;color:#581C87;width:calc(60% - 4px)}
+/* 1.4 log compaction */
+.log{display:flex;gap:6px;align-items:flex-end;min-height:72px}
+.rec{flex:0 0 auto;width:110px;border-radius:9px;border:1.5px solid var(--line-strong);background:#fff;padding:4px 6px;font-size:12px;transition:all .5s;overflow:hidden;white-space:nowrap}
+.rec small{display:block;font-size:10.5px;color:var(--muted);font-weight:700}
+.rec b{font-family:var(--font-mono)}
+.rec.new{animation:pop .35s both}
+.rec.old{border-color:#FCA5A5;background:#FEF2F2;text-decoration:line-through;color:#991B1B}
+.rec.gone{width:0;padding:4px 0;border-width:0;margin-left:-6px;opacity:0}
+.rec.tomb{border-style:dashed}
+/* 2.1 masking */
+.mask-in{width:100%;box-sizing:border-box;height:calc(150px + 30px*var(--k));resize:none;font-family:var(--font-mono);font-size:12px;line-height:1.5;border:1.5px solid var(--line-strong);border-radius:10px;padding:8px}
+.mask-out{height:calc(150px + 30px*var(--k));box-sizing:border-box;margin:0;background:#0B1220;color:#CBD5E1;border-radius:10px;padding:8px;font-family:var(--font-mono);font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;overflow:auto}
+.mask-out mark{background:rgba(250,204,21,.22);color:#FDE047;border-radius:3px;padding:0 2px}
+.rx{font-family:var(--font-mono);font-size:11.5px;display:flex;flex-direction:column;gap:3px}
+.rx div{background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 2.2 diff */
+.diff{background:#1E1E1E;border-radius:12px;font-family:var(--font-mono);font-size:12.3px;line-height:1.5;color:#D4D4D4;overflow:hidden}
+.drow{display:grid;grid-template-columns:30px minmax(0,1fr) 30px minmax(0,1fr)}
+.diff.uni .drow{grid-template-columns:30px 30px minmax(0,1fr)}
+.drow>span{padding:0 8px;white-space:pre;overflow:hidden;text-overflow:ellipsis}
+.drow .n{color:#6B7280;text-align:right;padding:0 6px;user-select:none}
+.drow .del{background:rgba(248,81,73,.18)}.drow .add{background:rgba(46,160,67,.22)}
+.drow .emp{background:#252526}
+/* 3.1 circuit breaker */
+.st circle{fill:#fff;stroke:#CBD5E1;stroke-width:2.5;transition:all .3s}
+.st.on circle{fill:var(--sc);stroke:var(--sc)}
+.st.on text{fill:#fff}
+.tr{fill:none;stroke:#CBD5E1;stroke-width:2}
+.tr.hot{stroke:#F59E0B;stroke-width:3.5}
+.win{display:flex;gap:4px}
+.win i{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:12px;border:1.5px dashed var(--line-strong);background:#fff}
+.win i.ok{background:#DCFCE7;border:1.5px solid #22C55E;color:#166534}
+.win i.no{background:#FEE2E2;border:1.5px solid #EF4444;color:#991B1B}
+.cblog{height:calc(6*1.55em + 14px);overflow:hidden}
+/* 3.2 token bucket */
+.bucket{display:grid;grid-template-columns:repeat(5,32px);gap:6px;padding:10px;border:3px solid #64748B;border-top:0;border-radius:0 0 16px 16px;background:#fff;width:max-content}
+.bucket i{width:32px;height:32px;border-radius:50%;background:#F1F5F9;border:1.5px dashed #CBD5E1;position:relative;overflow:hidden}
+.bucket i::after{content:"";position:absolute;left:0;right:0;bottom:0;height:calc(var(--p,0)*100%);background:#F59E0B}
+.bucket i.full::after{height:100%}
+.strip{display:flex;gap:3px;flex-wrap:nowrap;overflow:hidden;height:24px}
+.strip i{flex:none;font-style:normal;font-size:11px;font-weight:800;border-radius:6px;padding:3px 5px;animation:pop .25s both}
+.strip i.y{background:#DCFCE7;color:#166534}.strip i.n{background:#FEE2E2;color:#991B1B}
+/* 3.3 debugger */
+.dbg{background:#1E1E1E;border-radius:12px;font-family:var(--font-mono);font-size:12.5px;line-height:1.6;color:#D4D4D4;padding:6px 0;overflow:hidden}
+.dl{display:grid;grid-template-columns:44px 1fr;white-space:pre}
+.dl .g{color:#6B7280;text-align:right;padding-right:10px;cursor:pointer;user-select:none;position:relative}
+.dl .g.bp::before{content:"";position:absolute;left:6px;top:50%;width:10px;height:10px;margin-top:-5px;border-radius:50%;background:#E5534B}
+.dl.cur{background:#3F3F46;box-shadow:inset 4px 0 0 #FACC15}
+.pane{background:#fff;border:1.5px solid var(--lt);border-radius:10px;padding:6px 10px;font-size:12.5px}
+.pane h4{margin:0 0 4px;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.pane table{width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:12px}
+.pane td{padding:2px 4px;border-bottom:1px solid var(--line)}
+.pane td:first-child{color:#7E22CE;width:40%}
+.pane tr.chg td{background:#FEF9C3}
+.frames div{font-family:var(--font-mono);font-size:12px;padding:2px 6px;border-radius:6px}
+.frames div:first-child{background:#FEF9C3;font-weight:700}
+/* 3.4 binary search */
+.arr{display:grid;grid-template-columns:repeat(16,minmax(0,1fr));gap:4px}
+.cell{border:1.5px solid var(--line-strong);background:#fff;border-radius:8px;text-align:center;padding:6px 0 2px;font-family:var(--font-mono);font-weight:700;font-size:13px;transition:all .3s}
+.cell small{display:block;font-size:10px;color:var(--faint);font-weight:600}
+.cell.out{opacity:.28}
+.cell.mid{border-color:#F59E0B;background:#FEF3C7;box-shadow:0 0 0 3px #FDE68A}
+.cell.hit{border-color:#22C55E;background:#DCFCE7}
+.ptr{display:grid;grid-template-columns:repeat(16,minmax(0,1fr));gap:4px;height:18px;font-size:11px;font-weight:800;text-align:center;color:var(--dk)}
+/* 4.1 chart */
+.chart{width:100%;height:calc(210px + 20px*var(--k));display:block;background:#fff;border:1.5px solid var(--lt);border-radius:12px}
+.gauges{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.gauge{background:#fff;border:1.5px solid var(--lt);border-radius:12px;text-align:center;padding:6px 4px}
+.gauge svg{width:76px;height:76px;display:block;margin:0 auto}
+.gauge small{font-size:11.5px;color:var(--muted);font-weight:700}
+/* 5.1 drag order */
+.dd{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:calc(4px*var(--k))}
+.dd li{display:flex;align-items:center;gap:8px;background:#fff;border:1.5px solid var(--line-strong);border-radius:9px;padding:calc(4px*var(--k)) 8px;font-size:13px;cursor:grab;user-select:none}
+.dd li.drag{opacity:.4}
+.dd li .hd{color:var(--faint);font-weight:900;letter-spacing:-2px}
+.dd li .ar{margin-left:auto;display:flex;gap:3px}
+.dd li .ar button{font:inherit;font-size:11px;border:1px solid var(--line);background:#fff;border-radius:5px;padding:0 6px;cursor:pointer}
+.dd li.good{border-color:#22C55E;background:#F0FDF4}.dd li.bad{border-color:#EF4444;background:#FEF2F2}
+/* 5.2 flashcards */
+.fcw{perspective:1200px;height:calc(200px + 20px*var(--k))}
+.fc{position:relative;width:100%;height:100%;transition:transform .6s;transform-style:preserve-3d;cursor:pointer}
+.fc.flip{transform:rotateY(180deg)}
+.fc>div{position:absolute;inset:0;backface-visibility:hidden;border-radius:16px;padding:18px 22px;display:flex;flex-direction:column;justify-content:center;gap:8px;font-size:14.5px;line-height:1.55}
+.fc .front{background:#fff;border:2px solid var(--bd)}
+.fc .back{background:#0F172A;color:#E2E8F0;transform:rotateY(180deg)}
+.fc .back b{color:#FDE047}
+.fc small{font-size:11.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+.pdots{display:flex;gap:6px}
+.pdots i{width:12px;height:12px;border-radius:50%;background:#E2E8F0}
+.pdots i.y{background:#22C55E}.pdots i.n{background:#F59E0B}.pdots i.c{box-shadow:0 0 0 2px var(--ink)}
+/* 5.3 fill blanks */
+.fill input{font:inherit;font-family:var(--font-mono);font-size:12.5px;background:#2D2D30;color:#FDE047;border:1px dashed #FACC15;border-radius:4px;padding:0 3px;outline:none}
+.fill input.r{border:1px solid #22C55E;color:#86EFAC;background:#14321F}
+.fill input.w{border:1px solid #EF4444;color:#FCA5A5;background:#3B1515}
+/* 5.4 terminal */
+.term{height:calc(250px + 40px*var(--k));overflow:hidden}
+.term .cur{display:inline-block;width:8px;height:14px;background:#CBD5E1;vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.notes{display:flex;flex-direction:column;gap:5px}
+.notes div{background:#fff;border:1.5px solid var(--lt);border-left:5px solid var(--bd);border-radius:8px;padding:4px 9px;font-size:12.8px;animation:pop .3s both}
+/* 5.5 rehearse */
+.ring{width:96px;height:96px}
+.ring circle{fill:none;stroke-width:8}
+/* 5.6 palette */
+.pal{position:fixed;inset:0;z-index:60;background:rgba(15,23,42,.35);display:flex;justify-content:center;align-items:flex-start;padding-top:12vh}
+.pal[hidden]{display:none}
+.pbox{width:min(560px,92vw);background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(15,23,42,.35);overflow:hidden}
+.pbox input{width:100%;box-sizing:border-box;font:inherit;font-size:15px;border:0;border-bottom:1px solid var(--line);padding:12px 16px;outline:none}
+.pl{max-height:320px;overflow:auto}
+.pl div{display:flex;gap:10px;align-items:center;padding:7px 16px;font-size:13.5px;cursor:pointer}
+.pl div b{min-width:34px;color:var(--muted);font-size:12px}
+.pl div em{margin-left:auto;font-style:normal;font-size:11.5px;color:var(--faint)}
+.pl div.sel{background:#EEF2FF}
+.phint{font-size:11.5px;color:var(--faint);padding:6px 16px;border-top:1px solid var(--line)}
+kbd{font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:5px;padding:0 5px;background:#fff}
+/* 6.1 mind map */
+.mm{cursor:grab;touch-action:none}
+.mm.drag{cursor:grabbing}
+.mm g.view{transition:transform .45s ease}
+.mm.drag g.view{transition:none}
+.mn rect{fill:#fff;stroke-width:2;transition:all .25s}
+.mn{cursor:pointer}
+.mn.sel rect{stroke-width:3.5}
+.mm .ed{fill:none;stroke-width:2;opacity:.55}
+.mm.focus .mn:not(.path){opacity:.35}
+.mm.focus .ed:not(.path){opacity:.12}
+/* 6.2 sequence */
+.sq .ll{stroke:#CBD5E1;stroke-dasharray:4 4}
+.sq .ph rect{fill:#fff;stroke:#94A3B8;stroke-width:2;transition:all .3s}
+.sq .ph.act rect{fill:#EEF2FF;stroke:#6366F1}
+.sq .m{opacity:0;transition:opacity .35s}
+.sq .m.on{opacity:1}
+.sq .m path{fill:none;stroke:#334155;stroke-width:2}
+.sq .m.ret path{stroke-dasharray:6 4;stroke:#64748B}
+.sq .m.on:not(.ret) path{stroke-dasharray:var(--len);animation:draw .6s ease both}
+.sq .m.cur path{stroke:#6366F1}
+.sq .m.cur text{fill:#4338CA;font-weight:800}
+@keyframes draw{from{stroke-dashoffset:var(--len)}to{stroke-dashoffset:0}}
+/* 7.1 cost table */
+table.t td.c{font-weight:800;white-space:nowrap}
+.bar{display:inline-block;height:9px;border-radius:5px;background:var(--bd);vertical-align:middle;margin-right:6px}
+.confetti{position:fixed;inset:0;pointer-events:none;z-index:70}
+</style>
+</head>
+<body>
+<header class="topbar">
+ <a class="tbrand" href="../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="../00_Index.html" title="Back to all subjects" style="color:#334155">✨ Capabilities</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg" id="pal-top" title="Search slides (Ctrl+K)">⌕ Ctrl K</button><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<!-- ===================================================== 0. CONTENTS -->
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2>What a study page can do</h2><span class="sub">every slide is a working demo · badge = how many tokens it costs to build</span></div>
+ <div class="toc" id="toc"></div>
+ <div class="howuse"><span><span class="cost lo">Cost · Low</span> mostly content</span><span><span class="cost md">Cost · Medium</span> reusable widget + some logic</span><span><span class="cost hi">Cost · High</span> bespoke simulator / canvas</span><span><kbd>Ctrl</kbd> <kbd>K</kbd> search any slide</span><span><b>← →</b> move between slides</span><span>Examples are <b>simplified from FireFlink</b></span></div>
+</div>
+</section>
+
+<!-- ===================================================== 1. LOOPING ANIMATIONS -->
+<section class="cat" data-name="1. Looping animations" data-col="b">
+<h1 class="cat-title">1. Looping animations</h1>
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.1</span><h2>Request data flow</h2><span class="cost md">Cost · Medium</span><span class="sub">good for: request paths, pipelines, architecture</span></div>
+ <div class="stack">
+  <div class="ctrl" id="df-pb"><div class="chips" id="df-chips"></div></div>
+  <svg class="stage" id="df" viewBox="0 0 1180 215"></svg>
+  <div class="msg" id="df-msg"></div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.2</span><h2>Kafka consumer-group rebalance</h2><span class="cost hi">Cost · High</span><span class="sub">good for: distributed behaviour you can poke</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="ctrl" id="kg-pb"></div>
+   <svg class="stage" id="kg" viewBox="0 0 640 250"></svg>
+  </div>
+  <div class="stack">
+   <div class="ctrl"><button class="btn p" id="kg-add">+ consumer</button><button class="btn" id="kg-rem">− consumer</button><button class="btn" id="kg-crash">💥 crash first</button></div>
+   <div class="ctrl"><span style="font-size:12.5px;font-weight:700;color:var(--muted)">assignor</span><span class="seg" id="kg-st"><button class="on" data-v="range">Range</button><button data-v="rr">Round robin</button></span></div>
+   <div class="kv" id="kg-as"></div>
+   <div class="msg" id="kg-msg"></div>
+   <div class="gtk"><b>Good to know</b> Cooperative-sticky assignor only moves the partitions that change owner, so the others keep consuming during a rebalance.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.3</span><h2>GC: mark → sweep → compact</h2><span class="cost md">Cost · Medium</span><span class="sub">good for: algorithms with clear phases</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="ctrl" id="hp-pb"><div class="chips" id="hp-ph"></div></div>
+   <div class="heap" id="hp"></div>
+   <div class="kv" id="hp-kv"></div>
+  </div>
+  <div class="stack">
+   <div class="box"><h4>Waiting to allocate</h4><span class="kv"><span>new <b>byte[6 cells]</b> <span id="hp-want">⏳</span></span></span></div>
+   <div class="msg" id="hp-msg"></div>
+   <p class="take"><b>Remember:</b> sweeping alone leaves <b>holes</b>. Compacting (or G1's copying) gives one free block, so allocation is just a pointer bump.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.4</span><h2>Kafka log compaction</h2><span class="cost md">Cost · Medium</span><span class="sub">good for: "what happens to the data" stories</span></div>
+ <div class="stack">
+  <div class="ctrl" id="lc-pb"><div class="chips" id="lc-ph"></div></div>
+  <div class="log" id="lc"></div>
+  <div class="cols even">
+   <div class="msg" id="lc-msg"></div>
+   <div class="box"><h4>A new consumer replaying topic <code>run-status</code> from offset 0 rebuilds:</h4><div class="kv" id="lc-state"></div></div>
+  </div>
+  <p class="take"><b>Remember:</b> compaction keeps the <b>latest value per key</b>, offsets never change (gaps appear), and a <code>null</code> value is a <b>tombstone</b> that deletes the key after <code>delete.retention.ms</code>.</p>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 2. DATA TRANSFORMS -->
+<section class="cat" data-name="2. Data transforms" data-col="p">
+<h1 class="cat-title">2. Data transforms</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.1</span><h2>Data masking playground</h2><span class="cost md">Cost · Medium</span><span class="sub">edit the log on the left · good for: regex, PII, logging rules</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="ctrl" id="mk-rules"></div>
+   <textarea class="mask-in" id="mk-in" spellcheck="false"></textarea>
+   <div class="rx" id="mk-rx"></div>
+  </div>
+  <div class="stack">
+   <div class="ctrl"><span class="seg" id="mk-mode"><button class="on" data-v="mask">Partial mask</button><button data-v="redact">Redact</button><button data-v="hash">Hash</button></span><span class="chip ok" id="mk-n"></span></div>
+   <pre class="mask-out" id="mk-out"></pre>
+   <div class="msg" id="mk-msg"></div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.2</span><h2>Code diff viewer</h2><span class="cost lo">Cost · Low</span><span class="sub">diff is computed, you only supply before / after · good for: refactors, bug fixes</span></div>
+ <div class="stack">
+  <div class="ctrl"><span class="seg" id="df2-ex"><button class="on" data-v="0">Keep the cause</button><button data-v="1">Loop → stream</button><button data-v="2">POJO → record</button></span><span class="seg" id="df2-mode"><button class="on" data-v="side">Side by side</button><button data-v="uni">Unified</button></span><span class="chip ok" id="df2-st"></span></div>
+  <div class="diff" id="df2"></div>
+  <div class="msg" id="df2-msg"></div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 3. SIMULATORS -->
+<section class="cat" data-name="3. Simulators" data-col="o">
+<h1 class="cat-title">3. Simulators</h1>
+<div class="slide c-o">
+ <div class="sh"><span class="sn">3.1</span><h2>Circuit breaker state machine</h2><span class="cost hi">Cost · High</span><span class="sub">good for: resilience, anything with states</span></div>
+ <div class="cols">
+  <div class="stack">
+   <svg class="stage" id="cb" viewBox="0 0 520 225"></svg>
+   <div class="ctrl"><span style="font-size:12.5px;font-weight:700;color:var(--muted)">sliding window (last 6)</span><div class="win" id="cb-win"></div><span class="chip no" id="cb-rate"></span><span class="chip warn" id="cb-timer"></span></div>
+  </div>
+  <div class="stack">
+   <div class="ctrl"><button class="btn p" id="cb-ok">✓ call succeeds</button><button class="btn" id="cb-no">✗ call fails</button><label class="chk" id="cb-auto"><input type="checkbox"> auto traffic</label><span class="seg" id="cb-fr"><button data-v="0.1">10% fail</button><button class="on" data-v="0.7">70% fail</button></span></div>
+   <div class="console cblog" id="cb-log"></div>
+   <p class="take"><b>Remember:</b> CLOSED counts failures in a sliding window → <b>OPEN</b> rejects instantly (fallback) → after a wait, <b>HALF_OPEN</b> lets a few trial calls through to decide. Resilience4j: <code>failureRateThreshold</code>, <code>waitDurationInOpenState</code>, <code>permittedNumberOfCallsInHalfOpenState</code>.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-o">
+ <div class="sh"><span class="sn">3.2</span><h2>Token-bucket rate limiter</h2><span class="cost hi">Cost · High</span><span class="sub">good for: live, time-based behaviour</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="ctrl"><button class="btn p" id="tb-one">Send 1 request</button><button class="btn" id="tb-burst">Burst × 8</button><label class="chk" id="tb-auto"><input type="checkbox"> steady traffic</label></div>
+   <div class="ctrl"><span style="font-size:12.5px;font-weight:700;color:var(--muted)">refill</span><span class="seg" id="tb-rate"><button data-v="1">1 / s</button><button class="on" data-v="2">2 / s</button><button data-v="5">5 / s</button></span><span style="font-size:12.5px;font-weight:700;color:var(--muted)">traffic</span><span class="seg" id="tb-ar"><button data-v="1">1 / s</button><button class="on" data-v="3">3 / s</button><button data-v="6">6 / s</button></span></div>
+   <div style="display:flex;gap:16px;align-items:flex-end"><div class="bucket" id="tb-b"></div><div class="stack" style="gap:4px"><span class="chip ok" id="tb-ok"></span><span class="chip bad" id="tb-no"></span><span class="chip no" id="tb-tk"></span></div></div>
+   <div class="strip" id="tb-strip"></div>
+  </div>
+  <div class="stack">
+   <div class="code" id="tb-code"></div>
+   <div class="msg" id="tb-msg">Tokens refill continuously up to the capacity. Each request takes one; with none left → <b>429 Too Many Requests</b>. A full bucket allows a <b>burst</b>, the refill rate caps the <b>average</b>.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-o">
+ <div class="sh"><span class="sn">3.3</span><h2>Step debugger</h2><span class="cost md">Cost · Medium</span><span class="sub">click a line number for a breakpoint · good for: tracing code by hand</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="ctrl"><button class="btn" id="dbg-back">◀ Back</button><button class="btn p" id="dbg-step">Step ▶</button><button class="btn" id="dbg-cont">Continue ▶▶</button><button class="btn" id="dbg-reset">↺ Reset</button><span class="chip no" id="dbg-n"></span></div>
+   <div class="dbg" id="dbg"></div>
+   <div class="msg" id="dbg-msg"></div>
+  </div>
+  <div class="stack">
+   <div class="pane"><h4>Variables</h4><table id="dbg-vars"></table></div>
+   <div class="pane"><h4>Call stack</h4><div class="frames" id="dbg-stack"></div></div>
+   <div class="gtk"><b>Good to know</b> Every call pushes a frame with its own locals — that's why a local <code>passed</code> needs no synchronization.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-o">
+ <div class="sh"><span class="sn">3.4</span><h2>Binary search visualizer</h2><span class="cost md">Cost · Medium</span><span class="sub">good for: coding-round algorithms</span></div>
+ <div class="stack">
+  <div class="ctrl"><span style="font-size:12.5px;font-weight:700;color:var(--muted)">find</span><span class="seg" id="bs-t"><button class="on" data-v="47">47</button><button data-v="12">12</button><button data-v="85">85</button><button data-v="50">50 (missing)</button></span><span class="seg" id="bs-m"><button class="on" data-v="bin">Binary</button><button data-v="lin">Linear</button></span><button class="btn p" id="bs-step">Step ▶</button><button class="btn" id="bs-auto">▶ Auto</button><button class="btn" id="bs-reset">↺ Reset</button><span class="chip warn" id="bs-n"></span></div>
+  <div><div class="arr" id="bs-arr"></div><div class="ptr" id="bs-ptr"></div></div>
+  <div class="cols even">
+   <div class="code" id="bs-code"></div>
+   <div class="stack"><div class="msg" id="bs-msg"></div><p class="take"><b>Remember:</b> binary search halves the range each step → <b>O(log n)</b>: 16 items need at most 5 checks, a million at most 20. The array must be <b>sorted</b>; use <code>(lo + hi) &gt;&gt;&gt; 1</code> to avoid overflow.</p></div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 4. LIVE CHARTS -->
+<section class="cat" data-name="4. Live charts" data-col="g">
+<h1 class="cat-title">4. Live charts</h1>
+<div class="slide c-g">
+ <div class="sh"><span class="sn">4.1</span><h2>Live heap chart + gauges</h2><span class="cost hi">Cost · High</span><span class="sub">canvas, redrawn 60× a second · good for: metrics, GC, latency</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="ctrl" id="hc-pb"><span style="font-size:12.5px;font-weight:700;color:var(--muted)">allocation</span><span class="seg" id="hc-rate"><button data-v="0">low</button><button class="on" data-v="1">medium</button><button data-v="2">high</button></span><label class="chk" id="hc-leak"><input type="checkbox"> memory leak</label></div>
+   <canvas class="chart" id="hc"></canvas>
+  </div>
+  <div class="stack">
+   <div class="gauges" id="hc-g"></div>
+   <div class="kv" id="hc-kv"></div>
+   <div class="msg" id="hc-msg"></div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 5. LEARNING TOOLS -->
+<section class="cat" data-name="5. Learning tools" data-col="k">
+<h1 class="cat-title">5. Learning tools</h1>
+<div class="slide c-k">
+ <div class="sh"><span class="sn">5.1</span><h2>Drag to order: Spring Boot startup</h2><span class="cost md">Cost · Medium</span><span class="sub">drag rows (or use ↑ ↓) · good for: sequences, lifecycles</span></div>
+ <div class="cols">
+  <div class="stack">
+   <ul class="dd" id="dd"></ul>
+  </div>
+  <div class="stack">
+   <div class="ctrl"><button class="btn p" id="dd-check">Check order</button><button class="btn" id="dd-shuf">↺ Shuffle</button><button class="btn" id="dd-ans">Show answer</button><span class="chip no" id="dd-score"></span></div>
+   <div class="msg" id="dd-msg">Put the steps of <code>SpringApplication.run()</code> in order, then press <b>Check order</b>.</div>
+   <div class="gtk"><b>Good to know</b> The embedded Tomcat is <i>created</i> before your beans but only <i>starts accepting traffic</i> after all singletons are ready.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">5.2</span><h2>Flashcards</h2><span class="cost lo">Cost · Low</span><span class="sub">click the card to flip · good for: quick recall before an interview</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="fcw"><div class="fc" id="fc"><div class="front"></div><div class="back"></div></div></div>
+   <div class="ctrl"><button class="btn p" id="fc-y">✓ Knew it</button><button class="btn" id="fc-n">✗ Not yet</button><button class="btn" id="fc-r">↺ Restart</button><div class="pdots" id="fc-dots"></div></div>
+  </div>
+  <div class="stack">
+   <div class="msg" id="fc-msg"></div>
+   <div class="box"><h4>Why it works</h4>Trying to recall before seeing the answer (active recall) sticks far better than re-reading. Cards marked "Not yet" come back at the end of the round.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">5.3</span><h2>Fill in the blanks</h2><span class="cost lo">Cost · Low</span><span class="sub">type into the yellow boxes · good for: APIs and annotations</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="mac fill"><div class="bar"><div class="dots"><i></i><i></i><i></i></div><div class="fn">RunService.java</div></div><pre id="fb-code"></pre></div>
+   <div class="ctrl"><button class="btn p" id="fb-check">Check</button><button class="btn" id="fb-hint">💡 Hint</button><button class="btn" id="fb-show">Show answers</button><button class="btn" id="fb-reset">↺ Reset</button><span class="chip no" id="fb-score"></span></div>
+  </div>
+  <div class="stack"><div class="msg" id="fb-msg">Fill in the 4 blanks so the method rolls back on any exception, counts runs per status atomically and closes the stream.</div><div id="fb-why" class="stack" style="gap:5px"></div></div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">5.4</span><h2>Terminal playback</h2><span class="cost lo">Cost · Low</span><span class="sub">a recorded debugging session, typed out · good for: commands &amp; tooling</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="ctrl" id="tm-pb"><button class="btn" id="tm-restart">↺ Replay</button></div>
+   <div class="console term" id="tm"></div>
+  </div>
+  <div class="stack">
+   <div class="chips" id="tm-ch"></div>
+   <div class="notes" id="tm-notes"></div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">5.5</span><h2>Rehearse out loud</h2><span class="cost md">Cost · Medium</span><span class="sub">read aloud + 60-second answer timer · good for: mock interviews</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="box"><h4 id="rh-qn"></h4><div id="rh-q" style="font-size:15px;font-weight:700;color:var(--ink)"></div></div>
+   <div class="ctrl"><button class="btn" id="rh-next">🎲 Next question</button><button class="btn" id="rh-say">🔊 Read question</button><button class="btn p" id="rh-go">⏱ Start 60 s</button><button class="btn" id="rh-rev">Reveal answer</button></div>
+   <div style="display:flex;gap:14px;align-items:center"><svg class="ring" viewBox="0 0 96 96"><circle cx="48" cy="48" r="40" stroke="#E2E8F0"/><circle id="rh-arc" cx="48" cy="48" r="40" stroke="#EC4899" stroke-linecap="round" transform="rotate(-90 48 48)" stroke-dasharray="251.3" stroke-dashoffset="0"/><text id="rh-t" x="48" y="54" text-anchor="middle" style="font:800 20px var(--font-sans);fill:#0F172A">60</text></svg><div class="msg" id="rh-msg" style="flex:1"></div></div>
+  </div>
+  <div class="stack">
+   <div class="box" id="rh-ans" style="display:none"><h4>Model answer <button class="btn" id="rh-say2" style="margin-left:6px">🔊</button></h4><div id="rh-a"></div></div>
+   <div class="box"><h4>Did you cover the key points? <span class="chip ok" id="rh-sc"></span></h4><div class="ctrl" id="rh-kp" style="flex-direction:column;align-items:stretch;gap:5px"></div></div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">5.6</span><h2>Command palette</h2><span class="cost md">Cost · Medium</span><span class="sub">built once, then free on every page · good for: big pages</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="ctrl"><button class="btn p" id="pal-demo">Open the palette</button><span style="font-size:13px">or press <kbd>Ctrl</kbd> <kbd>K</kbd> anywhere</span></div>
+   <div class="box"><h4>What it does</h4><ul><li>Fuzzy search across every slide title and number ("cb" → <i>Circuit breaker</i>)</li><li><kbd>↑</kbd> <kbd>↓</kbd> to move, <kbd>Enter</kbd> to jump, <kbd>Esc</kbd> to close</li><li>Also runs actions: toggle code, switch to scroll mode, open the cost table</li></ul></div>
+  </div>
+  <div class="stack">
+   <table class="t"><tr><th>Shortcut</th><th>Action</th></tr><tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>previous / next slide</td></tr><tr><td><kbd>Ctrl</kbd> <kbd>K</kbd></td><td>command palette</td></tr><tr><td><kbd>Esc</kbd></td><td>close palette</td></tr><tr><td>click a pill in Q&amp;A</td><td>jump to the slide that explains it</td></tr></table>
+   <div class="msg">Ideal for a 30-page subject: type <b>"volatile"</b> and land on the right slide in any page — the shared engine would carry it everywhere.</div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 6. DIAGRAMS -->
+<section class="cat" data-name="6. Diagrams" data-col="i">
+<h1 class="cat-title">6. Diagrams</h1>
+<div class="slide c-i">
+ <div class="sh"><span class="sn">6.1</span><h2>Zoomable mind map</h2><span class="cost hi">Cost · High</span><span class="sub">drag to pan · wheel to zoom · click a node · good for: topic overviews</span></div>
+ <div class="stack">
+  <div class="ctrl"><button class="btn" id="mm-in">＋</button><button class="btn" id="mm-out">－</button><button class="btn p" id="mm-fit">⤢ Fit</button><span class="msg" id="mm-msg" style="flex:1;min-height:0;padding:4px 10px"></span></div>
+  <svg class="stage mm" id="mm" viewBox="0 0 1180 350"></svg>
+ </div>
+</div>
+
+<div class="slide c-i">
+ <div class="sh"><span class="sn">6.2</span><h2>Animated sequence diagram</h2><span class="cost md">Cost · Medium</span><span class="sub">good for: API calls between services, auth flows</span></div>
+ <div class="stack">
+  <div class="ctrl" id="sq-pb"><button class="btn" id="sq-step">Next message ▶</button></div>
+  <svg class="stage sq" id="sq" viewBox="0 0 1180 300"></svg>
+  <div class="msg" id="sq-msg"></div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 7. TOKEN COST -->
+<section class="cat" data-name="7. Token cost" data-col="s">
+<h1 class="cat-title">7. Token cost</h1>
+<div class="slide c-s">
+ <div class="sh"><span class="sn">7.1</span><h2>What costs more tokens to generate</h2><span class="sub">rough multiplier vs one plain text slide</span></div>
+ <div class="cols wide-l">
+  <table class="t">
+   <tr><th>Kind of slide</th><th>Cost</th><th>Why</th></tr>
+   <tr><td>Text boxes, tables, Q&amp;A list</td><td class="c"><span class="bar" style="width:12px"></span>1×</td><td>only content; engine does the rest</td></tr>
+   <tr><td>Predict cards, flashcards, fill-blanks, terminal playback</td><td class="c"><span class="bar" style="width:18px"></span>1.5×</td><td>shared widgets — you pay for the questions, not the code</td></tr>
+   <tr><td>Steppers, code-line highlighting, diff viewer</td><td class="c"><span class="bar" style="width:24px"></span>2×</td><td>steps must be authored line by line</td></tr>
+   <tr><td>Looping SVG animations, sequence diagrams</td><td class="c"><span class="bar" style="width:36px"></span>3×</td><td>coordinates, timing, pause/speed, layout fixes</td></tr>
+   <tr><td>Drag-and-drop, palette, read-aloud timer</td><td class="c"><span class="bar" style="width:36px"></span>3×</td><td>event handling; cheap once made shared</td></tr>
+   <tr><td>Bespoke simulators (circuit breaker, thread pool, GC)</td><td class="c"><span class="bar" style="width:60px"></span>4–6×</td><td>state rules + edge cases + many clicks to verify</td></tr>
+   <tr><td>Canvas live charts, pan/zoom maps</td><td class="c"><span class="bar" style="width:54px"></span>4–5×</td><td>sizing, DPR, events; most audit fixes land here</td></tr>
+   <tr><td>Fit / screenshot check loop</td><td class="c"><span class="bar" style="width:20px"></span>+30–50%</td><td>per page; each overflow fix means another run</td></tr>
+  </table>
+  <div class="stack">
+   <div class="box"><h4>Spend tokens well</h4><ul>
+    <li><b>One star simulator per page</b>, the rest predict cards, steppers and Q&amp;A</li>
+    <li>Ask for <b>content-only</b> edits ("rewrite 2.1 text") — no re-layout</li>
+    <li><b>Batch similar pages</b> in one go; they share widgets and checks</li>
+    <li>Promote a widget to <code>_shared</code> once it's used twice — then it costs ~1×</li>
+    <li>Give the <b>exact topic list</b>; exploring options costs more than building</li>
+    <li>Re-audit only the pages that changed</li></ul></div>
+   <div class="msg">This page ≈ 20 demos ≈ <b>2–3 normal study pages</b> of tokens. A typical study page (10 slides, 1–2 simulators) is the sweet spot.</div>
+  </div>
+ </div>
+</div>
+</section>
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <span class="kbd">← → keys · Ctrl K search</span>
+</footer>
+
+<div class="pal" id="pal" hidden><div class="pbox"><input id="pal-in" placeholder="Jump to a slide or run an action…" autocomplete="off"><div class="pl" id="pal-list"></div><div class="phint"><kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>Enter</kbd> open · <kbd>Esc</kbd> close</div></div></div>
+
+<script src="../_shared/deck.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const NS='http://www.w3.org/2000/svg';
+const sv=(tag,attrs,parent)=>{const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;};
+// ---- one animation loop for the page; a widget only ticks while its slide is on screen
+const TK=[];const tick=(el,fn)=>TK.push({sl:el.closest('.slide'),fn});
+let LT=performance.now();
+(function frame(t){requestAnimationFrame(frame);const dt=Math.min(60,Math.max(0,t-LT));LT=t;const all=document.body.classList.contains('all');
+ for(const k of TK)if(all||k.sl.classList.contains('on'))k.fn(dt);})(LT);
+// ---- pause + speed bar
+function playbar(el,st){el.classList.add('ctrl');
+ el.insertAdjacentHTML('afterbegin',`<button class="btn p" data-pb="pp">⏸ Pause</button><span class="seg" data-pb="sp">${[0.5,1,2].map(v=>`<button data-v="${v}" class="${v===st.sp?'on':''}">${v}×</button>`).join('')}</span>`);
+ const pp=el.querySelector('[data-pb=pp]');
+ st.set=r=>{st.run=r;pp.textContent=r?'⏸ Pause':'▶ Play';};
+ pp.onclick=()=>st.set(!st.run);
+ el.querySelector('[data-pb=sp]').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;st.sp=+b.dataset.v;el.querySelectorAll('[data-pb=sp] button').forEach(x=>x.classList.toggle('on',x===b));};}
+// ---- segmented control helper
+function seg(el,fn){el.onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;el.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));fn(b.dataset.v);};}
+// ---- confetti
+function confetti(){const c=document.createElement('canvas');c.className='confetti';c.width=innerWidth;c.height=innerHeight;document.body.appendChild(c);const x=c.getContext('2d');
+ const C=['#3B82F6','#22C55E','#F59E0B','#EC4899','#9333EA','#14B8A6'];
+ const P=Array.from({length:130},()=>({x:innerWidth/2,y:innerHeight*.4,vx:(Math.random()-.5)*16,vy:-Math.random()*13-4,c:C[Math.floor(Math.random()*C.length)],s:Math.random()*6+5,r:Math.random()*6}));
+ let f=0;(function an(){f++;x.clearRect(0,0,c.width,c.height);P.forEach(p=>{p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.r+=.12;x.save();x.translate(p.x,p.y);x.rotate(p.r);x.fillStyle=p.c;x.fillRect(-p.s/2,-p.s/4,p.s,p.s/2);x.restore();});if(f<110)requestAnimationFrame(an);else c.remove();})();}
+
+// ===================================================== 1.1 request data flow
+(function(){
+ const svg=$('df'),st={run:true,sp:1};playbar($('df-pb'),st);
+ const N={ui:[90,'Browser','React UI'],gw:[290,'API Gateway','JWT check · routing'],ex:[490,'execution-service','starts runs'],kf:[690,'Kafka','topic run-requests'],co:[890,'result-service','consumer'],db:[1090,'MongoDB','runs collection']};
+ const Y=120,W=150,H=52;
+ const defs=sv('defs',{},svg);const mk=sv('marker',{id:'ar1',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto-start-reverse'},defs);sv('path',{d:'M0,0 L10,5 L0,10 z',fill:'#94A3B8'},mk);
+ const P={};
+ const line=(a,b)=>`M${N[a][0]+W/2},${Y} L${N[b][0]-W/2},${Y}`;
+ const D={'ui-gw':line('ui','gw'),'gw-ex':line('gw','ex'),'ex-kf':line('ex','kf'),'kf-co':line('kf','co'),'co-db':line('co','db'),
+  'ex-ui':`M${N.ex[0]},${Y-H/2} C${N.ex[0]},18 ${N.ui[0]},18 ${N.ui[0]},${Y-H/2}`,
+  'db-co':`M${N.db[0]},${Y+H/2} C${N.db[0]},205 ${N.co[0]},205 ${N.co[0]},${Y+H/2}`};
+ for(const k in D)P[k]=sv('path',{d:D[k],class:'wire','marker-end':'url(#ar1)'},svg);
+ const G={};for(const k in N){const g=sv('g',{class:'nd'},svg);sv('rect',{x:N[k][0]-W/2,y:Y-H/2,width:W,height:H,rx:12},g);
+  const t1=sv('text',{x:N[k][0],y:Y-3,'text-anchor':'middle',class:'b'},g);t1.textContent=N[k][1];
+  const t2=sv('text',{x:N[k][0],y:Y+15,'text-anchor':'middle',class:'sm'},g);t2.textContent=N[k][2];G[k]=g;}
+ const pk=sv('g',{id:'pk'},svg);const pc=sv('circle',{r:8},pk);const pt=sv('text',{y:-14,'text-anchor':'middle'},pk);
+ const H_=[
+  ['ui-gw','POST /api/runs','#3B82F6','<b>1.</b> The UI sends <code>POST /api/runs</code> with the user\'s JWT.'],
+  ['gw-ex','route + tenant','#3B82F6','<b>2.</b> The gateway validates the token and routes to <b>execution-service</b>, adding <code>X-Tenant-Id</code>.'],
+  ['ex-kf','RunRequested','#9333EA','<b>3.</b> execution-service publishes a <code>RunRequested</code> event — it does not run the suite inline.'],
+  ['ex-ui','202 Accepted','#22C55E','<b>4.</b> It answers <b>202 Accepted {runId}</b> immediately; the UI shows "Queued".'],
+  ['kf-co','poll()','#9333EA','<b>5.</b> result-service polls its partition and receives the event.'],
+  ['co-db','insert run','#F97316','<b>6.</b> It writes the run document to MongoDB…'],
+  ['db-co','ack → commit offset','#22C55E','<b>7.</b> …and only after the ack <b>commits the Kafka offset</b>. A crash before that = the event is redelivered (at-least-once).']];
+ $('df-chips').innerHTML=H_.map((h,i)=>`<button data-i="${i}">${i+1} ${h[1].split(' ')[0]}</button>`).join('');
+ let hi=0,t=0;
+ function set(i){hi=i;t=0;const h=H_[i];for(const k in P){P[k].classList.toggle('on',k===h[0]);}P[h[0]].style.setProperty('--wc',h[2]);
+  pc.setAttribute('fill',h[2]);pt.setAttribute('fill',h[2]);pt.textContent=h[1];
+  for(const k in G)G[k].classList.remove('hit');$('df-msg').innerHTML=h[3];
+  $('df-chips').querySelectorAll('button').forEach((b,j)=>b.classList.toggle('on',j===i));}
+ $('df-chips').onclick=e=>{const b=e.target.closest('[data-i]');if(b)set(+b.dataset.i);};
+ set(0);
+ tick(svg,dt=>{if(st.run)t+=dt*st.sp;const h=H_[hi],p=P[h[0]],L=p.getTotalLength();const u=Math.min(1,t/1100),e=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2;
+  const q=p.getPointAtLength(L*e);pk.setAttribute('transform',`translate(${q.x},${q.y})`);
+  G[h[0].split('-')[1]].classList.toggle('hit',u>=1);
+  if(t>=(hi===H_.length-1?2400:1500))set((hi+1)%H_.length);});
+})();
+
+// ===================================================== 1.2 kafka consumer group rebalance
+(function(){
+ const svg=$('kg'),st={run:true,sp:1};playbar($('kg-pb'),st);
+ const COL=['#3B82F6','#9333EA','#F97316','#22C55E','#EC4899','#14B8A6','#F59E0B'];
+ let cons=['C1','C2'],nextId=3,strat='range',rb=0,A={},lines=[],cnt={C1:0,C2:0};const colOf={C1:COL[0],C2:COL[1]};
+ const PY=i=>16+i*38,PH=28;
+ const ban=sv('text',{x:320,y:244,'text-anchor':'middle',class:'b',fill:'#B45309'});
+ function assign(){const a={};cons.forEach(c=>a[c]=[]);const n=cons.length;
+  if(strat==='range'){const per=Math.floor(6/n),ex=6%n;let p=0;cons.forEach((c,i)=>{for(let j=0;j<per+(i<ex?1:0);j++)a[c].push(p++);});}
+  else for(let p=0;p<6;p++)a[cons[p%n]].push(p);return a;}
+ const CY=i=>{const n=cons.length,step=Math.min(48,224/n);return 120-(n*step)/2+i*step+step/2;};
+ function draw(){svg.innerHTML='';
+  for(let p=0;p<6;p++){sv('rect',{x:16,y:PY(p),width:132,height:PH,rx:7,fill:'#F8FAFC',stroke:'#94A3B8','stroke-width':1.5},svg);const t=sv('text',{x:82,y:PY(p)+19,'text-anchor':'middle',class:'b'},svg);t.textContent='partition '+p;}
+  const h=Math.min(34,224/cons.length-6);lines=[];
+  cons.forEach((c,i)=>{const y=CY(i);sv('rect',{x:466,y:y-h/2,width:158,height:h,rx:8,fill:'#fff',stroke:colOf[c],'stroke-width':2.5},svg);
+   const t=sv('text',{x:545,y:y+4,'text-anchor':'middle',class:'b'},svg);t.textContent=rb>0?c+' · rebalancing':(A[c]&&A[c].length?`${c} · ${cnt[c]||0} msgs`:c+' · idle');
+   if(rb<=0&&A[c])A[c].forEach(p=>{const y1=PY(p)+PH/2;const path=sv('path',{d:`M148,${y1} C300,${y1} 320,${y} 466,${y}`,class:'kl',stroke:colOf[c]},svg);
+    const dots=[0,.5].map(o=>({o,el:sv('circle',{r:4.5,fill:colOf[c]},svg)}));lines.push({path,dots,c,p,L:0});});});
+  if(rb>0)lines=[];svg.appendChild(ban);ban.textContent=rb>0?'⏸ Rebalancing — consumption paused (eager protocol)':'';
+  $('kg-as').innerHTML=cons.map(c=>`<span style="border-color:${colOf[c]}"><b style="color:${colOf[c]}">${c}</b> ${rb>0?'…':(A[c].length?A[c].map(p=>'P'+p).join(' '):'idle')}</span>`).join('');}
+ function change(msg){rb=1600;A={};draw();$('kg-msg').innerHTML=msg;}
+ A=assign();draw();$('kg-msg').innerHTML='6 partitions, 2 consumers in group <code>result-service</code>: each partition has exactly <b>one</b> owner in the group.';
+ $('kg-add').onclick=()=>{if(cons.length>=7)return;const c='C'+nextId++;colOf[c]=COL[(nextId-2)%7];cnt[c]=0;cons.push(c);change(`<b>${c}</b> joined → group coordinator triggers a rebalance.${cons.length>6?' More consumers than partitions → one stays <b>idle</b>.':''}`);};
+ $('kg-rem').onclick=()=>{if(cons.length<=1)return;const c=cons.pop();change(`<b>${c}</b> left cleanly (sent LeaveGroup) → immediate rebalance.`);};
+ $('kg-crash').onclick=()=>{if(cons.length<=1)return;const c=cons.shift();change(`<b>${c}</b> crashed → no heartbeat until <code>session.timeout.ms</code> (45 s default), then its partitions move.`);};
+ seg($('kg-st'),v=>{strat=v;change(v==='range'?'<b>Range</b>: contiguous blocks per consumer.':'<b>Round robin</b>: partitions dealt one by one.');});
+ tick(svg,dt=>{if(!st.run)return;const d=dt*st.sp;
+  if(rb>0){rb-=d;if(rb<=0){A=assign();draw();}return;}
+  for(const l of lines){if(!l.L)l.L=l.path.getTotalLength();for(const dt2 of l.dots){const prev=dt2.o;dt2.o=(dt2.o+d/1800)%1;if(dt2.o<prev){cnt[l.c]=(cnt[l.c]||0)+1;}const q=l.path.getPointAtLength(l.L*dt2.o);dt2.el.setAttribute('cx',q.x);dt2.el.setAttribute('cy',q.y);}}
+  svg.querySelectorAll('text.b').forEach(t=>{const m=t.textContent.match(/^(C\d+) · \d+ msgs$/);if(m)t.textContent=`${m[1]} · ${cnt[m[1]]} msgs`;});});
+})();
+
+// ===================================================== 1.3 heap mark / sweep / compact
+(function(){
+ const box=$('hp'),st={run:true,sp:1};playbar($('hp-pb'),st);
+ const T=['Run','Step','String','byte[]','Map','List'];
+ const DEAD=new Set([1,2,5,8,9,10,13,17,18,20,23,24,25,29,31,32,35,38]);
+ const objs=[];for(let i=0;i<40;i++){const d=document.createElement('div');d.className='hobj';d.textContent=T[i%6];box.appendChild(d);objs.push({el:d,live:!DEAD.has(i),slot:i});}
+ const big=document.createElement('div');big.className='hobj big';big.textContent='byte[ ] — 6 cells';box.appendChild(big);
+ const PH=[['Allocate','Heap is <b>full</b>. Allocating a 6-cell <code>byte[]</code> fails → the JVM runs a GC.'],
+  ['Mark','<b>Mark:</b> trace from GC roots (thread stacks, static fields). Green = reachable, red = garbage.'],
+  ['Sweep','<b>Sweep:</b> garbage freed — 18 cells free, but the biggest hole is only <b>3 cells</b>. The array still doesn\'t fit: <b>fragmentation</b>.'],
+  ['Compact','<b>Compact:</b> live objects slide together and references are updated (stop-the-world). Now one 18-cell free block.'],
+  ['Allocate','<b>Allocate:</b> the <code>byte[]</code> fits — the JVM just bumps a pointer. G1 gets the same result by <b>copying</b> live objects into empty regions.']];
+ $('hp-ph').innerHTML=PH.map((p,i)=>`<button data-i="${i}">${i+1} ${p[0]}</button>`).join('');
+ const pos=(el,slot,w)=>{el.style.left=(slot%10)*10+'%';el.style.top=Math.floor(slot/10)*34+'px';};
+ let ph=0,t=0;
+ function render(p){ph=p;t=0;let k=0;
+  objs.forEach(o=>{o.el.classList.toggle('live',p>=1&&o.live);o.el.classList.toggle('dead',p===1&&!o.live);o.el.classList.toggle('gone',p>=2&&!o.live);
+   pos(o.el,p>=3&&o.live?k++:o.slot);if(p>=3&&!o.live)pos(o.el,o.slot);});
+  pos(big,22);big.classList.toggle('gone',p<4);
+  $('hp-msg').innerHTML=PH[p][1];$('hp-want').textContent=p===4?'✅ allocated':'⏳ waiting';
+  const kv=[['live',p>=1?'22':'?'],['free cells',p<2?'0':p<4?'18':'12'],['largest free block',p<2?'0':p===2?'3':p===3?'18':'12']];
+  $('hp-kv').innerHTML=kv.map(x=>`<span>${x[0]}: <b>${x[1]}</b></span>`).join('');
+  $('hp-ph').querySelectorAll('button').forEach((b,j)=>b.classList.toggle('on',j===p));}
+ $('hp-ph').onclick=e=>{const b=e.target.closest('[data-i]');if(b)render(+b.dataset.i);};
+ render(0);
+ tick(box,dt=>{if(!st.run)return;t+=dt*st.sp;if(t>2600)render((ph+1)%PH.length);});
+})();
+
+// ===================================================== 1.4 kafka log compaction
+(function(){
+ const box=$('lc'),st={run:true,sp:1};playbar($('lc-pb'),st);
+ const R=[['r1','QUEUED'],['r2','QUEUED'],['r1','RUNNING'],['r3','QUEUED'],['r2','RUNNING'],['r1','PASSED'],['r3','RUNNING'],['r2',null],['r3','FAILED'],['r4','QUEUED']];
+ const KC={r1:'#2563EB',r2:'#9333EA',r3:'#EA580C',r4:'#16A34A'};
+ const latest={};R.forEach((r,i)=>latest[r[0]]=i);
+ const PH=[['Append','Producers append status updates keyed by <code>runId</code>. The log only grows — 10 records.'],
+  ['Find old','The log cleaner (background thread) finds records that have a <b>newer value for the same key</b>.'],
+  ['Compact','Old records removed — <b>4 left</b>. Offsets don\'t change: 5, 7, 8, 9 (gaps are normal).'],
+  ['Tombstone','After <code>delete.retention.ms</code> the tombstone for <b>r2</b> is removed too — 3 records, r2 is gone.']];
+ $('lc-ph').innerHTML=PH.map((p,i)=>`<button data-i="${i}">${i+1} ${p[0]}</button>`).join('');
+ let ph=0,t=0;
+ function render(p){ph=p;t=0;
+  box.innerHTML=R.map((r,i)=>{const old=latest[r[0]]!==i,tomb=r[1]===null;let c='rec'+(p===0?' new':'')+(tomb?' tomb':'');
+   if(p===1&&old)c+=' old';if(p>=2&&old)c+=' gone';if(p>=3&&tomb)c+=' gone';
+   return `<div class="${c}" style="animation-delay:${i*90}ms;border-left:4px solid ${KC[r[0]]}"><small>offset ${i}</small><b style="color:${KC[r[0]]}">${r[0]}</b> = ${tomb?'<i>null</i> 🪦':r[1]}</div>`;}).join('');
+  $('lc-msg').innerHTML=PH[p][1];
+  $('lc-state').innerHTML=['r1','r2','r3','r4'].map(k=>{const v=R[latest[k]][1];return v?`<span><b style="color:${KC[k]}">${k}</b> ${v}</span>`:`<span style="text-decoration:line-through;color:var(--faint)"><b>${k}</b> deleted</span>`;}).join('')+'<span>same state, fewer records ✓</span>';
+  $('lc-ph').querySelectorAll('button').forEach((b,j)=>b.classList.toggle('on',j===p));}
+ $('lc-ph').onclick=e=>{const b=e.target.closest('[data-i]');if(b)render(+b.dataset.i);};
+ render(0);
+ tick(box,dt=>{if(!st.run)return;t+=dt*st.sp;if(t>2800)render((ph+1)%PH.length);});
+})();
+
+// ===================================================== 2.1 data masking
+(function(){
+ const SAMPLE=`{"ts":"2026-10-21T10:42:07Z","tenant":"acme","level":"INFO",
+ "user":"qa.lead@acme.io","phone":"+91 98450 12345",
+ "auth":"Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI0MiJ9.x7Qk2Lm",
+ "card":"4111 1111 1111 1234","password":"S3cret!2026",
+ "msg":"run 9f2c started by ravi.k@acme.io on emulator-5554"}`;
+ const fnv=s=>{let h=0x811c9dc5;for(const ch of s){h^=ch.charCodeAt(0);h=Math.imul(h,0x01000193)>>>0;}return h.toString(16).padStart(8,'0').slice(0,7);};
+ const R={
+  email:['Emails',/([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g,m=>m[1]+'***'+m[2]],
+  jwt:['Tokens',/Bearer\s+[\w-]+\.[\w-]+\.[\w-]+/g,()=>'Bearer ***'],
+  card:['Cards',/\b(?:\d[ -]?){12}(\d{4})\b/g,m=>'**** **** **** '+m[1]],
+  phone:['Phones',/\+\d{1,3}[ -]?\d{5}[ -]?\d{2}(\d{3})/g,m=>'+** ***** **'+m[1]],
+  pwd:['Passwords',/("password"\s*:\s*")([^"]*)(")/g,m=>m[1]+'******'+m[3]]};
+ const on={email:true,jwt:true,card:true,phone:true,pwd:true};let mode='mask';
+ const ta=$('mk-in');ta.value=SAMPLE;
+ $('mk-rules').innerHTML=Object.keys(R).map(k=>`<label class="chk on" data-k="${k}"><input type="checkbox" checked> ${R[k][0]}</label>`).join('');
+ function rep(k,m){if(mode==='mask')return R[k][2](m);
+  if(k==='pwd')return m[1]+(mode==='redact'?'[REDACTED]':'#'+fnv(m[2]))+m[3];
+  return mode==='redact'?'[REDACTED]':'#'+fnv(m[0]);}
+ function run(){const txt=ta.value,hits=[];
+  for(const k in R){if(!on[k])continue;const re=new RegExp(R[k][1].source,'g');let m;while((m=re.exec(txt))){hits.push({s:m.index,e:m.index+m[0].length,r:rep(k,m),k});if(!m[0])re.lastIndex++;}}
+  hits.sort((a,b)=>a.s-b.s);let out='',last=0,n=0;
+  for(const h of hits){if(h.s<last)continue;out+=ESC(txt.slice(last,h.s))+`<mark title="${R[h.k][0]}">${ESC(h.r)}</mark>`;last=h.e;n++;}
+  $('mk-out').innerHTML=out+ESC(txt.slice(last));$('mk-n').textContent=`${n} value${n===1?'':'s'} masked`;
+  $('mk-rx').innerHTML=Object.keys(R).filter(k=>on[k]).map(k=>`<div title="${ESC(R[k][1].source)}"><b>${R[k][0]}</b> ${ESC(R[k][1].source)}</div>`).join('');
+  $('mk-msg').innerHTML={mask:'<b>Partial mask</b> keeps enough to debug (domain, last 4 digits) without exposing the person.',redact:'<b>Redact</b> removes the value entirely — safest, but you lose correlation.',hash:'<b>Hash</b>: same input → same hash, so you can still follow one user across logs without seeing who it is.'}[mode];}
+ $('mk-rules').addEventListener('change',e=>{const l=e.target.closest('[data-k]');on[l.dataset.k]=e.target.checked;l.classList.toggle('on',e.target.checked);run();});
+ seg($('mk-mode'),v=>{mode=v;run();});ta.addEventListener('input',run);run();
+})();
+
+// ===================================================== 2.2 diff viewer
+(function(){
+ const EX=[
+  [`try {
+    mongo.save(run);
+} catch (MongoTimeoutException e) {
+    log.error("save failed", e);
+    throw new RunSaveException("not saved");
+}`,`try {
+    mongo.save(run);
+} catch (MongoTimeoutException e) {
+    throw new RunSaveException("Run " + run.id() + " not saved", e);
+}`,'Log once at the boundary, put the <b>id</b> in the message and pass <b>e</b> as the cause.'],
+  [`List<String> failed = new ArrayList<>();
+for (Result r : results) {
+    if (r.status() == FAILED) {
+        failed.add(r.name());
+    }
+}
+Collections.sort(failed);
+return failed;`,`return results.stream()
+        .filter(r -> r.status() == FAILED)
+        .map(Result::name)
+        .sorted()
+        .toList();`,'Same result, declarative — and <code>toList()</code> returns an unmodifiable list.'],
+  [`public final class StepResult {
+    private final String name;
+    private final long millis;
+    public StepResult(String name, long millis) {
+        this.name = name;
+        this.millis = millis;
+    }
+    public String getName() { return name; }
+    public long getMillis() { return millis; }
+}`,`public record StepResult(String name, long millis) {
+}`,'A record gives the constructor, accessors, <code>equals</code>, <code>hashCode</code> and <code>toString</code>.']];
+ let ex=0,mode='side';
+ function diff(a,b){const n=a.length,m=b.length,L=Array.from({length:n+1},()=>new Array(m+1).fill(0));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)L[i][j]=a[i]===b[j]?L[i+1][j+1]+1:Math.max(L[i+1][j],L[i][j+1]);
+  const o=[];let i=0,j=0;while(i<n&&j<m){if(a[i]===b[j]){o.push(['=',i++,j++]);}else if(L[i+1][j]>=L[i][j+1])o.push(['-',i++]);else o.push(['+',null,j++]);}
+  while(i<n)o.push(['-',i++]);while(j<m)o.push(['+',null,j++]);return o;}
+ function draw(){const [A,B,why]=EX[ex];const a=A.split('\n'),b=B.split('\n'),ha=hl(A,'java').split('\n'),hb=hl(B,'java').split('\n');const ops=diff(a,b);
+  const add=ops.filter(o=>o[0]==='+').length,del=ops.filter(o=>o[0]==='-').length;let h='';
+  if(mode==='uni'){h=ops.map(o=>o[0]==='='?`<div class="drow"><span class="n">${o[1]+1}</span><span class="n">${o[2]+1}</span><span>  ${ha[o[1]]||' '}</span></div>`:o[0]==='-'?`<div class="drow"><span class="n del">${o[1]+1}</span><span class="n del"></span><span class="del">- ${ha[o[1]]||' '}</span></div>`:`<div class="drow"><span class="n add"></span><span class="n add">${o[2]+1}</span><span class="add">+ ${hb[o[2]]||' '}</span></div>`).join('');}
+  else{let k=0;while(k<ops.length){if(ops[k][0]==='='){const o=ops[k++];h+=`<div class="drow"><span class="n">${o[1]+1}</span><span>${ha[o[1]]||' '}</span><span class="n">${o[2]+1}</span><span>${hb[o[2]]||' '}</span></div>`;continue;}
+    const D=[],P=[];while(k<ops.length&&ops[k][0]==='-')D.push(ops[k++]);while(k<ops.length&&ops[k][0]==='+')P.push(ops[k++]);
+    for(let r=0;r<Math.max(D.length,P.length);r++){const d=D[r],p=P[r];h+=`<div class="drow">${d?`<span class="n del">${d[1]+1}</span><span class="del">${ha[d[1]]||' '}</span>`:'<span class="n emp"></span><span class="emp"> </span>'}${p?`<span class="n add">${p[2]+1}</span><span class="add">${hb[p[2]]||' '}</span>`:'<span class="n emp"></span><span class="emp"> </span>'}</div>`;}}}
+  $('df2').className='diff'+(mode==='uni'?' uni':'');$('df2').innerHTML=h;$('df2-st').textContent=`+${add}  −${del}`;$('df2-msg').innerHTML=why;}
+ seg($('df2-ex'),v=>{ex=+v;draw();});seg($('df2-mode'),v=>{mode=v;draw();});draw();
+})();
+
+// ===================================================== 3.1 circuit breaker
+(function(){
+ const svg=$('cb');const S={CLOSED:[90,165,'#22C55E'],HALF_OPEN:[260,58,'#F59E0B'],OPEN:[430,165,'#EF4444']};
+ const defs=sv('defs',{},svg);const mk=sv('marker',{id:'ar2',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto'},defs);sv('path',{d:'M0,0 L10,5 L0,10 z',fill:'#94A3B8'},mk);
+ const TR={co:['M132,182 Q260,236 388,182','failure rate ≥ 50%',260,222],oh:['M440,122 Q440,52 304,46','wait 4 s',420,60],hc:['M216,58 Q100,58 92,122','2 trials OK',105,62],ho:['M290,90 L398,134','trial fails',368,104]};
+ const TE={};for(const k in TR){TE[k]=sv('path',{d:TR[k][0],class:'tr','marker-end':'url(#ar2)'},svg);const t=sv('text',{x:TR[k][2],y:TR[k][3],'text-anchor':'middle',class:'sm'},svg);t.textContent=TR[k][1];}
+ const SE={};for(const k in S){const g=sv('g',{class:'st'},svg);g.style.setProperty('--sc',S[k][2]);sv('circle',{cx:S[k][0],cy:S[k][1],r:42},g);const t=sv('text',{x:S[k][0],y:S[k][1]+5,'text-anchor':'middle',class:'b'},g);t.textContent=k;SE[k]=g;}
+ let state='CLOSED',win=[],openT=0,half=[],auto=false,fr=0.7,acc=0,hot=null,hotT=0;const log=[];const WAIT=4000;
+ const L=s=>{log.push(s);while(log.length>6)log.shift();$('cb-log').innerHTML=log.join('\n');};
+ function go(s,why,tr){state=s;if(s==='OPEN')openT=WAIT;if(s==='HALF_OPEN')half=[];if(s==='CLOSED')win=[];hot=tr;hotT=1200;L(`<span class="nar">→ ${s}</span> <span class="dim">(${why})</span>`);draw();}
+ function call(ok){
+  if(state==='OPEN'){L('<span class="dim">rejected instantly → fallback: cached status</span>');return;}
+  if(state==='HALF_OPEN'){if(half.length>=2){L('<span class="dim">rejected — trial slots busy</span>');return;}half.push(ok);L(ok?'<span class="okc">trial call ✓</span>':'<span class="err">trial call ✗</span>');
+   if(!ok)go('OPEN','trial failed','ho');else if(half.length===2)go('CLOSED','2 trial calls OK','hc');draw();return;}
+  win.push(ok);if(win.length>6)win.shift();L(ok?'<span class="okc">call ✓ 200 OK</span>':'<span class="err">call ✗ timeout from device-farm</span>');
+  const f=win.filter(x=>!x).length;if(win.length>=4&&f/win.length>=.5)go('OPEN',`failure rate ${Math.round(f/win.length*100)}%`,'co');draw();}
+ function draw(){for(const k in SE)SE[k].classList.toggle('on',k===state);for(const k in TE)TE[k].classList.toggle('hot',k===hot);
+  const w=state==='HALF_OPEN'?half:win;$('cb-win').innerHTML=Array.from({length:6},(_,i)=>{const v=w[i];return v===undefined?'<i></i>':v?'<i class="ok">✓</i>':'<i class="no">✗</i>';}).join('');
+  const f=win.filter(x=>!x).length;$('cb-rate').textContent=state==='HALF_OPEN'?`trial ${half.length} / 2`:`failure rate ${win.length?Math.round(f/win.length*100):0}%${win.length<4?' (min 4 calls)':''}`;
+  $('cb-timer').style.visibility=state==='OPEN'?'visible':'hidden';}
+ $('cb-ok').onclick=()=>call(true);$('cb-no').onclick=()=>call(false);
+ $('cb-auto').querySelector('input').onchange=e=>{auto=e.target.checked;$('cb-auto').classList.toggle('on',auto);};
+ seg($('cb-fr'),v=>fr=+v);
+ L('<span class="dim">every test step calls the device-farm API…</span>');draw();
+ tick(svg,dt=>{if(hotT>0){hotT-=dt;if(hotT<=0){hot=null;draw();}}
+  if(state==='OPEN'){openT-=dt;$('cb-timer').textContent=`half-open in ${Math.max(0,openT/1000).toFixed(1)} s`;if(openT<=0)go('HALF_OPEN','wait elapsed','oh');}
+  if(auto){acc+=dt;if(acc>=550){acc=0;call(Math.random()>=fr);}}});
+})();
+
+// ===================================================== 3.2 token bucket
+(function(){
+ const CAP=10;let tokens=CAP,rate=2,auto=false,ar=3,acc=0,ok=0,no=0;const hist=[];
+ $('tb-b').innerHTML='<i></i>'.repeat(CAP);const T=[...$('tb-b').children];
+ const code=()=>$('tb-code').innerHTML=macHTML('RateLimitFilter.java',`Bucket bucket = Bucket.builder()
+    .addLimit(limit -> limit.capacity(${CAP})
+        .refillGreedy(${rate}, Duration.ofSeconds(1)))
+    .build();
+
+if (!bucket.tryConsume(1)) {
+    return ResponseEntity.status(429)       // ❌ rejected
+        .header("Retry-After", "1").build();
+}
+return chain.proceed(request);               // ✅ allowed`,'java');
+ function req(){if(tokens>=1){tokens-=1;ok++;hist.push(1);}else{no++;hist.push(0);}while(hist.length>16)hist.shift();
+  $('tb-strip').innerHTML=hist.slice().reverse().map(h=>h?'<i class="y">200</i>':'<i class="n">429</i>').join('');stats();}
+ function stats(){$('tb-ok').textContent=`✓ allowed ${ok}`;$('tb-no').textContent=`✗ rejected ${no}`;$('tb-tk').textContent=`tokens ${tokens.toFixed(1)} / ${CAP}`;
+  T.forEach((t,i)=>{const f=Math.min(1,Math.max(0,tokens-i));t.classList.toggle('full',f>=1);t.style.setProperty('--p',f<1?f:0);});}
+ $('tb-one').onclick=req;$('tb-burst').onclick=()=>{for(let i=0;i<8;i++)req();};
+ $('tb-auto').querySelector('input').onchange=e=>{auto=e.target.checked;$('tb-auto').classList.toggle('on',auto);};
+ seg($('tb-rate'),v=>{rate=+v;code();});seg($('tb-ar'),v=>ar=+v);
+ code();stats();
+ tick($('tb-b'),dt=>{tokens=Math.min(CAP,tokens+rate*dt/1000);if(auto){acc+=dt;if(acc>=1000/ar){acc=0;req();}}stats();});
+})();
+
+// ===================================================== 3.3 step debugger
+(function(){
+ const SRC=`void onRunFinished(Run run) {
+    Summary s = summarize(run.results());
+    publish(s);
+}
+
+Summary summarize(List<Result> rs) {
+    int passed = 0;
+    for (Result r : rs) {
+        if (r.passed()) passed++;
+    }
+    return new Summary(passed, rs.size());
+}`;
+ const lines=hl(SRC,'java').split('\n');const bp=new Set([9]);
+ const RUN={run:'Run#9f2c'},RS='[PASS, FAIL, PASS]';
+ const top=(l,v,m)=>({l,f:[['summarize',v],['onRunFinished',RUN]],m});
+ const S=[
+  {l:1,f:[['onRunFinished',RUN]],m:'Kafka listener calls <code>onRunFinished</code>.'},
+  {l:2,f:[['onRunFinished',RUN]],m:'About to call <code>summarize(...)</code>.'},
+  top(6,{rs:RS},'A new <b>frame</b> is pushed for <code>summarize</code>.'),
+  top(7,{rs:RS,passed:'0'},'<code>passed</code> lives in this frame only.'),
+  top(8,{rs:RS,passed:'0',r:'Result[PASS]'},'1st result'),
+  top(9,{rs:RS,passed:'1',r:'Result[PASS]'},'passed → 1'),
+  top(8,{rs:RS,passed:'1',r:'Result[FAIL]'},'2nd result'),
+  top(9,{rs:RS,passed:'1',r:'Result[FAIL]'},'failed → no increment'),
+  top(8,{rs:RS,passed:'1',r:'Result[PASS]'},'3rd result'),
+  top(9,{rs:RS,passed:'2',r:'Result[PASS]'},'passed → 2'),
+  top(11,{rs:RS,passed:'2'},'Returns <code>Summary(2, 3)</code>; the frame is popped.'),
+  {l:3,f:[['onRunFinished',{run:'Run#9f2c',s:'Summary[passed=2, total=3]'}]],m:'Back in the caller with <code>s</code>.'},
+  {l:4,f:[['onRunFinished',{run:'Run#9f2c',s:'Summary[passed=2, total=3]'}]],m:'Done — stack is empty again.'}];
+ let i=-1;
+ function draw(){const st=S[i];
+  $('dbg').innerHTML=lines.map((h,k)=>`<div class="dl${st&&st.l===k+1?' cur':''}"><span class="g${bp.has(k+1)?' bp':''}" data-l="${k+1}">${k+1}</span><span>${h||' '}</span></div>`).join('');
+  const prev=i>0?S[i-1].f[0]:null,v=st?st.f[0][1]:{};
+  $('dbg-vars').innerHTML=st?Object.entries(v).map(([k,x])=>`<tr class="${prev&&prev[0]===st.f[0][0]&&prev[1][k]!==x?'chg':''}"><td>${k}</td><td>${ESC(x)}</td></tr>`).join(''):'<tr><td colspan="2" style="color:var(--muted)">not started</td></tr>';
+  $('dbg-stack').innerHTML=st?st.f.map(f=>`<div>${f[0]}()</div>`).join(''):'<div>—</div>';
+  $('dbg-msg').innerHTML=st?st.m:'Press <b>Step ▶</b>, or <b>Continue</b> to run to the red breakpoint (line 9).';
+  $('dbg-n').textContent=i<0?'ready':`step ${i+1} / ${S.length}`;
+  $('dbg-step').disabled=i>=S.length-1;$('dbg-back').disabled=i<=0;}
+ $('dbg-step').onclick=()=>{if(i<S.length-1){i++;draw();}};
+ $('dbg-back').onclick=()=>{if(i>0){i--;draw();}};
+ $('dbg-reset').onclick=()=>{i=-1;draw();};
+ $('dbg-cont').onclick=()=>{let j=i+1;while(j<S.length-1&&!bp.has(S[j].l))j++;i=Math.min(j,S.length-1);draw();};
+ $('dbg').onclick=e=>{const g=e.target.closest('[data-l]');if(!g)return;const l=+g.dataset.l;bp.has(l)?bp.delete(l):bp.add(l);draw();};
+ draw();
+})();
+
+// ===================================================== 3.4 binary search
+(function(){
+ const A=[3,8,12,15,21,27,33,38,42,47,51,58,64,70,77,85];let target=47,mode='bin',steps=[],i=-1,auto=false,acc=0;
+ const CODE={bin:`int lo = 0, hi = a.length - 1;
+while (lo <= hi) {
+    int mid = (lo + hi) >>> 1;
+    if (a[mid] == target) return mid;
+    if (a[mid] < target) lo = mid + 1;
+    else hi = mid - 1;
+}
+return -1;`,lin:`for (int i = 0; i < a.length; i++) {
+    if (a[i] == target) return i;
+}
+return -1;`};
+ function build(){steps=[];if(mode==='bin'){let lo=0,hi=A.length-1;while(lo<=hi){const mid=(lo+hi)>>>1;
+    if(A[mid]===target){steps.push({lo,hi,mid,hit:mid,line:[4],m:`a[${mid}] = ${A[mid]} → <b>found</b> at index ${mid}.`});return;}
+    if(A[mid]<target){steps.push({lo,hi,mid,line:[5],m:`a[${mid}] = ${A[mid]} &lt; ${target} → search the right half: lo = ${mid+1}`});lo=mid+1;}
+    else{steps.push({lo,hi,mid,line:[6],m:`a[${mid}] = ${A[mid]} &gt; ${target} → search the left half: hi = ${mid-1}`});hi=mid-1;}}
+   steps.push({lo,hi,mid:-1,line:[8],m:`lo (${lo}) &gt; hi (${hi}) → <b>not found</b>, return -1.`});}
+  else{for(let k=0;k<A.length;k++){if(A[k]===target){steps.push({cur:k,hit:k,line:[2],m:`a[${k}] = ${A[k]} → <b>found</b>.`});return;}steps.push({cur:k,line:[2],m:`a[${k}] = ${A[k]} ≠ ${target}`});}steps.push({cur:-1,line:[4],m:'Reached the end → <b>not found</b>.'});}}
+ function draw(){const s=steps[i];
+  $('bs-arr').innerHTML=A.map((v,k)=>{let c='cell';if(s){if(mode==='bin'){if(k<s.lo||k>s.hi)c+=' out';if(k===s.mid)c+=' mid';}else{if(k<s.cur||(s.cur===-1))c+=' out';if(k===s.cur)c+=' mid';}if(s.hit===k)c+=' hit';}return `<div class="${c}">${v}<small>${k}</small></div>`;}).join('');
+  $('bs-ptr').innerHTML=A.map((_,k)=>{if(!s)return '<span></span>';const t=[];if(mode==='bin'){if(k===s.lo)t.push('lo');if(k===s.mid)t.push('mid');if(k===s.hi)t.push('hi');}else if(k===s.cur)t.push('i');return `<span>${t.join(' ')}</span>`;}).join('');
+  markLines($('bs-code').querySelector('.mac'),s?s.line:[]);
+  $('bs-msg').innerHTML=s?s.m:`Looking for <b>${target}</b> in 16 sorted run durations (ms). Press <b>Step ▶</b>.`;
+  $('bs-n').textContent=`${Math.max(0,i+1)} comparison${i===0?'':'s'}`;$('bs-step').disabled=i>=steps.length-1;}
+ function reset(){build();i=-1;auto=false;$('bs-auto').textContent='▶ Auto';$('bs-code').innerHTML=macHTML(mode==='bin'?'BinarySearch.java':'LinearSearch.java',CODE[mode],'java');draw();}
+ $('bs-step').onclick=()=>{if(i<steps.length-1){i++;draw();}};
+ $('bs-auto').onclick=()=>{auto=!auto;if(auto&&i>=steps.length-1)i=-1;$('bs-auto').textContent=auto?'⏸ Pause':'▶ Auto';};
+ $('bs-reset').onclick=reset;
+ seg($('bs-t'),v=>{target=+v;reset();});seg($('bs-m'),v=>{mode=v;reset();});
+ reset();
+ tick($('bs-arr'),dt=>{if(!auto)return;acc+=dt;if(acc>=900){acc=0;if(i<steps.length-1){i++;draw();}else{auto=false;$('bs-auto').textContent='▶ Auto';}}});
+})();
+
+// ===================================================== 4.1 live heap chart
+(function(){
+ const cv=$('hc'),ctx=cv.getContext('2d'),st={run:true,sp:1};playbar($('hc-pb'),st);
+ const MAX=1024,EDEN=200,ADD=[8,18,36];let rate=1,leak=false,eden=0,old=150,live=150,samples=[],acc=0,gcs=0,pauses=[],oom=0,lastP=0,msg='';
+ function reset(){eden=0;old=150;live=150;samples=[];gcs=0;pauses=[];oom=0;lastP=0;}
+ function step(){if(oom>0){oom--;samples.push({u:eden+old,o:old});if(oom===0){reset();msg='Pod restarted (OOMKilled → Kubernetes restart). Fix the leak!';}return;}
+  eden+=ADD[rate]*(0.7+Math.random()*.6);let ev=null;
+  if(eden>=EDEN){const pr=leak?70:55;old+=pr;if(leak)live+=40;eden=0;ev='y';gcs++;lastP=Math.round(5+Math.random()*9);pauses.push(lastP);msg='Young GC: Eden emptied, survivors promoted to Old. Pause '+lastP+' ms.';}
+  if(old>=MAX-EDEN-40){old=Math.max(live,150);ev='f';gcs++;lastP=Math.round(70+Math.random()*90);pauses.push(lastP);msg=`Mixed / full GC cleaned the old gen — pause <b>${lastP} ms</b>.`;
+   if(live>=MAX-EDEN-80){ev='x';oom=25;msg='<b style="color:#B91C1C">OutOfMemoryError: Java heap space</b> — live data no longer fits, GC can\'t free anything.';}}
+  samples.push({u:eden+old,o:old,ev});if(samples.length>260)samples.shift();}
+ const ring=(v,max,col,label,unit)=>{const f=Math.min(1,v/max),c=2*Math.PI*30;return `<div class="gauge"><svg viewBox="0 0 76 76"><circle cx="38" cy="38" r="30" fill="none" stroke="#E2E8F0" stroke-width="8"/><circle cx="38" cy="38" r="30" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" transform="rotate(-90 38 38)" stroke-dasharray="${c}" stroke-dashoffset="${c*(1-f)}"/><text x="38" y="43" text-anchor="middle" style="font:800 14px var(--font-sans);fill:#0F172A">${Math.round(v)}${unit}</text></svg><small>${label}</small></div>`;};
+ function draw(){const d=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;if(!w)return;if(cv.width!==Math.round(w*d)||cv.height!==Math.round(h*d)){cv.width=Math.round(w*d);cv.height=Math.round(h*d);}
+  ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,w,h);const L=46,T=14,B=h-22,R=w-10,Y=v=>B-(v/MAX)*(B-T),X=k=>L+(k/259)*(R-L);
+  ctx.font='11px Segoe UI, system-ui, sans-serif';ctx.fillStyle='#64748B';ctx.strokeStyle='#EEF2F7';ctx.lineWidth=1;
+  [0,256,512,768,1024].forEach(v=>{ctx.beginPath();ctx.moveTo(L,Y(v));ctx.lineTo(R,Y(v));ctx.stroke();ctx.fillText(v+' MB',4,Y(v)+4);});
+  ctx.setLineDash([6,4]);ctx.strokeStyle='#EF4444';ctx.beginPath();ctx.moveTo(L,Y(MAX));ctx.lineTo(R,Y(MAX));ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#EF4444';ctx.fillText('-Xmx 1 GB',R-62,Y(MAX)+13);
+  samples.forEach((s,k)=>{if(s.ev==='f'||s.ev==='x'){ctx.strokeStyle=s.ev==='x'?'#EF4444':'#F59E0B';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(X(k),T);ctx.lineTo(X(k),B);ctx.stroke();ctx.fillStyle=ctx.strokeStyle;ctx.fillText(s.ev==='x'?'OOM':'GC',X(k)+3,T+10);}});
+  if(samples.length>1){ctx.beginPath();samples.forEach((s,k)=>k?ctx.lineTo(X(k),Y(s.u)):ctx.moveTo(X(k),Y(s.u)));ctx.lineTo(X(samples.length-1),B);ctx.lineTo(X(0),B);ctx.closePath();ctx.fillStyle='rgba(59,130,246,.12)';ctx.fill();
+   ctx.beginPath();samples.forEach((s,k)=>k?ctx.lineTo(X(k),Y(s.u)):ctx.moveTo(X(k),Y(s.u)));ctx.strokeStyle='#3B82F6';ctx.lineWidth=2;ctx.stroke();
+   ctx.beginPath();samples.forEach((s,k)=>k?ctx.lineTo(X(k),Y(s.o)):ctx.moveTo(X(k),Y(s.o)));ctx.strokeStyle='#9333EA';ctx.lineWidth=2;ctx.stroke();}
+  ctx.fillStyle='#3B82F6';ctx.fillText('■ heap used',L+6,h-6);ctx.fillStyle='#9333EA';ctx.fillText('■ old gen',L+90,h-6);ctx.fillStyle='#F59E0B';ctx.fillText('| old-gen GC',L+160,h-6);
+  const avg=pauses.length?pauses.reduce((a,b)=>a+b,0)/pauses.length:0;
+  $('hc-g').innerHTML=ring((eden+old)/MAX*100,100,'#3B82F6','heap used','%')+ring(old/MAX*100,100,'#9333EA','old gen','%')+ring(lastP,200,'#F59E0B','last pause','ms');
+  $('hc-kv').innerHTML=`<span>GCs <b>${gcs}</b></span><span>avg pause <b>${avg.toFixed(0)} ms</b></span><span>live set <b>${Math.round(live)} MB</b></span>`;
+  $('hc-msg').innerHTML=msg||'Sawtooth = healthy: Eden fills and empties. Tick <b>memory leak</b> and watch the floor rise after every old-gen GC.';}
+ seg($('hc-rate'),v=>rate=+v);
+ $('hc-leak').querySelector('input').onchange=e=>{leak=e.target.checked;$('hc-leak').classList.toggle('on',leak);if(!leak)live=150;msg=leak?'Leak on: a static <code>Map</code> keeps every run result — live set grows.':'Leak fixed — live set back to normal.';};
+ tick(cv,dt=>{if(st.run){acc+=dt*st.sp;let n=0;while(acc>=100&&n<5){acc-=100;step();n++;}if(acc>500)acc=0;}draw();});
+})();
+
+// ===================================================== 5.1 drag to order
+(function(){
+ const OK=['<code>SpringApplication.run()</code> starts, listeners notified','Prepare <b>Environment</b>: profiles, <code>application.yml</code>','Create the <b>ApplicationContext</b>','Register bean definitions (component scan + auto-configuration)','Instantiate singletons &amp; inject dependencies','Embedded Tomcat starts listening on 8080','<code>CommandLineRunner</code> / <code>ApplicationRunner</code> beans run','<code>ApplicationReadyEvent</code> published'];
+ const START=[3,0,5,1,7,4,2,6];const list=$('dd');let drag=null;
+ function load(order){list.innerHTML=order.map(i=>`<li draggable="true" data-i="${i}"><span class="hd">⋮⋮</span><span>${OK[i]}</span><span class="ar"><button data-m="-1" title="move up">↑</button><button data-m="1" title="move down">↓</button></span></li>`).join('');$('dd-score').textContent='';}
+ load(START);
+ list.addEventListener('dragstart',e=>{drag=e.target.closest('li');if(!drag)return;drag.classList.add('drag');try{e.dataTransfer.setData('text/plain','');e.dataTransfer.effectAllowed='move';}catch(x){}});
+ list.addEventListener('dragend',()=>{if(drag)drag.classList.remove('drag');drag=null;});
+ list.addEventListener('dragover',e=>{e.preventDefault();const li=e.target.closest('li');if(!drag||!li||li===drag)return;const r=li.getBoundingClientRect();list.insertBefore(drag,e.clientY>r.top+r.height/2?li.nextSibling:li);});
+ list.addEventListener('click',e=>{const b=e.target.closest('[data-m]');if(!b)return;const li=b.closest('li');if(+b.dataset.m<0&&li.previousElementSibling)list.insertBefore(li,li.previousElementSibling);else if(+b.dataset.m>0&&li.nextElementSibling)list.insertBefore(li.nextElementSibling,li);list.querySelectorAll('li').forEach(x=>x.classList.remove('good','bad'));});
+ $('dd-check').onclick=()=>{const li=[...list.children];let n=0;li.forEach((x,k)=>{const g=+x.dataset.i===k;x.classList.toggle('good',g);x.classList.toggle('bad',!g);if(g)n++;});
+  $('dd-score').textContent=`${n} / ${li.length} in place`;$('dd-msg').innerHTML=n===li.length?'🎉 <b>Perfect order!</b> Say it out loud once — this is a favourite interview question.':'Red rows are in the wrong place. Drag them and check again.';if(n===li.length)confetti();};
+ $('dd-shuf').onclick=()=>{load(START);$('dd-msg').innerHTML='Shuffled. Drag the rows into order.';};
+ $('dd-ans').onclick=()=>{load([0,1,2,3,4,5,6,7]);$('dd-msg').innerHTML='Correct order shown — shuffle and try from memory.';};
+})();
+
+// ===================================================== 5.2 flashcards
+(function(){
+ const C=[['What lives on the heap and what on the stack?','Objects and arrays live on the <b>heap</b> (shared). Each thread\'s <b>stack</b> holds frames with primitives and <b>references</b>.'],
+  ['PermGen vs Metaspace?','Java 8 replaced PermGen with <b>Metaspace</b> in native memory — it grows automatically, cap it with <code>-XX:MaxMetaspaceSize</code>.'],
+  ['Why does a minor GC stop the world?','Live objects are <b>copied</b> from Eden to survivors, and references must be fixed — app threads pause, but briefly since young gen is small.'],
+  ['StackOverflowError vs OutOfMemoryError?','<b>SOE</b>: one thread\'s stack is full (deep recursion). <b>OOM</b>: heap / metaspace / native memory exhausted.'],
+  ['First thing you do on an OOM in production?','Get the <b>heap dump</b> (<code>-XX:+HeapDumpOnOutOfMemoryError</code>), open it in MAT, look at the <b>dominator tree</b>.'],
+  ['What is a memory leak in Java?','Objects still <b>reachable</b> but never used again — e.g. a static map that only grows, or a ThreadLocal never removed.']];
+ let q=[],idx=0,res={};
+ function start(){q=C.map((_,i)=>i);idx=0;res={};show();}
+ function show(){const fc=$('fc');fc.classList.remove('flip');
+  if(idx>=q.length){fc.querySelector('.front').innerHTML='<small>Round finished</small><div style="font-size:16px;font-weight:800">🎉 All cards known</div>';fc.querySelector('.back').innerHTML='';$('fc-msg').innerHTML='Press <b>Restart</b> for another round.';confetti();}
+  else{const c=C[q[idx]];setTimeout(()=>{fc.querySelector('.back').innerHTML=`<small style="color:#94A3B8">Answer</small><div>${c[1]}</div>`;},250);fc.querySelector('.front').innerHTML=`<small>Card ${q[idx]+1} · think first, then click</small><div style="font-size:16px;font-weight:800;color:var(--ink)">${c[0]}</div>`;
+   $('fc-msg').innerHTML=`Card <b>${idx+1}</b> of ${q.length} in this round.`;}
+  $('fc-dots').innerHTML=C.map((_,i)=>`<i class="${res[i]===true?'y':res[i]===false?'n':''}${q[idx]===i?' c':''}"></i>`).join('');}
+ $('fc').onclick=()=>$('fc').classList.toggle('flip');
+ $('fc-y').onclick=()=>{if(idx>=q.length)return;res[q[idx]]=true;idx++;show();};
+ $('fc-n').onclick=()=>{if(idx>=q.length)return;res[q[idx]]=false;q.push(q[idx]);idx++;show();};
+ $('fc-r').onclick=start;start();
+})();
+
+// ===================================================== 5.3 fill in the blanks
+(function(){
+ const SRC=`@Transactional(rollbackFor = __B0__.class)
+public void saveRun(Run run) throws IOException {
+    runs.save(run);
+    counts.__B1__(run.status(), 1, Integer::__B2__);
+    try (__B3__ in = storage.open(run.reportKey())) {
+        reports.upload(in);
+    }
+}`;
+ const B=[[['Exception','IOException'],'<b>Exception</b> — by default only unchecked exceptions roll back.','checked exceptions need it…'],
+  [['merge'],'<b>merge</b> — atomic insert-or-combine on a ConcurrentHashMap.','one atomic call: put if absent, else combine'],
+  [['sum'],'<b>Integer::sum</b> — the combine function (old + 1).','a static method on Integer that adds'],
+  [['var','InputStream'],'<b>var</b> / <b>InputStream</b> — anything AutoCloseable is closed automatically.','the local variable type (Java 10 keyword works)']];
+ const html=hl(SRC,'java').replace(/__B(\d)__/g,(_,n)=>`<input data-b="${n}" spellcheck="false" style="width:${Math.max(...B[n][0].map(s=>s.length))+2}ch">`);
+ $('fb-code').innerHTML=html.split('\n').map((l,i)=>`<span class="ln" data-l="${i+1}">${l||' '}</span>`).join('');
+ const ins=[...$('fb-code').querySelectorAll('input')];let hint=0;
+ $('fb-check').onclick=()=>{let n=0;ins.forEach(x=>{const ok=B[x.dataset.b][0].some(a=>a.toLowerCase()===x.value.trim().toLowerCase());x.className=x.value?ok?'r':'w':'w';if(ok)n++;});
+  $('fb-score').textContent=`${n} / 4`;$('fb-why').innerHTML=B.map(b=>`<div class="box" style="padding:5px 9px">${b[1]}</div>`).join('');
+  $('fb-msg').innerHTML=n===4?'🎉 <b>All correct.</b>':'Green = right, red = try again (or press Hint).';if(n===4)confetti();};
+ $('fb-hint').onclick=()=>{const b=B[hint%4];$('fb-msg').innerHTML=`💡 Blank ${hint%4+1}: ${b[2]}`;ins[hint%4].focus();hint++;};
+ $('fb-show').onclick=()=>{ins.forEach(x=>{x.value=B[x.dataset.b][0][0];x.className='r';});$('fb-score').textContent='shown';};
+ $('fb-reset').onclick=()=>{ins.forEach(x=>{x.value='';x.className='';});$('fb-why').innerHTML='';$('fb-score').textContent='';hint=0;$('fb-msg').innerHTML='Fill in the 4 blanks.';};
+})();
+
+// ===================================================== 5.4 terminal playback
+(function(){
+ const st={run:true,sp:1};playbar($('tm-pb'),st);
+ const P='execution-service-7d9f8c6b5-2xkqp';
+ const S=[
+  {c:'kubectl get pods -l app=execution-service',o:`NAME                                READY   STATUS    RESTARTS      AGE
+${P}   1/1     Running   3 (12m ago)   2h`,n:'<b>RESTARTS 3</b> — the pod keeps dying. Next: why?'},
+  {c:`kubectl describe pod ${P} | grep -A2 "Last State"`,o:`    Last State:  Terminated
+      Reason:    OOMKilled
+      Exit Code: 137`,n:'<b>OOMKilled / exit 137</b> = the container went over its memory limit.'},
+  {c:`kubectl exec ${P} -- jcmd 1 GC.heap_info`,o:` garbage-first heap   total 2097152K, used 1912832K
+  region size 1024K, 18 young (18432K), 2 survivors (2048K)
+ Metaspace       used 148213K, committed 150016K`,n:'Heap <b>91% used</b> right after GC → live data is too big (leak?).'},
+  {c:`kubectl exec ${P} -- jcmd 1 GC.heap_dump /tmp/heap.hprof`,o:`Heap dump file created [1958215680 bytes in 5.112 secs]`,n:'Copy the dump out (<code>kubectl cp</code>) and open it in Eclipse MAT.'}];
+ $('tm-ch').innerHTML=S.map((s,i)=>`<button data-i="${i}">${i+1} ${s.c.split(' ').slice(0,3).join(' ').replace(P,'pod')}</button>`).join('');
+ let ci=0,ch=0,ph='type',t=0,done=[];
+ function render(){const prev=S.slice(0,ci).map(s=>`<span class="okc">$</span> ${ESC(s.c)}\n${ESC(s.o)}`);
+  let cur='';if(ci<S.length){cur=`<span class="okc">$</span> ${ESC(S[ci].c.slice(0,ch))}`+(ph==='out'||ph==='wait'?`\n${ESC(S[ci].o)}`:'<span class="cur"></span>');}
+  const tm=$('tm');tm.innerHTML=[...prev,cur].filter(Boolean).join('\n');tm.scrollTop=tm.scrollHeight;
+  $('tm-notes').innerHTML=S.slice(0,ci+(ph==='wait'?1:0)).map(s=>`<div>${s.n}</div>`).join('');
+  $('tm-ch').querySelectorAll('button').forEach((b,i)=>b.classList.toggle('on',i===ci));}
+ function jump(i){ci=i;ch=0;ph='type';t=0;render();}
+ $('tm-ch').onclick=e=>{const b=e.target.closest('[data-i]');if(b)jump(+b.dataset.i);};
+ $('tm-restart').onclick=()=>jump(0);
+ render();
+ tick($('tm'),dt=>{if(!st.run||ci>=S.length)return;t+=dt*st.sp;
+  if(ph==='type'){const n=Math.floor(t/35);if(n!==ch){ch=Math.min(n,S[ci].c.length);render();}if(ch>=S[ci].c.length){ph='out';t=0;}}
+  else if(ph==='out'&&t>350){ph='wait';t=0;render();}
+  else if(ph==='wait'&&t>1700){ci++;ch=0;ph='type';t=0;render();}});
+})();
+
+// ===================================================== 5.5 rehearse out loud
+(function(){
+ const Q=[['Explain the JVM memory areas.','Heap (Eden, survivors, old gen) holds objects and is shared; each thread has a stack of frames with locals; Metaspace holds class metadata in native memory; plus code cache and direct buffers.',['Heap shared, split young/old','Stack per thread: frames, locals, references','Metaspace replaced PermGen (Java 8)','Native: direct buffers / code cache']],
+  ['Our pod gets OOMKilled every few hours. How do you investigate?','Check whether it is a heap OOM or a container limit; read GC logs and heap usage after GC; take a heap dump and look at the dominator tree; compare -Xmx with the container limit, leaving room for non-heap memory.',['Heap OOM vs container OOMKilled (137)','Heap after GC trend / GC logs','Heap dump → MAT dominator tree','-Xmx vs limit (non-heap headroom)']],
+  ['How does generational GC work?','Most objects die young, so new objects go to Eden; minor GCs copy survivors between survivor spaces, aging them; old objects are promoted to the old gen, collected less often by mixed or full GCs.',['Weak generational hypothesis','Eden → survivors → old (age)','Minor GC is cheap copying','Old gen collected less often']],
+  ['What causes memory leaks in Java?','Objects that stay reachable: static collections that only grow, caches without eviction, ThreadLocals not removed in thread pools, unclosed resources and listeners never unregistered.',['Static / unbounded collections','Caches without eviction','ThreadLocal in pools','Unclosed resources / listeners']]];
+ const can='speechSynthesis' in window&&typeof SpeechSynthesisUtterance!=='undefined';
+ let qi=0,left=60,running=false;
+ const say=t=>{if(!can)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t.replace(/<[^>]+>/g,''));u.rate=1;speechSynthesis.speak(u);};
+ function load(){const q=Q[qi];$('rh-qn').textContent=`Question ${qi+1} of ${Q.length}`;$('rh-q').textContent=q[0];$('rh-a').textContent=q[1];$('rh-ans').style.display='none';
+  $('rh-kp').innerHTML=q[2].map(k=>`<label class="chk"><input type="checkbox"> ${k}</label>`).join('');score();stop(60);
+  $('rh-msg').innerHTML=can?'Read the question aloud, start the timer and answer <b>out loud</b> — then tick what you covered.':'Read-aloud isn\'t supported in this browser; the timer still works.';}
+ function score(){const b=[...$('rh-kp').querySelectorAll('input')],n=b.filter(x=>x.checked).length;$('rh-sc').textContent=`${n} / ${b.length}`;b.forEach(x=>x.closest('.chk').classList.toggle('on',x.checked));return n===b.length;}
+ function stop(v){running=false;left=v;ring();$('rh-go').textContent='⏱ Start 60 s';}
+ function ring(){$('rh-t').textContent=Math.ceil(left);$('rh-arc').setAttribute('stroke-dashoffset',251.3*(1-left/60));$('rh-arc').setAttribute('stroke',left<10?'#EF4444':'#EC4899');}
+ $('rh-next').onclick=()=>{qi=(qi+1)%Q.length;load();};
+ $('rh-say').onclick=()=>say(Q[qi][0]);$('rh-say2').onclick=()=>say(Q[qi][1]);
+ $('rh-say').disabled=$('rh-say2').disabled=!can;
+ $('rh-go').onclick=()=>{if(running){stop(left);return;}if(left<=0)left=60;running=true;$('rh-go').textContent='⏸ Stop';};
+ $('rh-rev').onclick=()=>{$('rh-ans').style.display='';};
+ $('rh-kp').addEventListener('change',()=>{if(score()){$('rh-msg').innerHTML='🎉 <b>All key points covered.</b>';confetti();}});
+ load();
+ tick($('rh-arc'),dt=>{if(!running)return;left=Math.max(0,left-dt/1000);ring();if(left<=0){running=false;$('rh-go').textContent='⏱ Start 60 s';$('rh-msg').innerHTML='⏰ Time! Reveal the model answer and tick what you covered.';}});
+ document.addEventListener('slide-shown',()=>{if(can)speechSynthesis.cancel();});
+})();
+
+// ===================================================== 5.6 command palette (global)
+(function(){
+ const pal=$('pal'),inp=$('pal-in'),list=$('pal-list');let items=[],sel=0;
+ const ACT=[['Toggle code on / off','action',()=>$('t-code').click()],['Switch slides / scroll mode','action',()=>$('t-all').click()],['Open the token cost table','action',()=>DECK.go(DECK.cats.length-1,0)]];
+ const ALL=()=>DECK.flat.map((f,i)=>[f.title,f.num,()=>DECK.goFlat(i)]).concat(ACT);
+ const score=(q,s)=>{q=q.toLowerCase();s=s.toLowerCase();if(!q)return 1;if(s.includes(q))return 100-s.indexOf(q);let i=0;for(const ch of s)if(ch===q[i])i++;return i===q.length?10:0;};
+ function draw(){const q=inp.value.trim();items=ALL().map(x=>[score(q,x[0]+' '+x[1]),x]).filter(x=>x[0]>0).sort((a,b)=>b[0]-a[0]).slice(0,9).map(x=>x[1]);sel=Math.min(sel,Math.max(0,items.length-1));
+  list.innerHTML=items.length?items.map((x,i)=>`<div data-i="${i}" class="${i===sel?'sel':''}"><b>${x[1]==='action'?'⚡':x[1]}</b>${x[0]}<em>${x[1]==='action'?'action':'slide'}</em></div>`).join(''):'<div style="color:var(--muted)">No match</div>';}
+ function open(){pal.hidden=false;inp.value='';sel=0;draw();setTimeout(()=>inp.focus(),0);}
+ function close(){pal.hidden=true;}
+ function run(i){const x=items[i];if(!x)return;close();x[2]();}
+ inp.addEventListener('input',()=>{sel=0;draw();});
+ inp.addEventListener('keydown',e=>{if(e.key==='ArrowDown'){sel=Math.min(items.length-1,sel+1);draw();e.preventDefault();}if(e.key==='ArrowUp'){sel=Math.max(0,sel-1);draw();e.preventDefault();}if(e.key==='Enter'){run(sel);e.preventDefault();}if(e.key==='Escape')close();});
+ list.onclick=e=>{const d=e.target.closest('[data-i]');if(d)run(+d.dataset.i);};
+ pal.onclick=e=>{if(e.target===pal)close();};
+ document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();pal.hidden?open():close();}else if(e.key==='Escape'&&!pal.hidden)close();});
+ $('pal-top').onclick=open;$('pal-demo').onclick=open;
+ document.addEventListener('slide-shown',close);
+})();
+
+// ===================================================== 6.1 mind map
+(function(){
+ const svg=$('mm');
+ const M=[['root',null,'JVM Memory',590,175,'Everything the JVM process uses: heap + non-heap + per-thread + native memory.'],
+  ['heap','root','Heap (-Xmx)',330,92,'Shared by all threads. All objects and arrays live here. Managed by the GC.'],
+  ['eden','heap','Eden',120,40,'New objects are allocated here (in per-thread TLABs). Cleaned by minor GCs.'],
+  ['surv','heap','Survivor S0 / S1',110,96,'Objects that survive a minor GC are copied here; age +1 each time.'],
+  ['old','heap','Old gen',125,152,'Long-lived objects, promoted after ~15 minor GCs (or when survivors overflow).'],
+  ['meta','root','Metaspace',330,262,'Class metadata in native memory. Replaced PermGen in Java 8.'],
+  ['cls','meta','Class metadata',120,236,'Grows with loaded classes — proxies, generated classes, redeploys.'],
+  ['moom','meta','OOM: Metaspace',120,296,'Usually a classloader leak; cap with -XX:MaxMetaspaceSize.'],
+  ['stack','root','Thread stacks',850,92,'One per thread: frames with locals and references. Not GC-managed.'],
+  ['frames','stack','Frames & locals',1060,40,'Each call pushes a frame; primitives live here, objects only by reference.'],
+  ['xss','stack','-Xss ≈ 1 MB',1070,96,'Stack size per thread: 500 threads ≈ 500 MB of native memory.'],
+  ['soe','stack','StackOverflowError',1050,152,'Too-deep or infinite recursion fills one thread\'s stack.'],
+  ['gc','root','Garbage collectors',850,262,'Reclaim memory of unreachable objects.'],
+  ['g1','gc','G1 (default)',1065,222,'Region-based, aims for a pause-time goal (200 ms). Default since Java 9.'],
+  ['zgc','gc','ZGC',1075,272,'Sub-millisecond pauses; generational since Java 21.'],
+  ['stw','gc','Stop-the-world',1060,322,'All app threads pause — what you see as latency spikes.'],
+  ['nat','root','Direct / native',590,48,'ByteBuffer.allocateDirect, Netty buffers, JNI — outside -Xmx but inside the container limit!'],
+  ['cc','root','Code cache',590,305,'Machine code produced by the JIT compiler.']];
+ const COL={heap:'#3B82F6',meta:'#9333EA',stack:'#F97316',gc:'#22C55E',nat:'#EC4899',cc:'#14B8A6',root:'#334155'};
+ const byId={};M.forEach(m=>byId[m[0]]=m);
+ const branch=id=>{let m=byId[id];while(m[1]&&m[1]!=='root')m=byId[m[1]];return m[0];};
+ const view=sv('g',{class:'view'},svg);const E={},Nd={};
+ M.forEach(m=>{if(!m[1])return;const p=byId[m[1]],mx=(p[3]+m[3])/2;E[m[0]]=sv('path',{class:'ed',d:`M${p[3]},${p[4]} C${mx},${p[4]} ${mx},${m[4]} ${m[3]},${m[4]}`,stroke:COL[branch(m[0])]},view);});
+ M.forEach(m=>{const g=sv('g',{class:'mn','data-id':m[0]},view);const w=m[2].length*7.4+24,root=!m[1],c=COL[root?'root':branch(m[0])];
+  const rc=sv('rect',{x:m[3]-w/2,y:m[4]-15,width:w,height:30,rx:15,stroke:c},g);rc.style.fill=root?c:'#fff';const t=sv('text',{x:m[3],y:m[4]+4.5,'text-anchor':'middle',class:'b',fill:root?'#fff':'#0F172A'},g);if(root)t.style.fill='#fff';t.textContent=m[2];Nd[m[0]]=g;});
+ let s=1,tx=0,ty=0;const apply=()=>{view.style.transform=`translate(${tx}px,${ty}px) scale(${s})`;};
+ const ratio=()=>1180/svg.getBoundingClientRect().width;
+ function zoomAt(f,px,py){const ns=Math.min(3,Math.max(.6,s*f));tx=px-(px-tx)*(ns/s);ty=py-(py-ty)*(ns/s);s=ns;apply();}
+ svg.addEventListener('wheel',e=>{e.preventDefault();const r=ratio(),b=svg.getBoundingClientRect();svg.classList.add('drag');zoomAt(e.deltaY<0?1.12:1/1.12,(e.clientX-b.left)*r,(e.clientY-b.top)*r);clearTimeout(svg._t);svg._t=setTimeout(()=>svg.classList.remove('drag'),150);},{passive:false});
+ let down=null,moved=false;
+ svg.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY,tx,ty};moved=false;});
+ window.addEventListener('pointermove',e=>{if(!down)return;const dx=e.clientX-down.x,dy=e.clientY-down.y;if(Math.abs(dx)+Math.abs(dy)>4){moved=true;svg.classList.add('drag');}if(moved){const r=ratio();tx=down.tx+dx*r;ty=down.ty+dy*r;apply();}});
+ window.addEventListener('pointerup',()=>{down=null;svg.classList.remove('drag');});
+ function focus(id){svg.classList.add('focus');const path=new Set();let m=byId[id];while(m){path.add(m[0]);m=m[1]?byId[m[1]]:null;}
+  M.filter(x=>x[1]===id).forEach(x=>path.add(x[0]));
+  for(const k in Nd){Nd[k].classList.toggle('path',path.has(k));Nd[k].classList.toggle('sel',k===id);}for(const k in E)E[k].classList.toggle('path',path.has(k)&&path.has(byId[k][1]));
+  const n=byId[id];s=1.5;tx=590-n[3]*s;ty=175-n[4]*s;apply();$('mm-msg').innerHTML=`<b>${ESC(n[2])}</b> — ${ESC(n[5])}`;}
+ function fit(){svg.classList.remove('focus');for(const k in Nd)Nd[k].classList.remove('path','sel');s=1;tx=0;ty=0;apply();$('mm-msg').innerHTML='Click any node to zoom in and read its one-liner.';}
+ svg.addEventListener('click',e=>{if(moved)return;const g=e.target.closest('.mn');if(g)focus(g.dataset.id);});
+ $('mm-in').onclick=()=>zoomAt(1.25,590,175);$('mm-out').onclick=()=>zoomAt(1/1.25,590,175);$('mm-fit').onclick=fit;fit();
+})();
+
+// ===================================================== 6.2 sequence diagram
+(function(){
+ const svg=$('sq'),st={run:true,sp:1};playbar($('sq-pb'),st);
+ const P=['UI','API Gateway','Keycloak','execution-service','MongoDB'],X=P.map((_,i)=>120+i*235);
+ const M=[[0,1,'POST /api/runs  (Bearer JWT)',0,'The UI starts a run with its access token.'],
+  [1,2,'verify signature (JWKS)',0,'Gateway verifies the JWT with Keycloak\'s public keys — normally cached, so no call per request.'],
+  [2,1,'valid · tenant = acme',1,'Token valid; claims give the user and tenant.'],
+  [1,3,'POST /runs + X-Tenant-Id',0,'Request routed to execution-service with the tenant header added.'],
+  [3,3,'validate suite, build run',0,'A self-call: checks the suite exists and builds the run object.'],
+  [3,4,'insert { status: QUEUED }',0,'Run saved as QUEUED before anything executes.'],
+  [4,3,'ack',1,'MongoDB acknowledges the write.'],
+  [3,1,'202 Accepted { runId }',1,'Async API: accepted, not finished.'],
+  [1,0,'202 Accepted { runId }',1,'UI shows "Queued" and listens for progress over WebSocket.']];
+ const defs=sv('defs',{},svg);const mk=sv('marker',{id:'ar3',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto'},defs);sv('path',{d:'M0,0 L10,5 L0,10 z',fill:'#475569'},mk);
+ const PH=P.map((p,i)=>{sv('line',{x1:X[i],y1:42,x2:X[i],y2:292,class:'ll'},svg);const g=sv('g',{class:'ph'},svg);sv('rect',{x:X[i]-78,y:8,width:156,height:32,rx:9},g);const t=sv('text',{x:X[i],y:29,'text-anchor':'middle',class:'b'},g);t.textContent=p;return g;});
+ const ME=M.map((m,i)=>{const y=62+i*27,g=sv('g',{class:'m'+(m[3]?' ret':'')},svg);let d;
+  if(m[0]===m[1])d=`M${X[m[0]]},${y-6} h48 v14 h-46`;else{const dir=m[1]>m[0]?1:-1;d=`M${X[m[0]]},${y} L${X[m[1]]-dir*3},${y}`;}
+  const p=sv('path',{d,'marker-end':'url(#ar3)'},g);const tx=m[0]===m[1]?X[m[0]]+56:(X[m[0]]+X[m[1]])/2,t=sv('text',{x:tx,y:y-5,'text-anchor':m[0]===m[1]?'start':'middle',class:'sm'},g);t.textContent=`${i+1}. ${m[2]}`;g._p=p;return g;});
+ let i=-1,t=0;
+ function show(k){i=k;ME.forEach((g,j)=>{const on=j<=k;if(on&&!g.classList.contains('on')){g._p.style.setProperty('--len',g._p.getTotalLength()||300);}g.classList.toggle('on',on);g.classList.toggle('cur',j===k);});
+  PH.forEach((g,j)=>g.classList.toggle('act',k>=0&&(M[k][0]===j||M[k][1]===j)));
+  $('sq-msg').innerHTML=k<0?'Messages appear one by one — solid = request, dashed = response.':`<b>${k+1}. ${ESC(M[k][2])}</b> — ${M[k][4]}`;}
+ $('sq-step').onclick=()=>{st.set(false);show(i>=M.length-1?-1:i+1);};
+ show(0);
+ tick(svg,dt=>{if(!st.run)return;t+=dt*st.sp;if(t>=(i>=M.length-1?2600:1300)){t=0;show(i>=M.length-1?-1:i+1);}});
+})();
+</script>
+</body></html>

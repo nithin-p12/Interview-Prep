@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Core Java Essentials · Interview Prep</title>
+<link rel="stylesheet" href="../_shared/design-tokens.css">
+<link rel="stylesheet" href="../_shared/deck.css">
+<style>
+/* ---------- 1.1 pass-by-value memory view ---------- */
+.mview{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:calc(10px*var(--k))}
+.mcol h5{margin:0 0 5px;font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+.frm{background:#fff;border:2px solid var(--red-lt);border-radius:10px;padding:calc(5px*var(--k)) 9px;margin-bottom:calc(6px*var(--k));animation:pop .3s}
+.frm b{display:block;font-size:12.5px;color:var(--red-dk);margin-bottom:2px}
+.frm.gone{opacity:.35;border-style:dashed}
+.vr{display:flex;justify-content:space-between;gap:8px;font-family:var(--font-mono);font-size:12.5px;padding:2px 0;border-top:1px dashed var(--red-lt)}
+.hob{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:12.5px;font-weight:700;border:2px solid;border-radius:9px;padding:calc(5px*var(--k)) 9px;margin:0 6px 6px 0;background:#fff;animation:pop .3s}
+.hob.dead{border-style:dashed;opacity:.45}
+.rf{display:inline-block;color:#fff;font-weight:800;font-size:11.5px;border-radius:6px;padding:0 6px}
+/* ---------- 1.2 Integer cache ---------- */
+.cache{position:relative;height:34px;border-radius:9px;background:#F1F5F9;border:1.5px solid var(--line);margin:22px 0 6px}
+.cache .zone{position:absolute;top:0;bottom:0;background:var(--blue-lt);border-left:2px solid var(--blue);border-right:2px solid var(--blue);display:grid;place-items:center;font-size:12px;font-weight:800;color:var(--blue-dk)}
+.cache .pin{position:absolute;top:-20px;transform:translateX(-50%);font-size:12px;font-weight:800;background:var(--ink);color:#fff;border-radius:6px;padding:0 6px;transition:left .25s}
+.cache .pin::after{content:"";position:absolute;left:50%;top:100%;border:5px solid transparent;border-top-color:var(--ink);transform:translateX(-50%)}
+.scale{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);font-family:var(--font-mono)}
+.big{font-family:var(--font-mono);font-size:15px;font-weight:800}
+input[type=range]{accent-color:var(--bd);width:100%}
+/* ---------- 2.1 String pool ---------- */
+.spool{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:calc(8px*var(--k))}
+.area{border:2px solid var(--orange-lt);border-radius:11px;padding:calc(6px*var(--k)) 9px;background:#fff;min-height:calc(78px*var(--k))}
+.area h5{margin:0 0 5px;font-size:12.5px;color:var(--orange-dk)}
+.area.pool{border-color:var(--orange);background:#FFFBF5}
+.sv{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.sv span{font-family:var(--font-mono);font-size:12.5px;font-weight:700;border:1.5px solid var(--line-strong);border-radius:7px;padding:1px 7px;background:#fff;animation:pop .3s}
+.cmp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 10px;font-family:var(--font-mono);font-size:12.5px}
+.cmp div{display:flex;justify-content:space-between;border-bottom:1px dashed var(--line);padding:1px 0}
+.lines{display:flex;flex-direction:column;gap:calc(4px*var(--k))}
+.lines button{font:inherit;font-family:var(--font-mono);font-size:12.5px;text-align:left;background:#fff;border:1.5px solid var(--line);border-radius:8px;padding:calc(4px*var(--k)) 9px;cursor:pointer;color:var(--ink)}
+.lines button.done{border-color:#86EFAC;background:#F0FDF4}
+.lines button.next{border-color:var(--warning);background:var(--warning-bg);box-shadow:0 0 0 2px #FDE68A}
+.lines button:disabled{cursor:default}
+/* ---------- 2.2 concat cost ---------- */
+.bars{display:flex;flex-direction:column;gap:calc(7px*var(--k))}
+.bar2 small{display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;color:var(--text)}
+.bar2 div{height:16px;background:#F1F5F9;border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+.bar2 i{display:block;height:100%;transition:width .35s}
+/* ---------- 3.1 HashSet buckets ---------- */
+.bk{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px}
+.bk>div{border:1.5px solid var(--purple-lt);border-radius:8px;background:#fff;min-height:calc(64px*var(--k));padding:3px;display:flex;flex-direction:column;gap:3px}
+.bk>div>small{font-size:10.5px;font-weight:800;color:var(--muted);text-align:center}
+.bk .u{font-size:10.5px;font-weight:800;background:var(--purple-bg);border:1.5px solid var(--purple);color:var(--purple-dk);border-radius:6px;padding:1px 3px;text-align:center;animation:pop .3s;overflow-wrap:anywhere}
+.bk .u.dup{background:var(--danger-bg);border-color:#FCA5A5;color:#991B1B}
+.bk>div.probe{box-shadow:0 0 0 3px #FDE68A;border-color:var(--warning)}
+.stat{display:flex;gap:8px;flex-wrap:wrap}
+.stat span{background:#fff;border:1.5px solid var(--line);border-radius:9px;padding:2px 9px;font-size:12.5px;color:var(--muted)}
+.stat b{font-family:var(--font-mono);font-size:14px}
+/* ---------- 3.2 immutability ---------- */
+.rules{display:flex;flex-direction:column;gap:calc(5px*var(--k))}
+.rules label{display:flex;gap:8px;align-items:flex-start;background:#fff;border:1.5px solid var(--line);border-radius:9px;padding:calc(4px*var(--k)) 9px;cursor:pointer;font-size:13px}
+.rules label.on{border-color:#86EFAC;background:#F0FDF4}
+.rules input{accent-color:var(--success);margin-top:3px}
+.attack{font-size:12.8px;line-height:1.45}
+.attack div{border-left:4px solid var(--danger);background:#FEF2F2;border-radius:6px;padding:3px 8px;margin-bottom:4px}
+.attack div.safe{border-left-color:var(--success);background:#F0FDF4}
+/* ---------- 4.1 static vs instance ---------- */
+.cls{border:2px solid var(--green);border-radius:11px;background:#fff;padding:calc(6px*var(--k)) 10px}
+.objs{display:flex;flex-wrap:wrap;gap:6px;margin-top:calc(8px*var(--k));min-height:calc(56px*var(--k))}
+.objs div{border:2px solid var(--green-lt);border-radius:9px;background:#fff;padding:3px 9px;font-family:var(--font-mono);font-size:12px;animation:pop .3s}
+.objs div b{font-family:var(--font-sans);font-size:11.5px;color:var(--green-dk);display:block}
+.flash{animation:pop .35s}
+/* ---------- 5.2 production bugs ---------- */
+.mapv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:6px}
+.mapv div{border:1.5px solid var(--pink-lt);border-radius:8px;background:#fff;min-height:40px;padding:3px;font-size:11px;font-weight:800;text-align:center;color:var(--muted)}
+.mapv div span{display:block;background:var(--pink-bg);border:1.5px solid var(--pink);color:var(--pink-dk);border-radius:6px;padding:1px 3px;margin-top:2px}
+.mapv div.look{box-shadow:0 0 0 3px #FDE68A;border-color:var(--warning)}
+</style>
+</head>
+<body data-topic="java:Core Java Essentials">
+<header class="topbar">
+ <a class="tbrand" href="../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="00_Java_Core.html" title="All Java Core topics" style="color:#1D4ED8"><svg class="lg" data-logo="openjdk"></svg>Java Core</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<!-- ===================================================== 0. CONTENTS -->
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2><svg class="lg" data-logo="openjdk"></svg>Core Java Essentials</h2><span class="sub">the basics experienced developers still get wrong</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="toc" id="toc"></div>
+ <div class="howuse"><span><b>← →</b> keys move between slides</span><span><b>▶ Try it</b> boxes are interactive</span><span><b>Predict the output</b> — guess first, then reveal</span><span><b>Code: off</b> hides code for a visual-only pass</span></div>
+</div>
+</section>
+
+<!-- ===================================================== 1. VALUES & REFERENCES -->
+<section class="cat" data-name="1. Values &amp; references" data-col="b">
+<h1 class="cat-title">1. Values &amp; references</h1>
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.1</span><h2>Java is always pass-by-value</h2><span class="sub">pick a case, press Next ▶ and watch the stack and heap</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="ctrl"><div class="seg" id="pv-case"><button data-c="mutate" class="on">Change a field</button><button data-c="reassign">Reassign the parameter</button><button data-c="prim">Primitive</button></div></div>
+   <div class="code" id="pv-code"></div>
+   <div class="ctrl"><button class="btn p" id="pv-next">Next ▶</button><button class="btn" id="pv-reset">↺ Reset</button><span class="chip no" id="pv-n"></span></div>
+  </div>
+  <div class="stack">
+   <div class="mview"><div class="mcol"><h5>Thread stack</h5><div id="pv-stack"></div></div><div class="mcol"><h5>Heap</h5><div id="pv-heap"></div></div></div>
+   <div class="msg" id="pv-msg"></div>
+   <p class="take"><b>Remember:</b> Java copies the <b>value</b> of the variable. For an object that value is a <b>reference</b>, so a method can change the object but never make the caller's variable point somewhere else.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.2</span><h2>Wrappers, autoboxing &amp; the Integer cache</h2><span class="sub">drag the slider — when does <code>==</code> lie?</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="box"><h4>▶ Try it — <code>Integer a = n, b = n;</code></h4>
+    <input type="range" id="ic-n" min="-200" max="300" value="100">
+    <div class="cache" id="ic-strip"><div class="zone" id="ic-zone">cached: −128 … 127</div><span class="pin" id="ic-pin">100</span></div>
+    <div class="scale"><span>−200</span><span>0</span><span>300</span></div>
+    <div class="stat" style="margin-top:8px"><span><code>a == b</code> → <b id="ic-eq"></b></span><span><code>a.equals(b)</code> → <b style="color:var(--success)">true</b></span></div>
+    <p class="msg" id="ic-msg" style="margin:8px 0 0"></p>
+   </div>
+   <p class="take"><b>Remember:</b> compare wrappers (<code>Integer</code>, <code>Long</code>…) with <code>equals()</code> or <code>Objects.equals()</code>. <code>==</code> compares references, and only works by luck inside the cache.</p>
+  </div>
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="Boxing.java">
+Integer a = 127, b = 127;
+a == b;            // true  → same cached object
+Integer c = 128, d = 128;
+c == d;            // false ❌ two different objects
+c.equals(d);       // true  ✅ compares values
+
+Map<String, Integer> hits = new HashMap<>();
+int n = hits.get("smoke");  // ❌ NullPointerException (unboxing null)
+int m = hits.getOrDefault("smoke", 0); // ✅</script></div>
+   <div class="box"><h4>How autoboxing works</h4>
+    <table class="t"><tr><td><code>Integer x = 5;</code></td><td>→ <code>Integer.valueOf(5)</code> (uses the cache)</td></tr>
+     <tr><td><code>int y = x;</code></td><td>→ <code>x.intValue()</code> — NPE if <code>x</code> is null</td></tr>
+     <tr><td>cached ranges</td><td><code>Byte</code>, <code>Short</code>, <code>Integer</code>, <code>Long</code>: −128…127 · <code>Boolean</code> · <code>Character</code> 0…127</td></tr></table></div>
+   <div class="gtk"><b>Good to know</b><code>new Integer(5)</code> is deprecated for removal — always <code>valueOf</code>. The Integer cache's upper bound can be raised with <code>-XX:AutoBoxCacheMax</code>.</div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 2. STRINGS -->
+<section class="cat" data-name="2. Strings" data-col="o">
+<h1 class="cat-title">2. Strings</h1>
+<div class="slide c-o">
+ <div class="sh"><span class="sn">2.1</span><h2>String pool &amp; immutability</h2><span class="sub">run the lines one by one — see who shares an object</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="box"><h4>▶ Try it — run each line</h4><div class="lines" id="sp-lines"></div>
+    <div class="ctrl" style="margin-top:8px"><button class="btn p" id="sp-next">Run next line ▶</button><button class="btn" id="sp-reset">↺ Reset</button></div></div>
+   <div class="box"><h4>Why is String immutable?</h4><ul>
+    <li><b>Pool sharing is safe</b> — <code>a</code> and <code>b</code> can share "fire" only because nobody can change it</li>
+    <li><b>hashCode is cached</b> — great as <code>HashMap</code> keys</li>
+    <li><b>Thread-safe</b> without locks · <b>secure</b> (file paths, URLs, class names can't be changed after checks)</li></ul></div>
+  </div>
+  <div class="stack">
+   <div class="spool"><div class="area pool"><h5>String pool (inside the heap)</h5><div id="sp-pool"></div></div><div class="area"><h5>Heap (normal objects)</h5><div id="sp-heap"></div></div></div>
+   <div class="box"><h4>Variables</h4><div class="sv" id="sp-vars"><span class="empty" style="border:0;color:var(--faint);font-style:italic">none yet</span></div></div>
+   <div class="box"><h4>Compare</h4><div class="cmp" id="sp-cmp"></div></div>
+   <div class="msg" id="sp-msg">Press <b>Run next line ▶</b>.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-o">
+ <div class="sh"><span class="sn">2.2</span><h2>String vs StringBuilder vs StringBuffer</h2><span class="sub">drag the loop size — feel the cost of <code>+=</code></span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="box"><h4>▶ Try it — build a report of <span id="cc-nv">1000</span> test names</h4>
+    <input type="range" id="cc-n" min="10" max="5000" step="10" value="1000">
+    <div class="bars" style="margin-top:8px">
+     <div class="bar2"><small><span>❌ <code>report += name</code> — characters copied</span><span id="cc-a"></span></small><div><i id="cc-ab" style="background:var(--danger)"></i></div></div>
+     <div class="bar2"><small><span>✅ <code>sb.append(name)</code> — characters copied</span><span id="cc-b"></span></small><div><i id="cc-bb" style="background:var(--success)"></i></div></div>
+    </div>
+    <p class="msg" id="cc-msg" style="margin:8px 0 0"></p></div>
+   <div class="code"><script type="text/plain" data-mac="Report.java">
+String report = "";
+for (String t : failedTests) report += t + "\n"; // ❌ new String every pass
+
+StringBuilder sb = new StringBuilder();
+for (String t : failedTests) sb.append(t).append('\n'); // ✅ one buffer
+String report2 = sb.toString();</script></div>
+  </div>
+  <div class="stack">
+   <table class="t"><tr><th></th><th>String</th><th>StringBuilder</th><th>StringBuffer</th></tr>
+    <tr><td>Mutable?</td><td>no</td><td>yes</td><td>yes</td></tr>
+    <tr><td>Thread-safe?</td><td>yes (immutable)</td><td>no</td><td>yes (synchronized)</td></tr>
+    <tr><td>Speed</td><td>slow in loops</td><td><b>fastest</b></td><td>slower (locks)</td></tr>
+    <tr><td>Use for</td><td>values, keys</td><td>building text in a method</td><td>legacy code</td></tr></table>
+   <p class="take"><b>Remember:</b> <code>+=</code> in a loop is O(n²) copying. Use <code>StringBuilder</code> (or <code>String.join</code> / <code>Collectors.joining</code>). <code>StringBuffer</code> is rarely the answer — a builder is local to one thread anyway.</p>
+   <div class="gtk"><b>Good to know</b>A single expression like <code>"a" + x + "b"</code> is fine — since Java 9 javac compiles it with <code>invokedynamic</code> (StringConcatFactory). Only loops hurt.</div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 3. OBJECT CONTRACT -->
+<section class="cat" data-name="3. equals, hashCode &amp; immutability" data-col="p">
+<h1 class="cat-title">3. equals, hashCode &amp; immutability</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">3.1</span><h2>The equals / hashCode contract</h2><span class="sub">toggle the overrides, add two equal users to a HashSet</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="ctrl"><label class="chk" id="eh-e"><input type="checkbox"> override <code>equals()</code></label><label class="chk" id="eh-h"><input type="checkbox"> override <code>hashCode()</code></label></div>
+   <div class="ctrl"><button class="btn p" id="eh-add">set.add(new User("nithin"))</button><button class="btn" id="eh-has">set.contains(new User("nithin"))</button><button class="btn" id="eh-reset">↺ Reset</button></div>
+   <div class="bk" id="eh-bk"></div>
+   <div class="stat"><span>set.size() <b id="eh-size">0</b></span><span>last contains() <b id="eh-c">—</b></span></div>
+   <div class="msg" id="eh-msg"></div>
+  </div>
+  <div class="stack">
+   <div class="box"><h4>The contract</h4><ol>
+    <li><code>a.equals(b)</code> ⇒ <code>a.hashCode() == b.hashCode()</code></li>
+    <li>Same hashCode does <b>not</b> mean equal (collisions are fine)</li>
+    <li>Override <b>both</b> or <b>neither</b>, using the same fields</li></ol></div>
+   <div class="code"><script type="text/plain" data-mac="User.java">
+// ✅ a record writes equals, hashCode & toString for you
+record User(String email) {}
+
+// by hand: same fields in both methods
+@Override public boolean equals(Object o) {
+    return o instanceof User u && email.equals(u.email);
+}
+@Override public int hashCode() { return Objects.hash(email); }</script></div>
+   <p class="take"><b>Remember:</b> a HashSet/HashMap first jumps to a bucket by <code>hashCode()</code>, then checks <code>equals()</code> inside it. Break either and lookups silently fail.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">3.2</span><h2>Make a class immutable</h2><span class="sub">tick the rules — see which attacks still work</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="rules" id="im-rules"></div>
+   <div class="attack" id="im-attack"></div>
+  </div>
+  <div class="stack">
+   <div class="code" id="im-code"></div>
+   <p class="take"><b>Remember:</b> immutable = state fixed after construction. Free thread-safety, safe as map keys, safe to share and cache. Since Java 16 a <code>record</code> + <code>List.copyOf</code> gives you most of this in one line.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 4. KEYWORDS -->
+<section class="cat" data-name="4. static &amp; final" data-col="g">
+<h1 class="cat-title">4. static &amp; final</h1>
+<div class="slide c-g">
+ <div class="sh"><span class="sn">4.1</span><h2>static vs instance · what final really locks</h2><span class="sub">create runs — one shared counter, many ids</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="box"><h4>▶ Try it — <code>new Execution()</code></h4>
+    <div class="cls"><b>class Execution</b> &nbsp;<code>static int created = <b id="st-count">0</b>;</code> <small style="color:var(--muted)">— one copy, stored with the class</small></div>
+    <div class="objs" id="st-objs"></div>
+    <div class="ctrl" style="margin-top:8px"><button class="btn p" id="st-new">new Execution()</button><button class="btn" id="st-reset">↺ Reset</button></div></div>
+   <div class="code"><script type="text/plain" data-mac="Execution.java">
+class Execution {
+    static int created = 0;      // shared by all objects
+    final int id;                // one per object, set once
+    Execution() { id = ++created; }
+
+    static void report() {
+        System.out.println(id);  // ❌ compile error: no "this" in static
+    }
+}</script></div>
+  </div>
+  <div class="stack">
+   <table class="t"><tr><th><code>final</code> on…</th><th>means</th></tr>
+    <tr><td>a variable</td><td>assigned once</td></tr>
+    <tr><td>a reference</td><td>can't point elsewhere — <b>the object can still change</b> (<code>final List</code> → <code>add()</code> works)</td></tr>
+    <tr><td>a method</td><td>can't be overridden</td></tr>
+    <tr><td>a class</td><td>can't be extended (<code>String</code>, records)</td></tr></table>
+   <table class="t"><tr><th><code>static</code> member</th><th>watch out</th></tr>
+    <tr><td>field</td><td>shared mutable state → not thread-safe; a static <code>Map</code> cache that only grows is a classic memory leak</td></tr>
+    <tr><td>method</td><td>can't be overridden — only <b>hidden</b>; resolved by the reference type</td></tr>
+    <tr><td>nested class</td><td>no hidden link to the outer object (inner classes keep one → leaks)</td></tr></table>
+   <p class="take"><b>Remember:</b> <code>final</code> locks the <b>variable</b>, not the object. <code>static</code> belongs to the <b>class</b> — use it for constants and stateless helpers, not for request data.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 5. ALL IN ACTION -->
+<section class="cat" data-name="5. All in action" data-col="k">
+<h1 class="cat-title">5. All in action</h1>
+<div class="slide c-k">
+ <div class="sh"><span class="sn">5.1</span><h2>Predict the output</h2><span class="sub">guess first — the answer and the why appear after you click</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="pqs">
+  <div class="pq" data-opts="true true|true false|false false" data-ans="true false"><pre>Integer a = 127, b = 127;
+Integer c = 128, d = 128;
+System.out.println((a == b) + " " + (c == d));</pre><div class="why">127 comes from the Integer cache (same object); 128 creates two objects. <a class="go" data-go="1.2">1.2</a></div></div>
+  <div class="pq" data-opts="12345|3345|15" data-ans="3345"><pre>System.out.println(1 + 2 + "3" + 4 + 5);</pre><div class="why">Left to right: 1+2 = 3 (numbers), then "3"+"3" → "33", then string concat → "3345".</div></div>
+  <div class="pq" data-opts="true|false" data-ans="false"><pre>String a = "hi";
+String h = "h";
+String c = h + "i";
+System.out.println(a == c);</pre><div class="why"><code>h</code> isn't a constant, so <code>h + "i"</code> runs at runtime → new heap object. Make it <code>final String h</code> and it's <b>true</b> (compile-time constant). <a class="go" data-go="2.1">2.1</a></div></div>
+  <div class="pq" data-opts="1,2|2,1" data-ans="1,2"><pre>static void swap(Integer x, Integer y) {
+    Integer t = x; x = y; y = t;
+}
+Integer a = 1, b = 2;  swap(a, b);
+System.out.println(a + "," + b);</pre><div class="why">Pass-by-value: only the copies <code>x</code>, <code>y</code> are swapped. You can't write a swap method in Java. <a class="go" data-go="1.1">1.1</a></div></div>
+  <div class="pq" data-opts="true|false" data-ans="false"><pre>System.out.println(0.1 + 0.2 == 0.3);</pre><div class="why">Binary floating point can't store 0.1 exactly (0.30000000000000004). Use <code>BigDecimal</code> for money.</div></div>
+  <div class="pq" data-opts="B|66|A1" data-ans="66"><pre>char c = 'A';
+System.out.println(c + 1);</pre><div class="why"><code>char + int</code> is promoted to <code>int</code>: 65 + 1 = 66. Cast back with <code>(char)(c + 1)</code> to get B.</div></div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">5.2</span><h2>Production bugs from these basics</h2><span class="sub">both passed every test… simplified from real-world code</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="box"><h4>🐞 Bug 1 · "works in QA, fails in prod"</h4>
+    <div class="code"><script type="text/plain" data-mac="RunService.java">
+Long runSuite = run.getSuiteId();
+Long reqSuite = request.getSuiteId();
+if (runSuite == reqSuite) { notifyOwner(); } // ❌ compares references
+if (Objects.equals(runSuite, reqSuite)) { … } // ✅ compares values</script></div>
+    <div class="ctrl" style="margin-top:8px"><span style="font-size:13px;font-weight:700">suite id</span><div class="seg" id="b1-env"><button data-v="42" class="on">QA: 42</button><button data-v="127">127</button><button data-v="128">128</button><button data-v="10045">prod: 10045</button></div></div>
+    <p class="msg" id="b1-msg" style="margin:8px 0 0"></p></div>
+  </div>
+  <div class="stack">
+   <div class="box"><h4>🐞 Bug 2 · "the map lost my key"</h4>
+    <div class="flow" data-step id="b2-flow">
+     <div class="fstep"><i>1</i><div><b>map.put(key, run)</b><small>key = Key("smoke") → hash → bucket 1</small></div></div>
+     <div class="fstep"><i>2</i><div><b>key.setName("regression")</b><small>mutable key changed, entry stays in bucket 1</small></div></div>
+     <div class="fstep"><i>3</i><div><b>map.get(key)</b><small>new hash → bucket 3 → <b>null</b> 😱</small></div></div>
+     <div class="fstep"><i>4</i><div><b>map.size() == 1</b><small>entry is unreachable by key → memory leak</small></div></div>
+    </div>
+    <div class="mapv" id="b2-map"></div></div>
+   <p class="take"><b>Remember:</b> wrapper objects → <code>equals()</code>. Map keys and Set elements → <b>immutable</b> (records, Strings, ids).</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 6. INTERVIEW Q&A -->
+<section class="cat" data-name="6. Interview Q&amp;A" data-col="i">
+<h1 class="cat-title">6. Interview Q&amp;A</h1>
+<div class="slide c-i">
+ <div class="sh"><span class="sn">6.1</span><h2>Interview questions</h2><span class="sub">click a question to reveal the answer · pill = slide that explains it</span></div>
+ <div class="qbar"><input id="qa-find" type="search" placeholder="Filter questions… (e.g. pool, hashCode, final)"><span class="chip ok" id="qa-count"></span><button class="btn" id="qa-random">🎲 Random question</button><label class="donebox" style="margin-left:auto"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="acc" id="qa-list"></div>
+</div>
+</section>
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <span class="kbd">← → keys</span>
+</footer>
+
+<script src="../_shared/deck.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+
+// ===================================================== 1.1 pass-by-value
+(function(){
+ const RC=['#3B82F6','#F97316'];
+ const ref=n=>`<span class="rf" style="background:${RC[n-1]}">→ #${n}</span>`;
+ const C={
+  mutate:{file:'RenameDemo.java',src:`Suite s = new Suite("Smoke");
+rename(s);
+System.out.println(s.name);   // ?
+
+static void rename(Suite x) {
+    x.name = "Regression";     // change the object
+}`,steps:[
+   {l:[1],main:[['s',ref(1)]],heap:[[1,'Suite{name="Smoke"}']],m:'<b>main</b> creates a Suite on the heap; <code>s</code> holds a <b>reference</b> (#1).'},
+   {l:[2,5],main:[['s',ref(1)]],fr:[['x',ref(1)]],heap:[[1,'Suite{name="Smoke"}']],m:'Calling <code>rename(s)</code> <b>copies the reference</b> into <code>x</code>. Two variables, <b>one object</b>.'},
+   {l:[6],main:[['s',ref(1)]],fr:[['x',ref(1)]],heap:[[1,'Suite{name="Regression"}']],m:'<code>x.name = …</code> follows the reference and changes the <b>shared object</b>.'},
+   {l:[3],main:[['s',ref(1)]],gone:1,heap:[[1,'Suite{name="Regression"}']],m:'Method returns, <code>x</code> disappears. Prints <b>Regression</b> — the object changed, the variable did not.'}]},
+  reassign:{file:'RenameDemo.java',src:`Suite s = new Suite("Smoke");
+rename(s);
+System.out.println(s.name);   // ?
+
+static void rename(Suite x) {
+    x = new Suite("Regression"); // point x elsewhere
+}`,steps:[
+   {l:[1],main:[['s',ref(1)]],heap:[[1,'Suite{name="Smoke"}']],m:'<code>s</code> holds reference #1.'},
+   {l:[2,5],main:[['s',ref(1)]],fr:[['x',ref(1)]],heap:[[1,'Suite{name="Smoke"}']],m:'<code>x</code> gets a <b>copy</b> of the reference.'},
+   {l:[6],main:[['s',ref(1)]],fr:[['x',ref(2)]],heap:[[1,'Suite{name="Smoke"}'],[2,'Suite{name="Regression"}']],m:'<code>x = new …</code> only changes the <b>copy</b>. <code>s</code> still points to #1.'},
+   {l:[3],main:[['s',ref(1)]],gone:1,heap:[[1,'Suite{name="Smoke"}'],[2,'Suite{name="Regression"}',1]],m:'Prints <b>Smoke</b>. Object #2 is now unreachable → garbage. This is why "Java is pass-by-reference" is wrong.'}]},
+  prim:{file:'CountDemo.java',src:`int count = 5;
+inc(count);
+System.out.println(count);    // ?
+
+static void inc(int n) {
+    n++;                       // changes the copy
+}`,steps:[
+   {l:[1],main:[['count','5']],heap:[],m:'A primitive lives directly in the stack frame — no heap object.'},
+   {l:[2,5],main:[['count','5']],fr:[['n','5']],heap:[],m:'The <b>value 5</b> is copied into <code>n</code>.'},
+   {l:[6],main:[['count','5']],fr:[['n','6']],heap:[],m:'<code>n++</code> changes the copy only.'},
+   {l:[3],main:[['count','5']],gone:1,heap:[],m:'Prints <b>5</b>. To return a new value, <b>return</b> it.'}]}};
+ let cs='mutate',i=-1;
+ function draw(){const c=C[cs],st=c.steps[i]||{main:[],heap:[],l:[]};
+  $('pv-stack').innerHTML=(i<0?'<div class="frm"><b>main()</b><div class="vr"><span style="color:var(--faint)">empty</span></div></div>':
+   `<div class="frm"><b>main()</b>${st.main.map(v=>`<div class="vr"><span>${v[0]}</span><span>${v[1]}</span></div>`).join('')}</div>`)+
+   (st.fr||st.gone?`<div class="frm ${st.gone?'gone':''}"><b>${cs==='prim'?'inc()':'rename()'}${st.gone?' — returned':''}</b>${(st.fr||[['—','']]).map(v=>`<div class="vr"><span>${v[0]}</span><span>${v[1]}</span></div>`).join('')}</div>`:'');
+  $('pv-heap').innerHTML=st.heap.length?st.heap.map(h=>`<span class="hob ${h[2]?'dead':''}" style="border-color:${RC[h[0]-1]}"><span class="rf" style="background:${RC[h[0]-1]}">#${h[0]}</span>${h[1]}${h[2]?' 🗑':''}</span>`).join(''):'<span style="color:var(--faint);font-size:12.5px;font-style:italic">no objects</span>';
+  $('pv-msg').innerHTML=i<0?'Press <b>Next ▶</b>. First guess what line 3 prints.':st.m;
+  $('pv-n').textContent=i<0?'ready':`step ${i+1} / ${c.steps.length}`;$('pv-next').disabled=i>=c.steps.length-1;
+  markLines($('pv-code').querySelector('.mac'),i<0?[]:st.l);}
+ function load(){$('pv-code').innerHTML=macHTML(C[cs].file,C[cs].src,'java');i=-1;draw();}
+ $('pv-case').onclick=e=>{const b=e.target.closest('[data-c]');if(!b)return;cs=b.dataset.c;$('pv-case').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));load();};
+ $('pv-next').onclick=()=>{i++;draw();};$('pv-reset').onclick=()=>{i=-1;draw();};
+ load();
+})();
+
+// ===================================================== 1.2 Integer cache
+(function(){
+ const MIN=-200,MAX=300,pct=v=>(v-MIN)/(MAX-MIN)*100;
+ $('ic-zone').style.left=pct(-128)+'%';$('ic-zone').style.width=(pct(127)-pct(-128))+'%';
+ function draw(){const n=+$('ic-n').value,hit=n>=-128&&n<=127;
+  $('ic-pin').style.left=pct(n)+'%';$('ic-pin').textContent=n;
+  $('ic-eq').textContent=hit?'true':'false';$('ic-eq').style.color=hit?'var(--success)':'var(--danger)';
+  $('ic-msg').innerHTML=hit?`<b>${n}</b> is inside the cache: <code>Integer.valueOf(${n})</code> returns the <b>same object</b> twice, so <code>==</code> happens to be true.`:
+   `<b>${n}</b> is outside −128…127: each <code>valueOf</code> makes a <b>new object</b> → <code>==</code> is <b>false</b> even though the values match.`;}
+ $('ic-n').oninput=draw;draw();
+})();
+
+// ===================================================== 2.1 String pool
+(function(){
+ const L=[
+  ['String a = "fire";',s=>{s.pool.push('fire');s.v.a='P0';},'Literal → goes into the <b>pool</b>; <code>a</code> points to it.'],
+  ['String b = "fire";',s=>{s.v.b='P0';},'Same literal → the pool <b>reuses</b> the existing object. <code>a == b</code> is true.'],
+  ['String c = new String("fire");',s=>{s.heap.push('fire');s.v.c='H0';},'<code>new</code> always makes a <b>separate heap object</b>. <code>a == c</code> is false, <code>a.equals(c)</code> true.'],
+  ['String d = c.intern();',s=>{s.v.d='P0';},'<code>intern()</code> returns the <b>pooled</b> copy → <code>a == d</code> is true.'],
+  ['String e = "fi" + "re";',s=>{s.v.e='P0';},'Two literals are joined at <b>compile time</b> → same pooled "fire".'],
+  ['String f = a.concat("!");',s=>{s.heap.push('fire!');s.v.f='H1';},'Runtime change → <b>new object</b>. <code>a</code> is still "fire" — Strings never change.']];
+ const PAIRS=[['a','b'],['a','c'],['a','d'],['a','e'],['c','d'],['a','f']];
+ let i=0,st;
+ function reset(){i=0;st={pool:[],heap:[],v:{}};draw('Press <b>Run next line ▶</b>.');}
+ function draw(m){
+  $('sp-lines').innerHTML=L.map((l,j)=>`<button disabled class="${j<i?'done':j===i?'next':''}">${ESC(l[0])}</button>`).join('');
+  const who=id=>Object.entries(st.v).filter(([k,v])=>v===id).map(([k])=>k).join(', ');
+  $('sp-pool').innerHTML=st.pool.map((t,j)=>`<span class="hob" style="border-color:var(--orange)">"${t}" <small style="color:var(--muted)">← ${who('P'+j)}</small></span>`).join('')||'<span style="color:var(--faint);font-size:12.5px">empty</span>';
+  $('sp-heap').innerHTML=st.heap.map((t,j)=>`<span class="hob" style="border-color:var(--slate)">"${t}" <small style="color:var(--muted)">← ${who('H'+j)}</small></span>`).join('')||'<span style="color:var(--faint);font-size:12.5px">empty</span>';
+  const vs=Object.keys(st.v);$('sp-vars').innerHTML=vs.length?vs.map(k=>`<span>${k} → ${st.v[k][0]==='P'?'pool':'heap'}</span>`).join(''):'<span style="border:0;color:var(--faint);font-style:italic">none yet</span>';
+  $('sp-cmp').innerHTML=PAIRS.map(([x,y])=>{const ok=st.v[x]&&st.v[y];const r=ok?(st.v[x]===st.v[y]):null;
+   return `<div><span>${x} == ${y}</span><b style="color:${r===null?'var(--faint)':r?'var(--success)':'var(--danger)'}">${r===null?'—':r}</b></div>`;}).join('');
+  $('sp-msg').innerHTML=m;$('sp-next').disabled=i>=L.length;}
+ $('sp-next').onclick=()=>{if(i>=L.length)return;L[i][1](st);const m=L[i][2];i++;draw(m);};
+ $('sp-reset').onclick=reset;reset();
+})();
+
+// ===================================================== 2.2 concat cost
+(function(){
+ const AVG=12; // chars per test name
+ const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+' M':n>=1e3?(n/1e3).toFixed(1)+' K':n;
+ function draw(){const n=+$('cc-n').value;$('cc-nv').textContent=n;
+  const plus=AVG*n*(n+1)/2;let cap=16,copy=0;for(let l=AVG;l<=AVG*n;l+=AVG){if(l>cap){copy+=cap;cap=cap*2+2;}}const sb=AVG*n+copy;
+  $('cc-a').textContent=fmt(plus)+' chars';$('cc-b').textContent=fmt(sb)+' chars';
+  $('cc-ab').style.width='100%';$('cc-bb').style.width=Math.max(1,sb/plus*100)+'%';
+  $('cc-msg').innerHTML=`<code>+=</code> copies the whole report every pass: <b>${Math.round(plus/sb)}×</b> more work and ~${n} throw-away Strings for the GC. The builder only re-copies when its buffer doubles.`;}
+ $('cc-n').oninput=draw;draw();
+})();
+
+// ===================================================== 3.1 equals / hashCode
+(function(){
+ let set=[],probe=-1;const NB=8,CONTENT=5;
+ const eq=()=>$('eh-e').querySelector('input').checked,hc=()=>$('eh-h').querySelector('input').checked;
+ const hashOf=()=>hc()?CONTENT:Math.floor(Math.random()*NB);
+ function draw(m){
+  $('eh-bk').innerHTML=Array.from({length:NB},(_,b)=>`<div class="${b===probe?'probe':''}"><small>bucket ${b}</small>${set.filter(u=>u.b===b).map(u=>`<span class="u ${u.dup?'dup':''}">User#${u.id}</span>`).join('')}</div>`).join('');
+  $('eh-size').textContent=set.length;if(m)$('eh-msg').innerHTML=m;
+  ['eh-e','eh-h'].forEach(id=>$(id).classList.toggle('on',$(id).querySelector('input').checked));}
+ function add(){const b=hashOf();probe=b;const same=set.find(u=>u.b===b);
+  if(same&&eq()){draw(`Bucket ${b} already holds an <b>equal</b> user → <code>add()</code> returns <b>false</b>. Set size stays ${set.length}. ✅`);return;}
+  const dup=set.length>0;set.push({id:set.length+1,b,dup});
+  draw(!dup?`hashCode → bucket <b>${b}</b>. Stored.`:
+   !hc()&&!eq()?`Default hashCode is per <b>object identity</b> → bucket ${b}. Default equals is <code>==</code>. A <b>duplicate</b> got in. ❌`:
+   !hc()?`equals() would say "same", but identity hashCode sent it to bucket <b>${b}</b> — equals() was <b>never called</b>. Duplicate! ❌`:
+   `Same bucket ${b} ✔ but default equals() is <code>==</code> → "different". Duplicate in the same bucket. ❌`);}
+ function has(){const b=hashOf();probe=b;const found=set.some(u=>u.b===b)&&eq();$('eh-c').textContent=found;$('eh-c').style.color=found?'var(--success)':'var(--danger)';
+  draw(found?`Looked in bucket ${b}, equals() matched → <b>true</b>. ✅`:!set.length?'The set is empty — add a user first.':`Looked in bucket <b>${b}</b>: ${!set.some(u=>u.b===b)?'nothing there':'something there, but equals() said no'} → <b>false</b>. ❌`);}
+ $('eh-add').onclick=add;$('eh-has').onclick=has;
+ const reset=()=>{set=[];probe=-1;$('eh-c').textContent='—';$('eh-c').style.color='';draw('Add the <b>same</b> user twice. A correct Set keeps <b>one</b>. Try every checkbox combination.');};
+ $('eh-reset').onclick=reset;['eh-e','eh-h'].forEach(id=>$(id).querySelector('input').onchange=reset);reset();
+})();
+
+// ===================================================== 3.2 immutability builder
+(function(){
+ const R=[
+  ['fin','<code>final class</code> — no subclass can add mutable state','class Hack extends ExecutionResult { /* overrides getters, adds setters */ }'],
+  ['pf','<code>private final</code> fields','result.suiteId = "other";   // public or non-final field changed'],
+  ['ns','no setters','result.setSuiteId("other");'],
+  ['dc','defensive copy in the constructor','tests.add("hacked");   // caller still holds the list it passed in'],
+  ['ug','getters return unmodifiable data','result.getFailedTests().clear();']];
+ const on={};
+ function code(){const f=on.pf?'private final':'public';
+  return `public ${on.fin?'final ':''}class ExecutionResult {
+    ${f} String suiteId;
+    ${f} List<String> failedTests;
+
+    public ExecutionResult(String id, List<String> tests) {
+        this.suiteId = id;
+        this.failedTests = ${on.dc?'List.copyOf(tests);      // ✅ own copy':'tests;                   // ❌ shares caller list'}
+    }
+    public List<String> getFailedTests() {
+        return ${on.ug?'List.copyOf(failedTests); // ✅ read-only copy':on.dc?'failedTests;   // ✅ already unmodifiable (List.copyOf)':'failedTests;   // ❌ live, mutable list'}
+    }${on.ns?'':`
+    public void setSuiteId(String id) { suiteId = id; } // ❌`}
+}`;}
+ function draw(){
+  $('im-rules').innerHTML=R.map(r=>`<label class="${on[r[0]]?'on':''}"><input type="checkbox" data-r="${r[0]}" ${on[r[0]]?'checked':''}><span>${r[1]}</span></label>`).join('');
+  const open=R.filter(r=>!on[r[0]]&&!(r[0]==='ug'&&on.dc));
+  $('im-attack').innerHTML=open.length?`<b style="font-size:12.5px;color:var(--danger)">Attacks that still work (${open.length})</b>`+open.map(r=>`<div><code>${ESC(r[2])}</code></div>`).join(''):
+   '<div class="safe"><b>✅ Immutable.</b> Or simply: <code>record ExecutionResult(String suiteId, List&lt;String&gt; failedTests)</code> with <code>failedTests = List.copyOf(failedTests)</code> in its compact constructor.</div>';
+  $('im-code').innerHTML=macHTML('ExecutionResult.java',code(),'java');}
+ $('im-rules').onchange=e=>{const c=e.target.closest('[data-r]');if(!c)return;on[c.dataset.r]=c.checked;draw();};
+ draw();
+})();
+
+// ===================================================== 4.1 static vs instance
+(function(){
+ let n=0;const objs=$('st-objs');
+ function reset(){n=0;$('st-count').textContent=0;objs.innerHTML='<span style="color:var(--faint);font-size:12.5px;font-style:italic">no objects yet</span>';}
+ $('st-new').onclick=()=>{if(!n)objs.innerHTML='';n++;$('st-count').textContent=n;$('st-count').classList.remove('flash');void $('st-count').offsetWidth;$('st-count').classList.add('flash');
+  if(n<=8)objs.insertAdjacentHTML('beforeend',`<div><b>object ${n}</b>id = ${n}</div>`);};
+ $('st-reset').onclick=reset;reset();
+})();
+
+// ===================================================== 5.2 production bugs
+(function(){
+ function b1(v){const n=+v,ok=n>=-128&&n<=127;
+  $('b1-msg').innerHTML=ok?`suite id <b>${n}</b>: both <code>Long</code>s come from the cache → <code>==</code> is <b>true</b>, owner notified. Every QA test passes ✅`:
+   `suite id <b>${n}</b>: two different <code>Long</code> objects → <code>==</code> is <b>false</b>. Owner never notified in prod ❌ — fix with <code>Objects.equals</code>.`;}
+ $('b1-env').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;$('b1-env').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));b1(b.dataset.v);};b1(42);
+ const S=[{e:1,k:'',l:-1},{e:1,k:'Key("smoke")',l:1},{e:1,k:'Key("regression")',l:-1},{e:1,k:'Key("regression")',l:3},{e:1,k:'Key("regression")',l:-1}];
+ function map(i){const s=S[i+1];$('b2-map').innerHTML=[0,1,2,3].map(b=>`<div class="${b===s.l?'look':''}">bucket ${b}${b===1&&i>=0?`<span>${s.k} → run</span>`:''}${b===3&&i===2?'<span style="background:#FEF2F2;border-color:#FCA5A5;color:#991B1B">empty → null</span>':''}</div>`).join('');}
+ $('b2-flow').addEventListener('step',e=>map(e.detail));map(-1);
+})();
+
+// ===================================================== 6.1 interview Q&A
+DECK.qa([
+ ['Is Java pass-by-value or pass-by-reference?','Always pass-by-value. For objects the value copied is the reference, so a method can mutate the object but can\'t re-point the caller\'s variable.',['1.1']],
+ ['Why can\'t you write a swap(a, b) method in Java?','The method only receives copies of the references; swapping the copies doesn\'t touch the caller\'s variables.',['1.1','5.1']],
+ ['Why is <code>Integer 127 == 127</code> true but 128 false?','<code>Integer.valueOf</code> caches −128…127, so small values return the same object; bigger values create new ones. Use <code>equals()</code>.',['1.2']],
+ ['Where can autoboxing throw a NullPointerException?','When a null wrapper is unboxed: <code>int x = map.get(k)</code>, arithmetic on a null <code>Integer</code>, or a ternary mixing <code>int</code> and <code>Integer</code>.',['1.2']],
+ ['<code>String s = "a"</code> vs <code>new String("a")</code>?','The literal uses the pooled object; <code>new</code> always creates a separate heap object (and the literal "a" is still pooled).',['2.1']],
+ ['What does <code>intern()</code> do and when would you use it?','Returns the pooled copy of a String. Rarely needed now — the JVM\'s String deduplication (G1) handles most duplicate-string memory.',['2.1']],
+ ['Why is String immutable?','Safe pool sharing, cached hashCode for map keys, thread safety without locks, and security for paths/URLs/class names.',['2.1']],
+ ['String vs StringBuilder vs StringBuffer?','String is immutable; StringBuilder is mutable and fastest; StringBuffer is synchronized and slower. In loops use StringBuilder.',['2.2']],
+ ['Is <code>"a" + b + "c"</code> slow?','Not as a single expression — Java 9+ compiles it with invokedynamic. It\'s <code>+=</code> inside loops that is O(n²).',['2.2']],
+ ['What is the equals/hashCode contract?','Equal objects must have equal hash codes; equal hash codes don\'t imply equality. Override both, using the same fields.',['3.1']],
+ ['What happens if you override equals but not hashCode?','Equal objects land in different buckets, so HashSet keeps duplicates and HashMap.get / contains return wrong results.',['3.1']],
+ ['How do you make a class immutable?','Final class, private final fields, no setters, defensive copies in and out (e.g. <code>List.copyOf</code>). Records cover most of it.',['3.2']],
+ ['Why should map keys be immutable?','If a key\'s hashCode changes after <code>put</code>, the entry sits in the old bucket — <code>get</code> returns null and the entry leaks.',['3.1','5.2']],
+ ['Does <code>final List</code> make the list immutable?','No — the reference can\'t change, but <code>add()</code>/<code>remove()</code> still work. Use <code>List.of</code> / <code>List.copyOf</code>.',['4.1']],
+ ['Can you override a static method?','No — a static method with the same signature hides the parent\'s; the call is picked by the reference type at compile time.',['4.1']],
+ ['Why can a static Map be a memory leak?','It lives as long as the class (usually forever); entries added per request and never removed are never collected.',['4.1']],
+ ['Why is <code>0.1 + 0.2 != 0.3</code>?','Binary floating point can\'t represent 0.1 exactly. Use <code>BigDecimal</code> (from a String) for money.',['5.1']]
+]);
+</script>
+</body></html>

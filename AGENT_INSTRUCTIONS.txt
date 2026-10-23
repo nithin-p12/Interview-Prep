@@ -1,0 +1,233 @@
+AGENT INSTRUCTIONS — HOW TO BUILD STUDY PAGES FOR THIS FOLDER
+Owner: Nithin (Java backend developer, preparing for interviews; works on FireFlink)
+Last updated: 2026-10-21
+Any AI agent / assistant working in this folder must follow these rules.
+When the owner changes an instruction, update THIS file (and the change log at the bottom).
+
+====================================================================
+1. WHERE & HOW TO SAVE
+====================================================================
+- Root: D:\Nithin P\Learning\Concepts   (never save study material to Downloads)
+- 00_Index.html = hub page. Add every new page to it.
+- One numbered folder per subject in study order:
+    01_Java_Core, 02_Design_Patterns, 03_System_Design, 04_Spring, 05_Data, 06_Messaging, 07_Interview …
+- Files inside are numbered too: 01_Topic_Name.html, 02_Topic_Name.html …
+- Images / posters go into that folder's images\ subfolder with the same number.
+- Old versions go to _archive\ (never just delete them).
+- After finishing a page: update PROGRESS.txt (status + change log) and 00_Index.html.
+- Every page links back with "← All concepts" → ../00_Index.html
+- Do not commit anything to git; the owner reviews first.
+
+====================================================================
+2. FORMAT
+====================================================================
+- Main format: ONE self-contained HTML file (inline CSS + JS, no CDN, works offline from file://).
+- It must fit the browser window (owner's laptop ≈ 1365 × 650 visible). No horizontal page scroll.
+- Avoid unwanted scrolling everywhere: no page scroll on index/hubs when it can fit, no inner
+  scrollbars on slides, boxes or consoles unless the content genuinely needs it. Tighten spacing,
+  use 2–3 columns, or split a slide in two instead of making it scroll.
+- PNG posters only when asked (render with headless Chrome; quote the --screenshot path because
+  the folder path contains a space).
+
+====================================================================
+3. PAGE LAYOUT — "SLIDE MODE" (default for every new page)
+====================================================================
+- Fixed top bar: "← All concepts" + title · category tabs · right side toggles:
+    [</> Code: on/off]  → hides/shows every code block so visuals get more space
+    [☰ Show all / ▭ Slides] → switch between slide mode and one long scroll page
+  Remember both choices in localStorage (wrap in try/catch).
+- Content is split into CATEGORIES (tabs). Each category has SLIDES.
+- One slide visible at a time, sized to the window height; if a slide is long it scrolls
+  INSIDE the slide, the page itself does not scroll.
+- First category = "Contents" (slide 0): clickable table of contents of every slide, coloured per
+  category, plus a short "how to use this page" strip.
+- Every slide is wrapped in a COLOURED SECTION (light background fill + 2.5px border in the category
+  colour, white boxes inside) — never plain white slides.
+- Navigation arrows sit on the heading row of every slide:
+    left  "◀ 5.5"  = previous slide number (in that slide's colour), even across categories
+    right "6.2 ▶"  = next slide number; on the LAST slide of a category it becomes a filled button
+                     "7. <Category> ▶" in the next category's colour
+  The bottom pager (◀ dots counter ▶) and keyboard ← / → follow the same order (crossing categories).
+- URL hash #category-slide (e.g. #3-4) so a slide can be linked/reopened.
+- PAGE FLOW (owner rule since 2026-10-21, replaces the old "All in action" finale):
+    0  Contents: everything the page will cover.
+    1  BIG PICTURE (2nd slide, not the last): a full-slide, GIF-like looping animated architecture/flow
+       diagram (style = _templates/Capabilities.html 1.1 data flow / 1.2 Kafka rebalance: boxes + curved
+       paths with moving dots, Pause + 0.5×/1×/2×). NO explanatory text on this slide: the whole room goes
+       to the diagram. A toggle "Details on hover" shows tooltips only when switched on.
+    2..n  For EACH component of the big picture:
+       a) FOCUS slide: the same big-picture diagram smoothly transforms (camera zoom/pan, other parts fade)
+          to focus on that one component on the left; concept explanation on the right.
+          Moving from one component to the next = a smooth animated camera move across the same diagram
+          (pleasant to watch), never a hard cut. One persistent diagram, re-framed per slide.
+       b) Textual explanation slide, with code where applicable.
+       c) Animations / simulators for that component.
+    then  Interview questions (Q&A accordion), then Real-time production scenarios (last).
+  Map style (T4 Map Explorer) is the preferred idea for architecture topics (Kafka, MongoDB, JVM memory…).
+  Owner liked from Capabilities: looping animations, simulators, diagrams. Disliked: T3 recall cards,
+  T5 dark interview simulator (archived in _archive/_templates).
+- BIG PICTURE STAGE (_shared/stage.css + stage.js, load after deck.css / deck.js). Reference page:
+  01_Java_Core/12_JVM_Memory_Architecture.html.
+    Define ONE diagram once, outside <main>: <div class="stage-wrap" id="stage" data-maxzoom="1.05"><svg viewBox="0 0 1400 500">…
+      components = <g data-node="eden" data-tip="<b>Eden</b>hover text">…</g> (siblings, never nested — a dimmed parent
+      dims its children); flows = <path data-flow="alloc" data-nodes="stacks,eden" data-color="#3B82F6" data-dots="3"
+      data-dur="2600" d="…"/> (dots loop along the path).
+    Slides opt in with a slot: big picture <div class="stage-slot" data-cam="all"></div>; focus slide
+      <div class="focus"><div class="stage-slot" data-cam="eden,s0,s1" data-show="heap"></div><div class="fx">…</div></div>.
+      data-cam = nodes to frame + glow, data-show = also keep undimmed. The one SVG moves into the shown slot and the
+      viewBox tweens (850 ms) from the previous camera — slides without a slot keep the last camera, so the next focus
+      pans from there. Zoom is capped (data-maxzoom) so text never gets big; extra room shows dimmed neighbours.
+    JS: STAGE.onArrive('alloc',fn) (a dot finished a lap), STAGE.onTick(dt=>…) (only while visible + playing),
+      STAGE.pulse('gc'), STAGE.node('eden'). Built-in bar: Pause, 0.5×/1×/2×, "Details on hover" (off by default).
+    Lay the world out WIDE and SHORT (≈ 2.8:1, e.g. 1400×500) so the full-slide big picture keeps ~11–13 px text at 620 px.
+    Screenshots: headless Chrome barely runs requestAnimationFrame — for shots inject
+      window.requestAnimationFrame=cb=>setTimeout(()=>cb(performance.now()),16) into a temp copy (never the real page).
+- Animated simulators have a speed switch 0.25× / 0.5× / 1× / 2×, default 0.5× (1× felt too fast).
+  Step-by-step flows use Next ▶ / Auto play / Reset steppers.
+- Use brand logos (inline SVG, simple-icons paths) wherever they help: Java, Spring, Tomcat, MongoDB,
+  Kafka, Maven, Docker, Kubernetes, Keycloak, etc.
+- SHARED ENGINE (use it for every new page): link ../_shared/design-tokens.css + ../_shared/deck.css, put
+  <script src="../_shared/deck.js"></script> after the markup, then the page's own <script>.
+  deck.js gives: deck/tabs/arrows/pager/hash, Contents (#toc), toggles, fit-to-screen (--k), Mac code windows
+  (script[data-mac], ❌/✅ comments coloured, macHTML()/markLines() for line highlighting), .flow[data-step]
+  steppers, .pq predict-the-output cards (+ .score, [data-pq-reset]), DECK.qa([...]) accordion (pill colours come
+  from the category), DECK.speed(), and the Completed checkbox (<body data-topic="java:Title as in prep.js">).
+  Reference pages: 01_Java_Core/01_Core_Java_Essentials.html, 02_OOP_SOLID.html, 03_Exception_Handling.html.
+  (04_Spring/01_Spring_Boot_Startup_Flow.html still embeds its own copy of the engine — migrate it when next edited.)
+- KEEP IT LIGHT (owner rule): must-know + a few "Good to know" (.gtk box). ~9–12 slides, ~15–17 Q&A.
+  Never add slides just because there is space. Interaction over text. Level = 4-yr experienced developer.
+  DEPTH = interview recall: enough to recall the concept and answer direct + scenario-based questions, not
+  full internals. Predict-the-output cards fit in a component's simulator slides; production scenarios
+  go in the final category.
+- Hubs with many topics use groups (prep.js: groups:[[letter,name,count],…]) → rendered as lanes A → E.
+- Tools: python _tools/audit.py <page> (per-slide overflow at 620/650 px, before and after clicking every
+  control, JS errors) and python _tools/shot.py <page> <outdir> 1-1 2-1 … (screenshots at 620 px).
+- Toggle labels: "</> Code: on/off" and "▭ Slides: on/off" (off = one long scrolling page).
+- Tab labels drop the number prefix ("Heap", not "3. Heap") so all tabs fit; slide badges keep numbers.
+- DESIGN SYSTEM is the source of truth: _shared/design-tokens.css (colours, type scale, spacing, radius,
+  shadows, icon sizes) + visual guide _design_system/00_Design_System.html (+ .png). Every page links
+  ../_shared/design-tokens.css and uses the same fonts (Segoe UI / Cascadia Mono), type scale and
+  components shown there. New colours or components → add them to the tokens + guide first.
+- FIT TO SCREEN (no dead space): NEVER enlarge fonts or zoom. fitSlide() raises the CSS variable --k
+  (0.3–2.2, binary search) which multiplies only PADDING and GAPS of boxes/sections, so spare height
+  becomes breathing room; if a slide is too tall, --k goes below 1. Then min-height is set in px and --k
+  stepped down until nothing overflows. Runs on show, load, resize, Code toggle, and after clicks.
+  Q&A items need .aq{flex-shrink:0}; the Q&A list scrolls inside its own box.
+- Graph arrows end at box EDGES (compute from bounding boxes), never at centres; small boxes use
+  overflow-wrap:anywhere and 2-per-row layouts so words never spill out.
+  NOTE for screenshots: headless --screenshot lays the page out at (window height − 95px); use
+  --window-size=1365,715 and crop to 620 to see what the owner sees.
+- FIT CHECK before delivery: script DECK.goFlat(i) over every slide and assert
+  slide.scrollHeight - slide.clientHeight == 0 at a 1365×620 viewport (headless --window-size=1365,715
+  with --dump-dom gives a 620px viewport). Fix by tightening, moving boxes between columns or splitting
+  a slide (then renumber and update every data-go / Q&A pill). Only the Q&A accordion may scroll inside
+  its own box. Index + hubs must also not scroll at that size.
+- Rebuilding a page: move the old file (and its posters) to _archive/<subject folder>/ with a _vN suffix,
+  fix its ../00_Index.html links to ../../00_Index.html, and point prep.js at the archive copy with
+  status 'old' until the new page replaces it.
+
+====================================================================
+4. CONTENT RULES
+====================================================================
+- Audience: someone learning for interviews. Must NOT feel overwhelming.
+  Short plain-English explanations, visuals first, no JDK/framework internal source code.
+- Only must-know content; "Good to know" in a separate, smaller block.
+- Each topic / slide typically has:
+    • Name / title
+    • Problem or "what happens" in plain words
+    • Visual (diagram, flow, picture) and, where useful, an INTERACTIVE mini simulator
+    • Short code (only usage code, not internals) in a Mac-style window
+    • "Remember:" one-line takeaway
+    • Interview questions with answers of at most 2 lines
+- Design patterns: Problem → two code boxes side by side: LEFT "without pattern" with ❌ bottleneck
+  comments, RIGHT "with pattern" with ✅ comments → Advantages → Trade-offs → Interview Q&A.
+- Use examples from the owner's own work (FireFlink) when possible:
+    suite-execution notifications (Notifier → Email / Slack / Teams, WhatsApp as adapter),
+    NotificationDetails, NotificationKafkaProducer, ExecutionResult, license-per-DB MongoDB,
+    Kafka "run-completed" events, Spring Boot 4.0.2, Java 25, Keycloak, Resilience4j 2.2.0.
+  Say "simplified from FireFlink" — never claim illustrative code is the real code.
+- Versions/facts must be accurate for Java 25 and Spring Boot 4.x. Don't show outdated/removed
+  things unless explicitly asked (e.g. no PermGen).
+- Interactive elements the owner likes: step-by-step "Next ▶ / Auto play" steppers, playgrounds
+  (e.g. HashMap playground), lock simulators, GC simulator, request-flow animations,
+  console logs that look like real Spring Boot output. Controlled, not random chaos.
+
+====================================================================
+5. VISUAL STYLE
+====================================================================
+- White background. Section colours (light versions): Blue #3B82F6, Purple #9333EA,
+  Orange #F97316, Red #EF4444 (+ Green #22C55E, Slate #64748B when more are needed).
+  Each section/box has a clean border; groups have their own border.
+- Code: dark Mac-style window (red/yellow/green dots, file name in the title bar), syntax colours,
+  ❌ comments red, ✅ comments green.
+- Readable sizes (body ≥ 15px). Responsive: 2 columns on wide screens, 1 column on narrow.
+
+====================================================================
+6. BEFORE DELIVERING
+====================================================================
+- OWNER RULE (2026-10-23): do NOT run these tests/screenshots after generating a page unless the owner asks.
+  Just build, then say it was not tested.
+- Open the page headless (Chrome --dump-dom with a window.onerror hook) → must have NO JS errors.
+- Screenshot key slides at 1365×650 and look at them: nothing clipped, nothing overlapping.
+- Script-click the simulators to confirm they run end to end.
+- Report to the owner: what was built, where it is, what was verified, anything not verified.
+
+====================================================================
+7. WORKING STYLE
+====================================================================
+- For big new work: summarise the plan first, wait for confirmation, then build.
+- Don't follow instructions blindly: when something could be better, say so and suggest it
+  (the owner explicitly asked for this). Prefer interactive elements wherever they help learning.
+- SITE NAVIGATION (3 levels):
+    00_Index.html            → large numbered category cards (4 per row: 1 2 3 4 / 5 6 7 8 …)
+    NN_Folder/00_<Name>.html → category hub: medium numbered cards in study order, each a
+                               different colour; TO DO cards dashed and not clickable
+    NN_Folder/NN_Topic.html  → the study page itself
+  Index + hubs share _shared/prep.js (the ONE topic list: CATS) and _shared/prep.css.
+  When a topic is added or its status changes, edit CATS in _shared/prep.js (and PROGRESS.txt);
+  all hubs are the same file with a different data-cat attribute.
+- NAV BAR on every page (frozen at the top), NO breadcrumbs:
+    left   = "NP  Interview Prep / NITHIN P" (links home)
+    centre = subject logo + name (e.g. Spring logo "Spring"); index shows "📚 All subjects".
+             On study pages the subject link sits right after the brand and links to its hub.
+    right  = "X of N topics completed" + bar on index/hubs; on study pages the slide tabs +
+             Code / Show all toggles.
+- COMPLETED CHECKBOXES: every topic card on a hub has a "Completed" checkbox; study pages have one
+  on the Contents slide and at the end of the Interview Q&A slide. All share localStorage key
+  "prep-done" with ids "<categoryId>:<topic title exactly as in prep.js>" (e.g.
+  "spring:Spring Boot — Startup Flow"). Counts on index/hubs come only from these checkboxes.
+  The study page title is shown on the Contents slide heading (not in the nav bar).
+- LAST CATEGORY of every concept page = "Interview Q&A" (indigo): all questions collapsed in an
+  accordion (only one answer open at a time), each with coloured pills ("6.1") that jump to the
+  slide explaining it, a filter box and a "🎲 Random question" button. Answers ≤ 2 lines.
+- Keep chat replies short; put details in the pages.
+- Close topics one by one (see PROGRESS.txt "NEXT UP").
+
+====================================================================
+CHANGE LOG
+====================================================================
+2026-10-20  File created. Slide mode, code toggle, show-all toggle, keyboard navigation,
+            "All in action" finale, FireFlink examples, folder rules.
+2026-10-20  Coloured section fill on every slide; heading arrows with prev/next slide numbers that
+            cross categories; Contents slide first; speeds 0.25–2× (default 0.5×); logos; more
+            interactive steppers; index renamed "Interview Prep — NITHIN P" with sticky nav + full TOC;
+            agent should suggest improvements, not follow blindly.
+2026-10-20  3-level navigation: index (category cards) → category hubs (numbered topic cards) → topic
+            pages; shared _shared/prep.js + prep.css; brand + inline breadcrumb in every nav bar;
+            final "Interview Q&A" accordion category with slide pills.
+2026-10-20  Breadcrumbs removed. Nav centre = subject logo + name. "topics ready" → "topics completed",
+            driven by per-topic Completed checkboxes (localStorage "prep-done").
+2026-10-20  Archive rules (_archive/<subject>/…_vN, status 'old'), fit check at 1365×620 for every slide,
+            "Slides: on/off" toggle, tab labels without numbers, JVM page is the newest reference.
+2026-10-21  Auto fit-to-screen zoom on every slide (removes dead space); Q&A accordion scrolls internally
+            (fixed collapsed rows with flex-shrink:0).
+2026-10-21  Zoom REPLACED: owner disliked larger fonts. Spare height now goes to padding/gaps via --k.
+            Design system created (_shared/design-tokens.css + _design_system/). Arrows edge-to-edge.
+2026-10-21  Shared deck engine (_shared/deck.css/js). Pages must feel light; predict-output + production-bug
+            slides on every topic page; hub groups as lanes; _tools/audit.py + shot.py.
+2026-10-21  Template trial: owner picked the map/big-picture idea + looping animations, simulators, diagrams.
+            New PAGE FLOW: Contents → Big picture (full-slide animation, hover details toggle) → per component:
+            focus (diagram re-frames smoothly) + text/code + simulators → Interview Q&A → Production scenarios.
+2026-10-21  Big picture stage (_shared/stage.css/js): one SVG diagram re-framed per slide with a smooth camera tween;
+            JVM Memory rebuilt as the pilot of the new PAGE FLOW (old deck archived as _v3_deck).
+2026-10-23  Testing only on request: no headless tests/screenshots after generating unless the owner asks.

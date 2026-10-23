@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OOP &amp; SOLID · Interview Prep</title>
+<link rel="stylesheet" href="../_shared/design-tokens.css">
+<link rel="stylesheet" href="../_shared/deck.css">
+<style>
+/* 1.1 pillars */
+.pillars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:calc(7px*var(--k))}
+.pillars button{font:inherit;text-align:left;border:2px solid var(--c);background:#fff;border-radius:11px;padding:calc(7px*var(--k)) 11px;cursor:pointer;transition:all .2s}
+.pillars button b{display:block;font-size:14.5px;color:var(--c)}
+.pillars button span{font-size:12.5px;color:var(--muted)}
+.pillars button.on{background:var(--c);box-shadow:0 4px 12px rgba(15,23,42,.15)}
+.pillars button.on b,.pillars button.on span{color:#fff}
+/* 1.2 dispatch */
+.disp{display:flex;flex-direction:column;gap:calc(6px*var(--k))}
+.disp .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.disp .row>span:first-child{min-width:112px;font-weight:700;color:var(--muted);font-size:12.5px}
+.res{font-family:var(--font-mono);font-size:13px;font-weight:800;border-radius:9px;padding:calc(5px*var(--k)) 10px;border:1.5px solid}
+.res.good{background:var(--success-bg);border-color:#86EFAC;color:#166534}
+.res.err{background:var(--danger-bg);border-color:#FCA5A5;color:#991B1B}
+.tag2{font-size:11px;font-weight:800;border-radius:6px;padding:1px 7px;color:#fff;margin-left:6px}
+/* 2.2 class explosion */
+.cgrid{display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start;min-height:calc(60px*var(--k))}
+.cgrid span{font-size:10.5px;font-weight:800;border-radius:6px;padding:1px 6px;border:1.5px solid;background:#fff;animation:pop .25s;white-space:nowrap}
+.cgrid.inh span{border-color:#FCA5A5;color:#991B1B;background:#FEF2F2}
+.cgrid.cmp span{border-color:#86EFAC;color:#166534;background:#F0FDF4}
+.cnt2{font-family:var(--font-mono);font-size:22px;font-weight:800}
+/* 3.1 SOLID */
+.letters{display:flex;gap:6px;flex-wrap:wrap}
+.letters button{font:inherit;font-weight:800;font-size:13.5px;border:2px solid var(--green);background:#fff;color:var(--green-dk);border-radius:10px;padding:calc(4px*var(--k)) 12px;cursor:pointer}
+.letters button.on{background:var(--green);color:#fff}
+.letters button.bad{border-color:var(--danger);color:var(--danger)}.letters button.bad.on{background:var(--danger);color:#fff}
+/* 4.2 add a channel */
+.files{display:flex;flex-direction:column;gap:calc(4px*var(--k))}
+.files div{font-family:var(--font-mono);font-size:12.5px;border:1.5px solid var(--line);border-radius:8px;padding:calc(3px*var(--k)) 9px;background:#fff;display:flex;justify-content:space-between;gap:8px}
+.files div.edit{border-color:#FCA5A5;background:#FEF2F2;animation:pop .3s}
+.files div.new{border-color:#86EFAC;background:#F0FDF4;animation:pop .3s}
+.files div small{font-family:var(--font-sans);font-weight:800;font-size:11px}
+</style>
+</head>
+<body data-topic="java:OOP & SOLID">
+<header class="topbar">
+ <a class="tbrand" href="../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="00_Java_Core.html" title="All Java Core topics" style="color:#1D4ED8"><svg class="lg" data-logo="openjdk"></svg>Java Core</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<!-- ===================================================== 0. CONTENTS -->
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2><svg class="lg" data-logo="openjdk"></svg>OOP &amp; SOLID</h2><span class="sub">by design — one FireFlink notifier, refactored step by step</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="toc" id="toc"></div>
+ <div class="howuse"><span><b>← →</b> keys move between slides</span><span>Examples are <b>simplified from FireFlink</b> suite-run notifications (Email / Slack / Teams)</span><span><b>Code: off</b> hides code</span></div>
+</div>
+</section>
+
+<!-- ===================================================== 1. PILLARS -->
+<section class="cat" data-name="1. Four pillars" data-col="b">
+<h1 class="cat-title">1. Four pillars</h1>
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.1</span><h2>The four pillars in one example</h2><span class="sub">click a pillar — its lines light up in the code</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="pillars" id="pl-btns"></div>
+   <div class="msg" id="pl-msg"></div>
+   <p class="take"><b>Remember:</b> don't recite definitions — show them in one design: <b>interface</b> (abstraction) + <b>private state</b> (encapsulation) + <b>base class</b> (inheritance) + <b>one loop over many types</b> (polymorphism).</p>
+  </div>
+  <div class="code" id="pl-code"></div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.2</span><h2>Overriding vs overloading</h2><span class="sub">change the types — who decides which method runs?</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="box"><h4>Overriding <span class="tag2" style="background:var(--blue)">runtime</span> — picked by the <b>object</b></h4>
+    <div class="disp">
+     <div class="row"><span>declared type</span><div class="seg" id="ov-dec"><button class="on">Notifier</button><button>SlackNotifier</button></div></div>
+     <div class="row"><span>actual object</span><div class="seg" id="ov-obj"><button class="on">new SlackNotifier()</button><button>new TeamsNotifier()</button></div></div>
+     <div class="row"><span>call</span><code>n.send(result)</code></div>
+     <div class="res" id="ov-out"></div></div></div>
+   <div class="box"><h4>Overloading <span class="tag2" style="background:var(--orange)">compile time</span> — picked by the <b>declared types</b></h4>
+    <div class="disp">
+     <div class="row"><span>declared type</span><div class="seg" id="ol-dec"><button class="on">Object</button><button>String</button></div></div>
+     <div class="row"><span>actual value</span><code>x = "smoke"</code></div>
+     <div class="row"><span>call</span><code>log(x)</code> with <code>log(Object)</code> and <code>log(String)</code></div>
+     <div class="res" id="ol-out"></div></div></div>
+  </div>
+  <div class="stack">
+   <table class="t"><tr><th></th><th>Overriding</th><th>Overloading</th></tr>
+    <tr><td>Where</td><td>subclass, same signature</td><td>same class, different parameters</td></tr>
+    <tr><td>Decided</td><td>runtime (dynamic dispatch)</td><td>compile time</td></tr>
+    <tr><td>Return type</td><td>same or <b>covariant</b> (subtype)</td><td>anything</td></tr>
+    <tr><td>Access</td><td>same or <b>wider</b></td><td>anything</td></tr>
+    <tr><td>Checked exceptions</td><td>same, narrower or none</td><td>anything</td></tr>
+    <tr><td>Not possible for</td><td><code>static</code>, <code>private</code>, <code>final</code> methods</td><td>—</td></tr></table>
+   <p class="take"><b>Remember:</b> the <b>object</b> picks the overridden method at runtime; the <b>compiler</b> picks the overload from declared types. Always add <code>@Override</code> — a typo then becomes a compile error, not a silent overload.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 2. ABSTRACTION -->
+<section class="cat" data-name="2. Abstraction choices" data-col="p">
+<h1 class="cat-title">2. Abstraction choices</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.1</span><h2>Abstract class vs interface</h2><span class="sub">read the table, then pick for each scenario</span><span class="score"></span></div>
+ <div class="cols">
+  <div class="stack">
+   <table class="t"><tr><th></th><th>Interface</th><th>Abstract class</th></tr>
+    <tr><td>Instance state (fields)</td><td>no — only constants</td><td><b>yes</b></td></tr>
+    <tr><td>Constructor</td><td>no</td><td>yes</td></tr>
+    <tr><td>A class can have…</td><td><b>many</b></td><td>only <b>one</b> parent</td></tr>
+    <tr><td>Method bodies</td><td><code>default</code>, <code>static</code> (8), <code>private</code> (9)</td><td>any</td></tr>
+    <tr><td>Models</td><td>a <b>capability</b> ("can send")</td><td>a <b>shared base</b> ("is a webhook notifier")</td></tr></table>
+   <p class="take"><b>Remember:</b> start with an <b>interface</b> for the contract. Add an abstract class <b>behind</b> it only when implementations share state or a fixed algorithm (template method).</p>
+   <div class="gtk"><b>Good to know</b><code>sealed interface Notifier permits Email, Slack, Teams</code> (Java 17) limits who can implement it — great for exhaustive <code>switch</code>.</div>
+  </div>
+  <div class="pqs" style="grid-template-columns:1fr">
+   <div class="pq" data-opts="interface|abstract class" data-ans="abstract class"><pre>Slack and Teams notifiers both keep a webhook URL
+and share the same retry-and-post logic.</pre><div class="why">Shared <b>state</b> + shared algorithm → <code>abstract class WebhookNotifier</code> (still implementing <code>Notifier</code>).</div></div>
+   <div class="pq" data-opts="interface|abstract class" data-ans="interface"><pre>TeamsNotifier must be a Notifier AND AutoCloseable.</pre><div class="why">A class can extend only one class but implement many interfaces.</div></div>
+   <div class="pq" data-opts="interface|abstract class" data-ans="interface"><pre>Add sendAsync() to a published contract
+without breaking existing implementations.</pre><div class="why">An interface <code>default</code> method gives every implementation a body for free.</div></div>
+   <div class="pq" data-opts="interface|abstract class" data-ans="interface"><pre>Mark any class as "Retryable" — reports,
+API clients, notifiers.</pre><div class="why">A capability across unrelated classes → interface.</div></div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.2</span><h2>Composition over inheritance</h2><span class="sub">add features — count the classes each design needs</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="ctrl" id="cx-f"></div>
+   <div class="box"><h4>❌ Inheritance — one subclass per combination <span class="cnt2" id="cx-a" style="color:var(--danger);float:right"></span></h4><div class="cgrid inh" id="cx-ag"></div></div>
+   <div class="box"><h4>✅ Composition — wrap behaviours <span class="cnt2" id="cx-b" style="color:var(--success);float:right"></span></h4><div class="cgrid cmp" id="cx-bg"></div></div>
+  </div>
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="Wiring.java">
+// ❌ inheritance: RetryingLoggingSlackNotifier extends …
+// ✅ composition: small pieces, combined at runtime
+Notifier slack = new RetryNotifier(
+                    new LoggingNotifier(
+                      new SlackNotifier(slackUrl)));
+
+class RetryNotifier implements Notifier {
+    private final Notifier next;            // has-a, not is-a
+    RetryNotifier(Notifier next) { this.next = next; }
+    public void send(ExecutionResult r) { retry(3, () -> next.send(r)); }
+}</script></div>
+   <p class="take"><b>Remember:</b> use inheritance for a true, stable <b>is-a</b>. For adding behaviour, <b>compose</b> (this is the Decorator pattern). Subclasses depend on parent internals — the "fragile base class" problem.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 3. SOLID -->
+<section class="cat" data-name="3. SOLID" data-col="g">
+<h1 class="cat-title">3. SOLID</h1>
+<div class="slide c-g">
+ <div class="sh"><span class="sn">3.1</span><h2>SOLID — refactor the notification service</h2><span class="sub">start with the god class, then apply one letter at a time</span></div>
+ <div class="letters" id="sd-l" style="margin-bottom:8px"></div>
+ <div class="cols even">
+  <div class="stack"><div class="code" id="sd-before"></div></div>
+  <div class="stack"><div class="code" id="sd-after"></div><div class="msg" id="sd-msg"></div></div>
+ </div>
+</div>
+
+<div class="slide c-g">
+ <div class="sh"><span class="sn">3.2</span><h2>Spot the violation</h2><span class="sub">which letter does each snippet break?</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="pqs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="pq" data-opts="S|O|L|I|D" data-ans="S"><pre>class SuiteService {
+    void run(Suite s) { … }
+    byte[] exportPdf(Run r) { … }
+    void emailOwner(Run r) { … }
+}</pre><div class="why"><b>Single responsibility</b>: running, reporting and emailing change for different reasons — split them.</div></div>
+  <div class="pq" data-opts="S|O|L|I|D" data-ans="O"><pre>switch (channel) {
+  case "EMAIL" -> sendEmail(r);
+  case "SLACK" -> sendSlack(r);
+  // edit here for every new channel
+}</pre><div class="why"><b>Open/closed</b>: a new channel should be a new class, not an edit to tested code.</div></div>
+  <div class="pq" data-opts="S|O|L|I|D" data-ans="L"><pre>class Square extends Rectangle {
+    void setWidth(int w) {
+        super.setWidth(w); super.setHeight(w);
+    }
+}</pre><div class="why"><b>Liskov</b>: code that sets width then height on a Rectangle breaks when given a Square — the subtype changes the promised behaviour.</div></div>
+  <div class="pq" data-opts="S|O|L|I|D" data-ans="I"><pre>interface Reporter {
+    String html(); byte[] pdf(); byte[] excel();
+}
+// ConsoleReporter only needs html()</pre><div class="why"><b>Interface segregation</b>: clients shouldn't depend on methods they don't use — split into small interfaces.</div></div>
+  <div class="pq" data-opts="S|O|L|I|D" data-ans="D"><pre>class RunService {
+    private final MongoRunRepository repo =
+        new MongoRunRepository();
+}</pre><div class="why"><b>Dependency inversion</b>: depend on a <code>RunRepository</code> interface and inject it (Spring does this) — then tests can pass a fake.</div></div>
+  <div class="box" style="align-self:stretch"><h4>Quick memory hook</h4><ul style="font-size:13px">
+   <li><b>S</b> one reason to change</li><li><b>O</b> add, don't edit</li><li><b>L</b> subtypes keep the promise</li><li><b>I</b> small interfaces</li><li><b>D</b> depend on abstractions, inject them</li></ul></div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 4. ALL IN ACTION -->
+<section class="cat" data-name="4. All in action" data-col="k">
+<h1 class="cat-title">4. All in action</h1>
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.1</span><h2>Predict the output</h2><span class="sub">polymorphism traps interviewers love</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="pqs">
+  <div class="pq" data-opts="AA|AB|BB" data-ans="AB"><pre>class A { String name = "A"; String get() { return name; } }
+class B extends A { String name = "B"; String get() { return name; } }
+A x = new B();
+System.out.println(x.name + x.get());</pre><div class="why">Fields are <b>not</b> polymorphic — <code>x.name</code> uses the declared type A. Methods are — <code>get()</code> runs B's. <a class="go" data-go="1.2">1.2</a></div></div>
+  <div class="pq" data-opts="A|B" data-ans="A"><pre>class A { static String who() { return "A"; } }
+class B extends A { static String who() { return "B"; } }
+A x = new B();
+System.out.println(x.who());</pre><div class="why">Static methods are <b>hidden</b>, not overridden: chosen by the reference type at compile time.</div></div>
+  <div class="pq" data-opts="Object|String|compile error" data-ans="String"><pre>void p(Object o) { System.out.println("Object"); }
+void p(String s) { System.out.println("String"); }
+p(null);</pre><div class="why">Overloading picks the <b>most specific</b> match — String is more specific than Object. (Add <code>p(Integer)</code> and it's ambiguous → compile error.)</div></div>
+  <div class="pq" data-opts="ready|null|NullPointerException" data-ans="null"><pre>class Base { Base() { init(); } void init() {} }
+class Child extends Base {
+    String msg = "ready";
+    @Override void init() { System.out.println(msg); }
+}
+new Child();</pre><div class="why">Base's constructor runs <b>before</b> Child's fields are set, yet calls the overridden <code>init()</code> → prints null. Never call overridable methods from a constructor.</div></div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.2</span><h2>Design review: "add WhatsApp alerts"</h2><span class="sub">same feature, two designs — what has to change?</span></div>
+ <div class="ctrl" style="margin-bottom:8px"><button class="btn p" id="wa-add">➕ Add WhatsApp channel</button><button class="btn" id="wa-reset">↺ Reset</button></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="box"><h4>❌ if/else design</h4><div class="files" id="wa-a"></div></div>
+   <div class="msg" id="wa-am" style="border-left-color:var(--danger)">Today: one service with a <code>switch</code> per channel.</div>
+  </div>
+  <div class="stack">
+   <div class="box"><h4>✅ <code>Notifier</code> interface + Spring injection</h4><div class="files" id="wa-b"></div></div>
+   <div class="code"><script type="text/plain" data-mac="WhatsAppNotifier.java">
+@Component   // Spring adds it to List<Notifier> automatically
+class WhatsAppNotifier implements Notifier {
+    private final WhatsAppClient client;     // vendor SDK — adapted
+    public void send(ExecutionResult r) {
+        client.sendTemplate(owner(r), "run_failed", r.failed());
+    }
+}</script></div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 5. INTERVIEW Q&A -->
+<section class="cat" data-name="5. Interview Q&amp;A" data-col="i">
+<h1 class="cat-title">5. Interview Q&amp;A</h1>
+<div class="slide c-i">
+ <div class="sh"><span class="sn">5.1</span><h2>Interview questions</h2><span class="sub">click a question to reveal the answer · pill = slide that explains it</span></div>
+ <div class="qbar"><input id="qa-find" type="search" placeholder="Filter questions… (e.g. interface, Liskov, override)"><span class="chip ok" id="qa-count"></span><button class="btn" id="qa-random">🎲 Random question</button><label class="donebox" style="margin-left:auto"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="acc" id="qa-list"></div>
+</div>
+</section>
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <span class="kbd">← → keys</span>
+</footer>
+
+<script src="../_shared/deck.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const segPick=(el,fn)=>{el.onclick=e=>{const b=e.target.closest('button');if(!b)return;el.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));fn(b.textContent);};};
+
+// ===================================================== 1.1 pillars
+(function(){
+ const SRC=`interface Notifier {
+    void send(ExecutionResult r);
+}
+abstract class WebhookNotifier implements Notifier {
+    private final String webhookUrl;
+    protected WebhookNotifier(String url) { this.webhookUrl = url; }
+    public void send(ExecutionResult r) { http.post(webhookUrl, format(r)); }
+    protected abstract String format(ExecutionResult r);
+}
+class SlackNotifier extends WebhookNotifier {
+    SlackNotifier(String url) { super(url); }
+    @Override protected String format(ExecutionResult r) {
+        return ":red_circle: " + r.failed() + " tests failed";
+    }
+}
+List<Notifier> channels = List.of(new SlackNotifier(u1), new TeamsNotifier(u2));
+channels.forEach(n -> n.send(result));   // each formats its own way`;
+ const P=[
+  ['Abstraction','hide how, show what','#3B82F6',[1,2,3,8],'Callers only know <code>send(result)</code>. How Slack or Teams posts the message is hidden behind the <b>interface</b> and the abstract <code>format()</code>.','<b>Without it:</b> every caller knows every channel\'s HTTP details.'],
+  ['Encapsulation','protect the state','#F97316',[5,6],'<code>webhookUrl</code> is <b>private final</b> — set once in the constructor, nobody outside can read or change it.','<b>Without it:</b> any class could swap the URL and leak alerts to the wrong channel.'],
+  ['Inheritance','reuse a base','#9333EA',[4,7,10,11],'<code>SlackNotifier</code> <b>extends</b> <code>WebhookNotifier</code> and reuses its <code>send()</code> + URL handling; it only adds <code>format()</code>.','<b>Watch out:</b> prefer it only for a real is-a; see <a class="go" data-go="2.2">2.2</a>.'],
+  ['Polymorphism','one call, many forms','#22C55E',[12,13,16,17],'<code>n.send(result)</code> is one line, but each object runs <b>its own</b> <code>format()</code> — chosen at runtime.','<b>Payoff:</b> add Teams/Email without touching this loop.']];
+ $('pl-code').innerHTML=macHTML('Notifiers.java',SRC,'java');
+ $('pl-btns').innerHTML=P.map((p,i)=>`<button data-i="${i}" style="--c:${p[2]}"><b>${p[0]}</b><span>${p[1]}</span></button>`).join('');
+ function pick(i){$('pl-btns').querySelectorAll('button').forEach((b,j)=>b.classList.toggle('on',j===i));const p=P[i];
+  markLines($('pl-code').querySelector('.mac'),p[3],true);$('pl-msg').innerHTML=`<b style="color:${p[2]}">${p[0]}:</b> ${p[4]}<br><span style="color:var(--muted)">${p[5]}</span>`;}
+ $('pl-btns').onclick=e=>{const b=e.target.closest('[data-i]');if(b)pick(+b.dataset.i);};
+ $('pl-msg').innerHTML='Pick a pillar above. Interviewers prefer <b>one example showing all four</b> over four definitions.';
+})();
+
+// ===================================================== 1.2 dispatch
+(function(){
+ let dec='Notifier',obj='new SlackNotifier()',od='Object';
+ function draw(){
+  const bad=dec==='SlackNotifier'&&obj==='new TeamsNotifier()';
+  $('ov-out').className='res '+(bad?'err':'good');
+  $('ov-out').innerHTML=bad?'❌ compile error: TeamsNotifier is not a SlackNotifier':`${dec} n = ${obj};<br>→ runs <b>${obj.includes('Slack')?'SlackNotifier':'TeamsNotifier'}.send()</b> — the object decides`;
+  $('ol-out').className='res good';
+  $('ol-out').innerHTML=`${od} x = "smoke";<br>→ calls <b>log(${od})</b> — ${od==='Object'?'even though x holds a String!':'declared type matches'}`;}
+ segPick($('ov-dec'),v=>{dec=v;draw();});segPick($('ov-obj'),v=>{obj=v;draw();});segPick($('ol-dec'),v=>{od=v;draw();});draw();
+})();
+
+// ===================================================== 2.2 class explosion
+(function(){
+ const F=['Retry','Logging','Audit','RateLimit'],CH=['Email','Slack','Teams'];const on={Retry:true};
+ $('cx-f').innerHTML='<span style="font-size:12.5px;font-weight:700;color:var(--muted)">features:</span>'+F.map(f=>`<label class="chk"><input type="checkbox" data-f="${f}" ${on[f]?'checked':''}> ${f}</label>`).join('')+'<span style="font-size:12.5px;color:var(--muted)">× 3 channels</span>';
+ function draw(){const fs=F.filter(f=>on[f]);
+  $('cx-f').querySelectorAll('label').forEach(l=>l.classList.toggle('on',l.querySelector('input').checked));
+  const combos=[[]];fs.forEach(f=>combos.slice().forEach(c=>combos.push([...c,f])));
+  const inh=[];CH.forEach(ch=>combos.forEach(c=>inh.push(c.join('')+ch)));
+  $('cx-a').textContent=inh.length;$('cx-b').textContent=CH.length+fs.length;
+  $('cx-ag').innerHTML=inh.slice(0,40).map(n=>`<span>${n}</span>`).join('')+(inh.length>40?`<span>+${inh.length-40} more</span>`:'');
+  $('cx-bg').innerHTML=[...CH.map(c=>c+'Notifier'),...fs.map(f=>f+'Notifier')].map(n=>`<span>${n}</span>`).join('');}
+ $('cx-f').onchange=e=>{const c=e.target.closest('[data-f]');if(!c)return;on[c.dataset.f]=c.checked;draw();};draw();
+})();
+
+// ===================================================== 3.1 SOLID refactor
+(function(){
+ const L=[
+  ['Before','bad',`class NotificationService {
+    void notify(ExecutionResult r, String channel) {
+        String msg = "Suite " + r.suite() + ": " + r.failed() + " failed";
+        switch (channel) {
+            case "EMAIL" -> smtp.send(r.owner(), msg);
+            case "SLACK" -> http.post(slackUrl, "{\\"text\\":\\"" + msg + "\\"}");
+            case "TEAMS" -> http.post(teamsUrl, card(msg));
+        }
+        mongo.insert("audit", Map.of("run", r.id())); // ❌ and auditing too
+    }
+}`,`// one class: formatting + routing + HTTP + SMTP + audit
+// every new channel or format change edits it again`,'The <b>god class</b>: formats, routes, sends and audits. Five reasons to change, and every change risks every channel.'],
+  ['S','',`class NotificationService {
+    void notify(ExecutionResult r, String channel) {
+        String msg = ...;           // ❌ formatting
+        switch (channel) { ... }    // ❌ routing + sending
+        mongo.insert("audit", ...); // ❌ persistence
+    }
+}`,`class MessageFormatter  { String format(ExecutionResult r) { … } }
+class AuditRepository   { void save(ExecutionResult r) { … } }
+class SlackNotifier implements Notifier { … }  // ✅ only Slack
+
+class NotificationService {           // ✅ only orchestrates
+    void notify(ExecutionResult r) { … }
+}`,'<b>Single responsibility</b> — one reason to change per class. Hint you broke it: the class name needs "and", or the tests need every dependency mocked.'],
+  ['O','',`switch (channel) {
+    case "EMAIL" -> …;
+    case "SLACK" -> …;
+    case "TEAMS" -> …;   // ❌ edit + retest for WhatsApp
+}`,`interface Notifier {
+    Channel channel();
+    void send(ExecutionResult r);
+}
+// Spring injects every @Component Notifier
+NotificationService(List<Notifier> all) {
+    all.forEach(n -> byChannel.put(n.channel(), n)); // ✅
+}`,'<b>Open/closed</b> — open for extension, closed for modification. A new channel is a <b>new class</b>; the service never changes.'],
+  ['L','',`class SmsNotifier extends EmailNotifier {
+    @Override void attach(File report) {
+        throw new UnsupportedOperationException(); // ❌
+    }
+}`,`interface Notifier         { void send(ExecutionResult r); }
+interface AttachmentSender { void attach(File report); }
+
+class EmailNotifier implements Notifier, AttachmentSender { … }
+class SmsNotifier   implements Notifier { … }   // ✅ no false promise`,'<b>Liskov substitution</b> — a subtype must work anywhere the parent works. Throwing "unsupported" or tightening rules in a subclass breaks callers.'],
+  ['I','',`interface Notifier {
+    void send(ExecutionResult r);
+    void attach(File report);     // ❌ Slack can't
+    void schedule(Cron when);     // ❌ Teams can't
+}`,`interface Notifier         { void send(ExecutionResult r); }
+interface AttachmentSender { void attach(File report); }
+interface Schedulable      { void schedule(Cron when); }
+// ✅ each class implements only what it supports`,'<b>Interface segregation</b> — many small interfaces beat one fat one. Fat interfaces force empty or throwing methods (and then L breaks too).'],
+  ['D','',`class NotificationService {
+    private final SlackNotifier slack =
+        new SlackNotifier(url);   // ❌ hard-wired, untestable
+}`,`class NotificationService {
+    private final List<Notifier> notifiers;   // ✅ abstraction
+    NotificationService(List<Notifier> notifiers) {
+        this.notifiers = notifiers;           // injected by Spring
+    }
+}
+// test: new NotificationService(List.of(fakeNotifier))`,'<b>Dependency inversion</b> — high-level code depends on <b>interfaces</b>, and concrete classes are <b>injected</b>. This is exactly what Spring\'s constructor injection gives you.']];
+ $('sd-l').innerHTML=L.map((l,i)=>`<button data-i="${i}" class="${l[1]}">${l[0]==='Before'?'😵 Before':l[0]+' — '+['','Single responsibility','Open/closed','Liskov','Interface segregation','Dependency inversion'][i]}</button>`).join('');
+ function pick(i){$('sd-l').querySelectorAll('button').forEach((b,j)=>b.classList.toggle('on',j===i));const l=L[i];
+  $('sd-before').innerHTML=macHTML(i?'Before (violates '+l[0]+').java':'NotificationService.java',l[2],'java');
+  $('sd-after').innerHTML=macHTML(i?'After.java':'Problems',l[3],i?'java':'java');$('sd-msg').innerHTML=l[4];
+  document.querySelector('.slide.on')&&fitCurrent();}
+ $('sd-l').onclick=e=>{const b=e.target.closest('[data-i]');if(b)pick(+b.dataset.i);};pick(0);
+})();
+
+// ===================================================== 4.2 add a channel
+(function(){
+ const A0=[['NotificationService.java',''],['Channel.java (enum)',''],['NotificationServiceTest.java','']];
+ const B0=[['Notifier.java',''],['EmailNotifier.java',''],['SlackNotifier.java',''],['TeamsNotifier.java','']];
+ function draw(added){
+  $('wa-a').innerHTML=A0.map(f=>`<div class="${added?'edit':''}">${f[0]}<small style="color:var(--danger)">${added?'EDITED':''}</small></div>`).join('');
+  $('wa-b').innerHTML=B0.map(f=>`<div>${f[0]}<small style="color:var(--muted)">${added?'untouched':''}</small></div>`).join('')+(added?'<div class="new">WhatsAppNotifier.java<small style="color:var(--success)">NEW</small></div>':'');
+  $('wa-am').innerHTML=added?'<b>3 files edited</b>, a new <code>case</code> in tested code, and Email/Slack/Teams all need regression testing. One typo breaks every channel.':'Today: one service with a <code>switch</code> per channel.';}
+ $('wa-add').onclick=()=>draw(true);$('wa-reset').onclick=()=>draw(false);draw(false);
+})();
+
+// ===================================================== 5.1 interview Q&A
+DECK.qa([
+ ['Explain the four OOP pillars with one example.','Notifier interface (abstraction), private webhook URL (encapsulation), SlackNotifier extends WebhookNotifier (inheritance), one loop calling send() on every channel (polymorphism).',['1.1']],
+ ['Overloading vs overriding?','Overloading: same name, different parameters, chosen at compile time. Overriding: same signature in a subclass, chosen at runtime by the object.',['1.2']],
+ ['Can you override static or private methods?','No. Static methods are hidden (picked by reference type); private methods aren\'t visible to subclasses, so a same-named method is a new one.',['1.2','4.1']],
+ ['What is covariant return type?','An overriding method may return a subtype of the parent\'s return type, e.g. <code>SlackNotifier copy()</code> overriding <code>Notifier copy()</code>.',['1.2']],
+ ['Are fields polymorphic?','No — fields are resolved by the declared type; only instance methods use dynamic dispatch.',['4.1']],
+ ['Abstract class vs interface — when to use which?','Interface for a contract/capability (multiple allowed); abstract class when implementations share state or a fixed algorithm. Often both: interface + abstract base.',['2.1']],
+ ['Why were default methods added in Java 8?','To evolve interfaces (e.g. <code>Collection.stream()</code>) without breaking existing implementations.',['2.1']],
+ ['What if two interfaces have the same default method?','The class must override it and can choose one with <code>A.super.method()</code>; otherwise compile error.',['2.1']],
+ ['Why favour composition over inheritance?','Inheritance couples you to parent internals and explodes into combination subclasses; composition combines small behaviours at runtime (Decorator).',['2.2']],
+ ['Explain SOLID briefly.','S one reason to change · O extend without editing · L subtypes keep the contract · I small interfaces · D depend on abstractions, inject concretes.',['3.1']],
+ ['How does Spring help with Open/Closed and DIP?','Constructor injection of interfaces, and <code>List&lt;Notifier&gt;</code> injection — a new <code>@Component</code> is picked up without editing existing code.',['3.1','4.2']],
+ ['Give a Liskov violation.','Square extends Rectangle, or a subclass throwing UnsupportedOperationException for a parent method — callers using the parent type break.',['3.1','3.2']],
+ ['Why not call overridable methods in a constructor?','The subclass override runs before the subclass fields are initialised, so it sees nulls/defaults.',['4.1']],
+ ['How would you add a new notification channel safely?','New class implementing Notifier (adapter around the vendor SDK), registered as a bean; no changes to existing channels or the service.',['4.2']],
+ ['Is SOLID always worth it?','No — apply it where change is likely. Over-splitting tiny code adds indirection; YAGNI still applies.',['3.1']]
+]);
+</script>
+</body></html>

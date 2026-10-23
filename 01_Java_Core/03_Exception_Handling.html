@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exception Handling · Interview Prep</title>
+<link rel="stylesheet" href="../_shared/design-tokens.css">
+<link rel="stylesheet" href="../_shared/deck.css">
+<style>
+/* 1.1 hierarchy */
+.hier{display:flex;flex-direction:column;gap:calc(8px*var(--k));align-items:stretch}
+.hier .top{align-self:center}
+.hcols{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1fr) minmax(0,1.2fr);gap:calc(8px*var(--k))}
+.hcol{border:2px dashed var(--c);border-radius:12px;padding:calc(6px*var(--k)) 8px;display:flex;flex-direction:column;gap:calc(5px*var(--k));background:#fff}
+.hcol>small{font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--c)}
+.hn{font:inherit;font-family:var(--font-mono);font-size:12.5px;font-weight:700;text-align:left;border:2px solid var(--c);background:#fff;color:var(--ink);border-radius:9px;padding:calc(4px*var(--k)) 9px;cursor:pointer;overflow-wrap:anywhere}
+.hn.base{background:var(--c);color:#fff}
+.hn.on{box-shadow:0 0 0 3px #FDE68A;border-color:var(--warning)}
+/* 2.1 try/catch sim */
+.outb{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.retchip{font-family:var(--font-mono);font-size:12.5px;font-weight:800;border-radius:8px;padding:3px 10px;border:1.5px dashed var(--line-strong);color:var(--muted);background:#fff}
+.retchip.on{border-style:solid;border-color:var(--warning);background:var(--warning-bg);color:#92400E}
+.retchip.boom{border-style:solid;border-color:#FCA5A5;background:var(--danger-bg);color:#991B1B}
+/* 3.1 do / don't */
+.dd{display:flex;flex-direction:column;gap:calc(5px*var(--k))}
+.dd button{font:inherit;display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;text-align:left;background:#fff;border:1.5px solid #FCA5A5;border-radius:9px;padding:calc(5px*var(--k)) 10px;cursor:pointer;font-size:13px}
+.dd button code{font-size:12px}
+.dd button em{font-style:normal;font-size:11.5px;font-weight:800;color:var(--danger)}
+.dd button.fixed{border-color:#86EFAC;background:#F0FDF4}
+.dd button.fixed em{color:var(--success)}
+/* 3.2 transaction */
+.db{display:flex;flex-direction:column;gap:4px}
+.db div{font-family:var(--font-mono);font-size:12.5px;border:1.5px solid var(--line);border-radius:7px;padding:3px 9px;background:#fff;transition:all .3s}
+.db div.saved{border-color:#86EFAC;background:#F0FDF4}
+.db div.gone{border-style:dashed;color:var(--faint);text-decoration:line-through}
+</style>
+</head>
+<body data-topic="java:Exception Handling">
+<header class="topbar">
+ <a class="tbrand" href="../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="00_Java_Core.html" title="All Java Core topics" style="color:#1D4ED8"><svg class="lg" data-logo="openjdk"></svg>Java Core</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<!-- ===================================================== 0. CONTENTS -->
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2><svg class="lg" data-logo="openjdk"></svg>Exception Handling</h2><span class="sub">from the hierarchy to Spring's error responses and rollbacks</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="toc" id="toc"></div>
+ <div class="howuse"><span><b>← →</b> keys move between slides</span><span><b>▶ Try it</b> boxes are interactive</span><span>Examples are <b>simplified from FireFlink</b> suite runs</span></div>
+</div>
+</section>
+
+<!-- ===================================================== 1. BASICS -->
+<section class="cat" data-name="1. The hierarchy" data-col="r">
+<h1 class="cat-title">1. The hierarchy</h1>
+<div class="slide c-r">
+ <div class="sh"><span class="sn">1.1</span><h2>Throwable family tree</h2><span class="sub">click any class</span></div>
+ <div class="cols wide-l">
+  <div class="hier" id="hx">
+   <button class="hn base top" data-x="Throwable" style="--c:var(--slate)">Throwable</button>
+   <div class="hcols">
+    <div class="hcol" style="--c:var(--red)"><small>Error — unchecked</small><button class="hn base" data-x="Error">Error</button><button class="hn" data-x="OutOfMemoryError">OutOfMemoryError</button><button class="hn" data-x="StackOverflowError">StackOverflowError</button></div>
+    <div class="hcol" style="--c:var(--orange)"><small>Exception — checked</small><button class="hn base" data-x="Exception">Exception</button><button class="hn" data-x="IOException">IOException</button><button class="hn" data-x="SQLException">SQLException</button><button class="hn" data-x="InterruptedException">InterruptedException</button></div>
+    <div class="hcol" style="--c:var(--purple)"><small>RuntimeException — unchecked</small><button class="hn base" data-x="RuntimeException">RuntimeException</button><button class="hn" data-x="NullPointerException">NullPointerException</button><button class="hn" data-x="IllegalArgumentException">IllegalArgumentException</button><button class="hn" data-x="IllegalStateException">IllegalStateException</button><button class="hn" data-x="ConcurrentModificationException">ConcurrentModificationException</button></div>
+   </div>
+  </div>
+  <div class="stack">
+   <div class="msg" id="hx-msg"></div>
+   <p class="take"><b>Remember:</b> <b>checked</b> = <code>Exception</code> and its subclasses <b>except</b> <code>RuntimeException</code> — the compiler forces you to catch or declare them. <b>Errors</b> mean the JVM is in trouble; don't catch them.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-r">
+ <div class="sh"><span class="sn">1.2</span><h2>Checked or unchecked?</h2><span class="sub">classify each one</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="pqs" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+  <div class="pq" data-opts="checked|unchecked" data-ans="checked"><pre>FileNotFoundException</pre><div class="why">An <code>IOException</code> — the file may genuinely be missing, so the caller must decide.</div></div>
+  <div class="pq" data-opts="checked|unchecked" data-ans="unchecked"><pre>NumberFormatException</pre><div class="why">Extends <code>IllegalArgumentException</code> → RuntimeException.</div></div>
+  <div class="pq" data-opts="checked|unchecked" data-ans="checked"><pre>InterruptedException</pre><div class="why">Checked — restore the flag with <code>Thread.currentThread().interrupt()</code> if you can't rethrow.</div></div>
+  <div class="pq" data-opts="checked|unchecked" data-ans="unchecked"><pre>ClassCastException</pre><div class="why">RuntimeException — a programming bug.</div></div>
+  <div class="pq" data-opts="checked|unchecked" data-ans="checked"><pre>TimeoutException</pre><div class="why"><code>java.util.concurrent.TimeoutException</code> extends Exception — e.g. <code>future.get(5, SECONDS)</code>.</div></div>
+  <div class="pq" data-opts="checked|unchecked" data-ans="unchecked"><pre>UncheckedIOException</pre><div class="why">Wraps an IOException in a RuntimeException — handy inside lambdas/streams.</div></div>
+  <div class="pq" data-opts="checked|unchecked" data-ans="unchecked"><pre>DataAccessException (Spring)</pre><div class="why">Spring translates checked <code>SQLException</code> into unchecked <code>DataAccessException</code>.</div></div>
+  <div class="pq" data-opts="checked|unchecked" data-ans="checked"><pre>CloneNotSupportedException</pre><div class="why">Checked — one reason <code>clone()</code> is disliked.</div></div>
+ </div>
+ <div class="cols even" style="margin-top:calc(8px*var(--k))">
+  <div class="box"><h4>Checked — "you might recover, decide now"</h4>Compiler-enforced. Good when the caller can really act (retry, ask for another file). Painful in lambdas and layered code.</div>
+  <div class="box"><h4>Unchecked — "a bug or an unrecoverable state"</h4>Not enforced. Spring, Hibernate and most modern APIs use them, handled once at the boundary.</div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 2. FLOW -->
+<section class="cat" data-name="2. try · catch · finally" data-col="o">
+<h1 class="cat-title">2. try · catch · finally</h1>
+<div class="slide c-o">
+ <div class="sh"><span class="sn">2.1</span><h2>What runs, in what order?</h2><span class="sub">pick a scenario, step through the lines</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="seg" id="tc-case"><button class="on" data-c="ok">No exception</button><button data-c="io">IOException</button><button data-c="rt">RuntimeException</button><button data-c="exit">System.exit()</button></div>
+   <div class="code" id="tc-code"></div>
+  </div>
+  <div class="stack">
+   <div class="ctrl"><button class="btn p" id="tc-next">Next ▶</button><button class="btn" id="tc-reset">↺ Reset</button><span class="chip no" id="tc-n"></span></div>
+   <div class="outb"><span style="font-size:12.5px;font-weight:700;color:var(--muted)">pending:</span><span class="retchip" id="tc-ret">—</span></div>
+   <div class="console" id="tc-out" style="min-height:calc(60px*var(--k))"></div>
+   <div class="msg" id="tc-msg"></div>
+   <p class="take"><b>Remember:</b> <code>finally</code> runs after <code>return</code> and after an uncaught exception — only <code>System.exit()</code>, a JVM crash or a killed thread skip it. Never <code>return</code> or <code>throw</code> from <code>finally</code>.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-o">
+ <div class="sh"><span class="sn">2.2</span><h2>try-with-resources</h2><span class="sub">close order and suppressed exceptions</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="RunDao.java">
+try (var conn = dataSource.getConnection();      // opened 1st
+     var stmt = conn.prepareStatement(SAVE_RUN)) { // opened 2nd
+    stmt.executeUpdate();                         // throws A
+}                                                 // closes stmt, then conn
+catch (SQLException e) {
+    log.error("save failed", e);                  // e = A
+    e.getSuppressed();                            // [B] from close()
+}</script></div>
+   <div class="box"><h4>Why it beats a manual <code>finally</code></h4><ul>
+    <li>Works with anything <code>AutoCloseable</code> (streams, connections, locks you wrap)</li>
+    <li>Closes in <b>reverse</b> order, even when the body throws</li>
+    <li>A failure in <code>close()</code> is <b>suppressed</b> — the original error isn't lost (old <code>finally { close(); }</code> hid it)</li></ul></div>
+  </div>
+  <div class="stack">
+   <div class="flow" data-step>
+    <div class="fstep"><i>1</i><div><b>open conn</b><small>resource 1</small></div></div>
+    <div class="fstep"><i>2</i><div><b>open stmt</b><small>resource 2</small></div></div>
+    <div class="fstep stopx"><i>3</i><div><b>executeUpdate() throws A</b><small>SQLException: duplicate key</small></div></div>
+    <div class="fstep"><i>4</i><div><b>stmt.close() throws B</b><small>B is added to A as <b>suppressed</b></small></div></div>
+    <div class="fstep"><i>5</i><div><b>conn.close()</b><small>still runs — reverse order</small></div></div>
+    <div class="fstep"><i>6</i><div><b>catch receives A</b><small><code>A.getSuppressed() = [B]</code> — nothing lost</small></div></div>
+   </div>
+   <p class="take"><b>Remember:</b> always use try-with-resources for anything you open. Since Java 9 you can also list an existing effectively-final variable: <code>try (conn) { … }</code>.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 3. DESIGN -->
+<section class="cat" data-name="3. Design it well" data-col="p">
+<h1 class="cat-title">3. Design it well</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">3.1</span><h2>Best practices &amp; custom exceptions</h2><span class="sub">click each ❌ to fix it</span></div>
+ <div class="cols wide-l">
+  <div class="dd" id="bp"></div>
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="SuiteNotFoundException.java">
+// ✅ unchecked, specific, carries the id
+public class SuiteNotFoundException extends RuntimeException {
+    public SuiteNotFoundException(String suiteId) {
+        super("Suite " + suiteId + " not found");
+    }
+}
+// ✅ translate low-level errors, keep the cause
+catch (MongoTimeoutException e) {
+    throw new RunStoreUnavailableException(runId, e);
+}</script></div>
+   <p class="take"><b>Remember:</b> throw <b>specific</b> exceptions with context, keep the <b>cause</b>, and handle them <b>once</b> at a boundary (controller advice, Kafka listener error handler).</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">3.2</span><h2>Exceptions in Spring</h2><span class="sub">the @Transactional trap + one place for error responses</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="box"><h4>▶ Try it — <code>@Transactional saveRun()</code> throws…</h4>
+    <div class="seg" id="tx-ex" style="margin-bottom:8px"><button class="on" data-x="rt">RuntimeException</button><button data-x="ck">checked IOException</button><button data-x="rf">checked + rollbackFor</button></div>
+    <div class="db" id="tx-db"></div>
+    <p class="msg" id="tx-msg" style="margin:8px 0 0"></p></div>
+   <div class="code"><script type="text/plain" data-mac="RunService.java">
+@Transactional(rollbackFor = Exception.class)  // ✅ roll back on checked too
+public void saveRun(Run run) throws IOException {
+    runs.save(run);
+    results.saveAll(run.results());
+    reports.upload(run);   // throws IOException
+}</script></div>
+  </div>
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="ApiErrors.java">
+@RestControllerAdvice
+class ApiErrors {
+    @ExceptionHandler(SuiteNotFoundException.class)
+    ProblemDetail notFound(SuiteNotFoundException e) {
+        return ProblemDetail.forStatusAndDetail(
+                   HttpStatus.NOT_FOUND, e.getMessage());
+    }
+}</script></div>
+   <div class="console">HTTP/1.1 404 Not Found
+Content-Type: application/problem+json
+{ "type": "about:blank", "title": "Not Found", "status": 404,
+  "detail": "Suite 42 not found", "instance": "/api/suites/42" }</div>
+   <p class="take"><b>Remember:</b> by default <code>@Transactional</code> rolls back only on <b>unchecked</b> exceptions and <code>Error</code>. Map exceptions to HTTP once in <code>@RestControllerAdvice</code>, using RFC 9457 <code>ProblemDetail</code> (built into Spring 6+).</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 4. ALL IN ACTION -->
+<section class="cat" data-name="4. All in action" data-col="k">
+<h1 class="cat-title">4. All in action</h1>
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.1</span><h2>Predict the output</h2><span class="sub">finally and catch traps</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="pqs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="pq" data-opts="1|2" data-ans="2"><pre>static int f() {
+    try { return 1; }
+    finally { return 2; }
+}
+System.out.println(f());</pre><div class="why"><code>return</code> in finally <b>overrides</b> the try's return (and would swallow any exception). <a class="go" data-go="2.1">2.1</a></div></div>
+  <div class="pq" data-opts="1|5" data-ans="1"><pre>static int f() {
+    int x = 1;
+    try { return x; }
+    finally { x = 5; }
+}</pre><div class="why">The return <b>value</b> 1 is saved before finally runs; changing <code>x</code> afterwards doesn't affect it.</div></div>
+  <div class="pq" data-opts="A|B|A and B" data-ans="B"><pre>try {
+    throw new IllegalStateException("A");
+} finally {
+    throw new RuntimeException("B");
+}</pre><div class="why">The exception from finally <b>replaces</b> A — the original error is lost. try-with-resources avoids this with suppressed exceptions.</div></div>
+  <div class="pq" data-opts="compiles|compile error" data-ans="compile error"><pre>try { readFile(); }
+catch (Exception e)   { … }
+catch (IOException e) { … }</pre><div class="why">IOException is already caught by <code>Exception</code> → unreachable catch. Order catches from <b>specific to general</b>.</div></div>
+  <div class="pq" data-opts="compiles|compile error" data-ans="compile error"><pre>catch (IOException | SQLException e) {
+    e = new IOException("retry");
+}</pre><div class="why">A multi-catch parameter is implicitly <b>final</b>.</div></div>
+  <div class="pq" data-opts="caught|not caught" data-ans="not caught"><pre>try {
+    int[] a = new int[Integer.MAX_VALUE];
+} catch (Exception e) {
+    System.out.println("caught");
+}</pre><div class="why"><code>OutOfMemoryError</code> is an <b>Error</b>, not an Exception — it flies past <code>catch (Exception)</code>.</div></div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.2</span><h2>Production bug: "the error log tells us nothing"</h2><span class="sub">toggle the fixes and read the log an on-call engineer would see</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="ctrl"><label class="chk" id="rc-cause"><input type="checkbox"> pass the cause</label><label class="chk" id="rc-once"><input type="checkbox"> log once (at the boundary)</label></div>
+   <div class="code" id="rc-code"></div>
+  </div>
+  <div class="stack">
+   <div class="console" id="rc-log"></div>
+   <div class="msg" id="rc-msg"></div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 5. INTERVIEW Q&A -->
+<section class="cat" data-name="5. Interview Q&amp;A" data-col="i">
+<h1 class="cat-title">5. Interview Q&amp;A</h1>
+<div class="slide c-i">
+ <div class="sh"><span class="sn">5.1</span><h2>Interview questions</h2><span class="sub">click a question to reveal the answer · pill = slide that explains it</span></div>
+ <div class="qbar"><input id="qa-find" type="search" placeholder="Filter questions… (e.g. finally, checked, rollback)"><span class="chip ok" id="qa-count"></span><button class="btn" id="qa-random">🎲 Random question</button><label class="donebox" style="margin-left:auto"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="acc" id="qa-list"></div>
+</div>
+</section>
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <span class="kbd">← → keys</span>
+</footer>
+
+<script src="../_shared/deck.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+
+// ===================================================== 1.1 hierarchy
+(function(){
+ const I={
+  Throwable:['root','The only type you can <code>throw</code>. Has message, cause, stack trace and suppressed exceptions.','Never catch it directly.'],
+  Error:['unchecked','Serious JVM-level problems the app can\'t fix.','Don\'t catch — let the process fail and restart.'],
+  OutOfMemoryError:['unchecked · Error','Heap (or Metaspace / direct memory) exhausted.','Capture a heap dump (<code>-XX:+HeapDumpOnOutOfMemoryError</code>), fix the leak.'],
+  StackOverflowError:['unchecked · Error','Thread stack full — usually runaway recursion.','Fix the recursion; <code>-Xss</code> only moves the limit.'],
+  Exception:['checked','Conditions a well-written app might want to catch.','Catch only what you can handle; never <code>catch (Exception e) {}</code>.'],
+  IOException:['checked','File/network I/O failed — e.g. report upload to S3 timed out.','Retry, fall back, or wrap in <code>UncheckedIOException</code>.'],
+  SQLException:['checked','JDBC error.','Spring translates it into unchecked <code>DataAccessException</code>.'],
+  InterruptedException:['checked','Someone asked this thread to stop while it was waiting.','Restore the flag: <code>Thread.currentThread().interrupt()</code> — never swallow.'],
+  RuntimeException:['unchecked','Programming errors and invalid states. Base class for most custom exceptions in Spring apps.','Handle once at a boundary.'],
+  NullPointerException:['unchecked','Dereferenced <code>null</code>. Java 14+ messages name the exact null part.','Validate inputs, use <code>Optional</code> for "maybe absent" returns.'],
+  IllegalArgumentException:['unchecked','Caller passed a bad argument, e.g. negative thread count.','Throw it from validation — fail fast.'],
+  IllegalStateException:['unchecked','Object not in the right state, e.g. starting a suite run twice.','Throw it to protect invariants.'],
+  ConcurrentModificationException:['unchecked','Collection changed while iterating (even in one thread).','Use <code>iterator.remove()</code> / <code>removeIf</code>, or a concurrent collection.']};
+ const pick=x=>{$('hx').querySelectorAll('.hn').forEach(b=>b.classList.toggle('on',b.dataset.x===x));const i=I[x];
+  $('hx-msg').innerHTML=`<b style="font-family:var(--font-mono)">${x}</b> <span class="chip ${i[0].startsWith('checked')?'warn':i[0]==='root'?'no':'bad'}">${i[0]}</span><br>${i[1]}<br><b>Handle:</b> ${i[2]}`;};
+ $('hx').onclick=e=>{const b=e.target.closest('[data-x]');if(b)pick(b.dataset.x);};pick('RuntimeException');
+})();
+
+// ===================================================== 2.1 try / catch / finally stepper
+(function(){
+ const SRC=`static int process() {
+    try {
+        System.out.println("try");
+        riskyCall();                // may throw
+        return 1;
+    } catch (IOException e) {
+        System.out.println("catch");
+        return 2;
+    } finally {
+        System.out.println("finally");
+    }
+}`;
+ const EXIT=SRC.replace('riskyCall();                // may throw','System.exit(0);             // JVM stops');
+ const C={
+  ok:[[3,'try','',''],[4,'','','riskyCall() returns normally'],[5,'','return 1','<code>return 1</code> is <b>remembered</b> — but finally must run first'],[10,'finally','return 1','finally runs…'],[12,'','return 1','…then the method returns <b>1</b>.']],
+  io:[[3,'try','',''],[4,'','','riskyCall() throws <b>IOException</b> → jump to the matching catch'],[7,'catch','',''],[8,'','return 2','<code>return 2</code> remembered'],[10,'finally','return 2','finally still runs'],[12,'','return 2','returns <b>2</b>']],
+  rt:[[3,'try','',''],[4,'','💥 RuntimeException','riskyCall() throws a <b>RuntimeException</b> — no matching catch'],[10,'finally','💥 RuntimeException','finally runs <b>before</b> the exception leaves'],[12,'','💥 RuntimeException','exception propagates to the caller — nothing returned']],
+  exit:[[3,'try','',''],[4,'','JVM exiting','<code>System.exit(0)</code> halts the JVM'],[4,'','JVM exiting','finally <b>never runs</b> — the process is gone (shutdown hooks do run)']]};
+ let cs='ok',i=-1,out=[];
+ function draw(){const S=C[cs],st=S[i];
+  markLines($('tc-code').querySelector('.mac'),st?[st[0]]:[]);
+  $('tc-out').innerHTML=out.length?out.map(o=>'&gt; '+o).join('\n'):'<span class="dim">console output appears here</span>';
+  const r=$('tc-ret');r.textContent=st&&st[2]?st[2]:'—';r.className='retchip'+(st&&st[2]?(st[2].includes('💥')||st[2].includes('JVM')?' boom':' on'):'');
+  $('tc-msg').innerHTML=i<0?'Guess the console output first, then press <b>Next ▶</b>.':(st[3]||'prints <b>'+st[1]+'</b>');
+  $('tc-n').textContent=i<0?'ready':`step ${i+1} / ${S.length}`;$('tc-next').disabled=i>=S.length-1;}
+ function load(){$('tc-code').innerHTML=macHTML('Process.java',cs==='exit'?EXIT:SRC,'java');i=-1;out=[];draw();}
+ $('tc-next').onclick=()=>{i++;const st=C[cs][i];if(st[1])out.push(st[1]);draw();};
+ $('tc-reset').onclick=()=>{i=-1;out=[];draw();};
+ $('tc-case').onclick=e=>{const b=e.target.closest('[data-c]');if(!b)return;cs=b.dataset.c;$('tc-case').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));load();};
+ load();
+})();
+
+// ===================================================== 3.1 best practices
+(function(){
+ const R=[
+  ['Swallowing','<code>catch (Exception e) {}</code>','handle it, or rethrow — never silent'],
+  ['Losing the cause','<code>throw new RunException("failed")</code>','<code>throw new RunException("Run 42 failed", e)</code>'],
+  ['Log and rethrow everywhere','<code>log.error(e); throw e;</code> in every layer','log <b>once</b> where it\'s handled'],
+  ['Exceptions as control flow','<code>try { find(id) } catch (NotFound) { create() }</code>','<code>findById(id).orElseGet(this::create)</code>'],
+  ['Catching Throwable / Error','<code>catch (Throwable t)</code>','let OOM crash the pod; it restarts clean'],
+  ['Vague messages','<code>"Something went wrong"</code>','<code>"Suite 42 not found for tenant acme"</code>']];
+ const fixed=new Set();
+ function draw(){$('bp').innerHTML=R.map((r,i)=>{const f=fixed.has(i);return `<button data-i="${i}" class="${f?'fixed':''}"><span>${f?'✅':'❌'}</span><span><b>${r[0]}</b><br>${f?r[2]:r[1]}</span><em>${f?'fixed':'fix it'}</em></button>`;}).join('');}
+ $('bp').onclick=e=>{const b=e.target.closest('[data-i]');if(!b)return;const i=+b.dataset.i;fixed.has(i)?fixed.delete(i):fixed.add(i);draw();};draw();
+})();
+
+// ===================================================== 3.2 transaction rollback
+(function(){
+ const ROWS=['runs.save(run)','results.saveAll(…)','reports.upload(run) 💥'];
+ const X={rt:[false,'<b>RuntimeException</b> → Spring rolls back. Nothing half-saved. ✅'],ck:[true,'<b>Checked IOException</b> → Spring <b>commits</b>! The run and results are saved without a report. ❌ The classic trap.'],rf:[false,'<code>rollbackFor = Exception.class</code> → checked exceptions roll back too. ✅']};
+ function draw(x){const [commit,m]=X[x];
+  $('tx-db').innerHTML=ROWS.map((r,i)=>`<div class="${i<2?(commit?'saved':'gone'):''}">${r}${i<2?(commit?'  → COMMITTED':'  → rolled back'):''}</div>`).join('');$('tx-msg').innerHTML=m;}
+ $('tx-ex').onclick=e=>{const b=e.target.closest('[data-x]');if(!b)return;$('tx-ex').querySelectorAll('button').forEach(y=>y.classList.toggle('on',y===b));draw(b.dataset.x);};draw('rt');
+})();
+
+// ===================================================== 4.2 lost root cause
+(function(){
+ const ce=()=>$('rc-cause').querySelector('input').checked,lo=()=>$('rc-once').querySelector('input').checked;
+ function draw(){['rc-cause','rc-once'].forEach(id=>$(id).classList.toggle('on',$(id).querySelector('input').checked));
+  const c=ce(),o=lo();
+  $('rc-code').innerHTML=macHTML('RunService.java',`// repository layer
+try { mongo.save(run); }
+catch (MongoTimeoutException e) {
+    ${o?'':'log.error("save failed", e);   // ❌ logged here…\n    '}throw new RunSaveException("Run " + id + " not saved"${c?', e); // ✅ cause kept':'); // ❌ cause lost'}
+}
+// service layer
+catch (RunSaveException e) {
+    ${o?'':'log.error("run failed", e);    // ❌ …and here\n    '}throw e;
+}
+// @RestControllerAdvice
+${o?'log.error("Request failed", e);   // ✅ logged once':'log.error("Request failed", e);   // …and again'}`,'java');
+  const trace=`<span class="err">RunSaveException: Run 9f2c not saved</span>
+    at RunRepository.save(RunRepository.java:41)
+    at RunService.complete(RunService.java:88)${c?`
+<span class="nar">Caused by: com.mongodb.MongoTimeoutException: Timed out after 30000 ms
+    while waiting for a server that matches ReadPreference{primary}</span>`:''}`;
+  const n=o?1:3;
+  $('rc-log').innerHTML=Array.from({length:n},(_,i)=>`<span class="dim">10:42:0${i} ERROR [exec-4] ${['Request failed','run failed','save failed'][o?0:2-i]}</span>\n${trace}`).join('\n');
+  $('rc-msg').innerHTML=(c?'✅ <b>Root cause visible</b>: Mongo primary unreachable — on-call checks the cluster, not the code.':'❌ <b>No root cause</b> — the log only says "not saved". Was it Mongo? Validation? A bug? Hours of guessing.')+'<br>'+(o?'✅ <b>One</b> log entry per failure — alerts and dashboards count correctly.':`❌ The same failure is logged <b>${n} times</b> — noisy logs and inflated error counts.`);}
+ ['rc-cause','rc-once'].forEach(id=>$(id).querySelector('input').onchange=draw);draw();
+})();
+
+// ===================================================== 5.1 interview Q&A
+DECK.qa([
+ ['Checked vs unchecked exceptions?','Checked (Exception but not RuntimeException) must be caught or declared; unchecked (RuntimeException, Error) needn\'t be. Use checked only when the caller can really recover.',['1.1','1.2']],
+ ['Error vs Exception?','Errors (OOM, StackOverflow) signal JVM-level failure the app shouldn\'t handle; Exceptions are application conditions.',['1.1']],
+ ['How should you handle InterruptedException?','Rethrow it, or restore the interrupt flag with <code>Thread.currentThread().interrupt()</code>; never swallow it.',['1.1']],
+ ['Does finally always run?','Yes, after return or an exception — except <code>System.exit</code>, JVM crash/kill, or a thread that never finishes the try.',['2.1']],
+ ['What happens if finally has a return?','It overrides the try/catch return and silently discards any in-flight exception. Never do it.',['4.1']],
+ ['What does try-with-resources give you?','Automatic close of AutoCloseable resources in reverse order, with close() failures added as suppressed exceptions.',['2.2']],
+ ['What are suppressed exceptions?','Secondary exceptions (usually from close()) attached to the primary one via <code>addSuppressed</code>, read with <code>getSuppressed()</code>.',['2.2']],
+ ['How do you design custom exceptions?','Extend RuntimeException (usually), name the problem, include ids in the message, and offer a constructor taking the cause.',['3.1']],
+ ['Why keep the cause when wrapping?','Without it the stack trace loses the root error ("Caused by …"), making production issues very hard to diagnose.',['4.2']],
+ ['Why is "log and rethrow" bad?','Each layer logs the same failure, flooding logs and inflating error counts. Log once where it\'s handled.',['3.1','4.2']],
+ ['When does @Transactional roll back?','By default only for unchecked exceptions and Errors. For checked ones add <code>rollbackFor</code>. Also: self-invocation bypasses the proxy.',['3.2']],
+ ['How do you return consistent API errors in Spring?','<code>@RestControllerAdvice</code> + <code>@ExceptionHandler</code> returning <code>ProblemDetail</code> (RFC 9457).',['3.2']],
+ ['Can you catch OutOfMemoryError?','Technically yes, but you shouldn\'t — state may be corrupt. Dump the heap, let the instance restart, fix the cause.',['1.1','4.1']],
+ ['Why must catch blocks go from specific to general?','A general catch first makes later specific catches unreachable → compile error.',['4.1']],
+ ['How do you handle checked exceptions inside lambdas/streams?','Wrap them (e.g. <code>UncheckedIOException</code>) or move the code into a helper that handles them; functional interfaces can\'t throw checked ones.',['1.2']]
+]);
+</script>
+</body></html>

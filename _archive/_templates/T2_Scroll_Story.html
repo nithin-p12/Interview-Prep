@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JVM Memory · Scroll Story (T2)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+ --ink:#1A1D24;--text:#3A3F4B;--muted:#6B7280;--faint:#9CA3AF;--line:#E7E5E0;--paper:#FCFCFA;--card:#fff;--tint:#F5F4F0;
+ --accent:#4F46E5;--accent-bg:#EEF0FF;
+ --eden:#16A34A;--eden-bg:#ECFDF3;--surv:#0D9488;--surv-bg:#E6FAF7;--old:#D97706;--old-bg:#FFF7E8;
+ --meta:#9333EA;--meta-bg:#F6EEFF;--stack:#2563EB;--stack-bg:#EDF3FF;--native:#64748B;--native-bg:#F3F5F8;--bad:#DC2626;--bad-bg:#FEF1F1;
+ --sans:'Inter',system-ui,'Segoe UI',sans-serif;--mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:64px}
+body{margin:0;background:var(--paper);color:var(--text);font:15px/1.65 var(--sans);-webkit-font-smoothing:antialiased}
+b,strong{color:var(--ink);font-weight:600}
+code{font-family:var(--mono);font-size:.86em;background:var(--tint);border:1px solid var(--line);border-radius:5px;padding:.5px 5px;color:var(--ink)}
+a{color:var(--accent)}
+
+/* top bar + progress */
+.top{position:fixed;inset:0 0 auto 0;height:48px;background:rgba(252,252,250,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);z-index:30;display:flex;align-items:center;gap:14px;padding:0 24px}
+.top .brand{font-weight:700;color:var(--ink);font-size:14px;text-decoration:none;display:flex;align-items:center;gap:8px}
+.top .brand i{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#4F46E5,#9333EA);color:#fff;font-style:normal;display:grid;place-items:center;font-size:11px;font-weight:700}
+.top .crumb{color:var(--muted);font-size:13px}
+.top .crumb b{font-weight:600}
+.top .left{margin-left:auto;font-size:12.5px;color:var(--muted)}
+.bar{position:fixed;top:48px;left:0;height:3px;width:0;background:linear-gradient(90deg,#4F46E5,#9333EA);z-index:31;transition:width .1s}
+
+/* 3-column layout */
+.wrap{display:grid;grid-template-columns:180px minmax(0,640px) 400px;gap:36px;justify-content:center;padding:72px 24px 80px}
+.toc{position:sticky;top:76px;align-self:start;font-size:13px}
+.toc .lbl{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
+.toc a{display:flex;gap:9px;align-items:center;padding:5px 8px;border-radius:8px;color:var(--muted);text-decoration:none;line-height:1.35}
+.toc a i{flex:none;width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line);font-style:normal;font-size:10.5px;display:grid;place-items:center;color:var(--faint);font-weight:600;background:#fff}
+.toc a.read i{background:var(--eden);border-color:var(--eden);color:#fff}
+.toc a.on{background:var(--accent-bg);color:var(--accent);font-weight:600}
+.toc a.on i{border-color:var(--accent);color:var(--accent)}
+.toc .meta{margin-top:14px;padding:10px;border:1px dashed var(--line);border-radius:10px;font-size:12px;color:var(--muted);line-height:1.5}
+
+/* prose */
+article{min-width:0}
+.hero{padding:6px 0 10px}
+.hero .kick{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.hero h1{font-size:26px;line-height:1.25;color:var(--ink);margin:6px 0 8px;letter-spacing:-.01em}
+.hero p{margin:0;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.chips span{font-size:12px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:2px 10px;color:var(--muted)}
+section.ch{padding-top:34px;max-width:68ch}
+.ch h2{font-size:22px;line-height:1.3;color:var(--ink);margin:0 0 4px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:10px}
+.ch h2 em{font-style:normal;font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:600}
+.ch .dek{color:var(--muted);margin:0 0 14px;font-size:14px}
+.ch h3{font-size:15.5px;color:var(--ink);margin:22px 0 6px}
+.step{margin:0;padding:12px 0 12px 16px;border-left:2px solid var(--line);transition:border-color .3s,color .3s;color:var(--muted)}
+.step.on{border-left-color:var(--accent);color:var(--text)}
+.step + .step{margin-top:2px}
+.step b{transition:color .3s}
+.sw{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:0}
+
+/* margin note (good to know) */
+.note{font-size:13px;line-height:1.55;color:var(--muted);border-left:2px dashed var(--faint);padding:2px 0 2px 12px;margin:14px 0}
+.note b:first-child{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:600}
+
+/* 30-second answer */
+details.say{margin:18px 0 6px;border:1px solid #DCD8FB;background:linear-gradient(180deg,#F7F6FF,#fff);border-radius:12px;padding:0 14px}
+details.say summary{list-style:none;cursor:pointer;padding:10px 0;font-size:13.5px;font-weight:600;color:var(--accent);display:flex;align-items:center;gap:8px}
+details.say summary::-webkit-details-marker{display:none}
+details.say summary::after{content:'tap to reveal';margin-left:auto;font-weight:500;font-size:12px;color:var(--faint)}
+details.say[open] summary::after{content:'hide'}
+details.say p{margin:0 0 12px;font-size:14px;color:var(--ink)}
+
+/* widgets */
+.wid{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:16px 0;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.wid .wh{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:10px}
+.wid .wh span{color:var(--accent)}
+.btn{font:inherit;font-size:13px;font-weight:500;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;padding:5px 12px;cursor:pointer;transition:all .15s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.p{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.p:hover{filter:brightness(1.08);color:#fff}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.out{margin-top:10px;font-size:13.5px;padding:9px 12px;border-radius:10px;background:var(--tint);min-height:40px}
+.out .tag{display:inline-block;font-size:11.5px;font-weight:600;border-radius:999px;padding:1px 9px;margin-right:6px;color:#fff}
+pre.code{margin:10px 0;background:#F7F7F4;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:12.5px/1.6 var(--mono);color:var(--ink);overflow-x:auto}
+pre.code .ln{display:block;margin:0 -12px;padding:0 12px;transition:background .25s}
+pre.code .ln.cur{background:#FFF3C4;box-shadow:inset 3px 0 0 #EAB308}
+.k{color:#7C3AED}.s{color:#047857}.c{color:#9CA3AF;font-style:italic}.t{color:#B45309}.n{color:#0369A1}
+.term{background:#1E1E24;color:#E5E7EB;border-radius:10px;padding:10px 12px;font:12.5px/1.6 var(--mono);margin:10px 0;white-space:pre-wrap}
+.term .p{color:#A5B4FC}.term .d{color:#9CA3AF}.term .e{color:#FCA5A5}.term .g{color:#86EFAC}
+
+/* where-does-it-live */
+.where button{font-family:var(--mono);font-size:12.5px}
+/* stack vs heap stepper */
+.svh{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+.svh>div{border:1px solid var(--line);border-radius:10px;padding:8px;min-height:104px;background:#fff}
+.svh h5{margin:0 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+.svh .st h5{color:var(--stack)}.svh .hp h5{color:var(--eden)}
+.svh .it{font:12px/1.4 var(--mono);border-radius:6px;padding:3px 7px;margin-bottom:4px;animation:pop .35s}
+.svh .st .it{background:var(--stack-bg);color:#1E3A8A}
+.svh .hp .it{background:var(--eden-bg);color:#14532D}
+.svh .it.gone{opacity:.45;text-decoration:line-through;background:var(--tint)!important;color:var(--muted)!important}
+@keyframes pop{from{transform:translateY(4px);opacity:0}to{transform:none;opacity:1}}
+table.mini{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0}
+table.mini th,table.mini td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+table.mini th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);font-weight:600}
+table.mini td:first-child{color:var(--ink);font-weight:600;white-space:nowrap}
+
+/* GC playground */
+.gcp .gens{display:grid;grid-template-columns:2.2fr .8fr .8fr 2.6fr;gap:6px;margin-top:10px}
+.gcp .gen{border:1.5px solid;border-radius:9px;padding:5px 6px;min-height:72px;background:#fff}
+.gcp .gen small{display:block;font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:4px}
+.gcp .gen .ob{display:flex;flex-wrap:wrap;gap:3px}
+.gcp .o{width:14px;height:14px;border-radius:4px;font:600 8.5px/14px var(--mono);text-align:center;color:#fff;animation:pop .3s}
+.gcp .o.dead{opacity:.28}
+.gcp .log{font:12px/1.5 var(--mono);color:var(--muted);margin-top:8px;min-height:36px}
+.gcp .log b{color:var(--ink)}
+.gcp .log .e{color:var(--bad);font-weight:600}
+
+/* OOM picker */
+.oom button{font-family:var(--mono);font-size:12px;text-align:left}
+.oomd{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13.5px;margin-top:10px}
+.oomd dt{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding-top:2px}
+.oomd dd{margin:0}
+
+/* pod sizing */
+.pod label{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:10px}
+.pod input[type=range]{flex:1;accent-color:var(--accent)}
+.podbar{display:flex;height:26px;border-radius:8px;overflow:hidden;margin:10px 0 6px;border:1px solid var(--line)}
+.podbar div{display:grid;place-items:center;font-size:11.5px;font-weight:600;color:#fff;transition:flex-basis .3s;white-space:nowrap;overflow:hidden}
+.verdict{font-size:13.5px}
+
+/* leaks */
+.leaks{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.leaks button{font:inherit;text-align:left;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;font-size:13.5px;color:var(--ink);transition:all .15s}
+.leaks button small{display:block;color:var(--muted);font-size:12px}
+.leaks button.on{border-color:var(--bad);background:var(--bad-bg)}
+.chart svg{width:100%;height:auto;display:block}
+
+/* drill */
+.qa{border-top:1px solid var(--line)}
+.qa details{border-bottom:1px solid var(--line)}
+.qa summary{cursor:pointer;list-style:none;padding:9px 0;font-size:14px;color:var(--ink);font-weight:500;display:flex;gap:10px}
+.qa summary::-webkit-details-marker{display:none}
+.qa summary i{font-style:normal;font:600 11.5px/20px var(--mono);color:var(--accent);flex:none;width:22px}
+.qa details p{margin:0 0 10px 32px;font-size:14px}
+.scn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:12px 14px;margin:10px 0}
+.scn h4{margin:0 0 4px;font-size:14.5px;color:var(--ink)}
+.scn .sym{font-size:13px;color:var(--muted);margin:0 0 8px}
+.scn ol{margin:6px 0 0;padding-left:20px;font-size:13.5px}
+.scn li{margin:3px 0;animation:pop .3s}
+.scn .row{margin-top:4px}
+
+/* ===== sticky diagram ===== */
+.side{position:sticky;top:68px;align-self:start}
+.diacard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 6px 24px rgba(20,20,40,.05)}
+.diahead{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--faint);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin:0 2px 8px}
+.diahead span{margin-left:auto;font-family:var(--mono);text-transform:none;letter-spacing:0;color:var(--accent);font-weight:600}
+.diabox{position:relative;width:100%;aspect-ratio:400/398;overflow:hidden}
+.dia{position:absolute;left:0;top:0;width:400px;height:398px;transform-origin:0 0;font-size:11px}
+.rg{position:absolute;border:1.5px solid;border-radius:10px;transition:opacity .35s,box-shadow .35s,filter .35s}
+.rg>small{position:absolute;left:8px;top:4px;font-size:10.5px;font-weight:600;letter-spacing:.03em;white-space:nowrap}
+.rg>em{position:absolute;right:8px;top:4px;font-style:normal;font:600 9.5px var(--mono);opacity:.75}
+.dia.hl .rg{opacity:.32;filter:saturate(.4)}
+.dia.hl .rg.hl{opacity:1;filter:none;box-shadow:0 0 0 3px rgba(79,70,229,.18),0 6px 16px rgba(0,0,0,.06)}
+.dia.hl .rg.hl.wrapper,.dia.hl .rg.wrapper{opacity:1;filter:none;box-shadow:none}
+.rg.proc{border-style:dashed;border-color:#CBD5E1;background:transparent}
+.rg.heap{border-color:#CBD5E1;background:#FAFAF8}
+.fr{position:absolute;left:4px;right:4px;height:17px;border-radius:5px;background:var(--stack);color:#fff;font:600 9.5px/17px var(--mono);text-align:center;transition:all .35s;opacity:0;transform:translateY(-6px)}
+.fr.on{opacity:1;transform:none}
+.pc{position:absolute;bottom:4px;left:4px;right:4px;font:600 9px/14px var(--mono);text-align:center;border-radius:4px;background:#fff;color:var(--stack);border:1px dashed var(--stack)}
+.chipm{position:absolute;font:600 9.5px/16px var(--mono);padding:0 6px;border-radius:5px;background:#fff;border:1px solid var(--meta);color:var(--meta);transition:opacity .35s}
+.pool{position:absolute;font:600 9.5px/16px var(--mono);padding:0 7px;border-radius:999px;background:#ECFEFF;border:1px solid #06B6D4;color:#0E7490;transition:all .35s;opacity:0}
+.pool.on{opacity:1}
+.dot{position:absolute;width:12px;height:12px;border-radius:4px;transition:left .7s cubic-bezier(.3,.8,.3,1),top .7s cubic-bezier(.3,.8,.3,1),opacity .45s,transform .45s,background .4s;font:700 7.5px/12px var(--mono);color:#fff;text-align:center}
+.dot.out{opacity:0;transform:scale(.3)}
+.flag{position:absolute;font:600 9.5px/16px var(--mono);padding:0 6px;border-radius:5px;background:var(--ink);color:#fff;opacity:0;transform:translateY(4px);transition:all .35s;white-space:nowrap}
+.flag.on{opacity:1;transform:none}
+.banner{position:absolute;left:50%;top:147px;transform:translate(-50%,-4px);font:600 10.5px/20px var(--sans);padding:0 10px;border-radius:999px;background:var(--bad);color:#fff;opacity:0;transition:all .35s;white-space:nowrap;z-index:3}
+.banner.on{opacity:1;transform:translate(-50%,0)}
+.banner.minor{background:var(--surv)}
+.cap{margin:10px 2px 0;font-size:13px;line-height:1.5;color:var(--text);min-height:40px}
+.cap code{font-size:.85em}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin:8px 2px 0;font-size:11.5px;color:var(--muted)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px;vertical-align:0}
+
+@media (max-width:1240px){.wrap{grid-template-columns:minmax(0,620px) 360px;gap:28px}.toc{display:none}}
+@media (max-width:900px){
+ .wrap{grid-template-columns:minmax(0,1fr);padding:60px 16px 60px}
+ .side{order:-1;top:52px;z-index:5}
+ .diacard{padding:8px}.diabox{max-height:200px;aspect-ratio:auto;height:200px}.cap,.legend{display:none}
+ .leaks{grid-template-columns:1fr}.gcp .gens{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<header class="top">
+ <a class="brand" href="../00_Index.html"><i>NP</i>Interview Prep</a>
+ <span class="crumb">Java Core › <b>JVM Memory</b> · template T2 · scroll story</span>
+ <span class="left" id="left">~12 min read</span>
+</header>
+<div class="bar" id="bar"></div>
+
+<div class="wrap">
+<!-- =============== TOC =============== -->
+<nav class="toc" id="toc">
+ <div class="lbl">On this page</div>
+ <a href="#map"><i>1</i>The map</a>
+ <a href="#sv"><i>2</i>Stack vs heap</a>
+ <a href="#life"><i>3</i>Life of an object</a>
+ <a href="#oom"><i>4</i>When memory runs out</a>
+ <a href="#flags"><i>5</i>Flags &amp; containers</a>
+ <a href="#leaks"><i>6</i>Leaks &amp; diagnosis</a>
+ <a href="#drill"><i>7</i>Interview drill</a>
+ <div class="meta">Scroll slowly — the diagram on the right follows the text. Every chapter ends with a <b>🎤 30-second answer</b> you can say out loud.</div>
+</nav>
+
+<!-- =============== ARTICLE =============== -->
+<article>
+<div class="hero">
+ <div class="kick">Java Core · must-know</div>
+ <h1>JVM memory, told as the life of one object</h1>
+ <p>We follow a <code>TestRun</code> result through a FireFlink runner — where it is born, where it moves, and how it can bring a pod down.</p>
+ <div class="chips"><span>Java 8 → 25</span><span>G1 by default</span><span>interview depth, not internals</span><span>examples simplified from FireFlink</span></div>
+</div>
+
+<!-- 1 MAP -->
+<section class="ch" id="map">
+ <h2><em>01</em>The map</h2>
+ <p class="dek">Where things live inside one JVM process.</p>
+ <p class="step" data-scene="map-all">You run <code>java -jar runner.jar</code>. The OS gives the JVM <b>one process</b>, and inside it memory is split by <b>who owns it</b> and <b>how long it lives</b>.</p>
+ <p class="step" data-scene="map-heap"><span class="sw" style="background:var(--eden)"></span><b>Heap</b> — every object you <code>new</code>. Shared by all threads, sized by <code>-Xms</code>/<code>-Xmx</code>, cleaned by the garbage collector.</p>
+ <p class="step" data-scene="map-young"><b>Young generation</b> = Eden + two Survivor spaces. New objects start in Eden. Most die young — a step result, a JSON string — and the GC is built on that bet.</p>
+ <p class="step" data-scene="map-old"><span class="sw" style="background:var(--old)"></span><b>Old generation</b> — objects that survived several GCs: Spring beans, caches, connection pools.</p>
+ <p class="step" data-scene="map-meta"><span class="sw" style="background:var(--meta)"></span><b>Metaspace</b> — class metadata: <code>TestRun.class</code>, method bytecode, Spring's generated proxies. It lives in native memory, replaced PermGen in Java 8, and grows unless you cap it.</p>
+ <p class="step" data-scene="map-stack"><span class="sw" style="background:var(--stack)"></span><b>Stack</b> — one per thread. Frames hold local variables and references; the <b>PC register</b> points to the next instruction. Freed when the method returns — no GC involved.</p>
+ <p class="step" data-scene="map-native"><span class="sw" style="background:var(--native)"></span><b>Other native memory</b> — JIT code cache, direct buffers (Netty, Mongo driver), GC bookkeeping. <b>Not</b> part of <code>-Xmx</code>, which matters in containers (chapter 5).</p>
+
+ <div class="wid where">
+  <div class="wh"><span>▶ Try it</span> Where does it live?</div>
+  <div class="row" id="where">
+   <button class="btn" data-w="local">int retries = 0;</button>
+   <button class="btn" data-w="obj">new TestRun(id)</button>
+   <button class="btn" data-w="cls">TestRun.class</button>
+   <button class="btn" data-w="lit">"PASSED"</button>
+   <button class="btn" data-w="cache">static Map cache</button>
+   <button class="btn" data-w="direct">allocateDirect(64k)</button>
+   <button class="btn" data-w="pc">next instruction</button>
+  </div>
+  <div class="out" id="where-out">Pick one — the diagram lights up its home.</div>
+ </div>
+ <div class="note"><b>Good to know</b>Static <i>fields</i> live with the class's <code>Class</code> object on the heap (Java 8+); only the class <i>metadata</i> is in Metaspace.</div>
+ <details class="say"><summary>🎤 30-second interview answer</summary><p>"The JVM has a shared <b>heap</b> for objects, split into young (Eden + survivors) and old generations, plus <b>Metaspace</b> in native memory for class metadata — it replaced PermGen in Java 8. Each thread gets its own <b>stack</b> of frames and a <b>PC register</b>. On top of that there's native memory for the code cache, direct buffers and thread stacks, which <code>-Xmx</code> doesn't cover."</p></details>
+</section>
+
+<!-- 2 STACK VS HEAP -->
+<section class="ch" id="sv">
+ <h2><em>02</em>Stack vs heap</h2>
+ <p class="dek">The question every interviewer opens with.</p>
+ <p class="step" data-scene="sv-stack">When a runner thread executes a step, it pushes a <b>frame</b> on its stack. Primitives and <b>references</b> sit in the frame; the <b>objects</b> they point to sit on the heap.</p>
+ <div class="wid">
+  <div class="wh"><span>▶ Step through</span> one method call</div>
+<pre class="code" id="sv-code">void runStep(Step step) {
+    int retries = 0;                     // primitive → stack
+    TestResult r = new TestResult(step); // ref → stack, object → heap
+    r.setStatus("PASSED");               // literal from the String pool
+    save(r);                             // new frame pushed, then popped
+}                                        // frame popped → object unreachable</pre>
+  <div class="row"><button class="btn p" id="sv-next">Next line ▶</button><button class="btn" id="sv-reset">↺ Reset</button><span style="font-size:12.5px;color:var(--muted)" id="sv-msg"></span></div>
+  <div class="svh"><div class="st"><h5>Stack · thread exec-1</h5><div id="sv-st"></div></div><div class="hp"><h5>Heap</h5><div id="sv-hp"></div></div></div>
+ </div>
+ <p class="step" data-scene="sv-pool">String literals like <code>"PASSED"</code> are interned in the <b>String pool</b>, which moved from PermGen <b>into the heap in Java 7</b> — so pooled strings can be garbage-collected too.</p>
+ <table class="mini">
+  <tr><th></th><th>Stack</th><th>Heap</th></tr>
+  <tr><td>Holds</td><td>frames: primitives, references</td><td>objects, arrays, String pool</td></tr>
+  <tr><td>Shared?</td><td>no — one per thread</td><td>yes — all threads</td></tr>
+  <tr><td>Freed by</td><td>method return (LIFO)</td><td>garbage collector</td></tr>
+  <tr><td>When full</td><td><code>StackOverflowError</code></td><td><code>OutOfMemoryError</code></td></tr>
+ </table>
+ <details class="say"><summary>🎤 30-second interview answer</summary><p>"Each thread has its own stack of frames holding primitives and references; it's freed automatically when a method returns, and if it gets too deep you get StackOverflowError. Objects always live on the shared heap and are reclaimed by the GC once nothing references them; running out gives OutOfMemoryError. Because the heap is shared, it's where thread-safety issues come from."</p></details>
+</section>
+
+<!-- 3 LIFE -->
+<section class="ch" id="life">
+ <h2><em>03</em>Life of an object</h2>
+ <p class="dek">Eden → Survivor → Old, and what "stop-the-world" means.</p>
+ <p class="step" data-scene="gc-1">Every <code>new TestResult()</code> is allocated in <b>Eden</b> — fast, just a pointer bump in a thread-local buffer.</p>
+ <p class="step" data-scene="gc-2">A suite with hundreds of steps fills Eden quickly…</p>
+ <p class="step" data-scene="gc-3">…so a <b>minor GC</b> runs. It pauses the app threads briefly (<b>stop-the-world</b>), copies the few <b>live</b> objects into a Survivor space with <b>age 1</b>, and wipes Eden in one go.</p>
+ <p class="step" data-scene="gc-4">Next minor GC: survivors are copied to the <b>other</b> Survivor space and their age goes up. The two spaces take turns — one is always empty.</p>
+ <p class="step" data-scene="gc-5">Once an object's age reaches the <b>tenuring threshold</b> (up to 15) — or survivors overflow — it is <b>promoted</b> to the Old generation.</p>
+ <p class="step" data-scene="gc-6">When Old fills up, the JVM needs a <b>major / mixed GC</b>, and in the worst case a <b>full GC</b>: the whole heap, the longest pauses. Frequent full GCs = your API latency spikes.</p>
+
+ <div class="wid gcp">
+  <div class="wh"><span>▶ Play</span> run the collector yourself <span style="margin-left:auto;text-transform:none;letter-spacing:0;color:var(--faint);font-weight:500">demo threshold: age 3</span></div>
+  <div class="row"><button class="btn p" id="gc-alloc">+ Allocate 6</button><button class="btn" id="gc-minor">Minor GC</button><button class="btn" id="gc-reset">↺ Reset</button><span style="font-size:12.5px;color:var(--muted)">faded = no longer referenced</span></div>
+  <div class="gens">
+   <div class="gen" style="border-color:var(--eden)"><small style="color:var(--eden)">Eden · <span id="gc-ec"></span></small><div class="ob" id="gc-eden"></div></div>
+   <div class="gen" style="border-color:var(--surv)"><small style="color:var(--surv)">S0</small><div class="ob" id="gc-s0"></div></div>
+   <div class="gen" style="border-color:var(--surv)"><small style="color:var(--surv)">S1</small><div class="ob" id="gc-s1"></div></div>
+   <div class="gen" style="border-color:var(--old)"><small style="color:var(--old)">Old · <span id="gc-oc"></span></small><div class="ob" id="gc-old"></div></div>
+  </div>
+  <div class="log" id="gc-log"></div>
+ </div>
+ <div class="note"><b>Good to know</b><b style="display:inline;text-transform:none;letter-spacing:0;font-size:13px">G1</b> (default since Java 9) splits the heap into equal-size regions and collects the most garbage-filled ones first, aiming at a pause target (<code>-XX:MaxGCPauseMillis</code>, default 200 ms). <b style="display:inline;text-transform:none;letter-spacing:0;font-size:13px">ZGC</b> does almost everything concurrently — sub-millisecond pauses even on huge heaps.</div>
+ <details class="say"><summary>🎤 30-second interview answer</summary><p>"New objects go to Eden. When Eden fills, a short stop-the-world minor GC copies live objects to a survivor space and clears Eden. Objects that survive enough GCs — the tenuring threshold, up to 15 — are promoted to the old generation. When old fills, we get mixed or full GCs with longer pauses. It works because most objects die young. G1 is the default collector; ZGC is the choice for very low pauses."</p></details>
+</section>
+
+<!-- 4 OOM -->
+<section class="ch" id="oom">
+ <h2><em>04</em>When memory runs out</h2>
+ <p class="dek">Same family name, five different problems.</p>
+ <p class="step" data-scene="oom"><code>OutOfMemoryError</code> is only the surname — <b>the message tells you which area ran out</b>, and the fix is completely different for each. Click one:</p>
+ <div class="wid oom">
+  <div class="row" id="oom-pick">
+   <button class="btn" data-o="heap">Java heap space</button>
+   <button class="btn" data-o="gco">GC overhead limit exceeded</button>
+   <button class="btn" data-o="meta">Metaspace</button>
+   <button class="btn" data-o="thr">unable to create native thread</button>
+   <button class="btn" data-o="so">StackOverflowError</button>
+  </div>
+  <dl class="oomd" id="oom-d"></dl>
+ </div>
+ <details class="say"><summary>🎤 30-second interview answer</summary><p>"First I read the message. 'Java heap space' means too many live objects — usually a leak or an unbounded load — so I take a heap dump. 'GC overhead' is the same thing, detected earlier. 'Metaspace' means too many classes, often from dynamic proxies or classloader leaks. 'Unable to create native thread' is an OS or memory limit on threads — use bounded pools. StackOverflowError is runaway recursion."</p></details>
+</section>
+
+<!-- 5 FLAGS -->
+<section class="ch" id="flags">
+ <h2><em>05</em>Flags &amp; containers</h2>
+ <p class="dek">Five flags you should be able to write from memory.</p>
+ <p class="step" data-scene="flags">Each flag sizes one area of the diagram:</p>
+ <table class="mini">
+  <tr><th>Flag</th><th>What it does</th><th>Runner value</th></tr>
+  <tr><td><code>-Xms / -Xmx</code></td><td>initial / max heap; equal = no resizing</td><td><code>-Xmx2g</code></td></tr>
+  <tr><td><code>-Xss</code></td><td>stack size per thread (default ~1 MB)</td><td><code>-Xss512k</code></td></tr>
+  <tr><td><code>-XX:MaxMetaspaceSize</code></td><td>caps Metaspace (unbounded by default)</td><td><code>256m</code></td></tr>
+  <tr><td><code>-XX:+HeapDumpOnOutOfMemoryError</code></td><td>writes a <code>.hprof</code> on OOM</td><td>+ <code>HeapDumpPath=/dumps</code></td></tr>
+  <tr><td><code>-XX:MaxRAMPercentage</code></td><td>heap as % of the <b>container</b> limit (default 25%)</td><td><code>75</code></td></tr>
+ </table>
+ <div class="wid pod">
+  <div class="wh"><span>▶ Size a pod</span> heap is not the whole bill</div>
+  <label>Pod memory limit <input type="range" id="pod-lim" min="1" max="8" step="0.5" value="3"><b id="pod-lim-v"></b></label>
+  <div class="row" style="margin-top:6px"><span style="font-size:13px;color:var(--muted)">MaxRAMPercentage</span><span id="pod-pct"><button class="btn" data-p="25">25 (default)</button> <button class="btn" data-p="75">75</button> <button class="btn" data-p="90">90</button></span><span style="font-size:13px;color:var(--muted);margin-left:8px">threads</span><span id="pod-thr"><button class="btn" data-t="50">50</button> <button class="btn" data-t="200">200</button> <button class="btn" data-t="600">600</button></span></div>
+  <div class="podbar" id="pod-bar"></div>
+  <div class="verdict" id="pod-v"></div>
+ </div>
+ <details class="say"><summary>🎤 30-second interview answer</summary><p>"I set <code>-Xms</code> and <code>-Xmx</code>, or in containers <code>MaxRAMPercentage</code> around 70–75%, because the default is only 25% of the limit. I leave room for non-heap memory — Metaspace, thread stacks, code cache, direct buffers — otherwise Kubernetes OOM-kills the pod with no Java error. And I always enable <code>HeapDumpOnOutOfMemoryError</code> with a dump path on a volume."</p></details>
+</section>
+
+<!-- 6 LEAKS -->
+<section class="ch" id="leaks">
+ <h2><em>06</em>Leaks &amp; diagnosis</h2>
+ <p class="dek">Java has a GC, and still leaks.</p>
+ <p class="step" data-scene="leak">A leak in Java = objects you no longer <b>need</b> but still <b>reference</b>. The GC can't touch them, so they get promoted and pile up in Old gen — until full GCs run back-to-back.</p>
+ <div class="wid">
+  <div class="wh"><span>▶ Tap a cause</span> the four usual suspects</div>
+  <div class="leaks" id="lk"></div>
+  <pre class="code" id="lk-code"></pre>
+ </div>
+ <div class="wid chart">
+  <div class="wh"><span>▶ Read the graph</span> heap used over time</div>
+  <div class="row" id="ch-mode"><button class="btn on" data-m="ok">Healthy</button><button class="btn" data-m="leak">Leak</button></div>
+  <svg id="ch" viewBox="0 0 600 150"></svg>
+  <div class="out" id="ch-msg"></div>
+ </div>
+ <h3>Diagnose in three commands</h3>
+<div class="term"><span class="d"># 1. is old gen still full right after GC?  (O = old %, FGC = full GCs)</span>
+<span class="p">$</span> jstat -gcutil 4211 5s
+<span class="d">  S0     S1     E      O      M     YGC   FGC</span>
+  0.00  41.20  63.10  <span class="e">97.80</span>  92.30  1840  <span class="e">  57</span>
+<span class="d"># 2. take a heap dump (or let HeapDumpOnOutOfMemoryError do it)</span>
+<span class="p">$</span> jcmd 4211 GC.heap_dump /dumps/runner.hprof
+<span class="d"># 3. open in Eclipse MAT → Dominator tree / Leak suspects</span>
+<span class="g">  RunCache.results  HashMap  1.4 GB retained  (93%)</span></div>
+ <details class="say"><summary>🎤 30-second interview answer</summary><p>"A Java leak is reachable but useless objects — typically static maps or caches without eviction, ThreadLocals not removed in thread pools, listeners never unregistered, or unclosed resources. I confirm it when old gen stays high after full GCs in <code>jstat</code> or the GC logs, take a heap dump with <code>jcmd</code>, and open it in MAT's dominator tree to find what retains the memory."</p></details>
+</section>
+
+<!-- 7 DRILL -->
+<section class="ch" id="drill">
+ <h2><em>07</em>Interview drill</h2>
+ <p class="dek">Say the answer out loud first, then open it.</p>
+ <p class="step" data-scene="drill">Direct questions:</p>
+ <div class="qa" id="qa"></div>
+ <h3>Scenario questions</h3>
+ <div id="scn"></div>
+ <p style="color:var(--faint);font-size:13px;margin-top:28px">— End of story. Template T2 · scroll story.</p>
+</section>
+</article>
+
+<!-- =============== STICKY DIAGRAM =============== -->
+<aside class="side">
+ <div class="diacard">
+  <div class="diahead">JVM process <span id="scene-n">map</span></div>
+  <div class="diabox" id="diabox">
+   <div class="dia" id="dia">
+    <div class="rg proc wrapper" style="left:2px;top:2px;width:396px;height:394px"><small style="color:var(--faint);top:-1px">native memory (the whole process)</small></div>
+    <!-- stacks -->
+    <div class="rg" data-r="stack" style="left:14px;top:22px;width:180px;height:112px;border-color:var(--stack);background:var(--stack-bg)"><small style="color:var(--stack)">Thread stacks</small><em style="color:var(--stack)">-Xss</em>
+     <div style="position:absolute;left:8px;top:22px;width:78px;height:84px;border:1px solid #BFD3FB;border-radius:7px;background:#fff"><span style="position:absolute;top:-1px;left:5px;font:600 8.5px var(--mono);color:var(--muted)">main</span><div class="pc" data-r2="pc">PC</div></div>
+     <div id="stk" style="position:absolute;left:94px;top:22px;width:78px;height:84px;border:1px solid #BFD3FB;border-radius:7px;background:#fff"><span style="position:absolute;top:-1px;left:5px;font:600 8.5px var(--mono);color:var(--muted)">exec-1</span><div class="pc" data-r2="pc">PC</div></div>
+    </div>
+    <!-- metaspace -->
+    <div class="rg" data-r="meta" style="left:206px;top:22px;width:180px;height:112px;border-color:var(--meta);background:var(--meta-bg)"><small style="color:var(--meta)">Metaspace</small><em style="color:var(--meta)">MaxMetaspaceSize</em>
+     <span class="chipm" style="left:10px;top:28px">TestRun.class</span><span class="chipm" style="left:10px;top:50px">RunService$$Proxy</span><span class="chipm" style="left:10px;top:72px">method bytecode</span>
+    </div>
+    <!-- heap -->
+    <div class="rg heap" data-r="heapbox" style="left:14px;top:146px;width:372px;height:190px"><small style="color:var(--ink)">Heap</small><em style="color:var(--ink)">-Xms … -Xmx</em></div>
+    <span class="pool" id="pool" style="left:150px;top:148px">String pool: "PASSED"</span>
+    <div class="rg" data-r="eden" style="left:26px;top:172px;width:196px;height:86px;border-color:var(--eden);background:var(--eden-bg)"><small style="color:var(--eden)">Eden</small></div>
+    <div class="rg" data-r="s0" style="left:230px;top:172px;width:72px;height:86px;border-color:var(--surv);background:var(--surv-bg)"><small style="color:var(--surv)">S0</small></div>
+    <div class="rg" data-r="s1" style="left:308px;top:172px;width:66px;height:86px;border-color:var(--surv);background:var(--surv-bg)"><small style="color:var(--surv)">S1</small></div>
+    <div class="rg" data-r="old" style="left:26px;top:266px;width:348px;height:60px;border-color:var(--old);background:var(--old-bg)"><small style="color:var(--old)">Old generation</small></div>
+    <!-- other native -->
+    <div class="rg" data-r="code" style="left:14px;top:346px;width:118px;height:40px;border-color:var(--native);background:var(--native-bg)"><small style="color:var(--native)">Code cache</small></div>
+    <div class="rg" data-r="direct" style="left:141px;top:346px;width:118px;height:40px;border-color:var(--native);background:var(--native-bg)"><small style="color:var(--native)">Direct buffers</small></div>
+    <div class="rg" data-r="gcint" style="left:268px;top:346px;width:118px;height:40px;border-color:var(--native);background:var(--native-bg)"><small style="color:var(--native)">GC / JIT internals</small></div>
+    <!-- flags overlay -->
+    <span class="flag" data-f style="left:120px;top:4px">-Xss512k</span>
+    <span class="flag" data-f style="left:268px;top:4px">MaxMetaspaceSize=256m</span>
+    <span class="flag" data-f style="left:250px;top:313px;background:var(--accent)">-Xmx = 75% of pod</span>
+    <span class="flag" data-f style="left:140px;top:378px">not in -Xmx!</span>
+    <div class="banner" id="banner"></div>
+    <div id="dots"></div>
+   </div>
+  </div>
+  <div class="cap" id="cap"></div>
+  <div class="legend"><span><i style="background:var(--eden)"></i>new</span><span><i style="background:var(--surv)"></i>survivor (age)</span><span><i style="background:var(--old)"></i>promoted</span><span><i style="background:var(--bad)"></i>leaked</span></div>
+ </div>
+</aside>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const ESC=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+// ---------- tiny Java highlighter (one .ln span per line)
+function hl(src){
+ const re=/(\/\/.*$)|("(?:[^"\\]|\\.)*")|\b(void|int|new|static|final|private|public|class|return|try|finally|for|if|null|var)\b|\b([A-Z]\w*)\b|\b(\d+)\b/gm;
+ let o='',last=0,m;while((m=re.exec(src))){o+=ESC(src.slice(last,m.index));const c=['c','s','k','t','n'][m.slice(1).findIndex(x=>x!==undefined)];o+=`<span class="${c}">${ESC(m[0])}</span>`;last=re.lastIndex;}
+ o+=ESC(src.slice(last));return o.split('\n').map((l,i)=>`<span class="ln" data-l="${i+1}">${l||' '}</span>`).join('');}
+function setCode(pre,src){pre.innerHTML=hl(src);}
+const svSrc=$('sv-code').textContent;setCode($('sv-code'),svSrc);
+
+// ================= STICKY DIAGRAM =================
+const dia=$('dia'),box=$('diabox');
+function scaleDia(){dia.style.transform=`scale(${box.clientWidth/400})`;}
+window.addEventListener('resize',scaleDia);scaleDia();
+
+const R={eden:[34,192,11],s0:[238,192,3],s1:[314,192,3],old:[34,286,20]}; // x,y,cols
+const COL={eden:'var(--eden)',s0:'var(--surv)',s1:'var(--surv)',old:'var(--old)'};
+const dotEls={};
+function placeDots(list){ // list: [id, region, age, kind]
+ const used=new Set(),count={eden:0,s0:0,s1:0,old:0};
+ list.forEach(([id,rg,age,kind])=>{
+  let d=dotEls[id];
+  const [x0,y0,cols]=R[rg],i=count[rg]++,x=x0+(i%cols)*16,y=y0+Math.floor(i/cols)*16;
+  if(!d){d=document.createElement('div');d.className='dot out';d.style.left=x+'px';d.style.top=y+'px';$('dots').appendChild(d);dotEls[id]=d;void d.offsetWidth;}
+  d.classList.remove('out');d.style.left=x+'px';d.style.top=y+'px';
+  d.style.background=kind==='leak'?'var(--bad)':COL[rg];d.textContent=age?age:'';used.add(id);});
+ Object.keys(dotEls).forEach(id=>{if(!used.has(id))dotEls[id].classList.add('out');});}
+
+const rng=(p,n)=>Array.from({length:n},(_,i)=>p+i);
+const E=(ids,rg='eden',age=0,kind)=>ids.map(i=>['d'+i,rg,age,kind]);
+const OLDBASE=E(rng(100,9),'old');
+const SC={
+ 'map-all':{n:'overview',hl:[],dots:E([1,2]),cap:'One process. The heap is only one part of it.'},
+ 'map-heap':{n:'heap',hl:['heapbox','eden','s0','s1','old'],dots:E([1,2]).concat(OLDBASE.slice(0,4)),cap:'<b>Heap</b> — all objects, all threads. Sized by <code>-Xms</code>/<code>-Xmx</code>.'},
+ 'map-young':{n:'young gen',hl:['eden','s0','s1'],dots:E([1,2,3]).concat([['d4','s0',1]]),cap:'<b>Young gen</b> — Eden + S0 + S1. Most objects die here.'},
+ 'map-old':{n:'old gen',hl:['old'],dots:E([1,2,3]).concat(OLDBASE),cap:'<b>Old gen</b> — long-lived: beans, caches, pools.'},
+ 'map-meta':{n:'metaspace',hl:['meta'],dots:E([1,2,3]).concat(OLDBASE),cap:'<b>Metaspace</b> — class metadata, in native memory (Java 8+).'},
+ 'map-stack':{n:'stacks',hl:['stack'],frames:['runSuite()','runStep()'],dots:E([1,2,3]),cap:'<b>One stack per thread</b> — frames + a PC register each.'},
+ 'map-native':{n:'native',hl:['code','direct','gcint','stack','meta'],dots:E([1,2,3]),cap:'Everything outside the heap box is <b>native memory</b> — not limited by <code>-Xmx</code>.'},
+ 'sv-stack':{n:'stack vs heap',hl:['stack','eden'],frames:['runSuite()','runStep()','save()'],dots:E([1]),cap:'Frame on <b>exec-1</b> holds the reference <code>r</code>; the <code>TestResult</code> object sits in <b>Eden</b>.'},
+ 'sv-pool':{n:'string pool',hl:['heapbox','eden'],pool:1,dots:E([1]),cap:'<code>"PASSED"</code> is interned in the <b>String pool — on the heap</b> since Java 7.'},
+ 'gc-1':{n:'allocate',hl:['eden'],dots:E([1,2,3]),cap:'<code>new TestResult()</code> → <b>Eden</b>.'},
+ 'gc-2':{n:'eden full',hl:['eden'],dots:E(rng(1,30)),cap:'Eden is full — allocation fails → time for a minor GC.'},
+ 'gc-3':{n:'minor GC',hl:['eden','s0'],banner:['Minor GC · short pause','minor'],dots:E([3,9,17],'s0',1),cap:'Only <b>3 of 30</b> were still referenced → copied to <b>S0</b> (age 1). Eden wiped.'},
+ 'gc-4':{n:'minor GC #2',hl:['eden','s0','s1'],banner:['Minor GC #2','minor'],dots:E([3,17],'s1',2).concat(E(rng(31,12))),cap:'Survivors hop <b>S0 → S1</b>, age 2. One died. New objects keep landing in Eden.'},
+ 'gc-5':{n:'promotion',hl:['s1','old'],dots:E([3,17],'old',0).concat(E([33,38],'s0',1)).concat(E(rng(50,8))),cap:'Age hit the threshold → <b>promoted to Old</b>.'},
+ 'gc-6':{n:'full GC',hl:['old','heapbox'],banner:['Full GC · stop-the-world','bad'],dots:E([3,17],'old').concat(E(rng(100,36),'old')).concat(E(rng(60,4))),cap:'Old is full → <b>full GC</b>: whole heap, longest pause.'},
+ 'oom':{n:'OOM',hl:['old'],dots:E(rng(100,40),'old').concat(E(rng(1,30))),cap:'Pick an error on the left — the area that ran out lights up.'},
+ 'flags':{n:'flags',hl:[],flags:1,dots:E([1,2]),cap:'Each flag caps one box. The grey boxes have <b>no</b> <code>-Xmx</code> limit.'},
+ 'leak':{n:'leak',hl:['old'],dots:E(rng(200,34),'old',0,'leak').concat(E([1,2,3])),cap:'<code>static Map&lt;runId, Result&gt;</code> never evicts → red objects survive every GC.'},
+ 'drill':{n:'drill',hl:[],dots:E([1,2,3]).concat([['d4','s0',1]]).concat(OLDBASE),cap:'Use the diagram while you answer — point at the area you talk about.'}};
+let cur='map-all';
+function hlRegions(list){dia.classList.toggle('hl',list.length>0);dia.querySelectorAll('.rg[data-r]').forEach(r=>r.classList.toggle('hl',list.includes(r.dataset.r)));
+ dia.querySelectorAll('.pc').forEach(p=>p.style.background=list.includes('pc')?'#FDE68A':'#fff');}
+function scene(name){const s=SC[name];if(!s)return;cur=name;
+ hlRegions(s.hl);placeDots(s.dots);
+ $('scene-n').textContent=s.n;$('cap').innerHTML=s.cap;
+ $('pool').classList.toggle('on',!!s.pool);
+ dia.querySelectorAll('[data-f]').forEach(f=>f.classList.toggle('on',!!s.flags));
+ const b=$('banner');if(s.banner){b.textContent=s.banner[0];b.className='banner on '+s.banner[1];}else b.className='banner';
+ const st=$('stk');st.querySelectorAll('.fr').forEach(f=>f.remove());
+ (s.frames||[]).forEach((f,i)=>{const el=document.createElement('div');el.className='fr';el.style.top=(47-i*18)+'px';el.textContent=f;st.appendChild(el);setTimeout(()=>el.classList.add('on'),60+i*120);});}
+
+// scroll-driven steps
+const steps=[...document.querySelectorAll('.step')];
+let curStep=null;
+function pickStep(){const line=innerHeight*.45;let best=steps[0],bd=1e9;
+ steps.forEach(s=>{const r=s.getBoundingClientRect(),d=r.top>line?r.top-line:r.bottom<line?line-r.bottom:0;if(d<bd){bd=d;best=s;}});
+ if(best!==curStep){curStep=best;steps.forEach(s=>s.classList.toggle('on',s===best));scene(best.dataset.scene);}}
+pickStep();
+
+// ================= TOC scroll-spy + progress
+const secs=[...document.querySelectorAll('section.ch')],links=[...document.querySelectorAll('.toc a')];
+function onScroll(){const h=document.documentElement,p=Math.min(1,h.scrollTop/Math.max(1,h.scrollHeight-h.clientHeight));$('bar').style.width=(p*100)+'%';
+ $('left').textContent=p>.98?'✓ finished':`~${Math.max(1,Math.round(12*(1-p)))} min left`;
+ let on=0;secs.forEach((s,i)=>{if(s.getBoundingClientRect().top<innerHeight*.4)on=i;});
+ links.forEach((a,i)=>{a.classList.toggle('on',i===on);a.classList.toggle('read',i<on);});pickStep();}
+addEventListener('scroll',onScroll,{passive:true});onScroll();
+
+// ================= 1. where does it live
+(function(){const W={
+ local:[['stack','pc'],'Stack','var(--stack)','<code>retries</code> is a primitive local → lives in the <b>exec-1 frame</b>, gone when the method returns.'],
+ obj:[['eden'],'Heap · Eden','var(--eden)','Every <code>new</code> object starts in <b>Eden</b>. The <i>reference</i> to it is on the stack.'],
+ cls:[['meta'],'Metaspace','var(--meta)','Class metadata and bytecode → <b>Metaspace</b> (native memory). Loaded once per classloader.'],
+ lit:[['heapbox'],'Heap · String pool','#0E7490','Literals are interned in the <b>String pool on the heap</b> (since Java 7).'],
+ cache:[['old'],'Heap · Old gen','var(--old)','The map object is on the heap and, being long-lived, ends up in <b>Old gen</b>. Unbounded → classic leak.'],
+ direct:[['direct'],'Native · direct','var(--native)','<code>ByteBuffer.allocateDirect</code> → <b>outside the heap</b>, capped by <code>-XX:MaxDirectMemorySize</code>.'],
+ pc:[['pc','stack'],'PC register','var(--stack)','Each thread has a <b>PC register</b> pointing at its current bytecode instruction.']};
+ $('where').onclick=e=>{const b=e.target.closest('[data-w]');if(!b)return;$('where').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+  const w=W[b.dataset.w];hlRegions(w[0]);$('pool').classList.toggle('on',b.dataset.w==='lit');$('scene-n').textContent=w[1];
+  $('where-out').innerHTML=`<span class="tag" style="background:${w[2]}">${w[1]}</span>${w[3]}`;$('cap').innerHTML=w[3];};})();
+
+// ================= 2. stack vs heap stepper
+(function(){
+ const S=[[2,['runStep(step)','retries = 0'],[],'<code>retries</code> goes in the frame.'],
+  [3,['runStep(step)','retries = 0','r → #41'],['#41 TestResult'],'Object on the heap, reference on the stack.'],
+  [4,['runStep(step)','retries = 0','r → #41'],['#41 TestResult','"PASSED" (pool)'],'Literal comes from the String pool.'],
+  [5,['runStep(step)','retries = 0','r → #41','save(r) frame'],['#41 TestResult','"PASSED" (pool)'],'A new frame is pushed for <code>save()</code>…'],
+  [6,['runStep(step)','retries = 0','r → #41'].map(x=>'~'+x),['~#41 TestResult','"PASSED" (pool)'],'Frames popped. <b>#41 is unreachable</b> → eligible for GC (the pool string stays).']];
+ let i=-1;const pre=$('sv-code');
+ const draw=()=>{pre.querySelectorAll('.ln').forEach(l=>l.classList.toggle('cur',i>=0&&+l.dataset.l===S[i][0]));
+  const it=a=>a.map(x=>x.startsWith('~')?`<div class="it gone">${x.slice(1)}</div>`:`<div class="it">${x}</div>`).join('');
+  $('sv-st').innerHTML=i<0?'':it(S[i][1]);$('sv-hp').innerHTML=i<0?'':it(S[i][2]);
+  $('sv-msg').innerHTML=i<0?'press Next to run the method':S[i][3];$('sv-next').disabled=i>=S.length-1;};
+ $('sv-next').onclick=()=>{i++;draw();};$('sv-reset').onclick=()=>{i=-1;draw();};draw();})();
+
+// ================= 3. GC playground
+(function(){
+ const CAP={eden:18,s:6,old:24},TH=3;let eden=[],from=[],to=[],old=[],from0=true,n=0,gcs=0,log='Allocate objects until Eden is full, then run a minor GC.';
+ const mk=()=>({id:++n,age:0,live:Math.random()<.28});
+ const ob=(o,c)=>`<div class="o${o.live?'':' dead'}" style="background:${c}" title="#${o.id}">${o.age||''}</div>`;
+ function draw(){const s0=from0?from:to,s1=from0?to:from;
+  $('gc-eden').innerHTML=eden.map(o=>ob(o,'var(--eden)')).join('');$('gc-s0').innerHTML=s0.map(o=>ob(o,'var(--surv)')).join('');
+  $('gc-s1').innerHTML=s1.map(o=>ob(o,'var(--surv)')).join('');$('gc-old').innerHTML=old.map(o=>ob(o,'var(--old)')).join('');
+  $('gc-ec').textContent=`${eden.length}/${CAP.eden}`;$('gc-oc').textContent=`${old.length}/${CAP.old}`;
+  $('gc-alloc').disabled=eden.length>=CAP.eden&&false;$('gc-log').innerHTML=log;}
+ $('gc-alloc').onclick=()=>{if(eden.length+6>CAP.eden){log='<b>Eden full</b> — allocation would fail. Run a <b>minor GC</b> (the JVM would do it automatically).';draw();return;}
+  for(let i=0;i<6;i++)eden.push(mk());
+  old.forEach(o=>{if(o.live&&Math.random()<.12)o.live=false;}); // old objects die slowly
+  [...from].forEach(o=>{if(o.live&&Math.random()<.3)o.live=false;});
+  log=`Allocated 6 in Eden — about 1 in 4 stays referenced.`;draw();};
+ $('gc-minor').onclick=()=>{gcs++;const live=[...eden,...from].filter(o=>o.live);let promoted=0,overflow=0;to=[];
+  live.forEach(o=>{o.age++;if(o.age>=TH){old.push(o);promoted++;}else if(to.length<CAP.s)to.push(o);else{old.push(o);overflow++;}});
+  const freed=eden.length+from.length-live.length;eden=[];from=to;to=[];from0=!from0;
+  let msg=`<b>Minor GC #${gcs}</b>: freed ${freed}, ${live.length-promoted-overflow} → survivor${promoted?`, <b>${promoted} promoted</b> (age ${TH})`:''}${overflow?`, ${overflow} promoted early (survivor overflow)`:''}.`;
+  if(old.length>CAP.old){const before=old.length;old=old.filter(o=>o.live);msg+=` Old over capacity → <b>Full GC</b> freed ${before-old.length}.`;
+   if(old.length>CAP.old){msg+=` <span class="e">java.lang.OutOfMemoryError: Java heap space</span>`;old=old.slice(0,CAP.old);}}
+  log=msg;draw();};
+ $('gc-reset').onclick=()=>{eden=[];from=[];to=[];old=[];n=0;gcs=0;log='Reset. Allocate a few batches, then run minor GCs and watch ages grow.';draw();};
+ draw();})();
+
+// ================= 4. OOM picker
+(function(){const O={
+ heap:[['old','eden'],'Too many <b>live</b> objects for <code>-Xmx</code>.','Loading a 2 GB execution report into a list; an unbounded results cache.','Heap dump → MAT → fix the retainer. Raise <code>-Xmx</code> only if the load is legit.'],
+ gco:[['old'],'JVM spends ~98% of its time in GC and frees &lt;2% — an early warning of the above (mostly Parallel GC).','Same leak, caught before the heap is technically full.','Same as heap space. Don\'t just disable it with <code>-XX:-UseGCOverheadLimit</code>.'],
+ meta:[['meta'],'Too much class metadata.','Generating a proxy class per test run (CGLIB/ByteBuddy); redeploys leaking classloaders.','Cache generated classes; cap with <code>MaxMetaspaceSize</code> so it fails fast; check classloader leaks.'],
+ thr:[['stack','gcint'],'OS refused a new thread — process/thread limit or no native memory for its stack.','<code>new Thread()</code> per test case in a 5,000-case suite.','Bounded thread pool; check <code>ulimit -u</code>; smaller <code>-Xss</code> buys room.'],
+ so:[['stack'],'One thread\'s stack is too deep — not an OOM, an <code>Error</code> of its own.','Jackson serialising <code>Suite ↔ TestCase</code> back-references forever.','Fix the recursion (DTO, <code>@JsonManagedReference/@JsonBackReference</code>); <code>-Xss</code> only delays it.']};
+ function pick(k,b){$('oom-pick').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));const o=O[k];
+  $('oom-d').innerHTML=`<dt>Means</dt><dd>${o[1]}</dd><dt>FireFlink</dt><dd>${o[2]}</dd><dt>Fix</dt><dd>${o[3]}</dd>`;
+  hlRegions(o[0]);$('scene-n').textContent=b.textContent;$('cap').innerHTML=`<code>${b.textContent}</code> → ${o[1]}`;}
+ $('oom-pick').onclick=e=>{const b=e.target.closest('[data-o]');if(b)pick(b.dataset.o,b);};
+ const f=$('oom-pick').querySelector('button');f.classList.add('on');const o=O.heap;$('oom-d').innerHTML=`<dt>Means</dt><dd>${o[1]}</dd><dt>FireFlink</dt><dd>${o[2]}</dd><dt>Fix</dt><dd>${o[3]}</dd>`;})();
+
+// ================= 5. pod sizing
+(function(){let pct=75,thr=200;
+ function draw(){const lim=+$('pod-lim').value*1024,heap=Math.round(lim*pct/100),meta=180,stacks=thr,code=80,direct=128,gc=Math.round(heap*.04),non=meta+stacks+code+direct+gc,free=lim-heap-non;
+  $('pod-lim-v').textContent=$('pod-lim').value+' GB';
+  const seg=[['heap',heap,'var(--eden)'],['metaspace',meta,'var(--meta)'],['stacks',stacks,'var(--stack)'],['native',code+direct+gc,'var(--native)']];
+  if(free>0)seg.push(['headroom',free,'#E5E7EB']);
+  const tot=Math.max(lim,heap+non);
+  $('pod-bar').innerHTML=seg.map(s=>`<div style="flex-basis:${s[1]/tot*100}%;background:${s[2]};${s[2]==='#E5E7EB'?'color:var(--muted)':''}" title="${s[0]} ${s[1]} MB">${s[1]/tot>.12?s[0]+' '+s[1]+'M':''}</div>`).join('');
+  $('pod-bar').style.borderColor=free<0?'var(--bad)':'var(--line)';
+  $('pod-v').innerHTML=free<0?`❌ Needs ~${heap+non} MB but the pod has ${lim} MB → kernel kills it: <b>OOMKilled, exit 137, no Java error, no heap dump</b>.`:
+   pct===25?`⚠️ Safe but wasteful — only <b>${heap} MB</b> heap out of ${lim} MB. Default 25% is why "the app OOMs with a 4 GB pod".`:
+   free<lim*.08?`⚠️ Only ${free} MB headroom — a traffic spike or extra threads could get the pod OOMKilled.`:`✅ Heap ${heap} MB + ~${non} MB non-heap, ${free} MB headroom.`;}
+ $('pod-lim').oninput=draw;
+ const seg=(id,attr,set)=>{const el=$(id);el.onclick=e=>{const b=e.target.closest('['+attr+']');if(!b)return;el.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));set(+b.getAttribute(attr));draw();};};
+ seg('pod-pct','data-p',v=>pct=v);seg('pod-thr','data-t',v=>thr=v);
+ $('pod-pct').querySelector('[data-p="75"]').classList.add('on');$('pod-thr').querySelector('[data-t="200"]').classList.add('on');draw();})();
+
+// ================= 6. leaks + chart
+(function(){const L=[
+ ['Static map / cache','no eviction',`static final Map<String, RunResult> CACHE = new HashMap<>();
+CACHE.put(runId, result);          // ❌ never removed
+// ✅ Caffeine.newBuilder().maximumSize(10_000).expireAfterWrite(1, HOURS)`],
+ ['ThreadLocal in a pool','threads never die',`TENANT.set(tenantId);
+try { execute(step); }
+finally { TENANT.remove(); }       // ✅ without this, pooled threads keep it`],
+ ['Listeners / callbacks','registered, never removed',`eventBus.register(new RunListener(run)); // ❌ per run, forever
+// ✅ unregister in finally, or use weak listeners`],
+ ['Unclosed resources','streams, cursors, clients',`var cursor = collection.find(query).iterator(); // ❌ leaks
+try (var c = collection.find(query).iterator()) { … } // ✅`]];
+ $('lk').innerHTML=L.map((l,i)=>`<button data-i="${i}"><b>${l[0]}</b><small>${l[1]}</small></button>`).join('');
+ const pick=i=>{$('lk').querySelectorAll('button').forEach((b,j)=>b.classList.toggle('on',j===i));setCode($('lk-code'),L[i][2]);};
+ $('lk').onclick=e=>{const b=e.target.closest('[data-i]');if(b)pick(+b.dataset.i);};pick(0);
+ function chart(m){const W=600,H=150,max=130,pts=[],floors=[];let x=20;
+  for(let k=0;k<11;k++){const base=m==='ok'?40:40+k*8.5,top=Math.min(base+48,max);pts.push([x,H-base],[x+40,H-top]);floors.push([x,H-base]);x+=52;if(m==='leak'&&top>=max&&k>8)break;}
+  const line=pts.map(p=>p.join(',')).join(' ');
+  $('ch').innerHTML=`<line x1="20" x2="590" y1="${H-max}" y2="${H-max}" stroke="#DC2626" stroke-dasharray="4 4"/><text x="590" y="${H-max-4}" text-anchor="end" font-size="11" fill="#DC2626">-Xmx</text>
+   <polyline points="${line}" fill="none" stroke="${m==='ok'?'#16A34A':'#D97706'}" stroke-width="2"/>
+   <polyline points="${floors.map(p=>p.join(',')).join(' ')}" fill="none" stroke="#6B7280" stroke-dasharray="3 3" stroke-width="1.2"/>
+   <text x="24" y="${H-30}" font-size="11" fill="#6B7280">after-GC floor</text>${m==='leak'?`<text x="${x-10}" y="${H-max+14}" font-size="11" fill="#DC2626" text-anchor="end">OOM ✕</text>`:''}`;
+  $('ch-msg').innerHTML=m==='ok'?'✅ <b>Sawtooth with a flat floor</b> — usage climbs, GC drops it back to the same level. Healthy.':'❌ <b>The floor keeps rising</b> — after every GC, more is still alive. That is the leak signature; it ends in back-to-back full GCs and OOM.';}
+ $('ch-mode').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;$('ch-mode').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));chart(b.dataset.m);};chart('ok');})();
+
+// ================= 7. drill
+(function(){const Q=[
+ ['Stack vs heap?','Stack: per thread, frames with primitives and references, freed on return, StackOverflowError. Heap: shared, all objects, freed by GC, OutOfMemoryError.'],
+ ['Why did Metaspace replace PermGen?','PermGen was a fixed-size part of the heap that often ran out (<i>PermGen space</i>). Metaspace (Java 8) lives in native memory and grows dynamically; cap it with MaxMetaspaceSize.'],
+ ['Minor vs major vs full GC?','Minor = young gen only, frequent and short. Major/mixed = old gen (G1 mixes young + some old regions). Full = whole heap, longest stop-the-world — a smell if frequent.'],
+ ['How does an object reach the old generation?','By surviving minor GCs until its age reaches the tenuring threshold (up to 15), or early if survivors overflow; very large objects can go straight to old (G1 "humongous" regions).'],
+ ['Can Java leak memory with a GC?','Yes — objects that are still referenced but no longer needed: static caches, ThreadLocals in pools, unremoved listeners, unclosed resources.'],
+ ['Why set -Xms equal to -Xmx?','No heap resizing at runtime → predictable pauses and memory use; common for servers and containers.'],
+ ['How do you investigate an OOM in production?','Read the message; use the heap dump from HeapDumpOnOutOfMemoryError (or jcmd GC.heap_dump); open in MAT → dominator tree / leak suspects; check GC logs (<code>-Xlog:gc*</code>) for the after-GC trend.'],
+ ['Is the String pool garbage-collected?','Yes — since Java 7 it is on the heap, so unreferenced interned strings are collected.']];
+ $('qa').innerHTML=Q.map((q,i)=>`<details><summary><i>Q${i+1}</i>${q[0]}</summary><p>${q[1]}</p></details>`).join('');
+ const S=[
+  ['Pod restarts with OOMKilled, but there is no OutOfMemoryError in the logs','Kubernetes shows exit code 137 every few hours; the heap graph looks fine.',
+   ['The <b>kernel</b> killed the container — the JVM never got to throw anything.','Total RSS = heap + Metaspace + thread stacks + code cache + direct buffers exceeded the pod limit.','Check <code>MaxRAMPercentage</code>/<code>-Xmx</code> vs the limit; measure with <code>-XX:NativeMemoryTracking=summary</code> + <code>jcmd VM.native_memory</code>.','Fix: heap ≈ 70–75% of the limit, bound thread pools and direct memory, or raise the limit.']],
+  ['Heap grows a little after every suite run','Restarting the runner "fixes" it; after ~3 days it slows down and dies.',
+   ['Look at the heap <b>after GC</b> (jstat / GC logs): a rising floor = leak, not load.','Take two heap dumps hours apart and compare in MAT.','Dominator tree points at e.g. <code>RunCache.results</code> keyed by runId, never evicted (or a ThreadLocal never removed).','Fix: bounded cache with TTL (Caffeine), <code>remove()</code> in finally; add a heap-after-GC alert.']],
+  ['StackOverflowError when returning a suite as JSON','<code>GET /suites/42</code> fails; the trace repeats <code>BeanSerializer.serialize</code> hundreds of times.',
+   ['A <b>bidirectional</b> relation: Suite → TestCase → Suite → … Jackson recurses forever.','Raising <code>-Xss</code> doesn\'t help — the recursion is infinite.','Fix: return a DTO, or <code>@JsonManagedReference</code>/<code>@JsonBackReference</code> (or <code>@JsonIgnore</code> on the back link).']]];
+ $('scn').innerHTML=S.map((s,i)=>`<div class="scn" data-i="${i}"><h4>🧩 ${s[0]}</h4><p class="sym">${s[1]}</p><div class="row"><button class="btn p" data-a="next">Next clue ▶</button><button class="btn" data-a="all">Show all</button><span style="font-size:12px;color:var(--faint)">think first — what would you check?</span></div><ol></ol></div>`).join('');
+ $('scn').onclick=e=>{const b=e.target.closest('[data-a]');if(!b)return;const card=b.closest('.scn'),st=S[+card.dataset.i][2],ol=card.querySelector('ol');
+  const n=b.dataset.a==='all'?st.length:Math.min(ol.children.length+1,st.length);ol.innerHTML=st.slice(0,n).map(x=>`<li>${x}</li>`).join('');
+  card.querySelector('[data-a=next]').disabled=n>=st.length;};})();
+</script>
+</body></html>

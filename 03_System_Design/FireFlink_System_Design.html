@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FireFlink System Design</title>
+<style>
+:root{
+  --bg:#f4f6fa;--surface:#fff;--ink:#141824;--muted:#5d6678;--line:#dbe0ea;--accent:#f05a28;--accent-soft:#fde8df;
+  --svc:#eef3ff;--svc-b:#8aa4ee;--store:#e9f7ee;--store-b:#47b072;--bus:#1d2230;--bus-ink:#f4f6fa;--bus-sub:#c3c9d6;
+  --ext:#f4f5f8;--ext-b:#aab2c3;--prop:#fff6e5;--prop-b:#e39a12;--zone:#fafbfd;--zone-b:#c3cadb;--edge:#6d778b;--grid:#e6eaf2;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0e1117;--surface:#151a23;--ink:#e7eaf1;--muted:#97a1b5;--line:#272e3c;--accent:#ff7a45;--accent-soft:#3a2219;
+  --svc:#18213a;--svc-b:#5878dc;--store:#12261b;--store-b:#3fa566;--bus:#2a3244;--bus-ink:#f4f6fa;--bus-sub:#b9c1d2;
+  --ext:#1a1f29;--ext-b:#4c5568;--prop:#2c2312;--prop-b:#e39a12;--zone:#121721;--zone-b:#333b4c;--edge:#8790a5;--grid:#1b212c;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
+button{font:inherit;color:inherit;cursor:pointer}
+header.top{position:fixed;top:0;left:0;right:0;height:52px;display:flex;align-items:center;gap:14px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--surface);z-index:30}
+.ib{width:36px;height:34px;border:1px solid var(--line);background:var(--surface);border-radius:9px;display:grid;place-items:center;font-size:16px}
+.ib:hover{border-color:var(--accent);color:var(--accent)}
+.brand{font-weight:700;white-space:nowrap}.brand span{color:var(--accent)}
+#slideTitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.nav{display:flex;align-items:center;gap:8px}#count{min-width:54px;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}
+nav#menu{position:fixed;top:52px;left:0;bottom:0;width:310px;max-width:86vw;background:var(--surface);border-right:1px solid var(--line);transform:translateX(-102%);transition:transform .25s;z-index:25;overflow:auto;padding:10px}
+nav#menu.open{transform:none;box-shadow:8px 0 30px rgba(0,0,0,.12)}
+nav#menu a{display:flex;gap:10px;padding:8px 10px;border-radius:8px;color:var(--ink);text-decoration:none}
+nav#menu a b{color:var(--muted);font-weight:600;min-width:22px;font-variant-numeric:tabular-nums}
+nav#menu a:hover{background:var(--bg)}nav#menu a.cur{background:var(--accent-soft);color:var(--accent)}
+nav#menu .sec{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:12px 10px 4px}
+main#deck{position:absolute;top:52px;left:0;right:0;bottom:0}
+.slide{position:absolute;inset:0;display:none;grid-template-columns:minmax(0,1fr) 410px}
+.slide.active{display:grid}
+.slide.collapsed{grid-template-columns:minmax(0,1fr) 0}.slide.collapsed .panel{display:none}
+.stage{position:relative;overflow:hidden;background-color:var(--bg);background-image:radial-gradient(var(--grid) 1.2px,transparent 1.2px);background-size:22px 22px}
+.dia,.dia svg{width:100%;height:100%;display:block}
+.dia svg{touch-action:none;cursor:grab;user-select:none}.dia svg.grabbing{cursor:grabbing}
+.hint{position:absolute;left:14px;top:12px;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 12px;pointer-events:none}
+.ctrl{position:absolute;right:14px;top:12px;display:flex;flex-direction:column;gap:6px}
+.player{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:8px 12px;box-shadow:0 6px 24px rgba(0,0,0,.12);width:min(880px,calc(100% - 28px))}
+.player .cap{flex:1;min-width:0;font-size:13.5px}.player .cap b{color:var(--accent)}
+.badge{display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:999px;background:var(--accent);color:#fff;font-weight:700;font-size:12px;margin-right:8px}
+.panel{border-left:1px solid var(--line);background:var(--surface);overflow:auto;padding:20px 22px 48px}
+.kicker{color:var(--accent);font-weight:700;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+.panel h2{margin:4px 0 10px;font-size:22px;line-height:1.25}
+.panel h4,.htmlwrap h4{margin:20px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.panel ol,.panel ul{padding-left:20px;margin:0}.panel li{margin:5px 0}
+.lead{font-size:15px;margin:0 0 6px}
+code{font-family:Consolas,"Cascadia Mono",monospace;font-size:12.5px;background:var(--grid);padding:1px 5px;border-radius:4px}
+.verify{display:inline-block;font-size:10.5px;font-weight:700;color:var(--prop-b);border:1px solid var(--prop-b);border-radius:999px;padding:0 6px;line-height:16px;vertical-align:1px}
+.repo{display:inline-block;font-size:10.5px;font-weight:700;color:var(--store-b);border:1px solid var(--store-b);border-radius:999px;padding:0 6px;line-height:16px;vertical-align:1px}
+.qa{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;background:var(--bg)}
+.qa b{display:block;margin-bottom:2px}
+table.kv{width:100%;border-collapse:collapse;font-size:13px}table.kv td{padding:5px 4px;border-bottom:1px solid var(--line);vertical-align:top}table.kv td:first-child{color:var(--muted);width:42%}
+.steps li{cursor:pointer;border-radius:6px;padding:2px 4px}.steps li:hover{background:var(--bg)}.steps li.cur{background:var(--accent-soft);color:var(--accent)}
+.sel{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:12px 14px;background:var(--bg)}
+.sel h3{margin:0 0 4px;font-size:16px}.sel p{margin:4px 0}
+.go{margin-top:8px;border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:8px;padding:4px 12px;font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1.5px solid}
+/* svg */
+.node rect{stroke-width:1.6}
+.node{cursor:pointer;transition:opacity .25s}
+.k-svc>rect,.k-chip>rect{fill:var(--svc);stroke:var(--svc-b)}
+.k-store>rect{fill:var(--store);stroke:var(--store-b)}
+.k-bus>rect{fill:var(--bus);stroke:var(--bus)}.k-bus{color:var(--bus-ink)}.k-bus .t1{fill:var(--bus-ink)}.k-bus .t2{fill:var(--bus-sub)}
+.k-ext>rect{fill:var(--ext);stroke:var(--ext-b)}
+.k-prop>rect{fill:var(--prop);stroke:var(--prop-b);stroke-dasharray:7 5}
+.k-lead>rect{fill:var(--accent-soft);stroke:var(--accent)}
+.k-group>rect{fill:var(--zone);stroke:var(--zone-b)}
+.k-zone>rect{fill:none;stroke:var(--zone-b);stroke-dasharray:8 7;stroke-width:2}
+.k-group,.k-zone{cursor:default}
+.node.hi>rect{stroke:var(--accent);stroke-width:2.6}
+.node:not(.k-group):not(.k-zone):hover>rect{stroke-width:2.8}
+.node.sel>rect{stroke:var(--accent);stroke-width:3.4}
+.node{color:var(--ink)}.node.k-bus{color:var(--bus-ink)}
+.t1{font-size:17px;font-weight:600;fill:var(--ink)}
+.tc{font-size:15px;font-weight:600;fill:var(--ink)}
+.t2{font-size:13px;fill:var(--muted)}
+.tg{font-size:14px;font-weight:700;letter-spacing:.06em;fill:var(--muted);text-transform:uppercase}
+.edge{fill:none;stroke:var(--edge);stroke-width:2}
+.edge.dash{stroke-dasharray:7 6}
+.edge.prop{stroke:var(--prop-b);stroke-dasharray:7 6}
+.pulse{fill:none;stroke:var(--accent);stroke-width:2.4;stroke-dasharray:4 22;animation:flow 1.4s linear infinite;opacity:.35}
+@keyframes flow{to{stroke-dashoffset:-26}}
+.ah{fill:var(--edge)}.ahh{fill:var(--accent)}.ahp{fill:var(--prop-b)}
+.elabel rect{fill:var(--surface);stroke:var(--line)}.elabel text{font-size:12.5px;fill:var(--muted)}
+.eg,.elabel{transition:opacity .25s}
+.playing .node:not(.k-group):not(.k-zone),.playing .eg,.playing .elabel{opacity:.13}
+.playing .k-group,.playing .k-zone{opacity:.45}
+.playing .on{opacity:1!important}
+.playing .eg.on .edge{stroke:var(--accent);stroke-width:3.2}
+.playing .eg.on .pulse{opacity:1;stroke-width:3.4}
+.playing .elabel.on rect{stroke:var(--accent)}.playing .elabel.on text{fill:var(--accent);font-weight:600}
+/* html slides */
+.slide.htmlslide{grid-template-columns:1fr}
+.htmlwrap{overflow:auto;padding:28px clamp(16px,4vw,56px) 60px}
+.htmlwrap h1{margin:6px 0 6px;font-size:28px}
+.htmlwrap .sub{color:var(--muted);margin:0 0 18px;max-width:900px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.card h3{margin:0 0 8px;font-size:15px;display:flex;align-items:center;gap:8px}
+.card h3 .n{margin-left:auto;font-size:12px;color:var(--muted);font-weight:600}
+.card ul{margin:0;padding-left:18px}.card li{margin:4px 0}
+.svcrow{display:flex;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px dashed var(--line)}
+.svcrow:last-child{border-bottom:0}
+.svcrow b{font-size:13.5px}.svcrow .p{font-family:Consolas,monospace;font-size:12px;color:var(--accent);min-width:42px}
+.svcrow .d{color:var(--muted);font-size:12.5px}
+.pitch{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:16px 18px;max-width:1000px;font-size:15px}
+details{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:8px 0;max-width:1000px}
+details summary{cursor:pointer;font-weight:600}
+details[open] summary{color:var(--accent);margin-bottom:6px}
+.ico{width:22px;height:22px;flex:none}
+@media (max-width:900px){
+  html,body{overflow:auto}
+  .slide{grid-template-columns:1fr!important;grid-template-rows:62vh auto;overflow:auto}
+  .panel{border-left:0;border-top:1px solid var(--line)}
+  .slide.collapsed .panel{display:block}
+  .hint{display:none}.brand{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- Logos / icons (simplified brand marks) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-kafka" viewBox="0 0 32 32"><g fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="13" cy="5.5" r="3"/><circle cx="13" cy="16" r="3.7"/><circle cx="13" cy="26.5" r="3"/><circle cx="24" cy="10" r="2.6"/><circle cx="24" cy="22" r="2.6"/><path d="M13 8.5v3.8M13 19.7v3.8M16.3 14.3l5.4-3M16.3 17.7l5.4 3"/></g></symbol>
+<symbol id="i-mongo" viewBox="0 0 32 32"><path d="M16.6 2.2c-.3 2-.9 2.6-2 3.7C12.4 8 9.5 11 9.5 17.3c0 5.4 3.4 8.4 5.6 9.6l.6 3h1.6l.5-3c2.3-1.3 5.4-4.2 5.4-9.6 0-6.5-3-9.6-5-11.3-1-.9-1.4-1.9-1.6-3.8z" fill="#13AA52"/><path d="M16.3 6v24" stroke="#B8C4C2" stroke-width="1"/></symbol>
+<symbol id="i-elastic" viewBox="0 0 32 32"><path d="M6 11c1-4.5 5-7.5 10-7.5 5.4 0 9 3.5 10 7.5z" fill="#FEC514"/><path d="M6 21h20c-1 4-4.6 7.5-10 7.5-5 0-9-3-10-7.5z" fill="#00BFB3"/><rect x="4" y="12.6" width="17" height="6.8" rx="3.4" fill="#F04E98"/><rect x="18.5" y="12.6" width="10" height="6.8" rx="3.4" fill="#1BA9F5"/></symbol>
+<symbol id="i-keycloak" viewBox="0 0 32 32"><path d="M9 3h14l7 13-7 13H9L2 16z" fill="#4D4D4D"/><path d="M11.5 9l-4 7 4 7M20.5 9l4 7-4 7" fill="none" stroke="#00B8E3" stroke-width="2.6" stroke-linejoin="round"/><path d="M14.5 10.5l-3.2 5.5 3.2 5.5M17.5 10.5l3.2 5.5-3.2 5.5" fill="none" stroke="#7FD8F0" stroke-width="1.5"/></symbol>
+<symbol id="i-docker" viewBox="0 0 32 32"><g fill="#2496ED"><rect x="5" y="13" width="3.6" height="3.4"/><rect x="9.4" y="13" width="3.6" height="3.4"/><rect x="13.8" y="13" width="3.6" height="3.4"/><rect x="18.2" y="13" width="3.6" height="3.4"/><rect x="9.4" y="8.8" width="3.6" height="3.4"/><rect x="13.8" y="8.8" width="3.6" height="3.4"/><rect x="18.2" y="8.8" width="3.6" height="3.4"/><rect x="13.8" y="4.6" width="3.6" height="3.4"/><path d="M2 17.4h24.5c.9-1.6 2.6-2.2 3.6-1.9.1 1.4-.9 2.6-2.2 3C26 24.4 21 28 13.5 28 6.6 28 2.6 24 2 17.4z"/></g></symbol>
+<symbol id="i-k8s" viewBox="0 0 32 32"><path d="M16 2l10.9 5.3 2.7 11.8-7.5 9.5H9.9l-7.5-9.5L5.1 7.3z" fill="#326CE5"/><g stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"><circle cx="16" cy="16.5" r="5.2"/><path d="M16 8.5v5M16 19.5v5M8.6 13.9l4.6 1.4M18.8 17.7l4.6 1.4M23.4 13.9l-4.6 1.4M13.2 17.7l-4.6 1.4"/></g></symbol>
+<symbol id="i-redis" viewBox="0 0 32 32"><g fill="#DC382D"><path d="M3 21.5l13 5.5 13-5.5v3l-13 5.5-13-5.5z" opacity=".7"/><path d="M3 15.5l13 5.5 13-5.5v3l-13 5.5-13-5.5z" opacity=".85"/><path d="M3 9.5L16 4l13 5.5-13 5.5z"/></g><path d="M12 9.5l4-1.6 4 1.6-4 1.6z" fill="#fff"/></symbol>
+<symbol id="i-s3" viewBox="0 0 32 32"><path d="M4 7l3 20c.3 2 4.5 3 9 3s8.7-1 9-3l3-20z" fill="#E25444"/><ellipse cx="16" cy="7" rx="12" ry="3.6" fill="#7B1D13"/><ellipse cx="16" cy="7" rx="9.5" ry="2.2" fill="#F58536"/></symbol>
+<symbol id="i-spring" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="#6DB33F"/><path d="M23.5 8.5c-.2 6-3.7 11.6-10.2 11.6-1.8 0-3.2-.5-4.3-1.3 1-2.8 4.2-5.4 8.2-6.5-4.1.6-7.3 2.8-9 5.6-.6-6.3 4.4-9.5 9-9.5 2.7 0 4.6 0 6.3-1.4z" fill="#fff"/><circle cx="8.5" cy="23" r="1.4" fill="#fff"/></symbol>
+<symbol id="i-java" viewBox="0 0 32 32"><path d="M17 2c2 3-4 5-2 8 .8 1.2 2.2 1.6 2 3 0 0 2.4-2.4.6-4.6C15.4 6 19 4.4 17 2z" fill="#E76F00"/><path d="M8 17h15v6a5 5 0 0 1-5 5h-5a5 5 0 0 1-5-5z" fill="#5382A1"/><path d="M23 18.5h2.2a2.6 2.6 0 0 1 0 5.2H22.6" fill="none" stroke="#5382A1" stroke-width="1.8"/><path d="M6 30.5h20" stroke="#5382A1" stroke-width="1.8"/></symbol>
+<symbol id="i-nginx" viewBox="0 0 32 32"><path d="M16 2l12.5 7v14L16 30 3.5 23V9z" fill="#009639"/><path d="M11.5 21.5v-11l9 11v-11" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></symbol>
+<symbol id="i-gitlab" viewBox="0 0 32 32"><path d="M16 29L3 18.5l2.6-12 3.4 8.5h14l3.4-8.5 2.6 12z" fill="#FC6D26"/><path d="M16 29L9 15h14z" fill="#E24329"/></symbol>
+<symbol id="i-bitbucket" viewBox="0 0 32 32"><path d="M3.5 4h25l-3.7 23.5H7.2z" fill="#2684FF"/><path d="M12.5 12h7l-1.3 7.5h-4.4z" fill="#fff"/></symbol>
+<symbol id="i-selenium" viewBox="0 0 32 32"><rect x="2" y="4" width="28" height="24" rx="5" fill="#43B02A"/><text x="16" y="21.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="Arial">Se</text></symbol>
+<symbol id="i-appium" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="#662D91"/><path d="M10 22l6-13 6 13M12.6 17h6.8" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></symbol>
+<symbol id="i-slack" viewBox="0 0 32 32"><rect x="13" y="3" width="5" height="12" rx="2.5" fill="#36C5F0"/><rect x="17" y="13" width="12" height="5" rx="2.5" fill="#2EB67D"/><rect x="14" y="17" width="5" height="12" rx="2.5" fill="#ECB22E"/><rect x="3" y="14" width="12" height="5" rx="2.5" fill="#E01E5A"/></symbol>
+<symbol id="i-teams" viewBox="0 0 32 32"><rect x="3" y="7" width="19" height="19" rx="3" fill="#5059C9"/><path d="M8 12h9M12.5 12v10" stroke="#fff" stroke-width="2.4"/><circle cx="25" cy="10" r="3.5" fill="#7B83EB"/><rect x="22" y="15" width="8" height="10" rx="3" fill="#7B83EB"/></symbol>
+<symbol id="i-browser" viewBox="0 0 32 32"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="26" height="22" rx="3"/><path d="M3 11h26"/></g><circle cx="7" cy="8" r="1" fill="currentColor"/><circle cx="10.5" cy="8" r="1" fill="currentColor"/></symbol>
+<symbol id="i-laptop" viewBox="0 0 32 32"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="6" y="7" width="20" height="13" rx="1.5"/><path d="M3 24h26l-2-4H5z"/></g></symbol>
+<symbol id="i-bell" viewBox="0 0 32 32"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M8 22v-8a8 8 0 0 1 16 0v8l2 3H6z"/><path d="M13 27a3 3 0 0 0 6 0"/></g></symbol>
+<symbol id="i-chart" viewBox="0 0 32 32"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5v22h22"/><path d="M9 21l5-6 4 3 7-9"/></g></symbol>
+<symbol id="i-file" viewBox="0 0 32 32"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M8 3h11l6 6v20H8z"/><path d="M19 3v6h6M12 16h9M12 21h9"/></g></symbol>
+<symbol id="i-search" viewBox="0 0 32 32"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="14" cy="14" r="8"/><path d="M20 20l7 7"/></g></symbol>
+<symbol id="i-clock" viewBox="0 0 32 32"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="16" cy="16" r="12"/><path d="M16 9v7l5 3"/></g></symbol>
+<symbol id="i-gear" viewBox="0 0 32 32"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="16" cy="16" r="4.5"/><path d="M16 3v5M16 24v5M3 16h5M24 16h5M6.8 6.8l3.5 3.5M21.7 21.7l3.5 3.5M6.8 25.2l3.5-3.5M21.7 10.3l3.5-3.5"/></g></symbol>
+<symbol id="i-mail" viewBox="0 0 32 32"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="7" width="26" height="18" rx="2"/><path d="M3 9l13 9 13-9"/></g></symbol>
+</defs></svg>
+
+<header class="top">
+  <button class="ib" id="menuBtn" title="Slides (M)" aria-label="Slides">☰</button>
+  <div class="brand"><span>FireFlink</span> · System Design</div>
+  <div id="slideTitle"></div>
+  <div class="nav"><button class="ib" id="prev" title="Previous (←)">←</button><span id="count"></span><button class="ib" id="next" title="Next (→)">→</button></div>
+</header>
+<nav id="menu"></nav>
+<main id="deck"></main>
+
+<script>
+/* ============================== DATA ============================== */
+const SVC = {
+  'tyss-auth':['8200','Sign-in, token issue/refresh, user context'],
+  'tyss-project':['8202','Projects, scripts (test cases), steps, elements, test data, files'],
+  'tyss-all-trees':['8203','Folder / module trees for scripts, elements, test data'],
+  'tyss-refactoring':['8204','Impact analysis & reference updates for shared steps/elements'],
+  'fireflink-workbench':['9011','Authoring & debugging workbench (web / mobile)'],
+  'webservice-workbench':['8212','API (web-service) testing workbench'],
+  'dashboard-execution':['8209','Suites, run requests, queue & priority, machine allocation, execution dashboard'],
+  'tyss-scheduler':['8216','Scheduled / recurring suite runs'],
+  'client-systemconfig':['8207','Registered client machines, capabilities, live machine status'],
+  'execution-result':['8210','Consumes step results, persists, computes status, fans out events'],
+  'tyss-analytics':['8215','Aggregations, dashboards, Elasticsearch indexing & search'],
+  'fireflink-reports':['8055','HTML / PDF reports, screenshots, archival'],
+  'tyss-export':['8213','Export data (Excel / CSV …)'],
+  'resource-insights':['8105','Resource / machine utilisation insights'],
+  'app-management':['8201','Users, roles, workspace & app management, sign-up events'],
+  'license-management':['8208','Licences, plans, feature flags, quotas'],
+  'firecloud-management':['8217','FireCloud machines / devices management'],
+  'sync-firecloud':['—','Sync between FireCloud and FireFlink'],
+  'tyss-onprem':['9200','On-prem deployment support'],
+  'fireflink-integrations':['8102','Jira, CI/CD & other tool integrations'],
+  'fireflink-ai':['8300','AI-assisted features (Keycloak-secured)'],
+  'customer-extensions':['8088','Customer-specific extensions'],
+  'websocket-service':['8218','Pushes live updates to browsers'],
+  'tyss-execution-client':['8090','Runs tests on the user\'s machine'],
+  'notification-service':['new','PROPOSED — email / Slack / Teams / webhook alerts']
+};
+
+const STEPS = [
+  ['Login','Browser → Ingress → tyss-auth / Keycloak issue a JWT; every later call carries it.'],
+  ['Author','tyss-project / all-trees save scripts, steps & elements to MongoDB and publish tree / project events on Kafka.'],
+  ['Trigger','User, CI / API or tyss-scheduler asks dashboard-execution to run a suite.'],
+  ['Queue','dashboard-execution validates, prioritises, picks a machine and publishes execution-initialize-request.'],
+  ['Execute','The Execution Client on the user\'s machine consumes its assignment, pulls scripts over REST and runs Selenium / Appium / API steps locally.'],
+  ['Artifacts','Screenshots, videos and logs are uploaded straight to S3.'],
+  ['Results','Step results come back on response-topic; execution-result persists them in MongoDB and updates status.'],
+  ['Live','execution-result emits websocket.inbound; websocket-service pushes live status to the browser.'],
+  ['Insights','tyss-analytics consumes result events and indexes Elasticsearch for dashboards, search & filters.'],
+  ['Reports','fireflink-reports builds HTML / PDF from results + S3 artifacts and shares a link.'],
+  ['Notify (proposed)','failure-notification events → notification-service → Email / Slack / Teams.']
+];
+
+/* ---------- Big picture ---------- */
+const BIG = {W:2600,H:1620,nodes:[
+  {id:'frame',k:'zone',x:440,y:40,w:1780,h:1520,t:'Kubernetes cluster',ic:'k8s',lx:1760,ly:62},
+  {id:'br',k:'ext',x:40,y:60,w:330,h:120,t:'FireFlink Web UI',s:'Browser · React SPA',ic:'browser',info:'Single-page app used to author tests, trigger runs, watch live execution and view reports / analytics. Talks REST through the Ingress and receives live updates over WebSocket.'},
+  {id:'ci',k:'ext',x:40,y:250,w:330,h:100,t:'CI/CD · Public API',s:'Jenkins · webhooks',ic:'gear',go:'exec',info:'Pipelines trigger suites through the API, the same path the UI uses.'},
+  {id:'cl',k:'ext',x:40,y:620,w:330,h:170,t:'Execution Client',s:'tyss-execution-client :8090\nruns on user\'s machine\nSelenium · Appium · API',ic:'java',go:'client',info:'Spring Boot JAR installed on the customer\'s machine (or a FireCloud VM). It consumes run assignments from Kafka, executes steps locally, uploads artifacts to S3 and streams results back.'},
+  {id:'ing',k:'svc',x:480,y:70,w:300,h:140,t:'Ingress',s:'NGINX · TLS\n/api/* routing',ic:'nginx',go:'k8s',info:'Single entry point into the cluster: TLS termination and path-based routing to each microservice\'s Kubernetes Service.'},
+  {id:'auth',k:'svc',x:820,y:70,w:240,h:140,t:'tyss-auth',s:':8200\nlogin · JWT',ic:'spring',go:'auth',info:SVC['tyss-auth'][1]},
+  {id:'kc',k:'svc',x:1090,y:70,w:270,h:140,t:'Keycloak',s:'26.2.4\nOIDC IdP · SSO',ic:'keycloak',go:'auth',info:'Identity provider (OIDC / OAuth2). Issues signed JWTs; services validate them locally using Keycloak\'s public keys (JWKS).'},
+  {id:'ws',k:'svc',x:1420,y:70,w:300,h:140,t:'websocket-service',s:':8218\nlive push to browsers',ic:'spring',go:'results',info:'Consumes websocket.inbound from Kafka (ServiceToWebSocketListener) and pushes live run status to connected browsers.'},
+  {id:'gA',k:'group',x:480,y:270,w:400,h:610,t:'Authoring',ic:'file',go:'data',note:'+ shared libs: nlp, common,\nutils, data-models',chips:[
+    ['c-proj','tyss-project','8202'],['c-trees','tyss-all-trees','8203'],['c-ref','tyss-refactoring','8204'],['c-wb','fireflink-workbench','9011'],['c-wsw','webservice-workbench','8212']]},
+  {id:'gB',k:'group',x:910,y:270,w:400,h:610,t:'Execution',ic:'gear',go:'exec',note:'queue · priority ·\nmachine allocation',chips:[
+    ['c-de','dashboard-execution','8209'],['c-sch','tyss-scheduler','8216'],['c-csc','client-systemconfig','8207'],['c-er','execution-result','8210']]},
+  {id:'gC',k:'group',x:1340,y:270,w:400,h:610,t:'Insights',ic:'chart',go:'analytics',note:'reports → S3\nanalytics → Elasticsearch',chips:[
+    ['c-an','tyss-analytics','8215'],['c-rp','fireflink-reports','8055'],['c-ex','tyss-export','8213'],['c-ri','resource-insights','8105']]},
+  {id:'gD',k:'group',x:1770,y:270,w:420,h:610,t:'Platform · Integrations',ic:'gear',chips:[
+    ['c-app','app-management','8201'],['c-lic','license-management','8208'],['c-fcm','firecloud-management','8217'],['c-sync','sync-firecloud',''],['c-onp','tyss-onprem','9200'],['c-int','fireflink-integrations','8102'],['c-ai','fireflink-ai','8300'],['c-cx','customer-extensions','8088'],['c-nt','notification-service','proposed','prop']]},
+  {id:'kafka',k:'bus',x:480,y:970,w:1710,h:110,t:'Apache Kafka — event backbone (30+ listeners)',s:'execution-initialize-request · client topic · response-topic · execution-status · websocket.inbound · elastic_search · analytics-* · failure-notification · tree / project / license topics',ic:'kafka',go:'kafka',info:'All asynchronous communication. Producers publish events; each consuming service has its own consumer group and concurrency, so slow consumers never block execution.'},
+  {id:'mongo',k:'store',x:480,y:1160,w:400,h:170,t:'MongoDB',s:'replica set (primary + secondaries)\nsource of truth · Spring Data',ic:'mongo',go:'mongo',info:'Primary datastore for ~23 services via Spring Data MongoDB. Flexible documents fit nested scripts/steps and per-step results.'},
+  {id:'es',k:'store',x:910,y:1160,w:400,h:170,t:'Elasticsearch',s:'7.17.10 · Java client 8.11.3\nsearch · facets · analytics',ic:'elastic',go:'es',info:'Derived read model for full-text search, filters/facets and aggregations. Rebuildable from MongoDB.'},
+  {id:'redis',k:'store',x:1340,y:1160,w:400,h:170,t:'Redis',s:'cache · locks\ndashboard-exec · project · app-mgmt',ic:'redis',go:'cross',info:'spring-data-redis / @Cacheable usage found in dashboard-execution, project, app-management, execution-client, utils.'},
+  {id:'obs',k:'ext',x:1770,y:1160,w:420,h:170,t:'Config & Observability',s:'ConfigMaps · Secrets\napplication-{dev2|preprod|prod}.yml\nlogs · metrics',ic:'gear',go:'cross',info:'Per-environment Spring profiles (dev2, preprod, prod, prodCB, firecloud) supplied via ConfigMaps / Secrets.'},
+  {id:'dock',k:'ext',x:480,y:1390,w:400,h:130,t:'Docker',s:'23 images · openjdk25 base',ic:'docker',go:'k8s',info:'Each service ships as its own image built FROM registry.gitlab.com/ty_optimize/optimize/openjdk25.'},
+  {id:'reg',k:'ext',x:910,y:1390,w:400,h:130,t:'GitLab Container Registry',s:'registry.gitlab.com/…',ic:'gitlab',go:'k8s'},
+  {id:'k8s',k:'ext',x:1340,y:1390,w:400,h:130,t:'Kubernetes',s:'Deployments · Services · HPA',ic:'k8s',go:'k8s'},
+  {id:'stack',k:'ext',x:1770,y:1390,w:420,h:130,t:'Runtime',s:'Java 25 · Spring Boot 4.0.2\nSpring Cloud 2025.1.0 · OpenFeign',ic:'java',info:'Versions from the root pom.xml.'},
+  {id:'tools',k:'ext',x:2260,y:560,w:310,h:120,t:'External tools',s:'Jira · Jenkins · Slack …',ic:'gear'},
+  {id:'chan',k:'prop',x:2260,y:780,w:310,h:110,t:'Email · Slack · Teams',s:'proposed channels',ic:'bell',go:'notify'},
+  {id:'s3',k:'store',x:2260,y:1160,w:310,h:170,t:'AWS S3',s:'screenshots · videos · logs\nreport files · test data\nAWS SDK v2',ic:'s3',go:'reports',info:'Object storage for heavy artifacts. The execution client uploads directly; reports / project read and write files.'}
+],edges:[
+  {f:'br',t:'ing',pts:[[370,120],[480,120]],l:'HTTPS + JWT',lp:[425,98],st:1},
+  {f:'ing',t:'auth',pts:[[780,140],[820,140]],st:1},
+  {f:'auth',t:'kc',pts:[[1060,140],[1090,140]],st:1},
+  {f:'ing',t:'gA',pts:[[600,210],[600,270]],st:2},
+  {f:'gA',t:'kafka',pts:[[560,880],[560,970]],l:'tree · project events',lp:[560,925],b:1,st:2},
+  {f:'gA',t:'mongo',pts:[[680,880],[680,1160]],l:'Spring Data (all services)',lp:[680,1120],st:2},
+  {f:'ci',t:'ing',pts:[[370,300],[420,300],[420,190],[480,190]],l:'trigger',lp:[420,245],st:3},
+  {f:'ing',t:'c-de',pts:[[720,210],[720,240],[1110,240],[1110,330]],l:'run / stop suite',lp:[915,240],st:3},
+  {f:'c-de',t:'kafka',pts:[[930,354],[895,354],[895,970]],l:'execution-initialize-request',lp:[895,940],st:4},
+  {f:'kafka',t:'cl',pts:[[480,1025],[205,1025],[205,790]],l:'assign ↓   results ↑',lp:[330,1025],b:1,st:5},
+  {f:'cl',t:'ing',pts:[[370,660],[455,660],[455,240],[540,240],[540,210]],l:'REST: scripts, data',lp:[400,580],st:5},
+  {f:'cl',t:'s3',pts:[[120,790],[120,1592],[2415,1592],[2415,1330]],l:'screenshots · videos · logs (direct upload)',lp:[1300,1592],st:6},
+  {f:'kafka',t:'c-er',pts:[[1325,970],[1325,534],[1290,534]],l:'response-topic',lp:[1255,905],st:7},
+  {f:'c-er',t:'mongo',pts:[[1060,880],[1060,1140],[820,1140],[820,1160]],st:7},
+  {f:'kafka',t:'ws',pts:[[1755,970],[1755,140],[1720,140]],l:'websocket.inbound',lp:[1755,925],st:8},
+  {f:'ws',t:'br',pts:[[1570,70],[1570,26],[205,26],[205,60]],l:'live status (WebSocket)',lp:[900,26],st:8},
+  {f:'kafka',t:'c-an',pts:[[1450,970],[1450,880]],l:'analytics topics',lp:[1450,945],st:9},
+  {f:'c-an',t:'es',pts:[[1365,880],[1365,1125],[1210,1125],[1210,1160]],l:'index · search',lp:[1290,1125],st:9},
+  {f:'c-rp',t:'s3',pts:[[1700,880],[1700,1125],[2235,1125],[2235,1245],[2260,1245]],l:'reports & artifacts',lp:[1980,1125],st:10},
+  {f:'kafka',t:'c-nt',pts:[[2050,970],[2050,880]],l:'failure-notification',lp:[2050,925],p:1,st:11},
+  {f:'c-nt',t:'chan',pts:[[2170,834],[2260,834]],p:1,st:11},
+  {f:'c-int',t:'tools',pts:[[2170,654],[2260,654]]},
+  {f:'dock',t:'reg',pts:[[880,1455],[910,1455]]},
+  {f:'reg',t:'k8s',pts:[[1310,1455],[1340,1455]]}
+]};
+
+/* ---------- Slides ---------- */
+const SL = [
+{id:'big',kicker:'Big picture',title:'FireFlink at a glance',dia:BIG,panel:`
+  <div id="sel"></div>
+  <h4>Walk a test run (press ▶ or P)</h4>
+  <ol class="steps" id="stepList"></ol>
+  <h4>Stack &amp; versions</h4>
+  <table class="kv">
+    <tr><td>Java</td><td>25 <span class="repo">repo</span></td></tr>
+    <tr><td>Spring Boot</td><td>4.0.2 <span class="repo">repo</span></td></tr>
+    <tr><td>Spring Cloud</td><td>2025.1.0 (OpenFeign) <span class="repo">repo</span></td></tr>
+    <tr><td>Keycloak</td><td>26.2.4 <span class="repo">repo</span></td></tr>
+    <tr><td>Elasticsearch</td><td>7.17.10 artifact · Java client 8.11.3 <span class="repo">repo</span><br>cluster version <span class="verify">verify</span></td></tr>
+    <tr><td>AWS S3</td><td>AWS SDK v2 (+ v1 in places) <span class="repo">repo</span></td></tr>
+    <tr><td>Docker base</td><td>openjdk25 (GitLab registry) <span class="repo">repo</span></td></tr>
+    <tr><td>Kafka</td><td>spring-kafka (Boot-managed) <span class="repo">repo</span><br>broker version <span class="verify">verify</span></td></tr>
+    <tr><td>MongoDB</td><td>Spring Data MongoDB <span class="repo">repo</span><br>server version <span class="verify">verify</span></td></tr>
+    <tr><td>Kubernetes / Redis</td><td><span class="verify">verify</span></td></tr>
+  </table>
+  <h4>Legend</h4>
+  <div class="legend">
+    <span><i style="background:var(--svc);border-color:var(--svc-b)"></i>Microservice</span>
+    <span><i style="background:var(--store);border-color:var(--store-b)"></i>Data store</span>
+    <span><i style="background:var(--bus);border-color:var(--bus)"></i>Kafka</span>
+    <span><i style="background:var(--ext);border-color:var(--ext-b)"></i>External / infra</span>
+    <span><i style="background:var(--prop);border-color:var(--prop-b);border-style:dashed"></i>Proposed</span>
+  </div>`},
+
+{id:'catalog',kicker:'Services',title:'Microservice catalogue',html:'CATALOG'},
+
+{id:'data',kicker:'Flow 1',title:'Data creation (authoring)',dia:{W:1400,H:800,nodes:[
+  {id:'ui',k:'ext',x:40,y:330,w:240,h:120,t:'Web UI',s:'author tests\n(codeless NLP steps)',ic:'browser'},
+  {id:'s3',k:'store',x:40,y:600,w:240,h:110,t:'AWS S3',s:'test-data files',ic:'s3'},
+  {id:'wb',k:'svc',x:360,y:70,w:300,h:130,t:'Workbenches',s:'fireflink-workbench :9011\nwebservice-workbench :8212',ic:'spring'},
+  {id:'proj',k:'svc',hi:1,x:360,y:300,w:300,h:180,t:'tyss-project',s:':8202\nprojects · scripts · steps\nelements · test data · files',ic:'spring'},
+  {id:'mongo',k:'store',x:360,y:600,w:300,h:110,t:'MongoDB',s:'projects, scripts, elements',ic:'mongo'},
+  {id:'kafka',k:'bus',x:760,y:270,w:270,h:240,t:'Kafka',s:'fireflink-project-topic\nfireflink-tree-topic\nfile-operation-topic\nrecorded-element-topic\ntestcase-import-topic',ic:'kafka'},
+  {id:'rec',k:'ext',x:760,y:610,w:270,h:110,t:'Element recorder',s:'captures locators',ic:'laptop'},
+  {id:'trees',k:'svc',x:1100,y:90,w:280,h:120,t:'tyss-all-trees',s:':8203 · folder / module trees',ic:'spring'},
+  {id:'ref',k:'svc',x:1100,y:330,w:280,h:120,t:'tyss-refactoring',s:':8204 · impact &\nreference updates',ic:'spring'},
+  {id:'intg',k:'svc',x:1100,y:570,w:280,h:120,t:'fireflink-integrations',s:':8102 · reference-update',ic:'spring'}
+ ],edges:[
+  {f:'ui',t:'proj',l:'REST (JWT)'},{f:'wb',t:'proj',l:'Feign'},{f:'proj',t:'mongo',l:'Spring Data'},{f:'proj',t:'s3',l:'files'},
+  {f:'proj',t:'kafka',l:'publish / consume',b:1},{f:'rec',t:'kafka',l:'recorded elements'},
+  {f:'kafka',t:'trees',l:'tree-topic'},{f:'kafka',t:'ref',d:1},{f:'kafka',t:'intg',l:'reference-update'}
+ ]},panel:`
+  <p class="lead">Everything a tester builds — projects, scripts, steps, elements, test data — is owned by <b>tyss-project</b> and stored in MongoDB.</p>
+  <h4>Data model (hierarchy)</h4>
+  <ol><li><b>Project</b> → modules / folders (tree)</li><li><b>Script</b> (test case) → ordered <b>steps</b> (NLP actions)</li><li><b>Elements</b> (locators) reused across scripts</li><li><b>Test data</b>, variables, files (files on S3)</li></ol>
+  <h4>How it works</h4>
+  <ol><li>UI / workbench saves a script → tyss-project validates and writes MongoDB.</li><li>It publishes events (project, tree, file-operation) to Kafka.</li><li><b>tyss-all-trees</b> keeps folder trees / counts in sync; integrations react to reference updates.</li><li>Recorder and bulk import enter via their own topics, so large imports don't block the API.</li></ol>
+  <h4>Why this design</h4>
+  <ul><li><b>MongoDB</b> fits nested, evolving documents (steps with varied params).</li><li>Tree maintenance split out → heavy hierarchy updates don't slow authoring.</li><li>Kafka fan-out keeps services decoupled.</li></ul>
+  <p style="color:var(--muted);font-size:12.5px">Dashed arrow = indicative link.</p>`},
+
+{id:'exec',kicker:'Flow 2',title:'Execution Dashboard',dia:{W:1420,H:800,nodes:[
+  {id:'ui',k:'ext',x:40,y:80,w:250,h:110,t:'Web UI',s:'Run · Stop · Re-run',ic:'browser'},
+  {id:'ci',k:'ext',x:40,y:330,w:250,h:110,t:'CI/CD · API',s:'Jenkins · webhooks',ic:'gear'},
+  {id:'sch',k:'svc',x:40,y:580,w:250,h:110,t:'tyss-scheduler',s:':8216 · cron runs',ic:'clock'},
+  {id:'lic',k:'svc',x:390,y:60,w:330,h:110,t:'license-management',s:':8208 · quota · parallel runs',ic:'spring'},
+  {id:'de',k:'svc',hi:1,x:390,y:280,w:330,h:210,t:'dashboard-execution',s:':8209\nsuites · runs · queue\npriority · machine allocation\nlive execution dashboard',ic:'spring'},
+  {id:'mongo',k:'store',x:390,y:610,w:330,h:110,t:'MongoDB',s:'execution & suite docs',ic:'mongo'},
+  {id:'kafka',k:'bus',x:810,y:250,w:300,h:270,t:'Kafka',s:'execution-initialize-request\nauto-run-execution\nelement-reordering\nclient-updates\narchive-details',ic:'kafka'},
+  {id:'redis',k:'store',x:810,y:610,w:300,h:110,t:'Redis',s:'cache · locks',ic:'redis'},
+  {id:'csc',k:'svc',x:1170,y:70,w:230,h:120,t:'client-systemconfig',s:':8207 · machines',ic:'spring'},
+  {id:'cl',k:'ext',x:1170,y:330,w:230,h:120,t:'Execution clients',s:'local / cloud',ic:'laptop'},
+  {id:'rp',k:'svc',x:1170,y:590,w:230,h:120,t:'fireflink-reports',s:'archive runs',ic:'file'}
+ ],edges:[
+  {f:'ui',t:'de',l:'run request'},{f:'ci',t:'de',l:'API trigger'},{f:'sch',t:'de',l:'scheduled'},
+  {f:'de',t:'lic',l:'Feign: check quota',d:1},{f:'de',t:'mongo',l:'run state'},{f:'de',t:'redis',l:'locks / cache',d:1},
+  {f:'de',t:'kafka',l:'publish / consume',b:1},{f:'kafka',t:'csc',l:'client-updates'},{f:'kafka',t:'cl',l:'assignment',b:1},{f:'kafka',t:'rp',l:'archive-details'}
+ ]},panel:`
+  <p class="lead"><b>dashboard-execution</b> turns "run this suite" into executable work and tracks it until it finishes.</p>
+  <h4>Lifecycle of a run</h4>
+  <ol><li>Request arrives (UI, CI/API, or scheduler).</li><li>Validate licence / parallel-run quota (Feign → license-management).</li><li>Resolve suite → scripts, data sets, environment, machines.</li><li>Persist execution doc (status <code>Queued</code>).</li><li>Queue with <b>priority</b>; pick a free machine — client-systemconfig knows machine status from <code>client-updates</code> heartbeats.</li><li>Publish <code>execution-initialize-request</code> → client starts → <code>Running</code>.</li><li>Results update status → <code>Passed / Failed / Warning / Skipped / Aborted</code>.</li><li>Old runs are archived via <code>archive-details</code> → reports.</li></ol>
+  <h4>Design points</h4>
+  <ul><li>Run modes: sequential, parallel, distributed across machines.</li><li>Idempotent by <code>executionId</code> — re-delivered messages don't start runs twice.</li><li>Redis for short-lived locks / caching so two pods don't allocate the same machine.</li></ul>`},
+
+{id:'client',kicker:'Flow 3',title:'Execution Client (on the user\'s system)',dia:{W:1460,H:800,nodes:[
+  {id:'zone',k:'zone',x:500,y:30,w:940,h:740,t:'User\'s machine · private network · FireCloud VM',ic:'laptop'},
+  {id:'kafka',k:'bus',x:40,y:90,w:330,h:130,t:'Kafka',s:'client topic\ngroup: be-client-jar',ic:'kafka'},
+  {id:'api',k:'svc',x:40,y:340,w:330,h:120,t:'FireFlink backend',s:'REST via Ingress',ic:'spring'},
+  {id:'s3',k:'store',x:40,y:580,w:330,h:120,t:'AWS S3',s:'screenshots · videos · logs',ic:'s3'},
+  {id:'jar',k:'svc',hi:1,x:550,y:100,w:360,h:160,t:'tyss-execution-client',s:':8090 · Spring Boot JAR\nregister · heartbeat\nconsume runs',ic:'java'},
+  {id:'eng',k:'svc',x:550,y:340,w:360,h:140,t:'Run engine',s:'RunWorkbench → StepService\nNLP step → action',ic:'gear'},
+  {id:'loc',k:'ext',x:550,y:580,w:360,h:120,t:'Local artifacts',s:'screenshots · logs · temp',ic:'file'},
+  {id:'se',k:'ext',x:1000,y:80,w:410,h:110,t:'Selenium WebDriver',s:'Chrome · Firefox · Edge · Safari',ic:'selenium'},
+  {id:'ap',k:'ext',x:1000,y:230,w:410,h:110,t:'Appium',s:'Android / iOS devices & emulators',ic:'appium'},
+  {id:'rest',k:'ext',x:1000,y:380,w:410,h:110,t:'API calls',s:'HTTP requests under test',ic:'gear'},
+  {id:'a11y',k:'ext',x:1000,y:530,w:410,h:110,t:'Accessibility scans',s:'web / mobile a11y checks',ic:'search'}
+ ],edges:[
+  {f:'kafka',t:'jar',l:'assign ↓ · results, heartbeat ↑',b:1},{f:'jar',t:'api',l:'pull scripts & data'},{f:'jar',t:'eng'},
+  {f:'eng',t:'se'},{f:'eng',t:'ap'},{f:'eng',t:'rest'},{f:'eng',t:'a11y'},{f:'eng',t:'loc'},{f:'loc',t:'s3',l:'upload'}
+ ]},panel:`
+  <p class="lead">The executor runs <b>where the app under test lives</b> — on the customer's machine, inside their network, or on a FireFlink cloud VM.</p>
+  <h4>Why on the user's system?</h4>
+  <ul><li>Reaches internal apps behind firewalls / VPN.</li><li>Uses local browsers and real mobile devices.</li><li>Test data stays in the customer's network.</li><li>Cloud cost scales with customers' own hardware.</li></ul>
+  <h4>How it talks to the cloud</h4>
+  <ol><li>Starts → registers machine + capabilities; sends heartbeats on <code>client-updates</code>.</li><li><b>Outbound connections only</b> (Kafka consumer + REST): no inbound port to open on the customer side.</li><li>Receives assignment → pulls scripts / data → engine executes each NLP step via Selenium / Appium / HTTP.</li><li>Uploads artifacts straight to S3; streams step results to <code>response-topic</code>.</li></ol>
+  <h4>Resilience</h4>
+  <ul><li>Kafka offsets → no lost assignment if the client restarts.</li><li>Missed heartbeats → machine marked offline; run can be re-queued.</li></ul>`},
+
+{id:'results',kicker:'Flow 4',title:'Results & live updates',dia:{W:1660,H:800,nodes:[
+  {id:'cl',k:'ext',x:40,y:330,w:230,h:120,t:'Execution client',s:'step results',ic:'laptop'},
+  {id:'k1',k:'bus',x:330,y:320,w:260,h:140,t:'Kafka',s:'response-topic\nexecution-status',ic:'kafka'},
+  {id:'er',k:'svc',hi:1,x:660,y:290,w:320,h:200,t:'execution-result',s:':8210\nconsume · compute status\npersist · fan-out',ic:'spring'},
+  {id:'mongo',k:'store',x:660,y:600,w:320,h:120,t:'MongoDB',s:'results per script / step',ic:'mongo'},
+  {id:'k2',k:'bus',x:1050,y:250,w:280,h:280,t:'Kafka',s:'websocket.inbound\nanalytics-…-update\nfailure-notification\nfile / folder-operation',ic:'kafka'},
+  {id:'ws',k:'svc',x:1400,y:60,w:240,h:110,t:'websocket-service',s:':8218',ic:'spring'},
+  {id:'br',k:'ext',x:1400,y:230,w:240,h:110,t:'Web UI',s:'live dashboard',ic:'browser'},
+  {id:'an',k:'svc',x:1400,y:420,w:240,h:110,t:'tyss-analytics',s:':8215',ic:'chart'},
+  {id:'nt',k:'prop',x:1400,y:610,w:240,h:110,t:'Notification',s:'proposed',ic:'bell'}
+ ],edges:[
+  {f:'cl',t:'k1'},{f:'k1',t:'er',l:'consumer group × N'},{f:'er',t:'mongo',l:'bulk upsert'},{f:'er',t:'k2',l:'emit'},
+  {f:'k2',t:'ws',l:'websocket.inbound'},{f:'ws',t:'br',l:'WebSocket push'},{f:'k2',t:'an'},{f:'k2',t:'nt',p:1}
+ ]},panel:`
+  <p class="lead"><b>execution-result</b> is the hot path: every step of every run passes through it.</p>
+  <h4>How it works</h4>
+  <ol><li>Client publishes step results to <code>response-topic</code>.</li><li>execution-result consumes with configurable concurrency (<code>config.concurrency.execution.result.*</code>).</li><li>Upserts results in MongoDB, rolls up script → suite status.</li><li>Emits events: <code>websocket.inbound</code> (live UI), analytics updates, <code>failure-notification</code>.</li><li>websocket-service pushes to the browser that is watching that run.</li></ol>
+  <h4>Correctness</h4>
+  <ul><li><b>Ordering</b>: key messages by <code>executionId</code> → one partition → in-order per run.</li><li><b>At-least-once</b>: commit offset after DB write; upsert by <code>executionId + stepId</code> makes duplicates harmless.</li><li><b>Back-pressure</b>: Kafka buffers spikes; scale pods up to the partition count.</li></ul>
+  <div class="qa"><b>If asked: "multiple websocket pods — how does the right browser get the update?"</b>Each pod consumes <code>websocket.inbound</code> (e.g. a unique group per pod, or Redis pub/sub) and pushes only to sessions it holds.</div>`},
+
+{id:'notify',kicker:'Flow 5 · proposed',title:'Notification service (not built yet)',dia:{W:1260,H:780,nodes:[
+  {id:'k',k:'bus',x:40,y:270,w:300,h:210,t:'Kafka',s:'failure-notification\nexecution-completed (new)\nschedule-missed (new)',ic:'kafka'},
+  {id:'ns',k:'prop',x:420,y:250,w:350,h:250,t:'notification-service',s:'PROPOSED\nconsume → enrich → route\npreferences · templates\nidempotency · retry · DLT',ic:'bell'},
+  {id:'db',k:'store',x:420,y:600,w:350,h:110,t:'MongoDB',s:'prefs · templates · send log',ic:'mongo'},
+  {id:'dlt',k:'bus',x:40,y:600,w:300,h:110,t:'Kafka DLT',s:'notification.DLT',ic:'kafka'},
+  {id:'email',k:'ext',x:880,y:40,w:330,h:100,t:'Email',s:'AWS SES / SMTP',ic:'mail'},
+  {id:'slack',k:'ext',x:880,y:180,w:330,h:100,t:'Slack',s:'incoming webhook',ic:'slack'},
+  {id:'teams',k:'ext',x:880,y:320,w:330,h:100,t:'MS Teams',s:'channel webhook',ic:'teams'},
+  {id:'hook',k:'ext',x:880,y:460,w:330,h:100,t:'Webhook',s:'CI / customer systems',ic:'gear'},
+  {id:'inapp',k:'ext',x:880,y:600,w:330,h:100,t:'In-app',s:'via websocket-service',ic:'browser'}
+ ],edges:[
+  {f:'k',t:'ns',l:'consume'},{f:'ns',t:'db'},{f:'ns',t:'dlt',l:'after retries',d:1},
+  {f:'ns',t:'email'},{f:'ns',t:'slack'},{f:'ns',t:'teams'},{f:'ns',t:'hook'},{f:'ns',t:'inapp'}
+ ]},panel:`
+  <p class="lead">Today failures are published on <code>failure-notification</code>. A dedicated service would turn events into user-facing alerts.</p>
+  <h4>Design</h4>
+  <ol><li><b>Event-driven</b>: consume run-completed / failure events — producers don't change.</li><li><b>Enrich</b>: fetch project, owner, failure summary, report link.</li><li><b>Route</b> by user / project preferences (channel, severity, quiet hours).</li><li><b>Send</b> through a channel interface (Strategy pattern): Email, Slack, Teams, webhook, in-app.</li><li><b>Log</b> each send for audit and de-duplication.</li></ol>
+  <h4>Reliability</h4>
+  <ul><li>Idempotency key = <code>eventId + channel + recipient</code>.</li><li>Retry with exponential backoff → then dead-letter topic.</li><li>Rate-limit / digest to avoid alert storms (e.g. 200 failed scripts → 1 message).</li><li>Templates versioned in DB; secrets (SMTP, webhooks) in K8s Secrets.</li></ul>`},
+
+{id:'reports',kicker:'Flow 6',title:'Reports & S3',dia:{W:1500,H:800,nodes:[
+  {id:'br',k:'ext',x:40,y:320,w:250,h:120,t:'Web UI',s:'view / download',ic:'browser'},
+  {id:'ex',k:'svc',x:40,y:600,w:250,h:110,t:'tyss-export',s:':8213 · Excel / CSV',ic:'file'},
+  {id:'rp',k:'svc',hi:1,x:380,y:280,w:330,h:210,t:'fireflink-reports',s:':8055\nHtmlReportService\nPdfReportService\nScreenshotService',ic:'file'},
+  {id:'er',k:'svc',x:820,y:60,w:300,h:120,t:'execution-result',s:':8210 · results API',ic:'spring'},
+  {id:'mongo',k:'store',x:820,y:250,w:300,h:110,t:'MongoDB',s:'results · report meta',ic:'mongo'},
+  {id:'s3',k:'store',x:820,y:430,w:300,h:130,t:'AWS S3',s:'screenshots · videos\nreport files',ic:'s3'},
+  {id:'k',k:'bus',x:820,y:630,w:300,h:110,t:'Kafka',s:'archive-details-topic',ic:'kafka'},
+  {id:'cl',k:'ext',x:1200,y:440,w:270,h:110,t:'Execution client',s:'uploads artifacts',ic:'laptop'},
+  {id:'de',k:'svc',x:1200,y:630,w:270,h:110,t:'dashboard-execution',s:'archive old runs',ic:'spring'}
+ ],edges:[
+  {f:'br',t:'rp',l:'GET report / link'},{f:'br',t:'ex'},{f:'rp',t:'er',l:'Feign'},{f:'rp',t:'mongo'},
+  {f:'rp',t:'s3',l:'store · pre-signed URL'},{f:'cl',t:'s3',l:'upload'},{f:'de',t:'k'},
+  {f:'k',t:'rp',pts:[[820,685],[600,685],[600,490]],l:'ArchiveKafkaListener',lp:[690,685]}
+ ]},panel:`
+  <p class="lead"><b>fireflink-reports</b> turns stored results + S3 artifacts into shareable HTML / PDF reports.</p>
+  <h4>Generation pipeline</h4>
+  <ol><li>User asks for a report (or a run finishes).</li><li>Fetch results (Feign → execution-result / MongoDB).</li><li>Assemble with HtmlReportService / PdfReportService; screenshots via ScreenshotService.</li><li>Store the file on S3 → return a <b>pre-signed URL</b> (time-limited, no public bucket).</li></ol>
+  <h4>Why S3?</h4>
+  <ul><li>Artifacts are large and binary — keep them out of MongoDB (16 MB doc limit).</li><li>Client uploads <b>directly</b> to S3 → backend never proxies big files.</li><li>Lifecycle rules: Standard → IA / Glacier → delete, controls cost.</li></ul>
+  <h4>Archival</h4>
+  <p>dashboard-execution publishes <code>archive-details</code>; reports' ArchiveKafkaListener moves old runs out of the hot path.</p>`},
+
+{id:'analytics',kicker:'Flow 7',title:'Analytics',dia:{W:1260,H:780,nodes:[
+  {id:'k',k:'bus',x:40,y:240,w:340,h:280,t:'Kafka',s:'execution-response-cloud-analytic\nanalytics-execution-results-update\nanalytics-manual-client-updates\nelastic_search topic',ic:'kafka'},
+  {id:'an',k:'svc',hi:1,x:470,y:280,w:320,h:200,t:'tyss-analytics',s:':8215\nconsume · aggregate\nindex · query APIs',ic:'chart'},
+  {id:'es',k:'store',x:880,y:90,w:340,h:130,t:'Elasticsearch',s:'7.17.10 · client 8.11.3\naggregations · search',ic:'elastic'},
+  {id:'mongo',k:'store',x:880,y:320,w:340,h:120,t:'MongoDB',s:'source of truth',ic:'mongo'},
+  {id:'br',k:'ext',x:880,y:540,w:340,h:120,t:'Dashboards',s:'pass % · trends · flaky tests',ic:'browser'},
+  {id:'ri',k:'svc',x:470,y:580,w:320,h:120,t:'resource-insights',s:':8105 · resource usage',ic:'chart'}
+ ],edges:[
+  {f:'k',t:'an',l:'consume'},{f:'an',t:'es',l:'bulk index · aggs'},{f:'an',t:'mongo',l:'read'},{f:'br',t:'an',l:'REST'}
+ ]},panel:`
+  <p class="lead">Analytics is a <b>separate read model</b>: execution writes, analytics reshapes the same events for fast dashboards.</p>
+  <h4>How it works</h4>
+  <ol><li>Result events (cloud, manual, updates) arrive on analytics topics.</li><li>tyss-analytics transforms them into query-friendly documents.</li><li>Bulk-indexes into Elasticsearch.</li><li>Dashboards query ES aggregations: <code>date_histogram</code> for trends, <code>terms</code> for top failing scripts, <code>avg</code> durations.</li></ol>
+  <h4>Typical widgets</h4>
+  <ul><li>Pass / fail % by suite, project, environment.</li><li>Flaky tests (status flips across runs).</li><li>Execution time trends, slowest steps.</li><li>Defects raised per run.</li></ul>
+  <h4>Why not only MongoDB?</h4>
+  <p>Aggregations over millions of step results are much faster in ES, and heavy analytics queries don't load the operational DB (CQRS-style split).</p>`},
+
+{id:'search',kicker:'Flow 8',title:'Search & filter with Elasticsearch',dia:{W:1400,H:800,nodes:[
+  {id:'zw',k:'zone',x:20,y:30,w:1360,h:230,t:'Write path'},
+  {id:'zr',k:'zone',x:20,y:560,w:1360,h:210,t:'Read path'},
+  {id:'svc',k:'svc',x:50,y:100,w:280,h:120,t:'Any service',s:'project · result · …',ic:'spring'},
+  {id:'mongo',k:'store',x:400,y:100,w:260,h:120,t:'MongoDB',s:'save (truth)',ic:'mongo'},
+  {id:'k',k:'bus',x:730,y:100,w:260,h:120,t:'Kafka',s:'elastic_search topic',ic:'kafka'},
+  {id:'idx',k:'svc',x:1060,y:100,w:290,h:120,t:'analytics consumer',s:'map doc → bulk index',ic:'chart'},
+  {id:'es',k:'store',hi:1,x:1060,y:320,w:290,h:170,t:'Elasticsearch',s:'inverted index\nkeyword · text · date',ic:'elastic'},
+  {id:'br',k:'ext',x:50,y:620,w:280,h:120,t:'Web UI',s:'search box + filters',ic:'browser'},
+  {id:'api',k:'svc',x:400,y:620,w:300,h:120,t:'search API',s:'bool query + aggs',ic:'search'}
+ ],edges:[
+  {f:'svc',t:'mongo',l:'save'},{f:'svc',t:'k',pts:[[190,220],[190,245],[860,245],[860,220]],l:'publish event',lp:[520,245]},
+  {f:'k',t:'idx',l:'consume'},{f:'idx',t:'es',l:'bulk index'},{f:'br',t:'api',l:'GET ?q&filters'},
+  {f:'api',t:'es',pts:[[700,680],[1205,680],[1205,490]],l:'query → hits + facets',lp:[950,680],b:1}
+ ]},panel:`
+  <p class="lead">MongoDB stays the source of truth; Elasticsearch is a <b>derived index</b> built for searching and filtering.</p>
+  <h4>Write path</h4>
+  <ol><li>Service saves to MongoDB.</li><li>Publishes a change event on the <code>elastic_search</code> topic.</li><li>Consumer maps it and bulk-indexes into ES (~1 s until searchable).</li></ol>
+  <h4>Read path</h4>
+  <ol><li>UI sends text + filters (project, status, date, tags).</li><li>API builds a <code>bool</code> query: <code>must</code> = text match, <code>filter</code> = exact fields (cached, no scoring).</li><li>Aggregations return facet counts for the filter sidebar.</li><li>Paginate with <code>search_after</code> rather than deep <code>from/size</code>.</li></ol>
+  <h4>Key ideas</h4>
+  <ul><li>Mapping: <code>keyword</code> for exact filters, <code>text</code> for full-text.</li><li>Eventually consistent — a fresh write may take ~1 s to appear.</li><li>If ES is lost: reindex from MongoDB / replay Kafka.</li></ul>`},
+
+{id:'kafka',kicker:'Infra',title:'Kafka setup',dia:{W:1620,H:720,nodes:[
+  {id:'prod',k:'group',x:40,y:80,w:280,h:330,t:'Producers',chips:[[null,'execution-client',''],[null,'dashboard-execution',''],[null,'execution-result',''],[null,'tyss-project','']]},
+  {id:'b1',k:'group',x:380,y:80,w:250,h:330,t:'Broker 1',note:'topic: response-topic',chips:[[null,'P0 · leader','','lead'],[null,'P1 · follower',''],[null,'P2 · follower','']]},
+  {id:'b2',k:'group',x:690,y:80,w:250,h:330,t:'Broker 2',note:'topic: response-topic',chips:[[null,'P0 · follower',''],[null,'P1 · leader','','lead'],[null,'P2 · follower','']]},
+  {id:'b3',k:'group',x:1000,y:80,w:250,h:330,t:'Broker 3',note:'topic: response-topic',chips:[[null,'P0 · follower',''],[null,'P1 · follower',''],[null,'P2 · leader','','lead']]},
+  {id:'cg1',k:'group',x:1320,y:80,w:280,h:300,t:'CG · execution-result',chips:[[null,'pod-1 ← P0',''],[null,'pod-2 ← P1',''],[null,'pod-3 ← P2','']]},
+  {id:'cg2',k:'group',x:1320,y:420,w:280,h:240,t:'CG · analytics',chips:[[null,'pod-1 ← P0, P1',''],[null,'pod-2 ← P2','']]},
+  {id:'ctrl',k:'bus',x:380,y:450,w:870,h:100,t:'Controller quorum',s:'KRaft (or ZooKeeper on older clusters) · metadata · leader election',ic:'kafka'},
+  {id:'dur',k:'ext',x:380,y:580,w:870,h:100,t:'Durability settings (recommended)',s:'RF = 3 · min.insync.replicas = 2 · acks = all · idempotent producer',ic:'gear'}
+ ],edges:[
+  {f:'prod',t:'b1',pts:[[320,164],[380,164]]},
+  {f:'b1',t:'b2',pts:[[630,164],[690,164]],d:1},{f:'b2',t:'b3',pts:[[940,224],[1000,224]],d:1},
+  {f:'b3',t:'cg1',pts:[[1250,284],[1320,284]],l:'poll',lp:[1285,262]},
+  {f:'b3',t:'cg2',pts:[[1250,350],[1285,350],[1285,540],[1320,540]]}
+ ]},panel:`
+  <p class="lead">Kafka is the backbone: <b>30+ <code>@KafkaListener</code>s</b>, each with its own consumer group, container factory and concurrency (<code>config.concurrency.*</code>).</p>
+  <h4>Core concepts</h4>
+  <ul><li><b>Topic → partitions</b>: a partition is the unit of ordering and parallelism.</li><li><b>Replication</b>: each partition has 1 leader + followers on other brokers (RF 3). The in-sync replicas (ISR) take over if the leader dies.</li><li><b>Producer key</b> → partition. Key = <code>executionId</code> keeps one run's events in order.</li><li><b>Consumer group</b>: each partition is read by one consumer in the group. Different groups read the same topic independently (execution-result vs analytics).</li><li><b>Offsets</b> committed after processing → at-least-once.</li><li><b>Rebalance</b> when pods scale or crash.</li></ul>
+  <h4>Failure handling</h4>
+  <ul><li>Broker down → follower in ISR becomes leader; <code>acks=all</code> + min ISR 2 means no acknowledged message is lost.</li><li>Consumer down → partitions reassigned.</li><li>Poison message → retry, then dead-letter topic (<code>DefaultErrorHandler</code> + <code>DeadLetterPublishingRecoverer</code>).</li></ul>
+  <h4>Sizing rule</h4>
+  <p>Partitions ≥ pods × listener concurrency; extra consumers beyond that sit idle.</p>
+  <p><span class="verify">verify</span> broker count / RF / partitions in your cluster.</p>`},
+
+{id:'mongo',kicker:'Infra',title:'MongoDB setup',dia:{W:1500,H:780,nodes:[
+  {id:'app',k:'svc',x:40,y:310,w:290,h:150,t:'Spring services',s:'Spring Data MongoDB\n~23 modules',ic:'spring'},
+  {id:'pri',k:'store',hi:1,x:500,y:70,w:340,h:150,t:'Primary',s:'all writes · oplog',ic:'mongo'},
+  {id:'s1',k:'store',x:390,y:480,w:300,h:150,t:'Secondary 1',s:'replays oplog',ic:'mongo'},
+  {id:'s2',k:'store',x:760,y:480,w:300,h:150,t:'Secondary 2',s:'replays oplog',ic:'mongo'},
+  {id:'zone',k:'zone',x:1120,y:40,w:350,h:700,t:'Scale-out (sharding)'},
+  {id:'ms',k:'svc',x:1150,y:110,w:290,h:110,t:'mongos',s:'query router',ic:'mongo'},
+  {id:'cfg',k:'ext',x:1150,y:280,w:290,h:110,t:'Config servers',s:'chunk metadata',ic:'mongo'},
+  {id:'sh',k:'store',x:1150,y:450,w:290,h:140,t:'Shards × N',s:'each = replica set\nkey e.g. projectId',ic:'mongo'}
+ ],edges:[
+  {f:'app',t:'pri',l:'writes · w: majority'},{f:'app',t:'s1',l:'reads (secondaryPreferred)',d:1},
+  {f:'pri',t:'s1',l:'oplog'},{f:'pri',t:'s2',l:'oplog'},{f:'s1',t:'s2',l:'heartbeat · election',d:1,b:1},
+  {f:'ms',t:'cfg'},{f:'ms',t:'sh',pts:[[1440,165],[1458,165],[1458,520],[1440,520]]}
+ ]},panel:`
+  <p class="lead">MongoDB is the <b>system of record</b>. Run it as a <b>replica set</b>; sharding is the next step when data or write volume outgrows one primary.</p>
+  <h4>Replica set</h4>
+  <ul><li>1 primary takes all writes and records them in the <b>oplog</b>.</li><li>Secondaries replay the oplog asynchronously.</li><li>Primary fails → secondaries hold an <b>election</b> (seconds) → new primary; drivers retry writes automatically.</li><li>Odd number of voting members (3 / 5) so a majority exists.</li></ul>
+  <h4>Consistency knobs</h4>
+  <ul><li><code>w: majority</code> — survives failover.</li><li><code>readPreference</code>: primary for fresh data, secondary for reports / analytics reads.</li><li>Multi-document transactions are available on replica sets (use sparingly).</li></ul>
+  <h4>Modelling tips</h4>
+  <ul><li>Compound indexes, e.g. <code>{projectId, status, createdAt}</code>.</li><li>16 MB document limit → store results per script / step, binaries on S3.</li><li>TTL indexes for temporary data; scope every query by tenant / project.</li></ul>
+  <p><span class="verify">verify</span> server version and topology.</p>`},
+
+{id:'es',kicker:'Infra',title:'Elasticsearch cluster',dia:{W:1440,H:760,nodes:[
+  {id:'an',k:'svc',x:40,y:300,w:290,h:160,t:'tyss-analytics',s:'ES Java client 8.11.3\nSpring Data ES',ic:'chart'},
+  {id:'n1',k:'group',x:390,y:80,w:300,h:330,t:'Node 1 · master/data',note:'index: executions',chips:[[null,'P0 · primary','','lead'],[null,'R1 · replica','']]},
+  {id:'n2',k:'group',x:730,y:80,w:300,h:330,t:'Node 2 · master/data',note:'index: executions',chips:[[null,'P1 · primary','','lead'],[null,'R2 · replica','']]},
+  {id:'n3',k:'group',x:1070,y:80,w:300,h:330,t:'Node 3 · master/data',note:'index: executions',chips:[[null,'P2 · primary','','lead'],[null,'R0 · replica','']]},
+  {id:'ilm',k:'ext',x:390,y:470,w:980,h:110,t:'Index lifecycle',s:'rollover by size / age · hot → warm → delete · aliases for zero-downtime reindex',ic:'gear'},
+  {id:'nrt',k:'ext',x:390,y:620,w:980,h:100,t:'Near-real-time',s:'refresh every 1 s → a doc is searchable ~1 s after indexing (eventually consistent with MongoDB)',ic:'clock'}
+ ],edges:[
+  {f:'an',t:'n1',l:'index / query'},{f:'n1',t:'n2',pts:[[690,300],[730,300]],d:1},{f:'n2',t:'n3',pts:[[1030,300],[1070,300]],d:1}
+ ]},panel:`
+  <p class="lead">ES powers search, filters and analytics. Data is split into <b>shards</b>, and every shard has a <b>replica</b> on another node.</p>
+  <h4>Concepts</h4>
+  <ul><li><b>Index</b> ≈ collection; split into primary shards (P0–P2).</li><li><b>Replica</b> shard (R) lives on a different node → survives a node failure and serves reads.</li><li>Any node can coordinate a query: scatter to shards → gather → merge.</li><li><b>Inverted index</b>: term → list of docs; this is why full-text search is fast.</li><li>Node roles: master-eligible (cluster state), data, ingest.</li></ul>
+  <h4>Operational must-knows</h4>
+  <ul><li>Shard count is fixed at index creation → plan it, or use rollover + aliases.</li><li>Mapping changes need a reindex → read and write through an alias.</li><li>Cluster health: green (all replicas) / yellow (replica missing) / red (primary missing).</li></ul>
+  <p>Repo: <code>elasticsearch</code> 7.17.10 + Java client 8.11.3. <span class="verify">verify</span> server version.</p>`},
+
+{id:'auth',kicker:'Infra',title:'Keycloak & authentication',dia:{W:1500,H:780,nodes:[
+  {id:'br',k:'ext',x:40,y:320,w:240,h:120,t:'Browser',s:'FireFlink UI',ic:'browser'},
+  {id:'kc',k:'svc',hi:1,x:420,y:60,w:320,h:150,t:'Keycloak 26.2.4',s:'realm · clients · roles\nOIDC / OAuth2',ic:'keycloak'},
+  {id:'auth',k:'svc',x:420,y:330,w:320,h:120,t:'tyss-auth',s:':8200 · login · user context',ic:'spring'},
+  {id:'ing',k:'svc',x:420,y:580,w:320,h:110,t:'Ingress',s:'TLS termination',ic:'nginx'},
+  {id:'db',k:'store',x:880,y:60,w:320,h:150,t:'Keycloak HA',s:'2+ nodes · shared DB\nInfinispan session cache',ic:'keycloak'},
+  {id:'svc',k:'svc',x:880,y:560,w:300,h:150,t:'Microservices',s:'validate JWT locally\nroles → authorization',ic:'spring'},
+  {id:'s2s',k:'svc',x:1240,y:330,w:240,h:140,t:'Service → service',s:'client-credentials\nor token relay (Feign)',ic:'gear'}
+ ],edges:[
+  {f:'br',t:'kc',l:'① login · ② tokens',b:1},{f:'br',t:'auth',l:'login API'},{f:'auth',t:'kc',l:'OIDC',d:1},
+  {f:'br',t:'ing',l:'③ Bearer JWT'},{f:'ing',t:'svc'},
+  {f:'svc',t:'kc',pts:[[960,560],[960,265],[580,265],[580,210]],l:'④ JWKS public keys (cached)',lp:[770,265],d:1},
+  {f:'kc',t:'db'},{f:'svc',t:'s2s'}
+ ]},panel:`
+  <p class="lead">Keycloak is the <b>identity provider</b>; services only <b>verify</b> tokens, they never store passwords.</p>
+  <h4>Flow</h4>
+  <ol><li>User logs in (OIDC Authorization Code + PKCE, or via tyss-auth).</li><li>Keycloak returns an <b>access token (JWT)</b> + refresh token.</li><li>Every API call sends <code>Authorization: Bearer &lt;jwt&gt;</code>.</li><li>Each service checks signature with Keycloak's <b>JWKS</b> public keys (cached), plus <code>exp</code>, <code>iss</code>, <code>aud</code> — no network call per request.</li><li>Roles / claims → authorisation (<code>@PreAuthorize</code>).</li></ol>
+  <h4>Terms</h4>
+  <ul><li><b>Realm</b> = tenant of users / clients / roles.</li><li><b>Client</b> = an app that requests tokens (UI, each service).</li><li>Short-lived access token + refresh token = security with good UX.</li></ul>
+  <h4>In this repo</h4>
+  <p>Keycloak 26.2.4 libraries in tyss-project, fireflink-integrations, fireflink-ai, fireflink-customer-extensions (incl. server SPI → custom extensions).</p>`},
+
+{id:'k8s',kicker:'Infra',title:'Docker & Kubernetes',dia:{W:1600,H:880,nodes:[
+  {id:'code',k:'ext',x:40,y:50,w:240,h:100,t:'Bitbucket',s:'feature → release',ic:'bitbucket'},
+  {id:'mvn',k:'ext',x:330,y:50,w:240,h:100,t:'Maven',s:'full_build.sh → jars',ic:'java'},
+  {id:'img',k:'ext',x:620,y:50,w:260,h:100,t:'Docker image',s:'openjdk25 base',ic:'docker'},
+  {id:'reg',k:'ext',x:930,y:50,w:300,h:100,t:'GitLab registry',s:'registry.gitlab.com/…',ic:'gitlab'},
+  {id:'zone',k:'zone',x:40,y:200,w:1520,h:650,t:'Kubernetes cluster · namespace per env (dev2 · preprod · prod)',ic:'k8s'},
+  {id:'ing',k:'svc',x:80,y:280,w:250,h:120,t:'Ingress',s:'NGINX · TLS · routes',ic:'nginx'},
+  {id:'svcn',k:'svc',x:380,y:280,w:250,h:120,t:'Service',s:'ClusterIP · DNS · LB',ic:'k8s'},
+  {id:'dep',k:'group',x:690,y:260,w:420,h:330,t:'Deployment · execution-result',chips:[[null,'ReplicaSet','rev N'],[null,'Pod 1','JVM 25'],[null,'Pod 2','JVM 25'],[null,'Pod 3','JVM 25']]},
+  {id:'hpa',k:'svc',x:1160,y:260,w:360,h:100,t:'HPA',s:'CPU / Kafka lag → 2…N pods',ic:'k8s'},
+  {id:'cfg',k:'svc',x:1160,y:390,w:360,h:100,t:'ConfigMap · Secret',s:'application-{env}.yml · creds',ic:'k8s'},
+  {id:'probe',k:'svc',x:1160,y:520,w:360,h:100,t:'Probes',s:'readiness · liveness',ic:'k8s'},
+  {id:'sts',k:'store',x:80,y:470,w:550,h:150,t:'StatefulSets / managed services',s:'Kafka · MongoDB · Elasticsearch · Redis\nPVC-backed storage',ic:'k8s'},
+  {id:'roll',k:'ext',x:690,y:650,w:420,h:150,t:'Rolling update',s:'maxSurge 1 · maxUnavailable 0\nPodDisruptionBudget',ic:'k8s'},
+  {id:'onp',k:'ext',x:80,y:670,w:550,h:130,t:'On-prem option',s:'tyss-onprem :9200 · docker-compose\nbridge network "fireflink"',ic:'docker'}
+ ],edges:[
+  {f:'code',t:'mvn'},{f:'mvn',t:'img'},{f:'img',t:'reg'},
+  {f:'reg',t:'dep',pts:[[1080,150],[1080,232],[900,232],[900,260]],l:'image pull',lp:[990,232]},
+  {f:'ing',t:'svcn'},{f:'svcn',t:'dep'},{f:'hpa',t:'dep',l:'scale',d:1},{f:'cfg',t:'dep',l:'env',d:1},{f:'probe',t:'dep',l:'health',d:1}
+ ]},panel:`
+  <p class="lead">Each microservice is a <b>Docker image</b>, deployed as a <b>Kubernetes Deployment</b> with multiple stateless pods.</p>
+  <h4>Build → deploy</h4>
+  <ol><li>Merge to release branch → Maven builds jars.</li><li>Docker builds one image per service on the openjdk25 base.</li><li>Push to GitLab registry → K8s pulls the new tag → rolling update.</li></ol>
+  <h4>Kubernetes objects</h4>
+  <ul><li><b>Pod</b>: one running container (JVM).</li><li><b>Deployment / ReplicaSet</b>: keeps N pods alive, does rolling updates and rollbacks.</li><li><b>Service</b>: stable DNS name + load-balancing across pods.</li><li><b>Ingress</b>: external HTTP(S) routing.</li><li><b>HPA</b>: autoscale on CPU / memory / Kafka lag.</li><li><b>ConfigMap / Secret</b>: per-env config — Spring profiles dev2, preprod, prod, prodCB, firecloud.</li><li><b>Probes</b>: readiness gates traffic, liveness restarts hung pods.</li><li><b>StatefulSet + PVC</b>: for Kafka / Mongo / ES if self-hosted.</li></ul>
+  <h4>Deployment modes</h4>
+  <p>SaaS cloud · <b>On-prem</b> (tyss-onprem + docker-compose) · FireCloud machines.</p>
+  <p><span class="verify">verify</span> K8s version, cloud provider, managed vs self-hosted stores.</p>`},
+
+{id:'cross',kicker:'Cross-cutting',title:'Communication, caching, config, resilience',html:'CROSS'},
+{id:'interview',kicker:'Interview',title:'How to explain it',html:'INTERVIEW'}
+];
+
+const CROSS = `
+<p class="sub">Concerns that apply to every service: how they talk, cache, configure, fail and scale.</p>
+<div class="cards">
+ <div class="card"><h3><svg class="ico"><use href="#i-spring"/></svg>Sync vs async</h3><ul>
+  <li><b>OpenFeign</b> (in ~24 modules) for request/response needs: licence check, results for a report.</li>
+  <li><b>Kafka</b> for events, fan-out and long work: run requests, results, indexing, archival.</li>
+  <li>Rule: if the caller doesn't need the answer <i>now</i> → event.</li></ul></div>
+ <div class="card"><h3><svg class="ico"><use href="#i-redis"/></svg>Caching</h3><ul>
+  <li>Redis / <code>@Cacheable</code> in dashboard-execution, project, app-management, client, utils.</li>
+  <li>Cache read-heavy, slow-changing data (licence, config, lookups).</li>
+  <li>Short-TTL distributed locks to stop double allocation.</li></ul></div>
+ <div class="card"><h3><svg class="ico"><use href="#i-gear"/></svg>Configuration</h3><ul>
+  <li>Spring profiles: <code>dev2 · preprod · prod · prodCB · firecloud</code>.</li>
+  <li>Listener concurrency tunable per topic: <code>config.concurrency.*</code>.</li>
+  <li>Secrets come from K8s Secrets, never from the image.</li></ul></div>
+ <div class="card"><h3><svg class="ico"><use href="#i-k8s"/></svg>Resilience</h3><ul>
+  <li>Timeouts + retries on Feign; circuit breaker for flaky dependencies.</li>
+  <li>Kafka: commit after processing, idempotent upserts, DLT for poison messages.</li>
+  <li>Readiness probes + graceful shutdown → zero-downtime rollouts.</li></ul></div>
+ <div class="card"><h3><svg class="ico"><use href="#i-chart"/></svg>Observability</h3><ul>
+  <li>Centralised logs keyed by <code>executionId</code> / traceId.</li>
+  <li>Metrics: Actuator → Prometheus / Grafana; watch Kafka consumer lag.</li>
+  <li>Distributed tracing across Feign + Kafka hops. <span class="verify">verify</span></li></ul></div>
+ <div class="card"><h3><svg class="ico"><use href="#i-keycloak"/></svg>Security</h3><ul>
+  <li>TLS at Ingress, JWT on every call, role-based authorisation.</li>
+  <li>Pre-signed S3 URLs; no public buckets.</li>
+  <li>Tenant isolation: every query scoped by licence / project.</li></ul></div>
+ <div class="card"><h3><svg class="ico"><use href="#i-docker"/></svg>Scaling</h3><ul>
+  <li>Stateless services → more pods (HPA).</li>
+  <li>Kafka → more partitions; Mongo → shards; ES → shards / replicas.</li>
+  <li>Execution itself scales on customers' machines and FireCloud.</li></ul></div>
+ <div class="card"><h3><svg class="ico"><use href="#i-search"/></svg>Known trade-offs</h3><ul>
+  <li>Eventual consistency between Mongo, ES and live UI.</li>
+  <li>Many services → more ops overhead; shared libs (common, utils, data-models) couple releases.</li>
+  <li>Hot path (execution-result) needs careful partition / concurrency tuning.</li></ul></div>
+</div>`;
+
+const INTERVIEW = `
+<p class="sub">Start with the 2-minute story, then go wherever the interviewer points. Each Q links back to a slide.</p>
+<div class="pitch">
+<b>FireFlink</b> is a codeless test-automation platform for web, mobile, API and accessibility testing. The backend is about <b>23 Spring Boot 4 / Java 25 microservices</b> in Docker on <b>Kubernetes</b>.<br><br>
+Users <b>author</b> tests in the web UI. tyss-project and all-trees store scripts, steps and elements in <b>MongoDB</b>. When a suite runs, <b>dashboard-execution</b> checks the licence, queues the run with priority, picks a machine and publishes the request to <b>Kafka</b>.<br><br>
+The <b>execution client</b> — a Spring Boot JAR on the customer's machine or our cloud — consumes it. It runs Selenium / Appium / API steps locally, uploads screenshots and videos to <b>S3</b>, and streams step results back through Kafka.<br><br>
+<b>execution-result</b> persists them and fans out events: websocket-service pushes live status to the browser, analytics indexes <b>Elasticsearch</b> for dashboards and search, and reports builds HTML / PDF reports.<br><br>
+Identity is <b>Keycloak</b> with JWTs validated in each service. Kafka decouples everything, so a slow consumer never blocks execution, and each service scales independently.
+</div>
+<h4>Likely questions</h4>
+<details><summary>Why microservices and not a monolith?</summary>Different parts scale differently: the results path takes thousands of messages per run, authoring is low-traffic. Teams can deploy independently, and a failure in reports doesn't stop execution. The cost is operations and eventual consistency, which Kafka and idempotent consumers manage.</details>
+<details><summary>Why Kafka instead of REST between services?</summary>Execution produces bursts of events with several consumers (results, live UI, analytics, notifications). Kafka buffers spikes, lets each consumer group read independently, keeps per-run ordering with a key, and replays after failures. REST (Feign) is kept for synchronous queries.</details>
+<details><summary>How can the client run inside a customer's network?</summary>It only makes outbound connections (Kafka consumer + HTTPS), so no inbound firewall port is needed. It registers, sends heartbeats on client-updates, and pulls work assigned to its machine.</details>
+<details><summary>How do you avoid losing or duplicating results?</summary>Producer acks=all with replication 3 and min ISR 2. Consumers commit offsets after the DB write (at-least-once). Writes are upserts keyed by executionId + stepId, so redelivery is harmless. Poison messages go to a dead-letter topic after retries.</details>
+<details><summary>How is ordering guaranteed for a run?</summary>Messages are keyed by executionId, so they land on one partition, and Kafka preserves order within a partition.</details>
+<details><summary>Results volume spikes — how do you scale?</summary>Add execution-result pods (HPA on consumer lag) up to the partition count, tune listener concurrency, batch writes to Mongo. If that's still not enough, increase partitions.</details>
+<details><summary>Why MongoDB?</summary>Scripts and results are nested, variable-shape documents whose schema evolves. Mongo stores them naturally, handles high write volume, and gives HA through replica sets with a path to sharding.</details>
+<details><summary>Why Elasticsearch as well as Mongo?</summary>Full-text search, facet counts and large aggregations are what ES is built for. It is a derived read model (CQRS-style) that can be rebuilt from Mongo, so it never becomes the source of truth.</details>
+<details><summary>What happens if a Mongo primary or Kafka broker dies?</summary>Mongo: secondaries elect a new primary within seconds and drivers retry writes. Kafka: an in-sync follower becomes partition leader, and producers / consumers reconnect automatically.</details>
+<details><summary>How does authentication work across services?</summary>Keycloak issues a signed JWT. Each service validates it locally with cached JWKS keys (signature, expiry, issuer) and uses roles for authorisation. Service-to-service calls use client credentials or relay the token.</details>
+<details><summary>How do live updates reach the browser?</summary>execution-result publishes websocket.inbound; websocket-service consumes it and pushes over WebSocket to the sessions watching that run.</details>
+<details><summary>How would you add notifications?</summary>A new consumer of failure / completion events that enriches each event, routes it by user preference, and sends through pluggable channels. It uses idempotency keys, retries with backoff and a DLT, and digests events to avoid alert storms. See the Notification slide.</details>
+<details><summary>What would you improve?</summary>End-to-end tracing across Kafka hops, consumer-lag-based autoscaling, async report generation for very large runs, S3 lifecycle tiers, and a contract/schema registry for Kafka events.</details>`;
+
+function catalogHTML(){
+  const groups=[['Authoring',BIG.nodes.find(n=>n.id==='gA')],['Execution',BIG.nodes.find(n=>n.id==='gB')],['Insights',BIG.nodes.find(n=>n.id==='gC')],['Platform · Integrations',BIG.nodes.find(n=>n.id==='gD')]];
+  let h='<p class="sub"><b>23</b> deployable server-side services (each has a Dockerfile) + <b>1</b> execution client on the user\'s machine + <b>1</b> proposed notification service. Descriptions are inferred from module names, ports and Kafka listeners — adjust to your team\'s wording.</p><div class="cards">';
+  const row=(name)=>{const v=SVC[name]||['',''];return `<div class="svcrow"><span class="p">${v[0]}</span><div><b>${name}</b><div class="d">${v[1]}</div></div></div>`;};
+  const edge=['auth','ing','ws'];
+  h+=`<div class="card"><h3><svg class="ico"><use href="#i-keycloak"/></svg>Edge &amp; real-time<span class="n">2</span></h3>${row('tyss-auth')}${row('websocket-service')}</div>`;
+  groups.forEach(([t,g])=>{const real=g.chips.filter(c=>c[3]!=='prop').length;h+=`<div class="card"><h3><svg class="ico"><use href="#i-${g.ic==='file'?'spring':g.ic==='chart'?'elastic':'spring'}"/></svg>${t}<span class="n">${real}</span></h3>${g.chips.map(c=>row(c[1])).join('')}</div>`;});
+  h+=`<div class="card"><h3><svg class="ico"><use href="#i-java"/></svg>Runs on user's machine<span class="n">1</span></h3>${row('tyss-execution-client')}</div>`;
+  h+=`<div class="card"><h3><svg class="ico"><use href="#i-gear"/></svg>Shared libraries (no Dockerfile)</h3><ul><li>tyss-common · tyss-utils · tyss-config</li><li>tyss-data-models · tyss-nlp · tyss-nlp-data-models</li><li>tyss-assertion-service · tyss-execution-sync</li><li>fireflink-accessibility-workbench</li></ul></div></div>`;
+  return h;
+}
+
+/* ============================== RENDERER ============================== */
+const NS='http://www.w3.org/2000/svg';
+function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)if(attrs[k]!=null)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;}
+function txt(p,x,y,s,cls,anchor){const t=el('text',{x,y,class:cls,'text-anchor':anchor||'start'},p);t.textContent=s;return t;}
+function useIc(p,ic,x,y,sz){return el('use',{href:'#i-'+ic,x,y,width:sz,height:sz},p);}
+const ctr=r=>[r.x+r.w/2,r.y+r.h/2];
+function clip(r,to){const [cx,cy]=ctr(r),dx=to[0]-cx,dy=to[1]-cy;if(!dx&&!dy)return[cx,cy];const t=Math.min(dx?(r.w/2)/Math.abs(dx):1e9,dy?(r.h/2)/Math.abs(dy):1e9);return[cx+dx*t,cy+dy*t];}
+
+function buildDiagram(host,spec,key,opts){
+  opts=opts||{};
+  const {W,H}=spec;
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:'xMidYMid meet'});
+  host.appendChild(svg);
+  const defs=el('defs',{},svg);
+  [['ar','ah'],['arh','ahh'],['arp','ahp']].forEach(([id,c])=>{const m=el('marker',{id:id+'-'+key,viewBox:'0 0 10 10',refX:'8.5',refY:'5',markerWidth:'7',markerHeight:'7',orient:'auto-start-reverse'},defs);el('path',{d:'M0 0L10 5L0 10z',class:c},m);});
+  const vp=el('g',{},svg), gZ=el('g',{},vp), gN=el('g',{},vp), gE=el('g',{},vp), gL=el('g',{},vp);
+  const reg={};
+  function drawNode(n,layer){
+    const k=n.k||'svc';
+    const g=el('g',{class:'node k-'+k+(n.hi?' hi':''),'data-id':n.id},layer);
+    el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:(k==='zone'||k==='group')?16:n.chip?9:12},g);
+    reg[n.id]={x:n.x,y:n.y,w:n.w,h:n.h,g,n};
+    if(k==='zone'||k==='group'){
+      const lx=n.lx!=null?n.lx:n.x+18, ly=n.ly!=null?n.ly:n.y+34;let tx=lx;
+      if(n.ic){useIc(g,n.ic,lx,ly-20,26);tx=lx+34;}
+      txt(g,tx,ly,n.t,'tg');
+      if(n.note){const a=n.note.split('\n');a.forEach((s,i)=>txt(g,n.x+18,n.y+n.h-16-(a.length-1-i)*17,s,'t2'));}
+      return;
+    }
+    if(n.chip){txt(g,n.x+16,n.y+n.h/2+5,n.t,'tc');if(n.s)txt(g,n.x+n.w-14,n.y+n.h/2+5,n.s,'t2','end');return;}
+    const lines=n.s?n.s.split('\n'):[];let x0=n.x+16;
+    if(n.ic){const sz=Math.min(46,n.h-28);useIc(g,n.ic,n.x+16,n.y+(n.h-sz)/2,sz);x0=n.x+16+sz+14;}
+    const bh=19+17*lines.length;const y=n.y+n.h/2-bh/2+14;
+    txt(g,x0,y,n.t,'t1');lines.forEach((s,i)=>txt(g,x0,y+21+i*17,s,'t2'));
+  }
+  spec.nodes.forEach(n=>{
+    drawNode(n,(n.k==='zone'||n.k==='group')?gZ:gN);
+    (n.chips||[]).forEach((c,i)=>{const id=c[0]||(n.id+'-c'+i);
+      drawNode({id,k:c[3]==='prop'?'prop':c[3]==='lead'?'lead':'chip',chip:1,x:n.x+20,y:n.y+60+i*60,w:n.w-40,h:48,t:c[1],s:c[2],parent:n.id,info:(SVC[c[1]]||[])[1]},gN);});
+  });
+  const edges=[];
+  spec.edges.forEach(e=>{
+    let pts=e.pts;
+    if(!pts){const a=reg[e.f],b=reg[e.t];pts=[clip(a,ctr(b)),clip(b,ctr(a))];}
+    const d='M'+pts.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L');
+    const g=el('g',{class:'eg'},gE);
+    const base=e.p?'arp':'ar';
+    const p=el('path',{d,class:'edge'+(e.d?' dash':'')+(e.p?' prop':'')},g);
+    p.setAttribute('marker-end',`url(#${base}-${key})`);if(e.b)p.setAttribute('marker-start',`url(#${base}-${key})`);
+    el('path',{d,class:'pulse'},g);
+    let lab=null;
+    if(e.l){let lp=e.lp;if(!lp){let best=-1;for(let i=1;i<pts.length;i++){const L=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);if(L>best){best=L;lp=[(pts[i][0]+pts[i-1][0])/2,(pts[i][1]+pts[i-1][1])/2];}}}
+      const w=e.l.length*6.9+18;lab=el('g',{class:'elabel'},gL);el('rect',{x:lp[0]-w/2,y:lp[1]-11,width:w,height:22,rx:11},lab);txt(lab,lp[0],lp[1]+4.5,e.l,'','middle');}
+    edges.push({e,g,p,lab,base});
+  });
+
+  /* pan / zoom */
+  let s=1,tx=0,ty=0,raf=0;
+  const apply=()=>vp.setAttribute('transform',`translate(${tx} ${ty}) scale(${s})`);
+  const pt=ev=>{const P=svg.createSVGPoint();P.x=ev.clientX;P.y=ev.clientY;return P.matrixTransform(svg.getScreenCTM().inverse());};
+  function zoomAt(f,px,py){const ns=Math.min(10,Math.max(.4,s*f)),k=ns/s;tx=px-(px-tx)*k;ty=py-(py-ty)*k;s=ns;apply();}
+  function animateTo(ns,ntx,nty){cancelAnimationFrame(raf);const s0=s,x0=tx,y0=ty,t0=performance.now();
+    const step=t=>{let k=Math.min(1,(t-t0)/380);k=1-Math.pow(1-k,3);s=s0+(ns-s0)*k;tx=x0+(ntx-x0)*k;ty=y0+(nty-y0)*k;apply();if(k<1)raf=requestAnimationFrame(step);};raf=requestAnimationFrame(step);}
+  function focus(r,pad){pad=pad||140;const ns=Math.min(W/(r.w+pad*2),H/(r.h+pad*2),4);animateTo(ns,W/2-(r.x+r.w/2)*ns,H/2-(r.y+r.h/2)*ns);}
+  svg.addEventListener('wheel',ev=>{ev.preventDefault();const p=pt(ev);zoomAt(Math.exp(-ev.deltaY*.0015),p.x,p.y);},{passive:false});
+  const ptrs=new Map();let drag=null,moved=false,pinch=null;
+  svg.addEventListener('pointerdown',ev=>{ptrs.set(ev.pointerId,ev);if(ptrs.size===1){moved=false;drag={c0:[ev.clientX,ev.clientY],p0:pt(ev),tx0:tx,ty0:ty};}else{pinch=null;}});
+  svg.addEventListener('pointermove',ev=>{if(!ptrs.has(ev.pointerId))return;ptrs.set(ev.pointerId,ev);
+    if(ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      if(pinch){const m=pt({clientX:(a.clientX+b.clientX)/2,clientY:(a.clientY+b.clientY)/2});zoomAt(d/pinch,m.x,m.y);}pinch=d;moved=true;return;}
+    if(!drag)return;
+    if(!moved&&Math.hypot(ev.clientX-drag.c0[0],ev.clientY-drag.c0[1])>5){moved=true;try{svg.setPointerCapture(ev.pointerId)}catch(_){}svg.classList.add('grabbing');}
+    if(moved){const p=pt(ev);tx=drag.tx0+(p.x-drag.p0.x);ty=drag.ty0+(p.y-drag.p0.y);apply();}});
+  const end=ev=>{ptrs.delete(ev.pointerId);if(ptrs.size<2)pinch=null;
+    if(ptrs.size===1){const r=[...ptrs.values()][0];drag={c0:[r.clientX,r.clientY],p0:pt(r),tx0:tx,ty0:ty};}
+    if(ptrs.size===0){drag=null;svg.classList.remove('grabbing');}};
+  svg.addEventListener('pointerup',end);svg.addEventListener('pointercancel',end);
+  svg.addEventListener('click',ev=>{if(moved)return;const g=ev.target.closest('.node');if(g&&opts.onSelect){const id=g.getAttribute('data-id');opts.onSelect(id,reg[id]);}});
+  svg.addEventListener('dblclick',ev=>{const g=ev.target.closest('.node');if(g&&!g.classList.contains('k-zone')){focus(reg[g.getAttribute('data-id')]);}else{const p=pt(ev);zoomAt(1.6,p.x,p.y);}});
+
+  function setStep(n){
+    svg.classList.toggle('playing',n>0);const on=new Set();
+    edges.forEach(o=>{const hit=n>0&&o.e.st===n;o.g.classList.toggle('on',hit);if(o.lab)o.lab.classList.toggle('on',hit);
+      const m=hit?'arh':o.base;o.p.setAttribute('marker-end',`url(#${m}-${key})`);if(o.e.b)o.p.setAttribute('marker-start',`url(#${m}-${key})`);
+      if(hit){on.add(o.e.f);on.add(o.e.t);}});
+    Object.values(reg).forEach(r=>{r.g.classList.toggle('on',on.has(r.n.id)||(r.n.chips||[]).some((c,i)=>on.has(c[0]))||(r.n.k==='zone'&&n>0));});
+  }
+  function select(id){Object.values(reg).forEach(r=>r.g.classList.toggle('sel',r.n.id===id));}
+  return {zoomIn:()=>zoomAt(1.3,W/2,H/2),zoomOut:()=>zoomAt(1/1.3,W/2,H/2),fit:()=>animateTo(1,0,0),setStep,select,focus,reg};
+}
+
+/* ============================== DECK ============================== */
+const deck=document.getElementById('deck'),menu=document.getElementById('menu');
+const pad2=i=>String(i+1).padStart(2,'0');
+let cur=0,step=0,timer=null,bigApi=null;
+const SECTIONS={0:'Overview',2:'Flows',10:'Infrastructure',15:'Wrap-up'};
+
+SL.forEach((s,i)=>{
+  const sec=document.createElement('section');sec.className='slide'+(s.html?' htmlslide':'');sec.dataset.i=i;
+  if(s.html){
+    const body=s.html==='CATALOG'?catalogHTML():s.html==='CROSS'?CROSS:INTERVIEW;
+    sec.innerHTML=`<div class="htmlwrap"><div class="kicker">${pad2(i)} · ${s.kicker}</div><h1>${s.title}</h1>${body}</div>`;
+  }else{
+    sec.innerHTML=`<div class="stage"><div class="dia"></div><div class="hint">Scroll / pinch to zoom · drag to pan · double-click to focus${i===0?' · click a box for details':''}</div>
+      <div class="ctrl"><button class="ib" data-z="in" title="Zoom in (+)">+</button><button class="ib" data-z="out" title="Zoom out (−)">−</button><button class="ib" data-z="fit" title="Fit (0)">⤢</button><button class="ib" data-z="panel" title="Toggle side panel (T)">◧</button></div>
+      ${i===0?`<div class="player"><button class="ib" id="pPrev" title="Previous step">⏮</button><button class="ib" id="pPlay" title="Play (P)">▶</button><button class="ib" id="pNext" title="Next step">⏭</button><div class="cap" id="pCap"></div><button class="ib" id="pClr" title="Clear">✕</button></div>`:''}
+      </div><aside class="panel"><div class="kicker">${pad2(i)} · ${s.kicker}</div><h2>${s.title}</h2>${s.panel}</aside>`;
+    deck.appendChild(sec);
+    const api=buildDiagram(sec.querySelector('.dia'),s.dia,s.id,i===0?{onSelect:showSel}:{onSelect:(id,r)=>{}});
+    sec._api=api;
+    sec.querySelectorAll('[data-z]').forEach(b=>b.onclick=()=>{const z=b.dataset.z;if(z==='in')api.zoomIn();else if(z==='out')api.zoomOut();else if(z==='fit')api.fit();else sec.classList.toggle('collapsed');});
+    if(i===0)bigApi=api;
+  }
+  if(!sec.parentNode)deck.appendChild(sec);
+  if(SECTIONS[i])menu.insertAdjacentHTML('beforeend',`<div class="sec">${SECTIONS[i]}</div>`);
+  menu.insertAdjacentHTML('beforeend',`<a href="#${i+1}" data-i="${i}"><b>${pad2(i)}</b><span>${s.title}</span></a>`);
+});
+
+/* big-picture panel */
+const DEFAULT_SEL=`<div class="sel"><h3>60-second version</h3><p>Users author tests in the web UI; scripts live in <b>MongoDB</b>. A run request goes to <b>dashboard-execution</b>, which queues it and publishes to <b>Kafka</b>. The <b>execution client</b> on the user's machine runs the steps, sends artifacts to <b>S3</b> and results back via Kafka. <b>execution-result</b> stores them and fans out to live UI (WebSocket), analytics (<b>Elasticsearch</b>) and reports. <b>Keycloak</b> secures everything; all of it runs as Docker containers on <b>Kubernetes</b>.</p><p style="color:var(--muted);font-size:12.5px">Click any box on the diagram for details.</p></div>`;
+function showSel(id,r){
+  const box=document.getElementById('sel');
+  if(!r||r.n.k==='zone'){box.innerHTML=DEFAULT_SEL;bigApi&&bigApi.select(null);return;}
+  const n=r.n;bigApi.select(id);
+  const parent=n.parent?BIG.nodes.find(x=>x.id===n.parent):null;
+  const go=n.go||(parent&&parent.go);
+  const sub=n.chip?(SVC[n.t]?('port '+SVC[n.t][0]):''):(n.s||'').replace(/\n/g,' · ');
+  const info=n.info||(n.k==='group'?'Group of '+(n.chips||[]).length+' services: '+n.chips.map(c=>c[1]).join(', ')+'.':'');
+  box.innerHTML=`<div class="sel"><h3>${n.t}</h3><p style="color:var(--muted);font-size:12.5px">${sub}</p><p>${info}</p>${go?`<button class="go" data-go="${go}">Deep dive →</button>`:''} <button class="go" data-reset style="border-color:var(--line);color:var(--muted)">Reset</button></div>`;
+}
+document.getElementById('sel').innerHTML=DEFAULT_SEL;
+document.getElementById('sel').addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g){goTo(SL.findIndex(s=>s.id===g.dataset.go));}if(e.target.closest('[data-reset]'))showSel(null);});
+const stepList=document.getElementById('stepList');
+stepList.innerHTML=STEPS.map((s,i)=>`<li data-s="${i+1}"><b>${s[0]}</b> — ${s[1]}</li>`).join('');
+stepList.onclick=e=>{const li=e.target.closest('li');if(li){stopPlay();setStep(+li.dataset.s);}};
+function setStep(n){step=n;bigApi.setStep(n);
+  document.getElementById('pCap').innerHTML=n?`<span class="badge">${n}</span><b>${STEPS[n-1][0]}</b> — ${STEPS[n-1][1]}`:'<span style="color:var(--muted)">▶ Play the life of a test run, step by step (11 steps)</span>';
+  stepList.querySelectorAll('li').forEach(li=>li.classList.toggle('cur',+li.dataset.s===n));}
+function stopPlay(){clearInterval(timer);timer=null;document.getElementById('pPlay').textContent='▶';}
+function togglePlay(){if(timer){stopPlay();return;}if(step>=STEPS.length||step===0)setStep(1);document.getElementById('pPlay').textContent='⏸';
+  timer=setInterval(()=>{if(step>=STEPS.length){stopPlay();return;}setStep(step+1);},3600);}
+document.getElementById('pPlay').onclick=togglePlay;
+document.getElementById('pNext').onclick=()=>{stopPlay();setStep(Math.min(STEPS.length,step+1));};
+document.getElementById('pPrev').onclick=()=>{stopPlay();setStep(Math.max(1,step-1));};
+document.getElementById('pClr').onclick=()=>{stopPlay();setStep(0);};
+setStep(0);
+
+/* navigation */
+function goTo(i){if(i<0||i>=SL.length)return;cur=i;
+  deck.querySelectorAll('.slide').forEach(s=>s.classList.toggle('active',+s.dataset.i===i));
+  document.getElementById('slideTitle').textContent=SL[i].title;
+  document.getElementById('count').textContent=`${i+1} / ${SL.length}`;
+  menu.querySelectorAll('a').forEach(a=>a.classList.toggle('cur',+a.dataset.i===i));
+  menu.classList.remove('open');
+  if(location.hash!=='#'+(i+1))history.replaceState(null,'','#'+(i+1));
+}
+document.getElementById('prev').onclick=()=>goTo(cur-1);
+document.getElementById('next').onclick=()=>goTo(cur+1);
+document.getElementById('menuBtn').onclick=()=>menu.classList.toggle('open');
+menu.addEventListener('click',e=>{const a=e.target.closest('a');if(a){e.preventDefault();goTo(+a.dataset.i);}});
+document.addEventListener('keydown',e=>{
+  if(e.target.closest('input,textarea'))return;
+  const sec=deck.querySelector('.slide.active'),api=sec&&sec._api;
+  if(e.key==='ArrowRight'||e.key==='PageDown')goTo(cur+1);
+  else if(e.key==='ArrowLeft'||e.key==='PageUp')goTo(cur-1);
+  else if(e.key==='Home')goTo(0);else if(e.key==='End')goTo(SL.length-1);
+  else if(e.key==='m'||e.key==='M')menu.classList.toggle('open');
+  else if(e.key==='Escape')menu.classList.remove('open');
+  else if(api&&(e.key==='+'||e.key==='='))api.zoomIn();
+  else if(api&&(e.key==='-'||e.key==='_'))api.zoomOut();
+  else if(api&&e.key==='0')api.fit();
+  else if(api&&(e.key==='t'||e.key==='T'))sec.classList.toggle('collapsed');
+  else if(cur===0&&(e.key==='p'||e.key==='P'))togglePlay();
+});
+const h=parseInt(location.hash.slice(1),10);goTo(h>=1&&h<=SL.length?h-1:0);
+</script>
+</body>
+</html>

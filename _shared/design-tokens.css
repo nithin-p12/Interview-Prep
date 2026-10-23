@@ -1,0 +1,70 @@
+/* =====================================================================
+   INTERVIEW PREP — DESIGN TOKENS  (single source of truth)
+   Every page uses these values. Change a token here, not in a page.
+   Visual guide: _design_system/00_Design_System.html
+   ===================================================================== */
+:root{
+  /* ---------- Typography ---------- */
+  --font-sans:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;
+  --font-mono:"Cascadia Mono",Consolas,Menlo,monospace;
+  --fs-2xs:11px;   /* tiny tags, step numbers            */
+  --fs-xs:12px;    /* badges, captions                   */
+  --fs-sm:12.5px;  /* secondary text, code, small notes  */
+  --fs-base:14px;  /* body text                          */
+  --fs-md:14.5px;  /* box titles (h4), Q&A questions     */
+  --fs-lg:17px;    /* section titles, nav brand          */
+  --fs-xl:21px;    /* slide titles (h2)                  */
+  --fs-2xl:28px;   /* page titles (h1)                   */
+  --fw-regular:400;--fw-semibold:600;--fw-bold:700;--fw-heavy:800;
+  --lh-tight:1.25; --lh-body:1.5; --lh-code:1.45;
+
+  /* ---------- Neutrals ---------- */
+  --ink:#0F172A;      /* headings, strong text */
+  --text:#334155;     /* body text             */
+  --muted:#64748B;    /* secondary text        */
+  --faint:#94A3B8;    /* disabled, placeholders*/
+  --line:#E2E8F0;     /* borders, dividers     */
+  --line-strong:#CBD5E1;
+  --surface:#FFFFFF;  /* page + boxes          */
+  --subtle:#F8FAFC;   /* quiet panels          */
+
+  /* ---------- Semantic ---------- */
+  --success:#16A34A;--success-bg:#DCFCE7;
+  --warning:#F59E0B;--warning-bg:#FEF3C7;
+  --danger:#DC2626; --danger-bg:#FEE2E2;
+  --info:#0EA5E9;   --info-bg:#E0F2FE;
+
+  /* ---------- Category palette: border / light fill / dark text / soft line ---------- */
+  --blue:#3B82F6;   --blue-bg:#EEF5FF;   --blue-dk:#1D4ED8;   --blue-lt:#BFDBFE;
+  --purple:#9333EA; --purple-bg:#F7F0FF; --purple-dk:#7E22CE; --purple-lt:#E9D5FF;
+  --orange:#F97316; --orange-bg:#FFF6EC; --orange-dk:#C2410C; --orange-lt:#FED7AA;
+  --green:#22C55E;  --green-bg:#EFFCF3;  --green-dk:#15803D;  --green-lt:#BBF7D0;
+  --red:#EF4444;    --red-bg:#FFF1F1;    --red-dk:#B91C1C;    --red-lt:#FECACA;
+  --teal:#14B8A6;   --teal-bg:#F0FDFA;   --teal-dk:#0F766E;   --teal-lt:#99F6E4;
+  --indigo:#6366F1; --indigo-bg:#EEF2FF; --indigo-dk:#4338CA; --indigo-lt:#C7D2FE;
+  --amber:#F59E0B;  --amber-bg:#FFFBEB;  --amber-dk:#B45309;  --amber-lt:#FDE68A;
+  --pink:#EC4899;   --pink-bg:#FDF2F8;   --pink-dk:#BE185D;   --pink-lt:#FBCFE8;
+  --slate:#64748B;  --slate-bg:#F8FAFC;  --slate-dk:#334155;  --slate-lt:#CBD5E1;
+  --brand-grad:linear-gradient(135deg,#3B82F6,#9333EA);
+
+  /* ---------- Code window (dark) ---------- */
+  --code-bg:#1E1E1E;--code-bar:#2C2C2E;--code-text:#D4D4D4;
+  --code-kw:#569CD6;--code-str:#CE9178;--code-com:#6A9955;--code-ann:#C586C0;
+  --code-type:#4EC9B0;--code-num:#B5CEA8;--code-fn:#DCDCAA;--code-key:#9CDCFE;
+  --code-bad:#F48771;--code-good:#89D185;
+
+  /* ---------- Spacing scale (4px grid) ---------- */
+  --sp-1:2px;--sp-2:4px;--sp-3:6px;--sp-4:8px;--sp-5:12px;--sp-6:16px;--sp-7:24px;--sp-8:32px;
+  /* fit-to-screen multiplier: pages raise this to spread spare height as padding (never font) */
+  --k:1;
+
+  /* ---------- Radius & elevation ---------- */
+  --r-sm:6px;--r-md:9px;--r-lg:12px;--r-xl:16px;--r-pill:999px;
+  --border:1.5px;--border-strong:2.5px;
+  --shadow-sm:0 2px 8px rgba(15,23,42,.10);
+  --shadow-md:0 8px 20px rgba(15,23,42,.15);
+
+  /* ---------- Layout ---------- */
+  --nav-h:58px;--pager-h:46px;--content-max:1600px;
+  --icon-sm:16px;--icon-md:22px;--icon-lg:26px;--icon-xl:40px;
+}

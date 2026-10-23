@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JVM Memory Architecture</title>
+<style>
+:root{--ink:#0F172A;--text:#334155;--muted:#64748B;--line:#E2E8F0;
+ --b-bg:#EEF5FF;--b-bd:#3B82F6;--b-dk:#1D4ED8;--b-lt:#DBEAFE;
+ --p-bg:#F7F0FF;--p-bd:#9333EA;--p-dk:#7E22CE;--p-lt:#EBDDFF;
+ --o-bg:#FFF6EC;--o-bd:#F97316;--o-dk:#C2410C;--o-lt:#FFE6C9;
+ --r-bg:#FFF1F1;--r-bd:#EF4444;--r-dk:#B91C1C;--r-lt:#FFDCDC;
+ --g-bg:#F8FAFC;--g-bd:#64748B;--g-dk:#334155;--g-lt:#E2E8F0}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:#fff;color:var(--text);font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;font-size:15.5px;line-height:1.5}
+.wrap{max-width:1560px;margin:0 auto;padding:26px clamp(14px,3vw,28px) 60px}
+a.home{font-size:14px;color:#2563EB;text-decoration:none;font-weight:600}
+h1{margin:4px 0 0;font-size:clamp(25px,3vw,34px);color:var(--ink);letter-spacing:-.3px}
+.sub{margin:6px 0 0;color:var(--muted);font-size:16px}
+code,.mono{font-family:"Cascadia Mono",Consolas,Menlo,monospace;font-size:.9em}
+b{color:var(--ink)}
+
+/* nav */
+.nav{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.96);backdrop-filter:blur(4px);border-bottom:1px solid var(--line);margin:16px calc(-1*clamp(14px,3vw,28px)) 0;padding:10px clamp(14px,3vw,28px);display:flex;gap:8px;flex-wrap:wrap}
+.nav a{font-size:14px;font-weight:600;padding:7px 13px;border-radius:999px;border:1.5px solid;text-decoration:none;background:#fff}
+
+/* sections */
+section{margin-top:28px;border:2.5px solid;border-radius:16px;padding:18px 18px 20px;scroll-margin-top:64px}
+.sh{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.num{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;color:#fff;font-weight:700;font-size:17px;flex:none}
+.sh h2{margin:0;font-size:clamp(20px,2.2vw,25px);color:var(--ink)}
+.sh .focus{color:var(--muted);font-size:15px}
+.flags{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.flag{font-family:"Cascadia Mono",Consolas,monospace;font-size:12.5px;padding:3px 9px;border-radius:7px;background:#fff;border:1px solid #CBD5E1;color:#334155;white-space:nowrap}
+.blue{background:var(--b-bg);border-color:var(--b-bd)} .blue .num{background:var(--b-bd)}
+.purple{background:var(--p-bg);border-color:var(--p-bd)} .purple .num{background:var(--p-bd)}
+.orange{background:var(--o-bg);border-color:var(--o-bd)} .orange .num{background:var(--o-bd)}
+.red{background:var(--r-bg);border-color:var(--r-bd)} .red .num{background:var(--r-bd)}
+.gray{background:var(--g-bg);border-color:var(--g-bd)} .gray .num{background:var(--g-bd)}
+
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.box{background:#fff;border:1.5px solid;border-radius:12px;padding:13px 15px;min-width:0}
+.box h3{margin:0 0 6px;font-size:17px;color:var(--ink)}
+.box h4{margin:0 0 4px;font-size:15.5px;color:var(--ink)}
+.box p{margin:0}
+.box ul{margin:0;padding-left:18px}
+.box li{margin:2px 0}
+.group{border:1.8px solid;border-radius:14px;padding:14px;min-width:0}
+.group>h3{margin:0 0 10px;font-size:18px;color:var(--ink);display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.group>h3 small{font-weight:400;color:var(--muted);font-size:14px}
+.dash{border-style:dashed!important}
+.blue .box{border-color:#93C5FD}.blue .group{border-color:var(--b-bd);background:var(--b-lt)}
+.purple .box{border-color:#C4B5FD}.purple .group{border-color:var(--p-bd);background:var(--p-lt)}
+.orange .box{border-color:#FDBA74}.orange .group{border-color:var(--o-bd);background:var(--o-lt)}
+.red .box{border-color:#FCA5A5}.red .group{border-color:var(--r-bd);background:var(--r-lt)}
+.gray .box{border-color:#CBD5E1}
+.note{margin-top:12px;font-size:14.5px;padding:9px 13px;border-radius:10px;background:#fff;border:1.5px solid #CBD5E1}
+.warn{color:#9A3412;background:#FFF7ED;border-color:#FDBA74}
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.step{position:relative}
+.arrowR{display:none}
+
+/* overview map */
+.map{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:10px}
+.map a{display:block;text-decoration:none;color:var(--ink);border:2px solid;border-radius:12px;padding:12px 14px;background:#fff}
+.map a b{display:block;font-size:16px}
+.map a span{font-size:13.5px;color:var(--muted)}
+.map a:hover{box-shadow:0 4px 14px rgba(15,23,42,.12)}
+.pipe{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.pipe span{padding:6px 12px;border-radius:999px;background:#fff;border:1.5px solid #CBD5E1;font-weight:600;font-size:14px;color:var(--ink)}
+.pipe em{font-style:normal;color:var(--muted);font-weight:700}
+
+/* heap region map */
+.heapTop{display:grid;grid-template-columns:minmax(0,560px) minmax(0,1fr);gap:20px;align-items:start}
+.regions{display:grid;grid-template-columns:repeat(10,1fr);gap:6px}
+.regions i{aspect-ratio:1;border-radius:6px;border:1.5px solid #F97316;display:grid;place-items:center;font-style:normal;font-weight:700;font-size:clamp(11px,1.2vw,17px);color:#9A3412}
+.rE{background:#FFEDD5}.rS{background:#FED7AA}.rO{background:#FDBA74}.rH{background:#FECACA;border-color:#EF4444!important;color:#991B1B!important}.rF{background:#fff;border-style:dashed!important}
+.leg{display:flex;flex-direction:column;gap:10px}
+.leg div{display:flex;gap:12px;align-items:flex-start}
+.leg i{width:34px;height:34px;flex:none;border-radius:6px;border:1.5px solid #F97316;display:grid;place-items:center;font-style:normal;font-weight:700;color:#9A3412}
+.leg p{margin:0}.leg p>b:first-child{display:block;font-size:15.5px}
+.leg span{font-size:14px}
+.pills{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pills span{background:#fff;border:1.6px solid;border-radius:999px;padding:6px 13px;font-weight:600;font-size:14px;color:var(--ink)}
+.pills em{font-style:normal;font-weight:700;color:var(--muted)}
+.orange .pills span{border-color:var(--o-bd)}
+.blue .pills span{border-color:var(--b-bd)}
+
+/* thread stack */
+.stack{display:flex;flex-direction:column;gap:6px}
+.frame{border:1.5px solid #EF4444;border-radius:8px;padding:7px 10px;background:#FFF5F5;font-size:14px}
+.frame.top b{color:#B91C1C}
+.cells{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px}
+.cells span{background:#FFDCDC;border:1px solid #EF4444;border-radius:6px;padding:6px;text-align:center;font-weight:600;font-size:13.5px;color:var(--ink)}
+.frame.native{background:#fff;border-style:dashed}
+
+/* tiers */
+.tiers{display:flex;flex-direction:column;gap:6px}
+.tiers div{display:grid;grid-template-columns:44px 190px 1fr;gap:10px;align-items:center;font-size:14.5px}
+.tiers i{font-style:normal;text-align:center;font-weight:700;color:#1E40AF;background:#DBEAFE;border:1.5px solid #3B82F6;border-radius:7px;padding:3px 0}
+
+/* gc cycle */
+.cycle{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.cycle div{background:#fff;border:1.6px solid var(--b-bd);border-radius:12px;padding:8px 12px;text-align:center;min-width:140px}
+.cycle div b{display:block;font-size:15px}
+.cycle div span{font-size:13px;color:var(--muted)}
+.cycle em{font-style:normal;color:var(--muted);font-weight:700;font-size:18px}
+.loop{font-size:14px;color:#1E40AF;margin-top:8px}
+
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:26px;font-size:14px;align-items:center}
+.legend i{display:inline-block;width:28px;height:18px;border-radius:5px;border:2.5px solid;vertical-align:-3px;margin-right:6px}
+footer{margin-top:18px;font-size:13.5px;color:var(--muted)}
+
+@media (max-width:1100px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(2,minmax(0,1fr))}.steps{grid-template-columns:1fr}.heapTop{grid-template-columns:1fr}.map{grid-template-columns:repeat(6,minmax(0,1fr))}.map a{grid-column:span 6!important}}
+@media (max-width:700px){.g2,.g3,.g4{grid-template-columns:1fr}.flags{margin-left:0}.tiers div{grid-template-columns:40px 1fr}.tiers div span:last-child{grid-column:2}.cells{grid-template-columns:1fr}section{padding:14px 12px}}
+@media print{.nav{display:none}section{break-inside:auto}.box,.group{break-inside:avoid}}
+
+/* ===== shared simulator UI ===== */
+.sim{background:#fff;border:2px solid;border-radius:14px;padding:16px}
+.ctrl{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{font:inherit;font-size:14px;font-weight:700;padding:7px 13px;border-radius:9px;border:1.5px solid #CBD5E1;background:#fff;cursor:pointer;color:#334155}
+.btn:hover{filter:brightness(.96)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.p{color:#fff}
+.seg{display:inline-flex;border:1.5px solid #CBD5E1;border-radius:10px;overflow:hidden}
+.seg button{font:inherit;font-size:14px;font-weight:700;padding:7px 12px;border:0;background:#fff;cursor:pointer;color:#475569}
+.seg button.on{color:#fff}
+.howto{font-size:15px;line-height:1.55;margin:0 0 12px;color:#1E293B}
+.msg{margin-top:12px;background:#F8FAFC;border:1.5px solid #CBD5E1;border-left:6px solid;border-radius:10px;padding:10px 14px;font-size:15.5px;line-height:1.55;min-height:52px}
+.msg .cnt{float:right;font-size:12.5px;color:#64748B;font-weight:700;margin-left:10px}
+.err{color:#B91C1C;font-weight:700}
+@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+@keyframes fadeout{to{transform:scale(.3);opacity:0}}
+.obj{display:inline-flex;align-items:center;gap:6px;margin:3px 5px 3px 0;padding:5px 9px;border-radius:8px;font-family:Consolas,monospace;font-size:12.5px;font-weight:700;border:1.5px solid;animation:pop .35s}
+.panel{border:2px solid;border-radius:12px;padding:10px 12px;margin-bottom:10px;min-height:60px;background:#fff}
+.panel h5{margin:0 0 6px;font-size:14px;color:#0F172A;display:flex;justify-content:space-between;gap:8px}
+.panel h5 small{font-weight:600;color:#64748B}
+.empty{font-size:13px;color:#94A3B8;font-style:italic}
+
+/* ===== mini code view ===== */
+.mac{background:#1E1E1E;border-radius:12px;overflow:hidden;border:1px solid #0B0B0B;box-shadow:0 8px 20px rgba(15,23,42,.15)}
+.mac .bar{height:32px;background:linear-gradient(#3A3A3C,#2C2C2E);display:flex;align-items:center;padding:0 12px;position:relative}
+.mac .dots{display:flex;gap:7px}.mac .dots i{width:12px;height:12px;border-radius:50%;display:block}
+.mac .dots i:nth-child(1){background:#FF5F57}.mac .dots i:nth-child(2){background:#FEBC2E}.mac .dots i:nth-child(3){background:#28C840}
+.mac .fn{position:absolute;left:0;right:0;text-align:center;color:#C7C7CC;font-size:13px;font-weight:600}
+.mac pre{margin:0;padding:12px 0;font-family:"Cascadia Mono",Consolas,monospace;font-size:13.5px;line-height:1.6;color:#D4D4D4;overflow:auto}
+.mac .ln{display:block;padding:0 14px;white-space:pre}
+.mac .ln i{display:inline-block;width:24px;color:#6B7280;font-style:normal;user-select:none}
+.mac .ln.cur{background:#3F3F46;box-shadow:inset 4px 0 0 #FACC15}
+.k{color:#569CD6}.s{color:#CE9178}.c{color:#6A9955;font-style:italic}.a{color:#C586C0}.t{color:#4EC9B0}.nu{color:#B5CEA8}.f{color:#DCDCAA}
+
+/* ===== class loading sim ===== */
+.phasebar{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+.phase{padding:6px 12px;border-radius:999px;border:1.5px solid #CBD5E1;font-weight:700;font-size:13.5px;color:#64748B;background:#fff;transition:all .3s}
+.phase.done{background:#DCFCE7;border-color:#86EFAC;color:#166534}
+.phase.cur{background:#1D4ED8;border-color:#1D4ED8;color:#fff;box-shadow:0 0 0 3px #BFDBFE}
+.phase.bad{background:#FEE2E2;border-color:#FCA5A5;color:#991B1B}
+.cl3{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.8fr) minmax(0,1fr);gap:14px;margin-top:14px;align-items:start}
+.loader{border:2px solid #CBD5E1;border-radius:12px;padding:10px 12px;background:#F8FAFC;transition:all .3s}
+.loader b{display:block;font-size:15px;color:#0F172A}
+.loader span{font-size:13px;color:#64748B}
+.loader em{display:inline-block;margin-top:6px;font-style:normal;font-size:12.5px;font-weight:800;padding:2px 8px;border-radius:999px;background:#E2E8F0;color:#475569}
+.loader.ask{border-color:#F59E0B;background:#FEF3C7;box-shadow:0 0 0 3px #FDE68A}.loader.ask em{background:#F59E0B;color:#fff}
+.loader.wait{border-color:#93C5FD;background:#EFF6FF}.loader.wait em{background:#BFDBFE;color:#1E3A8A}
+.loader.miss{border-color:#CBD5E1;background:#F1F5F9;opacity:.75}.loader.miss em{background:#94A3B8;color:#fff}
+.loader.found{border-color:#22C55E;background:#DCFCE7;box-shadow:0 0 0 3px #BBF7D0}.loader.found em{background:#16A34A;color:#fff}
+.upar{text-align:center;color:#64748B;font-size:12.5px;font-weight:700;margin:3px 0}
+.console{background:#0F172A;color:#E2E8F0;font-family:Consolas,monospace;font-size:13px;border-radius:10px;padding:8px 10px;min-height:36px}
+
+/* ===== memory sim ===== */
+.mem2{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.25fr);gap:14px;margin-top:14px;align-items:start}
+.memgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.fr{border:1.5px solid #EF4444;border-radius:9px;background:#FFF5F5;padding:6px 9px;margin-bottom:6px;animation:pop .3s}
+.fr b{color:#991B1B;font-size:13px;display:block;margin-bottom:2px}
+.var{display:flex;justify-content:space-between;gap:8px;font-family:Consolas,monospace;font-size:12.5px;padding:3px 0;border-top:1px dashed #FCA5A5}
+.ref{padding:0 6px;border-radius:5px;color:#fff;font-weight:700;font-size:12px}
+.obj.garbage{background:repeating-linear-gradient(45deg,#F8FAFC,#F8FAFC 6px,#E2E8F0 6px,#E2E8F0 12px)!important;border-style:dashed!important;color:#64748B!important}
+.obj .tag{font-family:"Segoe UI",sans-serif;font-size:10.5px;font-weight:800;padding:1px 5px;border-radius:5px;color:#fff}
+.pc{display:inline-block;font-family:Consolas,monospace;font-size:12.5px;font-weight:700;background:#FEE2E2;color:#991B1B;border:1.5px solid #FCA5A5;border-radius:8px;padding:3px 8px;margin-bottom:8px}
+
+/* ===== GC sim ===== */
+.gcgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr) minmax(0,1.3fr);gap:10px;margin-top:12px}
+.area{border:2px solid;border-radius:12px;padding:10px;position:relative;background:#fff}
+.area h5{margin:0 0 4px;font-size:14.5px;color:#0F172A;display:flex;justify-content:space-between}
+.area h5 small{font-weight:700;color:#64748B;font-family:Consolas,monospace}
+.cap{height:7px;background:#F1F5F9;border-radius:99px;overflow:hidden;margin-bottom:8px}
+.cap i{display:block;height:100%;transition:width .4s}
+.pool{display:flex;flex-wrap:wrap;gap:6px;min-height:96px;align-content:flex-start}
+.go{width:58px;height:44px;border-radius:9px;border:2px solid #3B82F6;background:#EFF6FF;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:Consolas,monospace;font-size:11.5px;font-weight:800;color:#1E3A8A;cursor:pointer;position:relative;user-select:none}
+.go small{font-family:"Segoe UI",sans-serif;font-size:9.5px;font-weight:700;color:#64748B}
+.go.dead{border-style:dashed;border-color:#94A3B8;background:repeating-linear-gradient(45deg,#F8FAFC,#F8FAFC 5px,#E2E8F0 5px,#E2E8F0 10px);color:#64748B}
+.go.born{animation:pop .35s}
+.go.dying{animation:fadeout .45s forwards}
+.go.mk-live{box-shadow:0 0 0 3px #4ADE80}
+.go.mk-live::after{content:"✓";position:absolute;top:-9px;right:-7px;background:#16A34A;color:#fff;border-radius:50%;width:17px;height:17px;font-size:11px;display:grid;place-items:center}
+.go.mk-dead{box-shadow:0 0 0 3px #FCA5A5}
+.go.mk-dead::after{content:"✗";position:absolute;top:-9px;right:-7px;background:#DC2626;color:#fff;border-radius:50%;width:17px;height:17px;font-size:11px;display:grid;place-items:center}
+.stw{display:none;margin-top:10px;background:#7F1D1D;color:#fff;font-weight:800;border-radius:10px;padding:8px 12px;font-size:14px;text-align:center}
+.stw.on{display:block;animation:pop .25s}
+.gstats{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.gstat{background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:10px;padding:5px 11px;font-size:12.5px;color:#64748B}
+.gstat b{display:block;font-size:18px;color:#0F172A;font-family:Consolas,monospace}
+.glog{margin-top:12px;background:#0F172A;color:#CBD5E1;border-radius:10px;padding:10px 12px;font-family:Consolas,monospace;font-size:13px;line-height:1.55;max-height:200px;overflow:auto}
+.glog div{border-bottom:1px solid #1E293B;padding:2px 0}
+.glog .y{color:#FDE047}.glog .g{color:#4ADE80}.glog .r{color:#F87171}.glog .p{color:#F472B6}
+.hint{box-shadow:0 0 0 3px #FDE047!important}
+
+@media (max-width:1100px){.cl3,.mem2{grid-template-columns:minmax(0,1fr)}.gcgrid{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:700px){.memgrid{grid-template-columns:minmax(0,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<a class="home" href="../../00_Index.html">🏠 Interview Prep · NITHIN P</a>
+<h1>JVM Memory &amp; Architecture — Java 25 HotSpot (G1)</h1>
+<p class="sub">Dashed border = logical concept from the JVM specification · solid border = how HotSpot actually implements it · G1 is the default collector</p>
+
+<nav class="nav">
+ <a href="#overview" style="color:var(--g-dk);border-color:var(--g-bd)">Overview</a>
+ <a href="#classloader" style="color:var(--b-dk);border-color:var(--b-bd)">1. Class Loader</a>
+ <a href="#try-load" style="color:var(--b-dk);border-color:var(--b-bd)">▶ Load a class</a>
+ <a href="#heap" style="color:var(--o-dk);border-color:var(--o-bd)">2. Heap</a>
+ <a href="#native" style="color:var(--p-dk);border-color:var(--p-bd)">3. Native Memory</a>
+ <a href="#threads" style="color:var(--r-dk);border-color:var(--r-bd)">4. Threads</a>
+ <a href="#try-mem" style="color:var(--r-dk);border-color:var(--r-bd)">▶ Where things live</a>
+ <a href="#engine" style="color:var(--b-dk);border-color:var(--b-bd)">5. Execution Engine</a>
+ <a href="#gc" style="color:var(--b-dk);border-color:var(--b-bd)">6. Garbage Collection</a>
+ <a href="#try-gc" style="color:var(--o-dk);border-color:var(--o-bd)">▶ GC simulator</a>
+ <a href="#interop" style="color:var(--g-dk);border-color:var(--g-bd)">7. Native Interop</a>
+ <a href="#java25" style="color:var(--g-dk);border-color:var(--g-bd)">Java 25 notes</a>
+</nav>
+
+<!-- ============ OVERVIEW ============ -->
+<section id="overview" class="gray">
+ <div class="sh"><span class="num">0</span><h2>The big picture</h2><span class="focus">click a block to jump to it</span></div>
+ <div class="pipe"><span>.java</span><em>→</em><span>javac</span><em>→</em><span>.class (bytecode)</span><em>→</em><span>Class Loader</span><em>→</em><span>Runtime Data Areas</span><em>⇄</em><span>Execution Engine</span><em>⇄</em><span>JNI / FFM → native libraries</span></div>
+ <div class="map">
+  <a href="#classloader" style="grid-column:span 12;border-color:var(--b-bd);background:var(--b-bg)"><b>1 · Class Loader Subsystem</b><span>Loading → Linking (Verify, Prepare, Resolve) → Initialization</span></a>
+  <a href="#heap" style="grid-column:span 7;border-color:var(--o-bd);background:var(--o-bg)"><b>2 · Java Heap</b><span>shared · all objects &amp; arrays · G1 regions: Eden, Survivor, Old, Humongous</span></a>
+  <a href="#native" style="grid-column:span 5;border-color:var(--p-bd);background:var(--p-bg)"><b>3 · Native (non-heap) memory</b><span>Metaspace · StringTable · Code Cache · direct &amp; off-heap</span></a>
+  <a href="#threads" style="grid-column:span 12;border-color:var(--r-bd);background:var(--r-bg)"><b>4 · Threads</b><span>per thread: PC register + one native stack of frames · virtual threads park frames in the heap</span></a>
+  <a href="#engine" style="grid-column:span 6;border-color:var(--b-bd);background:var(--b-bg)"><b>5 · Execution Engine</b><span>Interpreter + tiered JIT (C1, C2)</span></a>
+  <a href="#gc" style="grid-column:span 6;border-color:var(--b-bd);background:var(--b-bg)"><b>6 · Garbage Collection (G1)</b><span>Young / Mixed GCs, concurrent marking, remembered sets</span></a>
+ </div>
+ <div class="note">Total JVM process memory ≈ <b>Heap</b> + <b>Metaspace</b> + <b>Code Cache</b> + <b>thread stacks</b> + <b>direct / off-heap</b> buffers + <b>GC &amp; JVM internals</b>. Only the heap is limited by <code>-Xmx</code>.</div>
+</section>
+
+<!-- ============ CLASS LOADER ============ -->
+<section id="classloader" class="blue">
+ <div class="sh"><span class="num">1</span><h2>Class Loader Subsystem</h2><span class="focus">turns .class bytes into usable classes</span></div>
+ <div class="steps">
+  <div class="group"><h3>① Loading <small>parent-delegation: ask the parent first</small></h3>
+   <div class="grid g2">
+    <div class="box"><h4>Bootstrap</h4>built into the JVM · <code>java.base</code> &amp; core modules</div>
+    <div class="box"><h4>Platform</h4>platform modules · <code>java.sql</code>, <code>java.xml</code> …</div>
+    <div class="box"><h4>Application</h4>class path / module path · your classes</div>
+    <div class="box"><h4>Custom</h4>extends <code>ClassLoader</code> · plugins, app servers, isolation</div>
+   </div></div>
+  <div class="group"><h3>② Linking</h3>
+   <div class="grid" style="gap:8px">
+    <div class="box"><h4>Verify</h4>bytecode is type-safe and well-formed, else <code>VerifyError</code></div>
+    <div class="box"><h4>Prepare</h4>static fields set to <b>default</b> values (0 / null / false). Their storage lives in the <b>Class mirror on the heap</b>.</div>
+    <div class="box"><h4>Resolve</h4>symbolic references → direct references · usually lazy (on first use)</div>
+   </div></div>
+  <div class="group"><h3>③ Initialization</h3>
+   <div class="box"><h4><code>&lt;clinit&gt;</code></h4><ul>
+    <li>runs static initializers &amp; static blocks in source order</li>
+    <li>compile-time constants (<code>ConstantValue</code>) are <b>not</b> set by <code>&lt;clinit&gt;</code></li>
+    <li>happens on first active use · superclass first · thread-safe</li></ul></div>
+   <div class="box" style="margin-top:8px"><h4>Where things end up</h4><ul>
+    <li>Klass metadata → <b style="color:var(--p-dk)">Metaspace</b></li>
+    <li>Class mirror + static fields → <b style="color:var(--o-dk)">Heap</b></li>
+    <li>Unloading only when the defining loader <i>and all its classes</i> are unreachable — decided by GC, not immediate</li></ul></div>
+  </div>
+ </div>
+</section>
+
+
+<section id="try-load" class="blue">
+ <div class="sh"><span class="num">▶</span><h2>Try it — load a class step by step</h2><span class="focus">Loading → Linking → Initialization</span></div>
+ <p class="howto">Pick a class, then press <b>Next ▶</b> (or <b>Auto play</b>). Watch who finds the class, what goes into <b>Metaspace</b> and the <b>Heap</b>, and when the static values change.</p>
+ <div class="sim" style="border-color:var(--b-bd)" id="sim-load"></div>
+</section>
+
+<!-- ============ HEAP ============ -->
+<section id="heap" class="orange">
+ <div class="sh"><span class="num">2</span><h2>Java Heap</h2><span class="focus">shared by all threads · objects &amp; arrays · G1 splits it into equal-size regions</span>
+  <div class="flags"><span class="flag">-Xms</span><span class="flag">-Xmx</span><span class="flag">-XX:G1HeapRegionSize</span></div></div>
+ <div class="heapTop">
+  <div><div class="regions" id="regions"></div>
+   <p style="margin:8px 0 0;font-size:13.5px;color:var(--muted)">Example region map — roles are assigned dynamically and change after every GC.</p></div>
+  <div class="leg">
+   <div><i class="rE">E</i><p><b>Eden regions</b><span>most new objects, allocated via per-thread TLABs (Thread-Local Allocation Buffers)</span></p></div>
+   <div><i class="rS">S</i><p><b>Survivor regions</b><span>objects that survived a Young GC (age + 1) — any free region, <b>not</b> fixed S0/S1 spaces</span></p></div>
+   <div><i class="rO">O</i><p><b>Old regions</b><span>promoted once age ≥ tenuring threshold (adaptive, max 15)</span></p></div>
+   <div><i class="rH">H</i><p><b>Humongous regions</b><span>objects ≥ ½ a region, allocated directly into contiguous old regions</span></p></div>
+   <div><i class="rF"></i><p><b>Free regions</b><span>available for any role</span></p></div>
+  </div>
+ </div>
+ <div class="note warn"><b>Young gen = Eden + Survivor regions.</b> Its size adapts (≈5%–60% of the heap) to meet <code>-XX:MaxGCPauseMillis</code> (default 200 ms) — there is no fixed Eden:Survivor ratio in G1.</div>
+ <div class="grid g3" style="margin-top:12px">
+  <div class="box"><h3>Class mirrors (<code>java.lang.Class</code>)</h3>One per loaded class. Holds the <b>static fields</b>. Reachable while its class loader is alive.</div>
+  <div class="box"><h3>Interned String objects</h3>Ordinary heap objects — can sit in <b>Young or Old</b> regions and are collectable. Indexed by the native <a href="#native">StringTable</a>.</div>
+  <div class="box"><h3>Virtual-thread stack chunks</h3>When a virtual thread blocks, its frames are copied into heap objects until it resumes.</div>
+ </div>
+ <div class="group" style="margin-top:12px"><h3>Object lifecycle in G1</h3>
+  <div class="pills"><span>new Object()</span><em>→</em><span>TLAB in Eden</span><em>→</em><span>Young GC evacuates (copies) live objects</span><em>→</em><span>Survivor region, age++</span><em>→</em><span>age ≥ threshold → Old region</span></div>
+  <p style="margin:10px 0 0;font-size:14.5px">Humongous objects skip Eden → H regions. Unreachable objects are simply <b>not copied</b>, so their whole region is freed. Still no space → <code>OutOfMemoryError: Java heap space</code>.</p>
+ </div>
+</section>
+
+<!-- ============ NATIVE ============ -->
+<section id="native" class="purple">
+ <div class="sh"><span class="num">3</span><h2>Native (non-heap) Memory</h2><span class="focus">outside <code>-Xmx</code> · allocated from the OS</span></div>
+ <div class="group dash" style="background:#FBF7FF"><h3>Method Area <small>logical area from the JVM spec — per-class structures; the spec doesn't fix where they live</small></h3>
+  <div class="group" style="background:var(--p-lt)"><h3>Metaspace <small>HotSpot's native storage for class metadata</small><span class="flags"><span class="flag">-XX:MaxMetaspaceSize</span></span></h3>
+   <div class="grid g4">
+    <div class="box"><h4>Klass</h4>class metadata · fields, methods · vtables / itables</div>
+    <div class="box"><h4>ConstMethod</h4>method bytecode · line &amp; exception tables</div>
+    <div class="box"><h4>ConstantPool</h4>runtime constant pool, one per class · symbolic refs, literals</div>
+    <div class="box"><h4>MethodData</h4>profiling data &amp; counters used by the JIT</div>
+   </div>
+   <ul style="margin:12px 0 0;padding-left:18px;font-size:14.5px">
+    <li><b>Compressed Class Space</b>: Klass structures addressed with 32-bit pointers · <code>-XX:CompressedClassSpaceSize</code></li>
+    <li>Grows on demand · freed per class loader after its classes are unloaded · <code>OutOfMemoryError: Metaspace</code></li>
+    <li style="color:var(--o-dk)"><b style="color:var(--o-dk)">Class mirror &amp; static fields are NOT here → Heap</b></li></ul>
+  </div>
+ </div>
+ <div class="grid g2" style="margin-top:12px">
+  <div class="group"><h3>StringTable <small>native hash table</small></h3>
+   <div class="box">Maps string contents → interned <code>String</code> objects that live <b>in the heap</b>. Filled by string literals and <code>String.intern()</code>. <span class="flag">-XX:StringTableSize</span></div></div>
+  <div class="group"><h3>Other native memory</h3>
+   <div class="box"><ul><li>thread stacks</li><li>direct <code>ByteBuffer</code>s · <code>-XX:MaxDirectMemorySize</code></li><li>FFM off-heap <code>MemorySegment</code>s (Arena)</li><li>GC data: remembered sets, card table, mark bitmaps · symbol table</li><li>track it: <code>-XX:NativeMemoryTracking=summary</code></li></ul></div></div>
+ </div>
+ <div class="group" style="margin-top:12px"><h3>Code Cache <small>JIT-compiled native code, segmented layout</small><span class="flags"><span class="flag">-XX:ReservedCodeCacheSize</span></span></h3>
+  <div class="grid g3">
+   <div class="box"><h4>Non-method</h4>interpreter, stubs, adapters, buffers</div>
+   <div class="box"><h4>Profiled</h4>C1 code with profiling (tiers 2 – 3)</div>
+   <div class="box"><h4>Non-profiled</h4>C2 code (tier 4) and trivial C1 code (tier 1)</div>
+  </div></div>
+</section>
+
+<!-- ============ THREADS ============ -->
+<section id="threads" class="red">
+ <div class="sh"><span class="num">4</span><h2>Threads</h2><span class="focus">private per thread · not shared · freed when the method returns / thread ends</span>
+  <div class="flags"><span class="flag">-Xss</span><span class="flag">StackOverflowError</span></div></div>
+ <div class="grid" style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)">
+  <div class="group"><h3>Platform thread</h3>
+   <div class="grid" style="grid-template-columns:minmax(0,190px) minmax(0,1fr)">
+    <div class="box"><h4>PC Register</h4>Index of the current bytecode instruction. <b>Undefined</b> while a native method runs.</div>
+    <div class="box"><h4>Thread stack <small style="font-weight:400;color:var(--muted)">(one native OS stack, LIFO)</small></h4>
+     <div class="stack">
+      <div class="frame top"><b>Java frame: current()  ← top</b>
+       <div class="cells"><span>Local Variables</span><span>Operand Stack</span><span>Frame Data</span></div></div>
+      <div class="frame">Java frame: caller()</div>
+      <div class="frame native">Native frame: C code called via JNI / FFM</div>
+     </div>
+     <p style="margin:8px 0 0;font-size:13.5px;color:var(--r-dk)">Spec: separate JVM Stack + Native Method Stack. HotSpot: both live on one native stack.</p>
+    </div>
+   </div></div>
+  <div class="group"><h3>Virtual threads</h3>
+   <div class="box"><ul>
+    <li>lightweight threads scheduled by the JVM</li>
+    <li>run <b>mounted</b> on a carrier platform thread (ForkJoinPool) and use its stack</li>
+    <li>on blocking I/O they <b>unmount</b>: frames move to stack-chunk objects in the heap and the carrier is freed</li>
+    <li>millions possible · ideal for request-per-thread servers</li></ul></div></div>
+ </div>
+ <div class="note"><b>Frame Data</b> = return address, link to the runtime constant pool, exception handling. Local variables hold primitives and object <b>references</b> — the objects themselves live in the heap.</div>
+</section>
+
+
+<section id="try-mem" class="red">
+ <div class="sh"><span class="num">▶</span><h2>Try it — where does each thing live?</h2><span class="focus">stack · heap · Metaspace · StringTable</span></div>
+ <p class="howto">Step through this small program line by line. Watch frames being <b>pushed and popped</b> on the stack, objects appearing on the <b>heap</b>, and objects becoming <b>garbage</b> when nothing points to them.</p>
+ <div class="sim" style="border-color:var(--r-bd)" id="sim-mem"></div>
+</section>
+
+<!-- ============ ENGINE ============ -->
+<section id="engine" class="blue">
+ <div class="sh"><span class="num">5</span><h2>Execution Engine</h2><span class="focus">runs bytecode — interpreted first, compiled when hot</span></div>
+ <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,2fr)">
+  <div class="group"><h3>Interpreter <small>template interpreter</small></h3>
+   <div class="box"><ul><li>executes bytecode one instruction at a time</li><li>fast start-up, slow for hot code</li><li>counts invocations &amp; loop back-edges</li><li>fills MethodData profiles</li><li>deoptimised code resumes here</li><li>hot method → handed to the JIT</li></ul></div></div>
+  <div class="group"><h3>JIT Compiler — tiered compilation</h3>
+   <div class="box"><div class="tiers">
+    <div><i>L0</i><b>Interpreter</b><span>collects profiles</span></div>
+    <div><i>L1</i><b>C1, no profiling</b><span>trivial methods (getters …)</span></div>
+    <div><i>L2</i><b>C1, light profiling</b><span>used when the C2 queue is busy</span></div>
+    <div><i>L3</i><b>C1, full profiling</b><span>typical step before C2</span></div>
+    <div><i>L4</i><b>C2</b><span>speculative, highly optimised</span></div></div>
+    <p style="margin:10px 0 0;color:#1E40AF;font-weight:600;font-size:14.5px">Common path 0 → 3 → 4 · trivial methods 0 → 1 · tiers may be skipped · a failed assumption → deoptimise → back to L0</p></div>
+   <div class="grid g2" style="margin-top:10px">
+    <div class="box"><h4>Optimisations</h4>inlining · escape analysis &amp; scalar replacement (no heap allocation) · loop optimisations · intrinsics · dead-code removal</div>
+    <div class="box"><h4>OSR &amp; Code Cache</h4>On-stack replacement swaps a running loop into compiled code. All compiled code goes to the <a href="#native">Code Cache</a>.</div>
+   </div></div>
+ </div>
+</section>
+
+<!-- ============ GC ============ -->
+<section id="gc" class="blue">
+ <div class="sh"><span class="num">6</span><h2>Garbage Collection — G1</h2><span class="focus">region-based, pause-time goal</span>
+  <div class="flags"><span class="flag">-XX:MaxGCPauseMillis=200</span><span class="flag">-XX:InitiatingHeapOccupancyPercent</span></div></div>
+ <div class="group"><h3>The G1 cycle</h3>
+  <div class="cycle">
+   <div><b>Young GC</b><span>STW · evacuate young</span></div><em>→</em>
+   <div><b>Concurrent Start</b><span>piggybacks a Young GC</span></div><em>→</em>
+   <div><b>Concurrent Mark</b><span>app keeps running</span></div><em>→</em>
+   <div><b>Remark</b><span>STW · finish marking</span></div><em>→</em>
+   <div><b>Cleanup</b><span>STW · pick old regions</span></div><em>→</em>
+   <div><b>Mixed GCs</b><span>young + some old</span></div><em>↺</em>
+  </div>
+  <p class="loop">Old-gen occupancy ≥ IHOP → marking cycle starts · Mixed GCs reclaim the old regions with the most garbage · then back to young-only.</p>
+  <div class="note warn" style="margin-top:8px"><b style="color:#9A3412">Full GC — fallback only:</b> stop-the-world compaction of the whole heap when evacuation runs out of space (also unloads classes).</div>
+ </div>
+ <div class="grid g3" style="margin-top:12px">
+  <div class="box"><h3>GC Roots</h3><p style="margin-bottom:4px">Starting points of reachability — <b>not</b> a GC component:</p><ul>
+   <li>locals &amp; operands in thread stacks</li><li>JNI global / local references</li><li>loaded classes → class mirrors → static fields</li><li>JVM-internal references</li></ul></div>
+  <div class="box"><h3>Remembered Sets &amp; Write Barriers</h3><ul>
+   <li>a post-write barrier dirties a card when a reference is stored</li>
+   <li>each region's remembered set lists incoming cross-region references</li>
+   <li>Young GC scans roots + RSets, <b>not the whole old generation</b></li>
+   <li>SATB pre-write barrier keeps concurrent marking correct</li></ul></div>
+  <div class="box"><h3>Reference strength <small style="font-weight:400;color:var(--muted)">(java.lang.ref)</small></h3><p style="margin-bottom:4px">Not types of roots:</p><ul>
+   <li><b>Strong</b> — never cleared</li><li><b>Soft</b> — cleared under memory pressure</li><li><b>Weak</b> — cleared at the next GC</li><li><b>Phantom</b> — post-mortem cleanup (Cleaner)</li></ul></div>
+ </div>
+ <div class="note">Other collectors: <b>Serial</b> · <b>Parallel</b> · <b>ZGC</b> (generational) · <b>Shenandoah</b>. <b>Epsilon</b> allocates but never reclaims — testing only.</div>
+</section>
+
+
+<section id="try-gc" class="orange">
+ <div class="sh"><span class="num">▶</span><h2>Try it — garbage collector simulator</h2><span class="focus">Eden → Survivor → Old</span></div>
+ <p class="howto"><b>1.</b> Press <b>+ Allocate</b> a few times (new objects go to Eden). <b>2.</b> Press <b>⏩ Requests finish</b> — most objects lose their references and turn grey (garbage). <b>3.</b> Press <b>Young GC</b> and watch: mark ✓/✗ → garbage freed → live objects <b>move</b> to Survivor (age + 1) → old enough ones move to <b>Old</b>. Click any object to drop / restore its reference. When Old fills up, try <b>Mixed GC</b>.</p>
+ <div class="sim" style="border-color:var(--o-bd)" id="sim-gc"></div>
+</section>
+
+<!-- ============ INTEROP ============ -->
+<section id="interop" class="gray">
+ <div class="sh"><span class="num">7</span><h2>Native Interop</h2><span class="focus">calling C / OS code from Java</span></div>
+ <div class="grid g3">
+  <div class="box"><h3>JNI — Java Native Interface</h3>C/C++ glue code against <code>JNIEnv</code> · <code>native</code> methods · manual handles &amp; error checks · runs on the calling thread's stack.</div>
+  <div class="box"><h3>FFM API — Foreign Function &amp; Memory</h3>Pure Java: <code>Linker</code> downcalls / upcalls, no glue code · <code>MemorySegment</code> + <code>Arena</code> for safe off-heap memory.</div>
+  <div class="box"><h3>Native libraries</h3><code>.so</code> (Linux) · <code>.dll</code> (Windows) · <code>.dylib</code> (macOS) — OS calls, file &amp; network I/O, hardware access.</div>
+ </div>
+</section>
+
+<!-- ============ JAVA 25 ============ -->
+<section id="java25" class="gray">
+ <div class="sh"><span class="num">★</span><h2>Java 25 HotSpot notes &amp; tools</h2></div>
+ <div class="grid g2">
+  <div class="box"><h3>Worth mentioning</h3><ul>
+   <li>Default GC = <b>G1</b> (Serial on very small machines)</li>
+   <li><b>ZGC</b> is generational</li>
+   <li>Compact object headers: <code>-XX:+UseCompactObjectHeaders</code></li>
+   <li>AOT cache for faster start-up: <code>-XX:AOTCache</code></li></ul></div>
+  <div class="box"><h3>Inspect a running JVM</h3><ul>
+   <li><code>jcmd &lt;pid&gt; GC.heap_info</code></li>
+   <li><code>jcmd &lt;pid&gt; VM.native_memory</code> (needs NMT on)</li>
+   <li><code>jcmd &lt;pid&gt; Compiler.codecache</code></li>
+   <li><code>-Xlog:gc*</code> for GC logs</li>
+   <li>Errors: <code>OutOfMemoryError</code> (heap / Metaspace / direct buffer / native thread) · <code>StackOverflowError</code></li></ul></div>
+ </div>
+</section>
+
+<div class="legend"><b>Legend</b>
+ <span><i style="background:var(--b-bg);border-color:var(--b-bd)"></i>Class loader &amp; execution</span>
+ <span><i style="background:var(--o-bg);border-color:var(--o-bd)"></i>Heap (shared, GC-managed)</span>
+ <span><i style="background:var(--p-bg);border-color:var(--p-bd)"></i>Native / non-heap (shared)</span>
+ <span><i style="background:var(--r-bg);border-color:var(--r-bd)"></i>Per-thread</span>
+ <span><i style="background:#fff;border-color:var(--g-bd);border-style:dashed"></i>Logical (spec) concept</span>
+</div>
+<footer>Companion image: <code>images/01_JVM_Memory_Java25_G1.png</code></footer>
+</div>
+<script>
+// example G1 region map
+const map='EEOOFHHOSF'+'OEEFOOFEOF'+'SOFEEOHHHO'+'FOEOFSOFEO'+'OFOEOFFOOE';
+document.getElementById('regions').innerHTML=[...map].map(k=>`<i class="r${k}">${k==='F'?'':k}</i>`).join('');
+</script>
+<script>
+// ---------- tiny Java highlighter + code view ----------
+const ESC=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const KW='public|private|protected|static|final|class|new|return|if|else|void|int|this|null';
+const RE=new RegExp(String.raw`(\/\/.*$)|("(?:[^"\\]|\\.)*")|(@\w+)|\b(${KW})\b|\b([A-Z][A-Za-z0-9_]*)\b|\b(\d+)\b|([a-z_]\w*)(?=\()`,'gm');
+const CLS=['c','s','a','k','t','nu','f'];
+function hlLine(src){let out='',last=0,m;RE.lastIndex=0;
+ while((m=RE.exec(src))){if(m[0]===''){RE.lastIndex++;continue;}out+=ESC(src.slice(last,m.index));const g=m.slice(1).findIndex(x=>x!==undefined);
+  out+=`<span class="${CLS[g]}">${ESC(m[0])}</span>`;last=m.index+m[0].length;}
+ return out+ESC(src.slice(last));}
+function codeView(file,src,cur,nums){
+ const lines=src.split('\n');
+ return `<div class="mac"><div class="bar"><div class="dots"><i></i><i></i><i></i></div><div class="fn">${file}</div></div><pre>${
+  lines.map((l,i)=>`<span class="ln${cur===i+1?' cur':''}">${nums?`<i>${i+1}</i>`:''}${hlLine(l)||' '}</span>`).join('')}</pre></div>`;}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+// =====================================================================
+// 1. CLASS LOADING
+// =====================================================================
+(function(){
+ const root=document.getElementById('sim-load');if(!root)return;
+ const L=(B,P,A)=>({B,P,A});
+ const SRC={
+  order:{file:'Order.java',label:'Order (your class)',src:`public class Order {
+    static int count = 5;
+    static final int MAX = 10;   // constant
+    static {
+        System.out.println("Order loaded");
+    }
+}
+// first use:
+new Order();`},
+  string:{file:'Main.java',label:'String (JDK class)',src:`// first use in your code:
+String s = "hello";
+
+// java.lang.String is in the
+// java.base module (JDK)`},
+  missing:{file:'Main.java',label:'Missing class',src:`// first use:
+Class.forName("com.shop.Invoice");
+
+// but Invoice.class is NOT
+// on the class path`}};
+ const STEPS={
+  order:[
+   {ld:L('','','ask'),ph:0,msg:'<b>new Order()</b> runs for the first time. The JVM asks the <b>Application</b> class loader for <code>Order</code>.'},
+   {ld:L('','ask','wait'),ph:0,msg:'<b>Parent delegation:</b> before searching itself, Application asks its parent — the <b>Platform</b> loader.'},
+   {ld:L('ask','wait','wait'),ph:0,msg:'Platform also asks its parent first — the <b>Bootstrap</b> loader (built into the JVM).'},
+   {ld:L('miss','wait','wait'),ph:0,msg:'Bootstrap searches the core JDK (<code>java.base</code>)… no <code>Order</code> there ✗. It hands the job back down.'},
+   {ld:L('miss','miss','wait'),ph:0,msg:'Platform searches the platform modules… not there either ✗.'},
+   {ld:L('miss','miss','found'),ph:0,meta:true,mirror:{count:'—',MAX:'—'},msg:'Application searches the <b>class path</b> → finds <code>Order.class</code> ✓. Class metadata goes to <b>Metaspace</b>, and a <code>Class</code> object (the "mirror") is created on the <b>Heap</b>.'},
+   {ph:1,msg:'<b>Linking → Verify:</b> the bytecode is checked — valid instructions, correct types. ✓'},
+   {ph:2,mirror:{count:'0',MAX:'10'},msg:'<b>Linking → Prepare:</b> static fields get <b>default</b> values → <code>count = 0</code>. <code>MAX</code> is a compile-time constant, so it is already <code>10</code>.'},
+   {ph:3,msg:'<b>Linking → Resolve:</b> names like <code>System.out</code> become direct references (usually lazily, the first time they are used).'},
+   {ph:4,mirror:{count:'5',MAX:'10'},out:'Order loaded',msg:'<b>Initialization:</b> the static code runs top to bottom → <code>count = 5</code>, then the static block prints.'},
+   {ph:5,obj:true,msg:'✅ <b>Ready.</b> <code>new Order()</code> now creates an <b>object on the heap</b>. Next time, all of these steps are skipped — the class is already loaded.'}],
+  string:[
+   {ld:L('','','ask'),ph:0,msg:'Your code uses <code>String</code>. The JVM asks the <b>Application</b> loader.'},
+   {ld:L('','ask','wait'),ph:0,msg:'Parent delegation: Application asks <b>Platform</b> first.'},
+   {ld:L('ask','wait','wait'),ph:0,msg:'Platform asks <b>Bootstrap</b> first.'},
+   {ld:L('found','wait','wait'),ph:5,meta:'string',msg:'Bootstrap owns <code>java.base</code> → <b>found</b> ✓. In fact <code>String</code> was loaded when the JVM started, so it is returned right away — no new linking or initialization.<br><b>Why delegation?</b> Your own fake <code>java.lang.String</code> can never replace the real one.'},
+   {ld:L('found','done','done'),ph:5,meta:'string',msg:'The same <code>Class</code> object goes back down to Platform and Application. Every class loader shares this one <code>String</code> class.'}],
+  missing:[
+   {ld:L('','','ask'),ph:0,msg:'<code>Class.forName("com.shop.Invoice")</code> → the JVM asks the <b>Application</b> loader.'},
+   {ld:L('','ask','wait'),ph:0,msg:'Application asks <b>Platform</b> first.'},
+   {ld:L('ask','wait','wait'),ph:0,msg:'Platform asks <b>Bootstrap</b> first.'},
+   {ld:L('miss','wait','wait'),ph:0,msg:'Bootstrap: not in the JDK ✗.'},
+   {ld:L('miss','miss','wait'),ph:0,msg:'Platform: not in the platform modules ✗.'},
+   {ld:L('miss','miss','miss'),ph:-2,out:'java.lang.ClassNotFoundException: com.shop.Invoice',msg:'<span class="err">Nobody found it → ClassNotFoundException.</span><br><b>Interview tip:</b> <code>ClassNotFoundException</code> = you asked for a class by name and it isn\'t there. <code>NoClassDefFoundError</code> = the class existed at compile time but is missing (or failed to initialize) at runtime.'}]};
+ const PH=['Loading','Verify','Prepare','Resolve','Initialize','Ready'];
+ let cls='order',i=0,auto=null;
+ root.innerHTML=`<div class="ctrl"><span class="seg" data-o="seg">${Object.entries(SRC).map(([k,v])=>`<button data-c="${k}">${v.label}</button>`).join('')}</span>
+  <button class="btn" data-a="back">◀ Back</button><button class="btn p" data-a="next" style="background:#1D4ED8;border-color:#1D4ED8">Next ▶</button>
+  <button class="btn" data-a="auto">▶ Auto play</button><button class="btn" data-a="reset">↺ Reset</button></div>
+  <div class="phasebar" data-o="ph"></div>
+  <div class="cl3"><div data-o="code"></div>
+   <div><div class="loader" data-l="B"><b>Bootstrap loader</b><span>core JDK · java.base</span><br><em></em></div><div class="upar">▲ asks parent first</div>
+        <div class="loader" data-l="P"><b>Platform loader</b><span>platform modules</span><br><em></em></div><div class="upar">▲ asks parent first</div>
+        <div class="loader" data-l="A"><b>Application loader</b><span>your class path</span><br><em></em></div></div>
+   <div><div class="panel" style="border-color:var(--p-bd)"><h5>Metaspace <small>class metadata</small></h5><div data-o="meta"></div></div>
+        <div class="panel" style="border-color:var(--o-bd)"><h5>Heap <small>objects</small></h5><div data-o="heap"></div></div>
+        <div class="console" data-o="out"></div></div></div>
+  <div class="msg" style="border-left-color:#3B82F6" data-o="msg"></div>`;
+ const q=s=>root.querySelector(s);
+ function snap(){const st={ld:L('','',''),ph:-1,meta:false,mirror:null,out:'',obj:false,msg:''};STEPS[cls].slice(0,i+1).forEach(s=>Object.assign(st,s));return st;}
+ const TXT={ask:'asked — checking…',wait:'waiting for parent',miss:'not found ✗',found:'found ✓',done:'got it from parent',"":'idle'};
+ function draw(){
+  const st=snap(),n=STEPS[cls].length;
+  q('[data-o=seg]').querySelectorAll('button').forEach(b=>{const on=b.dataset.c===cls;b.classList.toggle('on',on);b.style.background=on?'#1D4ED8':'#fff';});
+  q('[data-o=ph]').innerHTML=PH.map((p,k)=>{let c='';if(st.ph===-2&&k===0)c='bad';else if(st.ph>k||st.ph===5)c='done';else if(st.ph===k)c='cur';return `<span class="phase ${c}">${k===0?'① ':k<4?'② ':k===4?'③ ':'✓ '}${p}</span>`;}).join('');
+  q('[data-o=code]').innerHTML=codeView(SRC[cls].file,SRC[cls].src);
+  ['B','P','A'].forEach(k=>{const e=q(`[data-l=${k}]`),s=st.ld[k];e.className='loader '+(s==='done'?'found':s);e.querySelector('em').textContent=TXT[s];});
+  q('[data-o=meta]').innerHTML=st.meta==='string'?'<span class="obj" style="border-color:#9333EA;color:#6B21A8;background:#F7F0FF">Klass java.lang.String · loaded by Bootstrap</span>':st.meta?'<span class="obj" style="border-color:#9333EA;color:#6B21A8;background:#F7F0FF">Klass Order · fields · methods · bytecode</span>':'<span class="empty">nothing yet</span>';
+  let h='';
+  if(st.meta==='string')h+='<span class="obj" style="border-color:#F97316;color:#9A3412;background:#FFF6EC">Class&lt;String&gt; mirror</span>';
+  if(st.mirror)h+=`<span class="obj" style="border-color:#F97316;color:#9A3412;background:#FFF6EC">Class&lt;Order&gt; mirror · count = ${st.mirror.count} · MAX = ${st.mirror.MAX}</span>`;
+  if(st.obj)h+='<span class="obj" style="border-color:#2563EB;color:#1E3A8A;background:#EFF6FF">Order object @1</span>';
+  q('[data-o=heap]').innerHTML=h||'<span class="empty">nothing yet</span>';
+  q('[data-o=out]').innerHTML=st.out?(st.out.startsWith('java.')?`<span style="color:#F87171">${st.out}</span>`:'&gt; '+st.out):'<span style="color:#64748B">console output</span>';
+  q('[data-o=msg]').innerHTML=`<span class="cnt">step ${i+1} / ${n}</span>${st.msg}`;
+  q('[data-a=back]').disabled=i===0;q('[data-a=next]').disabled=i>=n-1;
+ }
+ function stop(){if(auto){clearInterval(auto);auto=null;q('[data-a=auto]').textContent='▶ Auto play';}}
+ root.addEventListener('click',e=>{const c=e.target.closest('[data-c]'),a=e.target.closest('[data-a]');
+  if(c){cls=c.dataset.c;i=0;stop();draw();}
+  if(!a)return;const act=a.dataset.a;
+  if(act==='next'&&i<STEPS[cls].length-1){i++;draw();}
+  if(act==='back'&&i>0){i--;draw();}
+  if(act==='reset'){i=0;stop();draw();}
+  if(act==='auto'){if(auto){stop();return;}if(i>=STEPS[cls].length-1)i=0;draw();a.textContent='⏸ Pause';
+   auto=setInterval(()=>{if(i>=STEPS[cls].length-1){stop();return;}i++;draw();},1900);}});
+ draw();
+})();
+
+// =====================================================================
+// 2. WHERE DOES IT LIVE?
+// =====================================================================
+(function(){
+ const root=document.getElementById('sim-mem');if(!root)return;
+ const SRC=`public class Shop {
+    static int orders = 0;
+
+    public static void main(String[] args) {
+        int qty = 2;
+        Order o = new Order("A1");
+        String s = "paid";
+        int t = o.total(qty);
+        o = null;
+    }
+}
+
+class Order {
+    String id;
+    Order(String id) { this.id = id; }
+    int total(int n) { int sum = n * 100; return sum; }
+}`;
+ const C={o:'#2563EB',a1:'#16A34A',paid:'#0D9488',args:'#64748B'};
+ const R=(k,label)=>`<span class="ref" style="background:${C[k]}">→ ${label}</span>`;
+ const H={
+  args:{k:'args',t:'String[] args',tag:'#args'},
+  mirror:{k:null,t:'Class&lt;Shop&gt; mirror · orders = 0'},
+  a1:{k:'a1',t:'String "A1"',tag:'#2'},
+  ord:{k:'o',t:'Order { id → #2 }',tag:'#1'},
+  paid:{k:'paid',t:'String "paid"',tag:'#3'}};
+ // each step: line, frames [{name,vars:[[n,v]]}], heap [[key,garbage?]], meta [], strs [], note
+ const S=[
+  {line:4,frames:[{n:'main',v:[['args',R('args','#args')]]}],heap:[['mirror'],['args']],meta:['Klass Shop','Klass String'],strs:[],
+   note:'The JVM calls <code>main()</code>: a <b>frame</b> is pushed on the main thread\'s <b>stack</b>. Class info for <code>Shop</code> is in <b>Metaspace</b>; its static field <code>orders</code> lives in the <code>Class</code> mirror on the <b>heap</b>.'},
+  {line:5,frames:[{n:'main',v:[['args',R('args','#args')],['qty','2']]}],heap:[['mirror'],['args']],meta:['Klass Shop','Klass String'],strs:[],
+   note:'<code>int qty = 2</code> — a <b>primitive local</b> is stored <b>directly in the stack frame</b>. No heap object is created.'},
+  {line:6,frames:[{n:'main',v:[['args',R('args','#args')],['qty','2'],['o',R('o','#1')]]}],heap:[['mirror'],['args'],['ord'],['a1']],meta:['Klass Shop','Klass String','Klass Order'],strs:['"A1"'],
+   note:'<code>new Order("A1")</code>: class <code>Order</code> is loaded (Metaspace), the <b>object goes on the heap</b>, and the variable <code>o</code> on the stack holds only a <b>reference</b> to it. The literal <code>"A1"</code> is interned: the StringTable points to a String on the heap.'},
+  {line:7,frames:[{n:'main',v:[['args',R('args','#args')],['qty','2'],['o',R('o','#1')],['s',R('paid','#3')]]}],heap:[['mirror'],['args'],['ord'],['a1'],['paid']],meta:['Klass Shop','Klass String','Klass Order'],strs:['"A1"','"paid"'],
+   note:'<code>String s = "paid"</code> — another literal: one shared String on the heap, indexed by the native <b>StringTable</b>. <code>s</code> is just a reference.'},
+  {line:16,frames:[{n:'total',v:[['this',R('o','#1')],['n','2'],['sum','200']]},{n:'main',v:[['args',R('args','#args')],['qty','2'],['o',R('o','#1')],['s',R('paid','#3')]]}],heap:[['mirror'],['args'],['ord'],['a1'],['paid']],meta:['Klass Shop','Klass String','Klass Order'],strs:['"A1"','"paid"'],
+   note:'Calling <code>o.total(qty)</code> <b>pushes a new frame</b> on top of <code>main</code>. Its locals <code>n</code> and <code>sum</code> live in that frame. The PC register now points into <code>total()</code>.'},
+  {line:8,frames:[{n:'main',v:[['args',R('args','#args')],['qty','2'],['o',R('o','#1')],['s',R('paid','#3')],['t','200']]}],heap:[['mirror'],['args'],['ord'],['a1'],['paid']],meta:['Klass Shop','Klass String','Klass Order'],strs:['"A1"','"paid"'],
+   note:'<code>total()</code> returns → its <b>frame is popped</b>. <code>n</code> and <code>sum</code> are gone instantly — stack memory needs <b>no garbage collector</b>.'},
+  {line:9,frames:[{n:'main',v:[['args',R('args','#args')],['qty','2'],['o','null'],['s',R('paid','#3')],['t','200']]}],heap:[['mirror'],['args'],['ord',1],['a1'],['paid']],meta:['Klass Shop','Klass String','Klass Order'],strs:['"A1"','"paid"'],
+   note:'<code>o = null</code> → nothing references the <code>Order</code> object any more → it is <b>garbage</b> (striped). It stays in memory until the GC runs — try the GC simulator below. ("A1" is still reachable through the StringTable.)'},
+  {line:10,frames:[],heap:[['mirror'],['args',1],['ord',1],['a1'],['paid']],meta:['Klass Shop','Klass String','Klass Order'],strs:['"A1"','"paid"'],
+   note:'<code>main()</code> ends → its frame is popped and the stack is empty. Objects that were only reachable from it (like <code>args</code>) are now garbage too. Classes stay in Metaspace while their class loader is alive.'}];
+ let i=0;
+ root.innerHTML=`<div class="ctrl"><button class="btn" data-a="back">◀ Back</button><button class="btn p" data-a="next" style="background:#DC2626;border-color:#DC2626">Next line ▶</button><button class="btn" data-a="reset">↺ Reset</button></div>
+  <div class="mem2"><div><div data-o="code"></div><div class="msg" style="border-left-color:#EF4444" data-o="msg"></div></div>
+   <div><div class="memgrid">
+    <div class="panel" style="border-color:var(--r-bd)"><h5>Thread stack (main) <small>top ↓</small></h5><div data-o="pc"></div><div data-o="stack"></div></div>
+    <div class="panel" style="border-color:var(--o-bd)"><h5>Heap <small>objects</small></h5><div data-o="heap"></div></div>
+    <div class="panel" style="border-color:var(--p-bd)"><h5>Metaspace <small>classes</small></h5><div data-o="meta"></div></div>
+    <div class="panel" style="border-color:#C4B5FD"><h5>StringTable <small>native</small></h5><div data-o="str"></div></div>
+   </div></div></div>`;
+ const q=s=>root.querySelector(s);
+ function draw(){const s=S[i];
+  q('[data-o=code]').innerHTML=codeView('Shop.java',SRC,s.line,true);
+  q('[data-o=msg]').innerHTML=`<span class="cnt">step ${i+1} / ${S.length}</span>${s.note}`;
+  q('[data-o=pc]').innerHTML=s.frames.length?`<span class="pc">PC register → line ${s.line}</span>`:'';
+  q('[data-o=stack]').innerHTML=s.frames.length?s.frames.map((f,k)=>`<div class="fr"><b>${f.n}()${k===0?'  ← current':''}</b>${f.v.map(([n,v])=>`<div class="var"><span>${n}</span><span>${v}</span></div>`).join('')}</div>`).join(''):'<span class="empty">empty — main() has returned</span>';
+  q('[data-o=heap]').innerHTML=s.heap.map(([k,g])=>{const o=H[k],col=o.k?C[o.k]:'#F97316';return `<span class="obj${g?' garbage':''}" style="border-color:${col};color:${col};background:#fff">${o.tag?`<span class="tag" style="background:${col}">${o.tag}</span>`:''}${o.t}${g?' · garbage':''}</span>`;}).join('');
+  q('[data-o=meta]').innerHTML=s.meta.map(m=>`<span class="obj" style="border-color:#9333EA;color:#6B21A8;background:#F7F0FF">${m}</span>`).join('');
+  q('[data-o=str]').innerHTML=s.strs.length?s.strs.map(x=>`<span class="obj" style="border-color:#A78BFA;color:#5B21B6;background:#fff">${x} → heap</span>`).join(''):'<span class="empty">empty</span>';
+  q('[data-a=back]').disabled=i===0;q('[data-a=next]').disabled=i===S.length-1;}
+ root.addEventListener('click',e=>{const a=e.target.closest('[data-a]');if(!a)return;
+  if(a.dataset.a==='next'&&i<S.length-1)i++;if(a.dataset.a==='back'&&i>0)i--;if(a.dataset.a==='reset')i=0;draw();});
+ draw();
+})();
+
+// =====================================================================
+// 3. GC SIMULATOR
+// =====================================================================
+(function(){
+ const root=document.getElementById('sim-gc');if(!root)return;
+ const CAP={eden:12,surv:6,old:18},TENURE=3,IHOP=0.45;
+ const NAMES=['Order','DTO','String','List','JSON','Map','byte[]','Event','Result','Request'];
+ let objs,seq,busy,mark,stats,logs,oom;
+ const $=s=>root.querySelector(s);
+ root.innerHTML=`<div class="ctrl">
+   <button class="btn p" data-a="alloc" style="background:#EA580C;border-color:#EA580C">+ Allocate 3 objects</button>
+   <button class="btn" data-a="finish" style="border-color:#94A3B8">⏩ Requests finish</button>
+   <button class="btn" data-a="young" style="border-color:#3B82F6;color:#1D4ED8">Young GC</button>
+   <button class="btn" data-a="mixed" style="border-color:#9333EA;color:#7E22CE">Mixed GC</button>
+   <button class="btn" data-a="full" style="border-color:#DC2626;color:#B91C1C">Full GC</button>
+   <button class="btn" data-a="reset">↺ Reset</button></div>
+  <div class="gcgrid">
+   <div class="area" style="border-color:#FDBA74;background:#FFF7ED"><h5>Eden <small data-c="eden"></small></h5><div class="cap"><i data-b="eden" style="background:#FB923C"></i></div><div class="pool" data-p="eden"></div></div>
+   <div class="area" style="border-color:#F97316;background:#FFEDD5"><h5>Survivor <small data-c="surv"></small></h5><div class="cap"><i data-b="surv" style="background:#F97316"></i></div><div class="pool" data-p="surv"></div></div>
+   <div class="area" style="border-color:#C2410C;background:#FED7AA"><h5>Old <small data-c="old"></small></h5><div class="cap"><i data-b="old" style="background:#C2410C"></i></div><div class="pool" data-p="old"></div></div>
+  </div>
+  <div class="stw" data-o="stw"></div>
+  <div class="gstats" data-o="stats"></div>
+  <div style="font-size:13px;color:#64748B;margin-top:8px">Blue = still referenced (live) · grey striped = no references (garbage — the GC only finds out when it marks) · <b>age</b> = Young GCs survived · promote to Old at age ${TENURE} (real JVM: up to 15) · in G1 each area is a set of regions</div>
+  <div class="glog" data-o="log"></div>`;
+ function log(m,c=''){logs.unshift(`<div class="${c}">${m}</div>`);if(logs.length>60)logs.pop();}
+ const count=g=>objs.filter(o=>o.gen===g&&!o.dying).length;
+ function mk(gen,live,age=0,name){return {id:++seq,gen,live,age,name:name||NAMES[Math.floor(Math.random()*NAMES.length)]};}
+ function reset(){seq=0;busy=false;mark=false;oom=false;logs=[];stats={young:0,mixed:0,full:0,freed:0,promoted:0};
+  objs=[mk('old',true,5,'Config'),mk('old',true,4,'Cache'),mk('surv',true,1,'Session'),mk('surv',false,1,'DTO'),mk('eden',true),mk('eden',false),mk('eden',true),mk('eden',false),mk('eden',false)];
+  log('Heap ready. Long-lived objects (Config, Cache) already sit in Old.','y');render();}
+ function render(){
+  const first={};root.querySelectorAll('.go').forEach(e=>first[e.dataset.id]=e.getBoundingClientRect());
+  ['eden','surv','old'].forEach(g=>{
+   const list=objs.filter(o=>o.gen===g);
+   $(`[data-p=${g}]`).innerHTML=list.map(o=>`<div class="go ${o.live?'':'dead'} ${o.dying?'dying':''} ${mark?(o.live?'mk-live':'mk-dead'):''}" data-id="${o.id}" title="click to ${o.live?'drop':'restore'} its reference">${o.name}<small>${o.live?'age '+o.age:'garbage'}</small></div>`).join('');
+   const n=list.filter(o=>!o.dying).length;$(`[data-c=${g}]`).textContent=`${n} / ${CAP[g]}`;$(`[data-b=${g}]`).style.width=Math.min(100,n/CAP[g]*100)+'%';});
+  root.querySelectorAll('.go').forEach(e=>{const f=first[e.dataset.id];if(!f){e.classList.add('born');return;}
+   const l=e.getBoundingClientRect(),dx=f.left-l.left,dy=f.top-l.top;
+   if(dx||dy){e.style.transition='none';e.style.transform=`translate(${dx}px,${dy}px)`;void e.offsetWidth;e.style.transition='transform .65s ease';e.style.transform='';}});
+  const used=objs.filter(o=>!o.dying).length;
+  $('[data-o=stats]').innerHTML=`<div class="gstat">Young GCs<b>${stats.young}</b></div><div class="gstat">Mixed GCs<b>${stats.mixed}</b></div><div class="gstat">Full GCs<b>${stats.full}</b></div><div class="gstat">objects freed<b>${stats.freed}</b></div><div class="gstat">promoted to Old<b>${stats.promoted}</b></div><div class="gstat">heap used<b>${used} / ${CAP.eden+CAP.surv+CAP.old}</b></div>`;
+  $('[data-o=log]').innerHTML=logs.join('');
+  root.querySelectorAll('[data-a]').forEach(b=>{if(b.dataset.a!=='reset')b.disabled=busy||(oom&&b.dataset.a==='alloc');});
+  $('[data-a=mixed]').classList.toggle('hint',!busy&&count('old')>=CAP.old*IHOP&&objs.some(o=>o.gen==='old'&&!o.live));
+ }
+ function stw(t){const e=$('[data-o=stw]');e.textContent=t||'';e.classList.toggle('on',!!t);}
+ async function freeGarbage(gens){const dead=objs.filter(o=>gens.includes(o.gen)&&!o.live);dead.forEach(o=>o.dying=true);render();await sleep(480);
+  objs=objs.filter(o=>!o.dying);stats.freed+=dead.length;return dead.length;}
+ function evacuateYoung(){let promoted=0,early=0;
+  const young=objs.filter(o=>(o.gen==='eden'||o.gen==='surv')&&o.live).sort((a,b)=>b.age-a.age);
+  young.forEach(o=>{o.age++;if(o.age>=TENURE){o.gen='old';promoted++;}else o.gen='surv';});
+  let surv=objs.filter(o=>o.gen==='surv');
+  while(surv.length>CAP.surv){const o=surv.shift();o.gen='old';early++;surv=objs.filter(x=>x.gen==='surv');}
+  // keep order: old objects first, newcomers appended
+  objs=[...objs.filter(o=>o.gen==='old'),...objs.filter(o=>o.gen==='surv'),...objs.filter(o=>o.gen==='eden')];
+  stats.promoted+=promoted+early;return {promoted,early};}
+ async function young(reason){
+  if(busy)return;busy=true;stats.young++;
+  log(`Young GC #${stats.young}${reason?' — '+reason:''}`,'y');stw('⏸ Stop-the-world pause — application threads wait (Young GC)');
+  mark=true;render();await sleep(1000);
+  const freed=await freeGarbage(['eden','surv']);mark=false;
+  const r=evacuateYoung();render();await sleep(750);
+  log(`  freed ${freed} · live objects copied to Survivor (age +1) · ${r.promoted} promoted to Old${r.early?` · ${r.early} sent to Old early (Survivor full)`:''} · Eden is empty again`,'g');
+  stw('');busy=false;
+  if(count('old')>CAP.old){await full('Old is over capacity');return;}
+  if(count('old')>=CAP.old*IHOP)log(`  Old is ${Math.round(count('old')/CAP.old*100)}% full (≥ 45%) → G1 would start concurrent marking, then Mixed GCs`,'p');
+  render();}
+ async function mixed(){
+  if(busy)return;busy=true;stats.mixed++;
+  log(`Mixed GC #${stats.mixed} — young areas + the old regions with the most garbage`,'y');stw('⏸ Stop-the-world pause (Mixed GC: young + some old regions)');
+  mark=true;render();await sleep(1000);
+  const freed=await freeGarbage(['eden','surv','old']);mark=false;
+  const r=evacuateYoung();render();await sleep(750);
+  log(`  freed ${freed} (incl. old garbage) · old live objects compacted · ${r.promoted+r.early} promoted`,'g');stw('');busy=false;render();}
+ async function full(reason){
+  busy=true;stats.full++;
+  log(`Full GC #${stats.full} — ${reason||'requested'} · whole heap, long pause`,'r');stw('⛔ Full GC — whole heap marked and compacted, everything stops (fallback, slow)');
+  mark=true;render();await sleep(1300);
+  const freed=await freeGarbage(['eden','surv','old']);mark=false;
+  const r=evacuateYoung();render();await sleep(800);
+  log(`  freed ${freed} · heap compacted`,'g');stw('');busy=false;
+  if(count('old')>CAP.old){oom=true;log('  ❌ Old still full after Full GC → java.lang.OutOfMemoryError: Java heap space. Drop some references (click objects) or Reset.','r');}
+  render();}
+ async function alloc(){
+  if(busy||oom)return;
+  for(let k=0;k<3;k++){
+   if(count('eden')>=CAP.eden){await young('Eden is full (allocation failure)');if(oom)return;}
+   objs.push(mk('eden',true));render();await sleep(120);}
+  log('new objects → Eden (fast TLAB allocation)');render();}
+ function finish(){if(busy)return;let n=0;
+  objs.forEach(o=>{if(!o.live)return;const p=o.gen==='eden'?0.7:o.gen==='surv'?0.4:0.12;if(o.name!=='Config'&&Math.random()<p){o.live=false;n++;}});
+  log(`⏩ requests finished → ${n} object(s) lost all references (most of them young)`);render();}
+ root.addEventListener('click',e=>{
+  const a=e.target.closest('[data-a]');
+  if(a){({alloc,finish,young:()=>young('requested'),mixed,full:()=>{if(!busy)full('requested by you (System.gc() is only a hint)');},reset})[a.dataset.a]();return;}
+  const g=e.target.closest('.go');if(g&&!busy){const o=objs.find(x=>x.id==+g.dataset.id);if(o){o.live=!o.live;if(o.live)oom=false;log(`${o.name} (${o.gen}) ${o.live?'is referenced again':'lost its last reference → garbage'}`);render();}}});
+ reset();
+})();
+</script>
+
+</body></html>

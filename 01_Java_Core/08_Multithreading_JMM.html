@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multithreading &amp; JMM · Interview Prep</title>
+<link rel="stylesheet" href="../_shared/design-tokens.css">
+<link rel="stylesheet" href="../_shared/deck.css">
+<style>
+/* 1.2 lifecycle */
+.lc{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:calc(10px*var(--k)) 12px}
+.st{border:2px solid var(--line-strong);background:#fff;border-radius:12px;padding:calc(6px*var(--k)) 9px;text-align:center;transition:background .25s,border-color .25s,box-shadow .25s}
+.st b{display:block;font-family:var(--font-mono);font-size:13px}
+.st small{font-size:11.5px;color:var(--muted)}
+.st.on{border-color:var(--warning);background:var(--warning-bg);box-shadow:0 0 0 3px #FDE68A}
+.st.was{border-style:dashed;border-color:var(--bd)}
+.acts{display:flex;flex-wrap:wrap;gap:6px}
+.acts .btn{font-family:var(--font-mono);font-size:12px}
+/* 2.1 race */
+.race{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:10px;align-items:center}
+.thr{background:#fff;border:1.5px solid var(--line);border-radius:11px;padding:calc(6px*var(--k)) 9px;display:flex;flex-direction:column;gap:calc(4px*var(--k))}
+.thr h4{margin:0;font-size:13.5px;display:flex;gap:6px;align-items:center}
+.op{font-family:var(--font-mono);font-size:12.3px;border:1.5px solid var(--line);border-radius:7px;padding:2px 8px;color:var(--muted)}
+.op.done{border-color:#86EFAC;background:#F0FDF4;color:#166534}
+.op.next{border-color:var(--warning);background:var(--warning-bg);color:#92400E;font-weight:700}
+.thr .loc{font-size:12px;color:var(--muted)}
+.heap{text-align:center;background:#fff;border:2px solid var(--bd);border-radius:12px;padding:calc(8px*var(--k)) 14px}
+.heap small{display:block;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase}
+.heap b{font-family:var(--font-mono);font-size:30px;color:var(--ink)}
+.thr.blk{border-color:#FCA5A5;background:#FEF2F2}
+/* 2.2 lock picker */
+.pick{display:flex;flex-direction:column;gap:5px}
+.pick .lbl{margin:0}
+.pick .seg{flex-wrap:wrap}
+.pick .seg button{font-family:var(--font-mono);font-size:12px}
+/* 3.1 volatile */
+.vis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.cell{background:#fff;border:1.5px solid var(--line);border-radius:10px;padding:calc(5px*var(--k)) 9px;font-size:12.5px}
+.cell b{font-family:var(--font-mono);font-size:14px}
+.cell.bad{border-color:#FCA5A5;background:#FEF2F2}.cell.good{border-color:#86EFAC;background:#F0FDF4}
+/* 3.2 rules */
+.rules{display:flex;flex-direction:column;gap:5px}
+.rules button{font:inherit;font-size:13px;text-align:left;background:#fff;border:1.5px solid var(--line);border-radius:9px;padding:calc(4px*var(--k)) 10px;cursor:pointer}
+.rules button.on{border-color:var(--bd);box-shadow:0 0 0 2px var(--lt)}
+/* 4.1 deadlock */
+.dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.lk{background:#fff;border:2px solid var(--line-strong);border-radius:11px;padding:calc(5px*var(--k)) 9px;font-size:12.5px}
+.lk b{font-family:var(--font-mono);font-size:13px}
+.lk.held{border-color:var(--bd);background:var(--lt)}
+.lk.wait{border-color:#FCA5A5;background:#FEF2F2}
+.lk.dead{border-color:var(--danger);background:var(--danger-bg);animation:shake .4s}
+</style>
+</head>
+<body data-topic="java:Multithreading &amp; Java Memory Model">
+<header class="topbar">
+ <a class="tbrand" href="../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="00_Java_Core.html" title="All Java Core topics" style="color:#1D4ED8"><svg class="lg" data-logo="openjdk"></svg>Java Core</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<!-- ===================================================== 0. CONTENTS -->
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2><svg class="lg" data-logo="openjdk"></svg>Multithreading &amp; the Java Memory Model</h2><span class="sub">threads, shared state, visibility and deadlocks</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="toc" id="toc"></div>
+ <div class="howuse"><span><b>← →</b> keys move between slides</span><span><b>▶ Try it</b> boxes are interactive</span><span>Examples are <b>simplified from FireFlink</b> parallel suite runs</span><span>Thread pools &amp; atomics → page 09 · CompletableFuture &amp; virtual threads → page 10</span></div>
+</div>
+</section>
+
+<!-- ===================================================== 1. THREADS -->
+<section class="cat" data-name="1. Threads" data-col="b">
+<h1 class="cat-title">1. Threads</h1>
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.1</span><h2>Creating a thread</h2><span class="sub">and the start() vs run() trap</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="ParallelRunner.java">
+// 1. Runnable — no result, can't throw checked exceptions
+Runnable task = () -> runScript("login.spec");
+Thread t = new Thread(task, "exec-1");
+t.start();                         // ✅ new thread runs task
+
+// 2. Callable — returns a value, may throw (used with executors)
+Callable<Result> c = () -> runScript("checkout.spec");
+Future<Result> f = pool.submit(c);  // see page 09
+
+// 3. extends Thread — ❌ wastes your only superclass
+class ExecThread extends Thread { public void run() { … } }</script></div>
+   <table class="t"><tr><th></th><th>Runnable</th><th>Callable&lt;V&gt;</th></tr>
+    <tr><td>method</td><td><code>void run()</code></td><td><code>V call() throws Exception</code></td></tr>
+    <tr><td>use with</td><td><code>Thread</code>, executors</td><td>executors → <code>Future&lt;V&gt;</code></td></tr></table>
+  </div>
+  <div class="stack">
+   <div class="box"><h4>▶ Try it — what does each call print?</h4>
+    <div class="seg" id="sr" style="margin-bottom:8px"><button class="on" data-m="start">t.start()</button><button data-m="run">t.run()</button><button data-m="twice">t.start(); t.start();</button></div>
+    <div class="code"><script type="text/plain" data-mac="Main.java">
+Thread t = new Thread(() ->
+    System.out.println("running in " + Thread.currentThread().getName()),
+    "exec-1");</script></div>
+    <div class="console" id="sr-out" style="margin-top:8px"></div>
+    <p class="msg" id="sr-msg" style="margin:8px 0 0"></p></div>
+   <p class="take"><b>Remember:</b> prefer <code>Runnable</code>/<code>Callable</code> handed to an executor. <code>start()</code> creates a thread; <code>run()</code> is just a normal method call on the current thread.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.2</span><h2>Thread lifecycle</h2><span class="sub">click an action — watch the state change</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="lc" id="lc"></div>
+   <div class="lbl">Actions on thread <code>exec-1</code></div>
+   <div class="acts" id="lc-acts"></div>
+   <div class="console" id="lc-log" style="min-height:calc(54px*var(--k))"></div>
+  </div>
+  <div class="stack">
+   <div class="msg" id="lc-msg"></div>
+   <table class="t"><tr><th>State</th><th>How it gets there (FireFlink run)</th></tr>
+    <tr><td><code>BLOCKED</code></td><td>wants a <code>synchronized</code> lock another thread holds — e.g. updating the shared suite result</td></tr>
+    <tr><td><code>WAITING</code></td><td><code>wait()</code>, <code>join()</code>, <code>LockSupport.park()</code> — no timeout</td></tr>
+    <tr><td><code>TIMED_WAITING</code></td><td><code>sleep(ms)</code>, <code>wait(ms)</code>, <code>join(ms)</code> — retry back-off between steps</td></tr></table>
+   <p class="take"><b>Remember:</b> there is no "RUNNING" state in Java — <code>RUNNABLE</code> covers both running and ready-to-run. A thread can't be restarted once <code>TERMINATED</code>.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 2. SHARED STATE -->
+<section class="cat" data-name="2. Shared state" data-col="o">
+<h1 class="cat-title">2. Shared state</h1>
+<div class="slide c-o">
+ <div class="sh"><span class="sn">2.1</span><h2>Race condition: the lost update</h2><span class="sub"><code>passed++</code> is three steps, not one</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="ctrl"><button class="btn p" id="rc-t1">T1 step ▶</button><button class="btn p" id="rc-t2">T2 step ▶</button><button class="btn" id="rc-bad">⚡ Play the bad interleaving</button><button class="btn" id="rc-reset">↺ Reset</button><label class="chk" id="rc-sync"><input type="checkbox"> synchronized</label></div>
+   <div class="race">
+    <div class="thr" id="rc-a"></div>
+    <div class="heap"><small>passed (heap)</small><b id="rc-count">0</b><small>expected 2</small></div>
+    <div class="thr" id="rc-b"></div>
+   </div>
+   <div class="console" id="rc-log" style="min-height:calc(60px*var(--k))"></div>
+  </div>
+  <div class="stack">
+   <div class="msg" id="rc-msg"></div>
+   <div class="code"><script type="text/plain" data-mac="SuiteResult.java">
+class SuiteResult {
+    private int passed;
+    void onPass() { passed++; }   // ❌ read → add → write
+    // ✅ fixes
+    synchronized void onPassSafe() { passed++; }
+    // or AtomicInteger.incrementAndGet()  (page 09)
+}</script></div>
+   <p class="take"><b>Remember:</b> a race needs <b>shared + mutable + unsynchronized</b>. Remove any one: don't share (local/ThreadLocal), don't mutate (immutable), or synchronize.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-o">
+ <div class="sh"><span class="sn">2.2</span><h2><code>synchronized</code> — which calls block each other?</h2><span class="sub">pick one call per thread</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="Suite.java">
+class Suite {
+    synchronized void updateStatus() { … }   // lock: this
+    synchronized void addResult()    { … }   // lock: this
+    static synchronized long nextId() { … }  // lock: Suite.class
+    String getName() { … }                   // no lock
+    void flush() {
+        synchronized (resultsLock) { … }     // lock: resultsLock
+    }
+}</script></div>
+   <div class="box"><h4>What it guarantees</h4><ul>
+    <li><b>Mutual exclusion</b> — one thread at a time per lock object</li>
+    <li><b>Visibility</b> — writes before unlock are seen after the next lock</li>
+    <li><b>Reentrant</b> — <code>updateStatus()</code> may call <code>addResult()</code> without deadlocking itself</li></ul></div>
+  </div>
+  <div class="stack">
+   <div class="pick"><div class="lbl">Thread 1 calls</div><div class="seg" id="lp-1"></div></div>
+   <div class="pick"><div class="lbl">Thread 2 calls</div><div class="seg" id="lp-2"></div></div>
+   <div class="msg" id="lp-msg"></div>
+   <p class="take"><b>Remember:</b> threads block each other only when they lock the <b>same object</b>. Instance methods lock <code>this</code>, static ones lock the <code>Class</code> — they don't block each other.</p>
+   <div class="gtk"><b>Good to know</b> Prefer a private final lock object (<code>synchronized (resultsLock)</code>) and keep the block small — never do I/O (HTTP, DB) while holding a lock.</div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 3. VISIBILITY -->
+<section class="cat" data-name="3. Visibility (JMM)" data-col="p">
+<h1 class="cat-title">3. Visibility (JMM)</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">3.1</span><h2><code>volatile</code>: the "Stop run" button</h2><span class="sub">a write in one thread may never be seen by another</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="ctrl"><label class="chk" id="vo-v"><input type="checkbox"> volatile</label><button class="btn p" id="vo-start">▶ Start run</button><button class="btn" id="vo-stop">■ Stop run (UI thread)</button></div>
+   <div class="code" id="vo-code"></div>
+   <div class="vis">
+    <div class="cell" id="vo-mem">main memory<br><b>stopRequested = false</b></div>
+    <div class="cell" id="vo-cache">worker's view (CPU cache / JIT)<br><b>stopRequested = false</b></div>
+    <div class="cell" id="vo-loop" style="grid-column:span 2">worker loop: <b id="vo-n">idle</b></div>
+   </div>
+  </div>
+  <div class="stack">
+   <div class="msg" id="vo-msg"></div>
+   <div class="box"><h4>volatile gives you</h4><ul>
+    <li><b>Visibility</b> — every read goes to the latest write</li>
+    <li><b>Ordering</b> — no reordering around the volatile access</li>
+    <li>❌ <b>not atomicity</b> — <code>volatile int count; count++</code> still loses updates → use <code>AtomicInteger</code></li></ul></div>
+   <p class="take"><b>Remember:</b> use <code>volatile</code> for a flag written by one thread and read by others. For read-modify-write use atomics or locks.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">3.2</span><h2>Happens-before &amp; wait / notify</h2><span class="sub">click a rule</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="rules" id="hb"></div>
+   <div class="msg" id="hb-msg"></div>
+   <div class="gtk"><b>Good to know</b> <code>final</code> fields are safely visible after the constructor finishes; handing a task to an executor or a <code>BlockingQueue</code> also creates happens-before.</div>
+  </div>
+  <div class="stack">
+   <table class="t"><tr><th></th><th><code>wait()</code></th><th><code>sleep(ms)</code></th></tr>
+    <tr><td>belongs to</td><td><code>Object</code></td><td><code>Thread</code> (static)</td></tr>
+    <tr><td>releases the lock?</td><td><b>yes</b></td><td><b>no</b> — keeps it</td></tr>
+    <tr><td>must hold the lock?</td><td>yes, else <code>IllegalMonitorStateException</code></td><td>no</td></tr>
+    <tr><td>wakes on</td><td><code>notify/notifyAll</code>, timeout, spurious</td><td>timeout, interrupt</td></tr></table>
+   <div class="code"><script type="text/plain" data-mac="DevicePool.java">
+synchronized Device acquire() throws InterruptedException {
+    while (free.isEmpty()) {   // ✅ while, not if — spurious wake-ups
+        wait();                // releases the lock while waiting
+    }
+    return free.remove(0);
+}
+synchronized void release(Device d) { free.add(d); notifyAll(); }</script></div>
+   <p class="take"><b>Remember:</b> always <code>wait()</code> in a <b>while</b> loop. In new code prefer <code>BlockingQueue</code>/<code>Semaphore</code> (page 09).</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 4. DEADLOCK -->
+<section class="cat" data-name="4. Deadlock" data-col="r">
+<h1 class="cat-title">4. Deadlock</h1>
+<div class="slide c-r">
+ <div class="sh"><span class="sn">4.1</span><h2>Deadlock simulator</h2><span class="sub">two threads, two locks — step through</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="ctrl"><div class="seg" id="dl-mode"><button class="on" data-m="bad">Opposite order ❌</button><button data-m="good">Same order ✅</button></div><button class="btn p" id="dl-next">Next ▶</button><button class="btn" id="dl-reset">↺ Reset</button><span class="chip no" id="dl-n"></span></div>
+   <div class="dl">
+    <div class="lk" id="dl-l1"></div><div class="lk" id="dl-l2"></div>
+    <div class="lk" id="dl-t1"></div><div class="lk" id="dl-t2"></div>
+   </div>
+   <div class="msg" id="dl-msg"></div>
+   <div class="console" id="dl-js"></div>
+  </div>
+  <div class="stack">
+   <div class="code" id="dl-code"></div>
+   <div class="box"><h4>All four needed → break one</h4><ul>
+    <li>mutual exclusion · hold and wait · no preemption · <b>circular wait</b></li>
+    <li>Fix: a <b>global lock order</b>, or <code>tryLock(timeout)</code> and back off (page 09)</li>
+    <li>Detect: <code>jstack &lt;pid&gt;</code> / thread dump prints <i>"Found one Java-level deadlock"</i></li></ul></div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 5. ALL IN ACTION -->
+<section class="cat" data-name="5. All in action" data-col="k">
+<h1 class="cat-title">5. All in action</h1>
+<div class="slide c-k">
+ <div class="sh"><span class="sn">5.1</span><h2>Predict the output</h2><span class="sub">classic threading traps</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="pqs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="pq" data-opts="main|exec-1" data-ans="main"><pre>Thread t = new Thread(() -> print(
+    Thread.currentThread().getName()), "exec-1");
+t.run();</pre><div class="why"><code>run()</code> is a plain method call — it runs on the caller's thread. <a class="go" data-go="1.1">1.1</a></div></div>
+  <div class="pq" data-opts="always 2000|may be less" data-ans="may be less"><pre>volatile int count = 0;
+// 2 threads, each 1000 × count++
+print(count);  // after both join</pre><div class="why">volatile gives visibility, not atomicity — increments still interleave. <a class="go" data-go="3.1">3.1</a></div></div>
+  <div class="pq" data-opts="safe|not safe" data-ans="not safe"><pre>static int total;
+synchronized void add() { total++; }
+// T1: new Counter().add()
+// T2: new Counter().add()</pre><div class="why">Each thread locks a <b>different</b> object, but <code>total</code> is static (shared). Use a static synchronized method or a shared lock. <a class="go" data-go="2.2">2.2</a></div></div>
+  <div class="pq" data-opts="runs twice|IllegalThreadStateException" data-ans="IllegalThreadStateException"><pre>Thread t = new Thread(task);
+t.start();
+t.start();</pre><div class="why">A thread can be started only once — even after it terminates. <a class="go" data-go="1.2">1.2</a></div></div>
+  <div class="pq" data-opts="prints done|prints nothing" data-ans="prints nothing"><pre>Thread t = new Thread(() -> {
+    sleep(1000); print("done"); });
+t.setDaemon(true);
+t.start();   // main() returns now</pre><div class="why">The JVM exits when only daemon threads remain — they are killed without finishing.</div></div>
+  <div class="pq" data-opts="0|5|0 or 5" data-ans="5"><pre>int[] x = {0};
+Thread t = new Thread(() -> x[0] = 5);
+t.start(); t.join();
+print(x[0]);</pre><div class="why"><code>join()</code> creates happens-before: everything the thread did is visible after it returns. <a class="go" data-go="3.2">3.2</a></div></div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">5.2</span><h2>Production bug: "report timestamps are garbage"</h2><span class="sub">one static <code>SimpleDateFormat</code> shared by parallel executions</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="ctrl"><div class="seg" id="df-fix"><button class="on" data-f="shared">shared static ❌</button><button data-f="sync">synchronized</button><button data-f="tl">ThreadLocal</button><button data-f="dtf">DateTimeFormatter ✅</button></div><button class="btn p" id="df-run">▶ Run 6 executions</button></div>
+   <div class="code" id="df-code"></div>
+  </div>
+  <div class="stack">
+   <div class="console" id="df-out" style="min-height:calc(130px*var(--k))"></div>
+   <div class="msg" id="df-msg"></div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 6. INTERVIEW Q&A -->
+<section class="cat" data-name="6. Interview Q&amp;A" data-col="i">
+<h1 class="cat-title">6. Interview Q&amp;A</h1>
+<div class="slide c-i">
+ <div class="sh"><span class="sn">6.1</span><h2>Interview questions</h2><span class="sub">click a question to reveal the answer · pill = slide that explains it</span></div>
+ <div class="qbar"><input id="qa-find" type="search" placeholder="Filter questions… (e.g. volatile, deadlock, wait)"><span class="chip ok" id="qa-count"></span><button class="btn" id="qa-random">🎲 Random question</button><label class="donebox" style="margin-left:auto"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="acc" id="qa-list"></div>
+</div>
+</section>
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <span class="kbd">← → keys</span>
+</footer>
+
+<script src="../_shared/deck.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const segOn=(seg,b)=>seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+
+// ===================================================== 1.1 start vs run
+(function(){
+ const M={start:['<span class="okc">running in exec-1</span>','✅ <code>start()</code> asks the JVM for a <b>new thread</b>, which then calls <code>run()</code>.'],
+  run:['running in main','❌ <code>run()</code> executes on the <b>current</b> thread — no parallelism. Your "parallel" suite runs one script at a time.'],
+  twice:['<span class="okc">running in exec-1</span>\n<span class="err">Exception in thread "main" java.lang.IllegalThreadStateException</span>','❌ A <code>Thread</code> object can be started <b>once</b>. Create a new one (or reuse a pool).']};
+ const draw=m=>{$('sr-out').innerHTML=M[m][0];$('sr-msg').innerHTML=M[m][1];};
+ $('sr').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;segOn($('sr'),b);draw(b.dataset.m);};draw('start');
+})();
+
+// ===================================================== 1.2 lifecycle state machine
+(function(){
+ const S={NEW:'created, not started',RUNNABLE:'running or ready',TERMINATED:'run() finished',BLOCKED:'waiting for a monitor',WAITING:'waiting, no timeout',TIMED_WAITING:'waiting with timeout'};
+ const ORDER=['NEW','RUNNABLE','TERMINATED','BLOCKED','WAITING','TIMED_WAITING'];
+ // [label, from, to, message, via]
+ const A=[
+  ['start()','NEW','RUNNABLE','The scheduler can now run <code>exec-1</code>. Running vs ready is the OS\'s business — Java calls both RUNNABLE.'],
+  ['enter synchronized (lock held)','RUNNABLE','BLOCKED','Another execution thread holds the suite-result lock. <code>exec-1</code> is BLOCKED until it\'s released.'],
+  ['lock released','BLOCKED','RUNNABLE','Got the monitor — back to RUNNABLE.'],
+  ['lock.wait()','RUNNABLE','WAITING','Waiting for a free device — <b>releases</b> the lock and sleeps until notified.','wait'],
+  ['other.join()','RUNNABLE','WAITING','Waiting for the setup thread to finish, with no timeout.','join'],
+  ['notify()','WAITING','BLOCKED','Woken up — but it must <b>re-acquire</b> the lock first, so it goes to BLOCKED, not RUNNABLE.','wait'],
+  ['joined thread ends','WAITING','RUNNABLE','The setup thread terminated, so <code>join()</code> returns.','join'],
+  ['Thread.sleep(500)','RUNNABLE','TIMED_WAITING','Retry back-off between steps — keeps any locks it holds!'],
+  ['time elapses','TIMED_WAITING','RUNNABLE','Sleep over — RUNNABLE again.'],
+  ['interrupt()','TIMED_WAITING','RUNNABLE','<code>sleep</code> throws <code>InterruptedException</code> — the "Stop run" button can use this to wake it up.'],
+  ['run() returns','RUNNABLE','TERMINATED','Done. It can never be started again.']];
+ let cur='NEW',prev=null,via=null,log=[];
+ function draw(m){
+  $('lc').innerHTML=ORDER.map(s=>`<div class="st ${s===cur?'on':s===prev?'was':''}"><b>${s}</b><small>${S[s]}</small></div>`).join('');
+  $('lc-acts').innerHTML=A.map((a,i)=>{const ok=a[1]===cur&&(!a[4]||a[1]!=='WAITING'||a[4]===via);return `<button class="btn" data-i="${i}" ${ok?'':'disabled'}>${a[0]}</button>`;}).join('')+`<button class="btn" data-i="r">↺ new thread</button>`;
+  $('lc-log').innerHTML=log.length?log.slice(-3).join('\n'):'<span class="dim">exec-1: NEW — press start()</span>';
+  $('lc-msg').innerHTML=m||'<b>NEW</b> — the <code>Thread</code> object exists, but no OS thread yet. Press <code>start()</code>.';}
+ $('lc-acts').onclick=e=>{const b=e.target.closest('[data-i]');if(!b||b.disabled)return;
+  if(b.dataset.i==='r'){cur='NEW';prev=null;via=null;log=[];draw();return;}
+  const a=A[+b.dataset.i];prev=cur;cur=a[2];if(a[1]==='RUNNABLE'&&a[2]==='WAITING')via=a[4];
+  log.push(`${a[0].padEnd(22)} ${a[1]} → <span class="nar">${a[2]}</span>`);draw(`<b>${a[2]}</b> — ${a[3]}`);};
+ draw();
+})();
+
+// ===================================================== 2.1 race condition
+(function(){
+ const OPS=['read  passed','add   1','write passed'];
+ let count,T,log,lock,sync;
+ function reset(){count=0;T=[{pc:0,loc:null},{pc:0,loc:null}];log=[];lock=null;draw('Step <b>T1</b> and <b>T2</b> yourself, or press <b>⚡ Play the bad interleaving</b>.');}
+ function step(i){const t=T[i],n='T'+(i+1);if(t.pc>=3)return;
+  if(sync&&lock!==null&&lock!==i){log.push(`<span class="err">${n} BLOCKED — T${lock+1} holds the lock</span>`);draw(`<b>${n} is BLOCKED</b> — with <code>synchronized</code> only one thread can be inside <code>passed++</code>.`,i);return;}
+  if(sync&&t.pc===0)lock=i;
+  if(t.pc===0){t.loc=count;log.push(`${n} reads passed = ${count}`);}
+  else if(t.pc===1){t.loc++;log.push(`${n} adds 1 → local ${t.loc}`);}
+  else{count=t.loc;log.push(`${n} writes passed = <span class="nar">${count}</span>`);if(sync)lock=null;}
+  t.pc++;
+  let m='';if(T[0].pc===3&&T[1].pc===3)m=count===2?'✅ <b>passed = 2</b> — no update lost.':'❌ <b>passed = 1</b> — both threads read 0, so one increment was <b>lost</b>. The suite reports 1 pass for 2 passing tests.';
+  draw(m);}
+ function draw(m,blk){
+  [['rc-a',0],['rc-b',1]].forEach(([id,i])=>{const t=T[i];$(id).className='thr'+(blk===i?' blk':'');
+   $(id).innerHTML=`<h4>T${i+1} <span class="chip ${t.pc===3?'ok':'no'}">${t.pc===3?'done':lock===i?'holds lock':'exec-'+(i+1)}</span></h4>`+OPS.map((o,k)=>`<div class="op ${k<t.pc?'done':k===t.pc?'next':''}">${o}</div>`).join('')+`<div class="loc">local: <b>${t.loc===null?'—':t.loc}</b></div>`;});
+  $('rc-count').textContent=count;
+  $('rc-log').innerHTML=log.length?log.slice(-4).join('\n'):'<span class="dim">each thread runs passed++ once</span>';
+  if(m)$('rc-msg').innerHTML=m;
+  $('rc-t1').disabled=T[0].pc>=3;$('rc-t2').disabled=T[1].pc>=3;}
+ let playing=false;
+ $('rc-t1').onclick=()=>step(0);$('rc-t2').onclick=()=>step(1);
+ $('rc-reset').onclick=()=>{playing=false;reset();};
+ $('rc-bad').onclick=async()=>{if(playing)return;playing=true;reset();for(const i of [0,1,0,1,0,1,0,1,0,1,0,1]){if(!playing)return;if(T[i].pc<3)step(i);await sleep(450);}playing=false;};
+ const cb=$('rc-sync').querySelector('input');cb.onchange=()=>{sync=cb.checked;$('rc-sync').classList.toggle('on',sync);playing=false;reset();};
+ sync=false;reset();
+})();
+
+// ===================================================== 2.2 which calls block each other
+(function(){
+ const C=[['suiteA.updateStatus()','suiteA'],['suiteA.addResult()','suiteA'],['suiteB.updateStatus()','suiteB'],['Suite.nextId()','Suite.class'],['suiteA.getName()',null],['suiteA.flush()','resultsLock(A)']];
+ let a=0,b=1;
+ function draw(){[['lp-1',a],['lp-2',b]].forEach(([id,v])=>$(id).innerHTML=C.map((c,i)=>`<button data-i="${i}" class="${i===v?'on':''}">${c[0]}</button>`).join(''));
+  const [x,y]=[C[a],C[b]];let m;
+  if(x[1]&&x[1]===y[1])m=`<span class="chip bad">BLOCKS</span> both lock <code>${x[1]}</code> — Thread 2 waits until Thread 1 leaves.`;
+  else if(!x[1]||!y[1])m=`<span class="chip ok">RUN IN PARALLEL</span> <code>${(!x[1]?x:y)[0]}</code> takes no lock, so nothing stops it (even while the other holds <code>this</code>).`;
+  else m=`<span class="chip ok">RUN IN PARALLEL</span> different locks: <code>${x[1]}</code> vs <code>${y[1]}</code>.`;
+  if(a===b&&x[1])m+='<br>Same call from two threads → they take turns.';
+  $('lp-msg').innerHTML=m;}
+ $('lp-1').onclick=e=>{const t=e.target.closest('[data-i]');if(t){a=+t.dataset.i;draw();}};
+ $('lp-2').onclick=e=>{const t=e.target.closest('[data-i]');if(t){b=+t.dataset.i;draw();}};
+ draw();
+})();
+
+// ===================================================== 3.1 volatile stop flag
+(function(){
+ let vol=false,mem=false,seen=false,n=0,timer=null,state='idle';
+ const code=()=>macHTML('SuiteExecutor.java',`private ${vol?'volatile ':''}boolean stopRequested;   ${vol?'// ✅ always read fresh':'// ❌ may be cached'}
+
+void runSuite() {                       // worker thread
+    while (!stopRequested) { runNextStep(); }
+}
+void stop() { stopRequested = true; }   // UI / REST thread`,'java');
+ function draw(m){$('vo-code').innerHTML=code();
+  $('vo-mem').innerHTML=`main memory<br><b>stopRequested = ${mem}</b>`;$('vo-mem').className='cell'+(mem?' good':'');
+  $('vo-cache').innerHTML=`worker's view (CPU cache / JIT)<br><b>stopRequested = ${seen}</b>`;$('vo-cache').className='cell'+(mem&&!seen?' bad':mem&&seen?' good':'');
+  $('vo-n').textContent=state==='idle'?'idle':state==='run'?`running step ${n}…`:`stopped after step ${n}`;
+  $('vo-loop').className='cell'+(state==='run'&&mem?' bad':state==='stopped'?' good':'');
+  if(m)$('vo-msg').innerHTML=m;}
+ const halt=()=>{clearInterval(timer);timer=null;};
+ $('vo-start').onclick=()=>{halt();mem=false;seen=false;n=0;state='run';
+  timer=setInterval(()=>{if(vol)seen=mem;if(seen){state='stopped';halt();draw('✅ The worker read the fresh value and left the loop. <b>The run stopped.</b>');return;}n++;draw();},300);
+  draw('Run started. Now press <b>■ Stop run</b>.');};
+ $('vo-stop').onclick=()=>{if(state!=='run')return;mem=true;
+  draw(vol?'UI thread writes <code>true</code> — a volatile write is visible to the next read…':'❌ UI thread wrote <code>true</code>, but the worker keeps reading its <b>cached</b> <code>false</code>. The JIT may even hoist the read out of the loop → it <b>never stops</b>. User clicks Stop, the suite keeps running. Tick <b>volatile</b> and retry.');};
+ const cb=$('vo-v').querySelector('input');cb.onchange=()=>{vol=cb.checked;$('vo-v').classList.toggle('on',vol);halt();mem=false;seen=false;n=0;state='idle';draw('Press <b>▶ Start run</b>, then <b>■ Stop run</b>.');};
+ document.addEventListener('slide-shown',e=>{if(!e.detail.contains($('vo-code'))&&timer){halt();state='idle';draw();}});
+ draw('Press <b>▶ Start run</b>, then <b>■ Stop run</b>.');
+})();
+
+// ===================================================== 3.2 happens-before rules
+(function(){
+ const R=[['🔒 Monitor lock','unlock of a lock → every later lock of the <b>same</b> lock','Everything T1 wrote inside <code>synchronized(lock)</code> is visible to T2 once T2 enters <code>synchronized(lock)</code>.'],
+  ['⚡ volatile','write of a volatile → every later read of it','Write the results first, then <code>ready = true</code> (volatile); a reader that sees <code>ready</code> also sees the results.'],
+  ['▶ Thread.start()','actions before <code>start()</code> → everything in the new thread','Config set before <code>t.start()</code> is visible inside the thread.'],
+  ['⏹ Thread.join()','everything in a thread → after <code>join()</code> returns','After <code>t.join()</code> the caller sees all the thread\'s writes — e.g. its execution result.']];
+ let on=0;
+ function draw(){$('hb').innerHTML=R.map((r,i)=>`<button data-i="${i}" class="${i===on?'on':''}"><b>${r[0]}</b> — ${r[1]}</button>`).join('');
+  $('hb-msg').innerHTML=`<b>Happens-before</b> = "if A happens-before B, B sees A's writes". Without one, another thread may see stale values or a different order.<br><b>Example:</b> ${R[on][2]}`;}
+ $('hb').onclick=e=>{const b=e.target.closest('[data-i]');if(b){on=+b.dataset.i;draw();}};draw();
+})();
+
+// ===================================================== 4.1 deadlock
+(function(){
+ const CODE={bad:`// T1: execution thread
+synchronized (suiteLock) {
+    synchronized (deviceLock) { … }   // ❌ suite → device
+}
+// T2: device health checker
+synchronized (deviceLock) {
+    synchronized (suiteLock) { … }    // ❌ device → suite
+}`,good:`// ✅ everyone takes the locks in the same order
+// T1 and T2:
+synchronized (suiteLock) {
+    synchronized (deviceLock) { … }   // suite → device
+}`};
+ // [suiteLock owner, deviceLock owner, T1 state, T2 state, message]
+ const ST={bad:[
+  ['T1','—','holds suiteLock','running','T1 takes <code>suiteLock</code>.'],
+  ['T1','T2','holds suiteLock','holds deviceLock','T2 takes <code>deviceLock</code>.'],
+  ['T1','T2','WAITING for deviceLock','holds deviceLock','T1 wants <code>deviceLock</code> — held by T2 → T1 BLOCKED.'],
+  ['T1','T2','WAITING for deviceLock','WAITING for suiteLock','T2 wants <code>suiteLock</code> — held by T1 → <b>circular wait = DEADLOCK</b>. Both wait forever; the run hangs, no exception, no log.',1]],
+ good:[
+  ['T1','—','holds suiteLock','running','T1 takes <code>suiteLock</code>.'],
+  ['T1','—','holds suiteLock','WAITING for suiteLock','T2 also starts with <code>suiteLock</code> → waits. It holds nothing, so no cycle.'],
+  ['T1','T1','holds both, working','WAITING for suiteLock','T1 takes <code>deviceLock</code> and does its work.'],
+  ['—','—','done','running','T1 releases both locks.'],
+  ['T2','T2','done','holds both, working','T2 gets both locks. ✅ Both finish.']]};
+ let m='bad',i=-1;
+ function draw(){const s=ST[m][i],L=ST[m].length;
+  const box=(id,cls,html)=>{$(id).className='lk '+cls;$(id).innerHTML=html;};
+  const own=k=>s?s[k]:'—',dead=s&&s[5];
+  box('dl-l1',own(0)!=='—'?(dead?'dead':'held'):'',`🔒 <b>suiteLock</b><br>owner: ${own(0)}`);
+  box('dl-l2',own(1)!=='—'?(dead?'dead':'held'):'',`🔒 <b>deviceLock</b><br>owner: ${own(1)}`);
+  [['dl-t1',2,'T1 exec thread'],['dl-t2',3,'T2 health checker']].forEach(([id,k,n])=>{const v=s?s[k]:'running';box(id,v.startsWith('WAITING')?'wait':'',`🧵 <b>${n}</b><br>${v}`);});
+  $('dl-msg').innerHTML=i<0?'Press <b>Next ▶</b> to interleave the two threads.':s[4];
+  $('dl-n').textContent=i<0?'ready':`step ${i+1} / ${L}`;$('dl-next').disabled=i>=L-1;
+  $('dl-js').style.display=dead?'':'none';
+  $('dl-js').innerHTML=dead?`<span class="err">Found one Java-level deadlock:</span>
+"exec-1":  waiting to lock deviceLock, held by "health-1"
+"health-1": waiting to lock suiteLock, held by "exec-1"`:'';}
+ const load=()=>{$('dl-code').innerHTML=macHTML(m==='bad'?'Deadlock.java':'LockOrder.java',CODE[m],'java');i=-1;draw();};
+ $('dl-next').onclick=()=>{if(i<ST[m].length-1){i++;draw();}};
+ $('dl-reset').onclick=()=>{i=-1;draw();};
+ $('dl-mode').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;segOn($('dl-mode'),b);m=b.dataset.m;load();};
+ load();
+})();
+
+// ===================================================== 5.2 SimpleDateFormat bug
+(function(){
+ const CODE={
+  shared:`// ❌ SimpleDateFormat keeps parse state in fields
+private static final SimpleDateFormat FMT =
+        new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+String stamp(Date d) { return FMT.format(d); }  // 6 threads at once`,
+  sync:`private static final SimpleDateFormat FMT = …;
+
+// correct, but every execution thread queues here
+synchronized String stamp(Date d) { return FMT.format(d); }`,
+  tl:`// one instance per thread — correct and fast
+private static final ThreadLocal<SimpleDateFormat> FMT =
+    ThreadLocal.withInitial(() ->
+        new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
+
+String stamp(Date d) { return FMT.get().format(d); }`,
+  dtf:`// ✅ java.time is immutable → thread-safe, share freely
+private static final DateTimeFormatter FMT =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+String stamp(Instant t) { return FMT.format(t.atZone(ZONE)); }`};
+ const MSG={shared:'❌ Threads overwrite each other\'s internal <code>Calendar</code> → wrong dates, mixed digits, random <code>NumberFormatException</code> when parsing. Works fine in a single-threaded unit test.',
+  sync:'✅ Correct output, but a <b>bottleneck</b>: parallel runs now take turns just to format a timestamp.',
+  tl:'✅ Correct and fast. In thread pools remember a ThreadLocal lives as long as the thread — fine for a formatter.',
+  dtf:'✅ <b>Best fix:</b> immutable objects need no locking. Same idea for <code>LocalDate</code>, <code>Instant</code>, records.'};
+ const GOOD=['10:42:07','10:42:07','10:42:08','10:42:08','10:42:08','10:42:09'];
+ const BAD=['2026-10-21 10:42:07','<span class="err">2026-10-21 10:42:0708</span>','<span class="err">2026-01-01 00:00:08</span>','2026-10-21 10:42:08','<span class="err">NumberFormatException: multiple points</span>','<span class="err">2026-10-2121 10:42:09</span>'];
+ let f='shared';
+ function run(){$('df-out').innerHTML=GOOD.map((g,i)=>`exec-${i+1}  ${f==='shared'?BAD[(i+Math.floor(Math.random()*6))%6]:'<span class="okc">2026-10-21 '+g+'</span>'}`).join('\n');$('df-msg').innerHTML=MSG[f];}
+ function load(){$('df-code').innerHTML=macHTML('ReportTimestamps.java',CODE[f],'java');$('df-out').innerHTML='<span class="dim">press ▶ Run 6 executions</span>';$('df-msg').innerHTML=f==='shared'?'Six execution threads finish at the same moment and stamp their report rows. Press <b>▶ Run</b>.':MSG[f];}
+ $('df-run').onclick=run;
+ $('df-fix').onclick=e=>{const b=e.target.closest('[data-f]');if(!b)return;segOn($('df-fix'),b);f=b.dataset.f;load();};
+ load();
+})();
+
+// ===================================================== 6.1 interview Q&A
+DECK.qa([
+ ['Runnable vs Callable?','Runnable.run() returns nothing and can\'t throw checked exceptions; Callable.call() returns a value and may throw. Callables go to an executor and give you a Future.',['1.1']],
+ ['What happens if you call run() instead of start()?','It runs on the current thread like a normal method — no new thread is created.',['1.1','5.1']],
+ ['Can you start a thread twice?','No — the second start() throws IllegalThreadStateException, even after the thread finished.',['1.2','5.1']],
+ ['Name the thread states.','NEW, RUNNABLE, BLOCKED, WAITING, TIMED_WAITING, TERMINATED (Thread.State). There is no separate RUNNING state.',['1.2']],
+ ['BLOCKED vs WAITING?','BLOCKED = waiting to enter a synchronized monitor someone else holds. WAITING = voluntarily waiting (wait(), join(), park()) until another thread acts.',['1.2']],
+ ['What is a race condition?','The result depends on thread timing — e.g. two threads doing count++ (read, add, write) and one update is lost.',['2.1']],
+ ['What does synchronized guarantee?','Mutual exclusion per lock object, visibility of writes between unlock and the next lock, and reentrancy.',['2.2']],
+ ['Object lock vs class lock?','Synchronized instance methods lock <code>this</code>; static synchronized methods lock the Class object. They don\'t block each other.',['2.2','5.1']],
+ ['What is volatile and when do you use it?','Guarantees visibility and ordering of reads/writes to one variable. Use it for flags/state published by one thread and read by others.',['3.1']],
+ ['Is volatile enough for a counter?','No — count++ is still read-modify-write. Use AtomicInteger/LongAdder or a lock.',['3.1','5.1']],
+ ['What is the Java Memory Model / happens-before?','The JMM defines when one thread\'s writes are visible to another. Happens-before edges: unlock→lock, volatile write→read, start(), join(), and more. Without one, you may see stale values.',['3.2']],
+ ['wait() vs sleep()?','wait() releases the monitor and needs it to be held; sleep() keeps any locks and is a static Thread method.',['3.2']],
+ ['Why call wait() in a while loop?','Spurious wake-ups, and another thread may have consumed the condition between notify and re-acquiring the lock — re-check it.',['3.2']],
+ ['notify() vs notifyAll()?','notify wakes one arbitrary waiter (can wake the wrong one and stall); notifyAll wakes all and each re-checks its condition — safer default.',['3.2']],
+ ['What is a deadlock and how do you prevent it?','Threads waiting on each other\'s locks in a cycle. Prevent with a consistent lock order, tryLock with timeout, or fewer/narrower locks.',['4.1']],
+ ['How do you find a deadlock in production?','Take a thread dump (jstack, jcmd Thread.print, or Actuator /threaddump) — the JVM reports "Found one Java-level deadlock".',['4.1']],
+ ['Why is SimpleDateFormat a problem in multithreaded code?','It\'s mutable and not thread-safe; sharing it corrupts output. Use the immutable DateTimeFormatter.',['5.2']]
+]);
+</script>
+</body></html>

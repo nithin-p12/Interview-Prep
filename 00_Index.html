@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interview Prep</title>
+<link rel="stylesheet" href="_shared/prep.css">
+</head><body>
+<div id="nav"></div>
+<main class="pwrap">
+ <div class="phead"><h1>What do you want to study?</h1></div>
+ <p class="psub">Pick a subject and study its topics in order. Tick ✓ <b>Completed</b> on a topic when you're done — the counts update everywhere.</p>
+ <div class="cgrid" id="cats"></div>
+ <div class="plegend"><span class="st new">NEW STYLE</span> slide mode · interactive <span class="st done">DONE</span> <span class="st v2">OLD VERSION</span> previous page, kept in _archive until rebuilt <span class="st todo">TO DO</span> planned</div>
+</main>
+<script src="_shared/prep.js"></script>
+<script>
+const P=window.PREP;
+document.getElementById('nav').innerHTML=P.nav('',null);P.refreshProgress();
+document.getElementById('cats').innerHTML=P.CATS.map(k=>{const c=P.PAL[k.col],r=P.doneIn(k),pct=Math.round(r/k.items.length*100);
+ return `<a class="ccard" href="${k.hub}" style="border-color:${c[0]};background:${c[1]}">
+  <span class="num" style="background:${c[0]}">${k.n}</span>
+  ${P.catIcon(k,40)}
+  <h2>${k.name}</h2>
+  <p>${k.desc}</p>
+  <span class="cnt" style="color:${c[2]}">${r} of ${k.items.length} topic${k.items.length>1?'s':''} completed${r===k.items.length?' 🎉':''}</span>
+  <span class="bar"><i style="width:${pct}%;background:${c[0]}"></i></span></a>`;}).join('');
+</script>
+</body></html>

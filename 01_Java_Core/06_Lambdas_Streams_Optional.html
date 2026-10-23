@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lambdas, Streams &amp; Optional · Interview Prep</title>
+<link rel="stylesheet" href="../_shared/design-tokens.css">
+<link rel="stylesheet" href="../_shared/deck.css">
+<style>
+/* 1.2 method refs */
+.mr{display:flex;flex-direction:column;gap:calc(6px*var(--k))}
+.mr button{font:inherit;display:grid;grid-template-columns:120px 1fr auto;gap:10px;align-items:center;text-align:left;background:#fff;border:1.5px solid var(--line);border-radius:9px;padding:calc(5px*var(--k)) 10px;cursor:pointer;font-size:13px}
+.mr button small{font-weight:800;color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}
+.mr button code{font-size:12.5px}
+.mr button em{font-style:normal;font-size:11.5px;font-weight:800;color:var(--dk)}
+.mr button.on{border-color:var(--bd);background:var(--lt)}
+/* 2.1 lazy pipeline */
+table.lz{width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:12.5px;background:#fff}
+table.lz th,table.lz td{border:1px solid var(--line);padding:calc(3px*var(--k)) 7px;text-align:center}
+table.lz th{background:var(--subtle);font-family:var(--font-sans);font-size:12px}
+table.lz td:first-child{text-align:left;font-weight:700}
+table.lz td.cur{background:var(--warning-bg);box-shadow:inset 0 0 0 2px var(--warning)}
+table.lz td.drop{color:var(--danger)}
+table.lz td.pass{color:var(--success)}
+table.lz td.out{background:#F0FDF4;color:#166534;font-weight:800}
+table.lz tr.idle td{color:var(--faint)}
+/* 2.2 data */
+table.t tr.dup td{background:var(--warning-bg)}
+/* 2.3 flatMap */
+.fm{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:calc(34px*var(--k))}
+.fm .grp{display:inline-flex;gap:4px;border:2px dashed var(--bd);border-radius:9px;padding:3px 5px;background:#fff}
+.fm span.it{font-family:var(--font-mono);font-size:12.5px;background:#fff;border:1.5px solid var(--line-strong);border-radius:7px;padding:1px 7px;animation:pop .25s}
+.fm .ty{font-family:var(--font-mono);font-size:12px;font-weight:800;color:var(--dk);margin-right:4px}
+/* 3.1 optional fix list */
+.dd{display:flex;flex-direction:column;gap:calc(5px*var(--k))}
+.dd button{font:inherit;display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;text-align:left;background:#fff;border:1.5px solid #FCA5A5;border-radius:9px;padding:calc(5px*var(--k)) 10px;cursor:pointer;font-size:13px}
+.dd button code{font-size:12px}
+.dd button em{font-style:normal;font-size:11.5px;font-weight:800;color:var(--danger)}
+.dd button.fixed{border-color:#86EFAC;background:#F0FDF4}
+.dd button.fixed em{color:var(--success)}
+/* 4.1 drills */
+.drills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:calc(9px*var(--k))}
+.drill .ans{display:none;margin-top:6px}
+.drill.open .ans{display:block}
+.drill .ctrl{justify-content:space-between}
+</style>
+</head>
+<body data-topic="java:Lambdas, Streams &amp; Optional">
+<header class="topbar">
+ <a class="tbrand" href="../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="00_Java_Core.html" title="All Java Core topics" style="color:#1D4ED8"><svg class="lg" data-logo="openjdk"></svg>Java Core</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<!-- ===================================================== 0. CONTENTS -->
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2><svg class="lg" data-logo="openjdk"></svg>Lambdas, Streams &amp; Optional</h2><span class="sub">functional Java you write every day — and its traps</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="toc" id="toc"></div>
+ <div class="howuse"><span><b>← →</b> keys move between slides</span><span><b>▶ Try it</b> boxes are interactive</span><span>Examples are <b>simplified from FireFlink</b> test results</span></div>
+</div>
+</section>
+
+<!-- ===================================================== 1. LAMBDAS -->
+<section class="cat" data-name="1. Lambdas" data-col="b">
+<h1 class="cat-title">1. Lambdas</h1>
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.1</span><h2>Which functional interface?</h2><span class="sub">a lambda is just an implementation of one abstract method</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="cols wide-l">
+  <div class="pqs" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+   <div class="pq" data-opts="Function|Predicate|Consumer" data-ans="Predicate"><pre>r -> r.status() == FAILED</pre><div class="why">Takes a value, returns <b>boolean</b> → <code>Predicate&lt;Result&gt;</code>. Used by <code>filter</code>.</div></div>
+   <div class="pq" data-opts="Function|Supplier|Consumer" data-ans="Function"><pre>r -> r.durationMs()</pre><div class="why">T in, R out → <code>Function&lt;Result, Long&gt;</code>. Used by <code>map</code>.</div></div>
+   <div class="pq" data-opts="Supplier|Function|Runnable" data-ans="Supplier"><pre>() -> UUID.randomUUID().toString()</pre><div class="why">Nothing in, value out → <code>Supplier&lt;String&gt;</code>. Used by <code>orElseGet</code>, <code>generate</code>.</div></div>
+   <div class="pq" data-opts="Consumer|Function|Predicate" data-ans="Consumer"><pre>r -> log.info("done {}", r.id())</pre><div class="why">Value in, nothing out → <code>Consumer&lt;Result&gt;</code>. Used by <code>forEach</code>.</div></div>
+   <div class="pq" data-opts="Function|BiFunction|Supplier" data-ans="BiFunction"><pre>(suite, env) -> new Run(suite, env)</pre><div class="why">Two inputs, one output → <code>BiFunction&lt;Suite, Env, Run&gt;</code>.</div></div>
+   <div class="pq" data-opts="UnaryOperator|Predicate|Consumer" data-ans="UnaryOperator"><pre>name -> name.trim()</pre><div class="why">Same type in and out → <code>UnaryOperator&lt;String&gt;</code> (a <code>Function&lt;T,T&gt;</code>).</div></div>
+  </div>
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="RunScheduler.java">
+int retries = 3;
+runs.forEach(r -> submit(r, retries)); // ✅ effectively final
+retries++;      // ❌ now the lambda above won't compile
+
+int[] count = {0};
+runs.forEach(r -> count[0]++);  // ❌ compiles, but a hack —
+long n = runs.stream().count(); // ✅ just ask the stream</script></div>
+   <p class="take"><b>Remember:</b> a <b>functional interface</b> has exactly one abstract method (<code>@FunctionalInterface</code> just makes the compiler check it). Lambdas can read local variables only if they're <b>effectively final</b> — the value is copied into the lambda.</p>
+   <div class="gtk"><b>Good to know</b> Primitive versions (<code>IntPredicate</code>, <code>ToLongFunction</code>…) avoid boxing. A lambda's <code>this</code> is the enclosing object — unlike an anonymous class.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.2</span><h2>Method references</h2><span class="sub">click a lambda to shorten it — 4 kinds</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="mr" id="mr"></div>
+   <div class="ctrl"><button class="btn p" id="mr-all">Convert all</button><button class="btn" id="mr-reset">↺ Reset</button></div>
+   <div class="msg" id="mr-msg"></div>
+  </div>
+  <div class="stack">
+   <p class="take"><b>Remember:</b> <code>Class::method</code> is shorthand for a lambda that <b>only</b> calls that method. If the lambda does anything else (extra args, a calculation), keep the lambda.</p>
+   <div class="box"><h4>The tricky one — unbound instance</h4><code>(a, b) -> a.compareTo(b)</code> → <code>String::compareTo</code><br>The <b>first</b> parameter becomes the object the method is called on.</div>
+   <div class="gtk"><b>Good to know</b> <code>Comparator.comparing(Result::durationMs).reversed().thenComparing(Result::testName)</code> — method refs make sort keys read like English.</div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 2. STREAMS -->
+<section class="cat" data-name="2. Streams" data-col="g">
+<h1 class="cat-title">2. Streams</h1>
+<div class="slide c-g">
+ <div class="sh"><span class="sn">2.1</span><h2>Streams are lazy</h2><span class="sub">guess the print order, then step — elements flow one by one</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="ctrl"><div class="seg" id="lz-term"><button class="on" data-t="1">with .toList()</button><button data-t="0">no terminal op</button></div><label class="chk" id="lz-sort"><input type="checkbox"> add .sorted()</label></div>
+   <div class="code" id="lz-code"></div>
+   <p class="take"><b>Remember:</b> intermediate ops (<code>filter</code>, <code>map</code>) only build a recipe; the <b>terminal</b> op (<code>toList</code>, <code>count</code>, <code>forEach</code>) runs it. Each element goes through the whole chain before the next, and <code>limit</code>/<code>findFirst</code> <b>short-circuit</b>.</p>
+  </div>
+  <div class="stack">
+   <div class="ctrl"><button class="btn p" id="lz-next">Next ▶</button><button class="btn" id="lz-auto">▶ Auto play</button><button class="btn" id="lz-reset">↺ Reset</button><span class="chip no" id="lz-n"></span></div>
+   <table class="lz" id="lz-t"></table>
+   <div class="console" id="lz-out" style="min-height:calc(56px*var(--k))"></div>
+   <div class="msg" id="lz-msg"></div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-g">
+ <div class="sh"><span class="sn">2.2</span><h2>Collectors playground</h2><span class="sub">one list of test results, six collectors</span></div>
+ <div class="cols">
+  <div class="stack">
+   <table class="t" id="cl-data"></table>
+   <div class="gtk"><b>Good to know</b> <code>groupingBy</code> returns a <code>HashMap</code> (no order). Need order? <code>groupingBy(f, TreeMap::new, toList())</code>. Downstream collectors: <code>counting</code>, <code>mapping</code>, <code>averagingLong</code>, <code>maxBy</code>.</div>
+  </div>
+  <div class="stack">
+   <div class="seg" id="cl-pick" style="flex-wrap:wrap"></div>
+   <div class="code" id="cl-code"></div>
+   <div class="console" id="cl-out"></div>
+   <div class="msg" id="cl-msg"></div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-g">
+ <div class="sh"><span class="sn">2.3</span><h2>flatMap &amp; parallel streams</h2><span class="sub">flatten nested lists · and when NOT to go parallel</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="seg" id="fm-pick"><button class="on" data-m="map">map(Suite::tests)</button><button data-m="flat">flatMap(s -> s.tests().stream())</button></div>
+   <div class="code" id="fm-code"></div>
+   <div class="box"><h4>Result</h4><div class="fm" id="fm-out"></div></div>
+   <p class="take"><b>Remember:</b> <code>map</code> = one in, one out. <code>flatMap</code> = one in, <b>a stream</b> out, merged into one flat stream. Use it for "all tests across all suites".</p>
+  </div>
+  <div class="stack">
+   <div class="pqs" style="grid-template-columns:1fr">
+    <div class="pq" data-opts="parallelStream()|keep sequential" data-ans="keep sequential"><pre>results.parallelStream()
+       .map(r -> jira.createIssue(r))  // HTTP call</pre><div class="why">Blocking I/O on the <b>common ForkJoinPool</b> (cores − 1 threads, shared by the whole JVM) starves every other parallel stream. Use your own executor / CompletableFuture.</div></div>
+    <div class="pq" data-opts="parallelStream()|keep sequential" data-ans="keep sequential"><pre>List.of("smoke", "regression", "sanity")
+    .parallelStream().map(String::toUpperCase)</pre><div class="why">3 tiny elements — splitting and merging costs more than the work.</div></div>
+    <div class="pq" data-opts="parallelStream()|keep sequential" data-ans="parallelStream()"><pre>LongStream.range(0, 50_000_000)
+    .map(this::checksum).sum()   // pure CPU</pre><div class="why">Large, CPU-bound, no shared state, easy to split → a good fit. Measure first.</div></div>
+   </div>
+   <div class="gtk"><b>Good to know</b> parallel + <code>forEach</code> loses order (use <code>forEachOrdered</code>), and lambdas must not modify shared state — no <code>list.add</code> from inside.</div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 3. OPTIONAL -->
+<section class="cat" data-name="3. Optional" data-col="p">
+<h1 class="cat-title">3. Optional</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">3.1</span><h2>Optional — use it right</h2><span class="sub">click each ❌ to fix it · then try orElse vs orElseGet</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="dd" id="op"></div>
+   <p class="take"><b>Remember:</b> <code>Optional</code> is a <b>return type</b> for "maybe no result" (e.g. <code>findById</code>). Don't use it for fields, parameters or collections (return an empty list instead).</p>
+  </div>
+  <div class="stack">
+   <div class="box"><h4>▶ Try it — <code>orElse</code> is eager</h4>
+    <div class="ctrl" style="margin-bottom:6px"><div class="seg" id="oe-m"><button class="on" data-m="else">orElse(…)</button><button data-m="get">orElseGet(…)</button></div><div class="seg" id="oe-c"><button class="on" data-c="hit">cache hit</button><button data-c="miss">cache miss</button></div></div>
+    <div class="code" id="oe-code"></div>
+    <div class="console" id="oe-out" style="margin-top:6px"></div>
+    <p class="msg" id="oe-msg" style="margin:6px 0 0"></p></div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 4. ALL IN ACTION -->
+<section class="cat" data-name="4. All in action" data-col="k">
+<h1 class="cat-title">4. All in action</h1>
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.1</span><h2>Coding drills</h2><span class="sub">try it in your head (or IDE) first, then reveal</span></div>
+ <div class="drills" id="dr"></div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.2</span><h2>Predict the output</h2><span class="sub">stream &amp; Optional traps</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="pqs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="pq" data-opts="prints 3 twice|IllegalStateException" data-ans="IllegalStateException"><pre>Stream&lt;Run&gt; s = runs.stream();
+System.out.println(s.count());
+System.out.println(s.count());</pre><div class="why">A stream can be consumed <b>once</b>: "stream has already been operated upon or closed". Create a new one each time.</div></div>
+  <div class="pq" data-opts="1 2 3|nothing" data-ans="nothing"><pre>Stream.of(1, 2, 3)
+      .peek(System.out::println)
+      .map(x -> x * 2);</pre><div class="why">No terminal operation → the pipeline never runs. <a class="go" data-go="2.1">2.1</a></div></div>
+  <div class="pq" data-opts="DB hit|nothing" data-ans="DB hit"><pre>String load() {
+    System.out.println("DB hit");
+    return "db"; }
+Optional.of("cached").orElse(load());</pre><div class="why">The argument of <code>orElse</code> is evaluated <b>before</b> the call, even when a value is present. <a class="go" data-go="3.1">3.1</a></div></div>
+  <div class="pq" data-opts="works|UnsupportedOperationException" data-ans="UnsupportedOperationException"><pre>List&lt;Run&gt; l = runs.stream().toList();  // Java 16+
+l.add(newRun);</pre><div class="why"><code>Stream.toList()</code> returns an <b>unmodifiable</b> list.</div></div>
+  <div class="pq" data-opts="works|UnsupportedOperationException" data-ans="works"><pre>List&lt;Run&gt; l = runs.stream()
+        .collect(Collectors.toList());
+l.add(newRun);</pre><div class="why">Today it's an <code>ArrayList</code>, so it works — but that's not guaranteed. Use <code>toCollection(ArrayList::new)</code> if you'll mutate.</div></div>
+  <div class="pq" data-opts="compiles|compile error" data-ans="compile error"><pre>int failed = 0;
+results.forEach(r -> {
+    if (r.failed()) failed++;
+});</pre><div class="why"><code>failed</code> isn't effectively final. Use <code>results.stream().filter(Result::failed).count()</code>. <a class="go" data-go="1.1">1.1</a></div></div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.3</span><h2>Production bug: "Duplicate key"</h2><span class="sub">nightly report crashed after a 2nd "Login" test was added · try each fix</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="seg" id="pb-v"><button class="on" data-v="1">v1 toMap(name)</button><button data-v="2">v2 + merge fn</button><button data-v="3">v3 suite/name key</button></div>
+   <div class="code" id="pb-code"></div>
+   <div class="gtk"><b>Good to know</b> the same report later hit a second bug: <code>parallelStream()</code> calling the Jira API blocked the common ForkJoinPool, so unrelated parallel streams stalled. Fix: a dedicated executor. <a class="go" data-go="2.3">2.3</a></div>
+  </div>
+  <div class="stack">
+   <div class="console" id="pb-log"></div>
+   <div class="msg" id="pb-msg"></div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 5. INTERVIEW Q&A -->
+<section class="cat" data-name="5. Interview Q&amp;A" data-col="i">
+<h1 class="cat-title">5. Interview Q&amp;A</h1>
+<div class="slide c-i">
+ <div class="sh"><span class="sn">5.1</span><h2>Interview questions</h2><span class="sub">click a question to reveal the answer · pill = slide that explains it</span></div>
+ <div class="qbar"><input id="qa-find" type="search" placeholder="Filter questions… (e.g. lazy, flatMap, orElse)"><span class="chip ok" id="qa-count"></span><button class="btn" id="qa-random">🎲 Random question</button><label class="donebox" style="margin-left:auto"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="acc" id="qa-list"></div>
+</div>
+</section>
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <span class="kbd">← → keys</span>
+</footer>
+
+<script src="../_shared/deck.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const segOn=(seg,b)=>seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+// shared FireFlink sample data
+const RES=[['Login','Smoke','PASS',820],['Search','Smoke','FAIL',2400],['Checkout','Regression','PASS',3100],['Login','Regression','FAIL',1900],['Payment','Regression','PASS',2750],['Logout','Smoke','SKIP',300]];
+
+// ===================================================== 1.2 method references
+(function(){
+ const R=[['static','s -> Integer.parseInt(s)','Integer::parseInt','<b>Static</b> method — the argument is passed straight in.'],
+  ['bound instance','msg -> log.info(msg)','log::info','<b>Bound</b> — a specific object (<code>log</code>) you already have.'],
+  ['unbound instance','r -> r.getSuiteId()','Result::getSuiteId','<b>Unbound</b> — called on the lambda\'s own parameter. Most common in streams.'],
+  ['constructor','id -> new Run(id)','Run::new','<b>Constructor</b> — also <code>ArrayList::new</code>, <code>String[]::new</code>.']];
+ const on=new Set();let last=-1;
+ function draw(){$('mr').innerHTML=R.map((r,i)=>`<button data-i="${i}" class="${on.has(i)?'on':''}"><small>${r[0]}</small><code>${on.has(i)?r[2]:r[1]}</code><em>${on.has(i)?'✓ ::':'→ ::'}</em></button>`).join('');
+  $('mr-msg').innerHTML=last<0?'Click a lambda to see its method reference.':R[last][3];}
+ $('mr').onclick=e=>{const b=e.target.closest('[data-i]');if(!b)return;const i=+b.dataset.i;on.has(i)?on.delete(i):on.add(i);last=i;draw();};
+ $('mr-all').onclick=()=>{R.forEach((_,i)=>on.add(i));last=2;draw();};
+ $('mr-reset').onclick=()=>{on.clear();last=-1;draw();};draw();
+})();
+
+// ===================================================== 2.1 lazy pipeline
+(function(){
+ const ELS=['login','search','checkout','logout','payment'];
+ let term=true,sorted=false,i=-1,ev=[],timer=null;
+ function src(){return `List.of("login", "search", "checkout", "logout", "payment")
+    .stream()
+    .filter(t -> t.length() > 5)    // prints "filter t"${sorted?'\n    .sorted()                       // stateful: waits for all':''}
+    .map(String::toUpperCase)       // prints "map t"
+    .limit(2)${term?'\n    .toList();                      // ✅ terminal op':';                      // ❌ no terminal op'}`;}
+ function gen(){ev=[];if(!term)return;let n=0;
+  if(!sorted){for(const e of ELS){const ok=e.length>5;ev.push({e,c:'f',ok,p:'filter '+e});if(!ok)continue;ev.push({e,c:'m',p:'map '+e});ev.push({e,c:'o'});if(++n===2)break;}return;}
+  const pass=[];for(const e of ELS){const ok=e.length>5;ev.push({e,c:'f',ok,p:'filter '+e});if(ok)pass.push(e);}
+  const order=[...pass].sort();ev.push({c:'s',order,p:'— sorted() got all elements, now sorts —'});
+  for(const e of order.slice(0,2)){ev.push({e,c:'m',p:'map '+e});ev.push({e,c:'o'});}}
+ const line=re=>{const L=src().split('\n');return L.findIndex(l=>l.includes(re))+1;};
+ function draw(){
+  const cols=sorted?['filter','sorted','map','limit(2) → list']:['filter','map','limit(2) → list'];
+  const cell={};ELS.forEach(e=>cell[e]={});let cur=null;
+  ev.slice(0,i+1).forEach((v,k)=>{const now=k===i;
+   if(v.c==='f'){cell[v.e].filter=[v.ok?'✓ pass':'✗ drop',v.ok?'pass':'drop'];if(now)cur=[v.e,'filter'];}
+   if(v.c==='s'){v.order.forEach((e,j)=>cell[e].sorted=['#'+(j+1),'pass']);if(now)cur=['*','sorted'];}
+   if(v.c==='m'){cell[v.e].map=[v.e.toUpperCase(),'pass'];if(now)cur=[v.e,'map'];}
+   if(v.c==='o'){cell[v.e]['limit(2) → list']=['✓ added','out'];if(now)cur=[v.e,'limit(2) → list'];}});
+  $('lz-t').innerHTML=`<tr><th>element</th>${cols.map(c=>`<th>${c}</th>`).join('')}</tr>`+ELS.map(e=>{const touched=Object.keys(cell[e]).length>0;
+   return `<tr class="${touched?'':'idle'}"><td>"${e}"</td>${cols.map(c=>{const v=cell[e][c],isCur=cur&&(cur[0]===e||cur[0]==='*'&&v)&&cur[1]===c;return `<td class="${v?v[1]:''}${isCur?' cur':''}">${v?v[0]:'·'}</td>`;}).join('')}</tr>`;}).join('');
+  const out=ev.slice(0,i+1).filter(v=>v.p).map(v=>v.c==='s'?`<span class="nar">${v.p}</span>`:'&gt; '+v.p);
+  const done=term&&i>=ev.length-1;
+  if(done)out.push(`<span class="okc">result: [${ev.filter(v=>v.c==='o').map(v=>v.e.toUpperCase()).join(', ')}]</span>`);
+  $('lz-out').innerHTML=out.length?out.join('\n'):'<span class="dim">console output appears here</span>';
+  const mac=$('lz-code').querySelector('.mac'),v=ev[i];
+  markLines(mac,!v?[]:v.c==='f'?[line('.filter')]:v.c==='s'?[line('.sorted')]:v.c==='m'?[line('.map')]:[line('.limit'),line('.toList')]);
+  $('lz-n').textContent=!term?'0 steps':i<0?'ready':`step ${i+1} / ${ev.length}`;
+  $('lz-next').disabled=!term||i>=ev.length-1;
+  $('lz-msg').innerHTML=!term?'❌ <b>Nothing printed.</b> Without a terminal op the stream is just a recipe — no element is ever pulled.'
+   :i<0?'Guess first: which lines print, and in what order? Then press <b>Next ▶</b>.'
+   :!done?(v.c==='s'?'<code>sorted()</code> is <b>stateful</b> — it must see every element before passing any on.':'One element at a time goes down the whole chain.')
+   :sorted?'With <code>sorted()</code> all 5 elements are filtered first — stateful ops (<code>sorted</code>, <code>distinct</code>) break the one-by-one flow.':'✅ Only <b>3 of 5</b> elements were touched — <code>limit(2)</code> stopped the stream early. "logout" and "payment" never ran.';}
+ const stop=()=>{clearInterval(timer);timer=null;$('lz-auto').textContent='▶ Auto play';};
+ function load(){$('lz-code').innerHTML=macHTML('Pipeline.java',src(),'java');gen();i=-1;stop();draw();}
+ $('lz-next').onclick=()=>{if(i<ev.length-1){i++;draw();}};
+ $('lz-reset').onclick=()=>{i=-1;stop();draw();};
+ $('lz-auto').onclick=()=>{if(timer){stop();return;}if(!term)return;if(i>=ev.length-1)i=-1;$('lz-auto').textContent='⏸ Pause';timer=setInterval(()=>{if(i>=ev.length-1){stop();return;}i++;draw();},900);};
+ $('lz-term').onclick=e=>{const b=e.target.closest('[data-t]');if(!b)return;segOn($('lz-term'),b);term=b.dataset.t==='1';load();};
+ $('lz-sort').querySelector('input').onchange=e=>{sorted=e.target.checked;$('lz-sort').classList.toggle('on',sorted);load();};
+ load();
+})();
+
+// ===================================================== 2.2 collectors
+(function(){
+ const C=[
+  ['groupingBy','groupingBy(Result::status)','{PASS=[Login, Checkout, Payment], FAIL=[Search, Login], SKIP=[Logout]}','<code>Map&lt;Status, List&lt;Result&gt;&gt;</code> — the workhorse for dashboards.'],
+  ['+ counting()','groupingBy(Result::status, counting())','{PASS=3, FAIL=2, SKIP=1}','A <b>downstream</b> collector turns each group into a number.'],
+  ['partitioningBy','partitioningBy(r -> r.durationMs() > 2000)','{false=[Login, Login, Logout], true=[Search, Checkout, Payment]}','Always exactly two keys, <code>true</code> and <code>false</code>.'],
+  ['toMap','toMap(Result::testName, Result::durationMs)','<span class="err">IllegalStateException: Duplicate key Login\n  (attempted merging values 820 and 1900)</span>','❌ Two results named <b>Login</b> → <code>toMap</code> throws. See the production bug <a class="go" data-go="4.3">4.3</a>.'],
+  ['toMap + merge','toMap(Result::testName, Result::durationMs, Math::max)','{Login=1900, Search=2400, Checkout=3100, Payment=2750, Logout=300}','The 3rd argument decides what happens on a duplicate key.'],
+  ['joining','map(Result::testName).collect(joining(", ", "[", "]"))','[Login, Search, Checkout, Login, Payment, Logout]','Joins strings with a separator, prefix and suffix.']];
+ $('cl-data').innerHTML='<tr><th>testName</th><th>suite</th><th>status</th><th>durationMs</th></tr>'+RES.map(r=>`<tr data-n="${r[0]}"><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join('');
+ $('cl-pick').innerHTML=C.map((c,i)=>`<button data-i="${i}" class="${i?'':'on'}">${c[0]}</button>`).join('');
+ function draw(i){const c=C[i];
+  const body=c[1].startsWith('map(')?'.'+c[1].replace(').collect(',')\n    .collect('):`.collect(${c[1]})`;
+  $('cl-code').innerHTML=macHTML('ReportService.java',`var out = results.stream()\n    ${body};`,'java');
+  $('cl-out').innerHTML=c[2];$('cl-msg').innerHTML=c[3];
+  $('cl-data').querySelectorAll('tr[data-n]').forEach(t=>t.classList.toggle('dup',c[0]==='toMap'&&t.dataset.n==='Login'));}
+ $('cl-pick').onclick=e=>{const b=e.target.closest('[data-i]');if(!b)return;segOn($('cl-pick'),b);draw(+b.dataset.i);};draw(0);
+})();
+
+// ===================================================== 2.3 flatMap
+(function(){
+ const S=[['Smoke',['Login','Search','Logout']],['Regression',['Checkout','Payment']]];
+ function draw(m){
+  $('fm-code').innerHTML=macHTML('AllTests.java',m==='map'?'suites.stream()\n      .map(Suite::tests)                 // Stream<List<Test>>\n      .toList();   // [[Login, Search, Logout], [Checkout, Payment]]':'suites.stream()\n      .flatMap(s -> s.tests().stream())  // Stream<Test>\n      .toList();   // [Login, Search, Logout, Checkout, Payment]','java');
+  $('fm-out').innerHTML=m==='map'?'<span class="ty">Stream&lt;List&lt;Test&gt;&gt;</span>'+S.map(s=>`<span class="grp">${s[1].map(t=>`<span class="it">${t}</span>`).join('')}</span>`).join('')
+   :'<span class="ty">Stream&lt;Test&gt;</span>'+S.flatMap(s=>s[1]).map(t=>`<span class="it">${t}</span>`).join('');}
+ $('fm-pick').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;segOn($('fm-pick'),b);draw(b.dataset.m);};draw('map');
+})();
+
+// ===================================================== 3.1 Optional
+(function(){
+ const R=[['Blind get()','<code>suiteRepo.findById(id).get()</code>','<code>.orElseThrow(() -> new SuiteNotFoundException(id))</code>'],
+  ['isPresent + get','<code>if (o.isPresent()) return o.get().name(); return "n/a";</code>','<code>return o.map(Suite::name).orElse("n/a");</code>'],
+  ['Returning null','<code>Optional&lt;Run&gt; latest() { return null; }</code>','<code>return Optional.empty();</code> — never null'],
+  ['of() on a maybe-null','<code>Optional.of(run.getEndTime())</code> 💥 NPE','<code>Optional.ofNullable(run.getEndTime())</code>'],
+  ['Optional field / param','<code>void start(Optional&lt;Env&gt; env)</code>','overload <code>start()</code> / <code>start(Env)</code>; fields stay plain']];
+ const fixed=new Set();
+ function draw(){$('op').innerHTML=R.map((r,i)=>{const f=fixed.has(i);return `<button data-i="${i}" class="${f?'fixed':''}"><span>${f?'✅':'❌'}</span><span><b>${r[0]}</b><br>${f?r[2]:r[1]}</span><em>${f?'fixed':'fix it'}</em></button>`;}).join('');}
+ $('op').onclick=e=>{const b=e.target.closest('[data-i]');if(!b)return;const i=+b.dataset.i;fixed.has(i)?fixed.delete(i):fixed.add(i);draw();};draw();
+ let m='else',c='hit';
+ function demo(){
+  $('oe-code').innerHTML=macHTML('SuiteService.java',m==='else'?'Suite s = cache.get(id)\n    .orElse(loadFromMongo(id));          // ❌ argument runs first':'Suite s = cache.get(id)\n    .orElseGet(() -> loadFromMongo(id)); // ✅ runs only if empty','java');
+  const calls=m==='else'||c==='miss';
+  $('oe-out').innerHTML=`&gt; cache.get(42) → ${c==='hit'?'Optional[Suite 42]':'Optional.empty'}\n`+(calls?`<span class="${c==='hit'?'err':'okc'}">&gt; loadFromMongo(42) → Mongo query, 38 ms</span>`:'<span class="dim">&gt; loadFromMongo never called</span>');
+  $('oe-msg').innerHTML=m==='else'&&c==='hit'?'❌ Cache hit, but Mongo was <b>still queried</b> and the result thrown away — on every request.':calls?'✅ Cache miss → loading is needed, both versions query Mongo.':'✅ Cache hit → the supplier never runs. Use <code>orElse</code> only for constants.';}
+ $('oe-m').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;segOn($('oe-m'),b);m=b.dataset.m;demo();};
+ $('oe-c').onclick=e=>{const b=e.target.closest('[data-c]');if(!b)return;segOn($('oe-c'),b);c=b.dataset.c;demo();};demo();
+})();
+
+// ===================================================== 4.1 drills
+(function(){
+ const D=[['Count failed tests per suite','<code>{Smoke=1, Regression=1}</code>',`results.stream()
+    .filter(r -> r.status() == FAIL)
+    .collect(groupingBy(Result::suite, counting()));`],
+  ['Top 3 slowest test names overall','<code>[Checkout, Payment, Search]</code>',`results.stream()
+    .sorted(comparingLong(Result::durationMs).reversed())
+    .limit(3)
+    .map(Result::testName)
+    .toList();`],
+  ['First failed test, or "all green"','<code>"Search"</code>',`results.stream()
+    .filter(r -> r.status() == FAIL)
+    .map(Result::testName)
+    .findFirst()
+    .orElse("all green");          // constant → orElse is fine`],
+  ['Average duration per suite','<code>{Smoke=1173.3, Regression=2583.3}</code>',`results.stream()
+    .collect(groupingBy(Result::suite,
+             averagingLong(Result::durationMs)));`]];
+ $('dr').innerHTML=D.map((d,i)=>`<div class="box drill" data-i="${i}"><div class="ctrl"><h4 style="margin:0">${i+1}. ${d[0]}</h4><button class="btn p">Show answer</button></div><div style="font-size:12.8px;color:var(--muted)">expected on the 2.2 data → ${d[1]}</div><div class="ans code">${macHTML('Drill'+(i+1)+'.java',d[2],'java')}</div></div>`).join('');
+ $('dr').onclick=e=>{const b=e.target.closest('button');if(!b)return;const d=b.closest('.drill');d.classList.toggle('open');b.textContent=d.classList.contains('open')?'Hide':'Show answer';};
+})();
+
+// ===================================================== 4.3 production bug
+(function(){
+ const V={
+  1:[`// nightly report — slowest run per test
+Map<String, Long> slowest = results.stream()
+    .collect(toMap(Result::testName,
+                   Result::durationMs));   // ❌ name isn't unique`,
+   `<span class="dim">02:00:03 INFO  [report-job] tenant=acme building nightly report</span>
+<span class="err">02:00:04 ERROR [report-job] java.lang.IllegalStateException:
+  Duplicate key Login (attempted merging values 820 and 1900)
+    at Collectors.duplicateKeyException(Collectors.java:135)
+    at ReportService.slowest(ReportService.java:57)</span>
+<span class="dim">02:00:04 WARN  [report-job] report NOT sent to 214 users</span>`,
+   '❌ Worked for months in QA (unique names). The day someone added <b>Login</b> to the Regression suite, the whole report failed.'],
+  2:[`Map<String, Long> slowest = results.stream()
+    .collect(toMap(Result::testName,
+                   Result::durationMs,
+                   Math::max));            // ❌ hides a design bug`,
+   `<span class="okc">02:00:04 INFO  report sent</span>
+{Login=1900, Search=2400, Checkout=3100, Payment=2750, Logout=300}
+<span class="nar">// Smoke/Login (820 ms) silently merged into Regression/Login</span>`,
+   '⚠️ No crash — but two different tests are now one row. <b>Silent wrong data</b> is worse than a crash.'],
+  3:[`Map<String, Long> slowest = results.stream()
+    .collect(toMap(r -> r.suite() + "/" + r.testName(),
+                   Result::durationMs,
+                   Math::max,
+                   LinkedHashMap::new));   // ✅ real key, kept order`,
+   `<span class="okc">02:00:04 INFO  report sent</span>
+{Smoke/Login=820, Smoke/Search=2400, Regression/Checkout=3100,
+ Regression/Login=1900, Regression/Payment=2750, Smoke/Logout=300}`,
+   '✅ Fix the <b>key</b> (it must be unique), add a merge function only when duplicates are expected, and add a test with duplicate names.']};
+ function draw(v){const x=V[v];$('pb-code').innerHTML=macHTML('ReportService.java',x[0],'java');$('pb-log').innerHTML=x[1];$('pb-msg').innerHTML=x[2];}
+ $('pb-v').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;segOn($('pb-v'),b);draw(b.dataset.v);};draw(1);
+})();
+
+// ===================================================== 5.1 interview Q&A
+DECK.qa([
+ ['What is a functional interface?','An interface with exactly one abstract method (default/static methods allowed), e.g. Function, Predicate, Supplier, Consumer, Runnable. A lambda or method reference implements it.',['1.1']],
+ ['Why must captured variables be effectively final?','The lambda gets a copy of the value; allowing changes would make the copy and the variable disagree (and would race across threads).',['1.1']],
+ ['Lambda vs anonymous class?','A lambda has no own <code>this</code> (it\'s the enclosing object), can\'t have state, works only for functional interfaces, and is compiled via invokedynamic — no extra .class file.',['1.1']],
+ ['What are the 4 kinds of method references?','Static (<code>Integer::parseInt</code>), bound instance (<code>log::info</code>), unbound instance (<code>Result::getId</code>), constructor (<code>Run::new</code>).',['1.2']],
+ ['What does "streams are lazy" mean?','Intermediate ops only build the pipeline; nothing runs until a terminal op. Elements then flow one at a time through the whole chain.',['2.1']],
+ ['Intermediate vs terminal operations?','Intermediate (filter, map, sorted) return a Stream and are lazy; terminal (collect, toList, count, forEach, findFirst) produce a result and consume the stream.',['2.1']],
+ ['Stateless vs stateful operations?','Stateless (filter, map) handle each element alone; stateful (sorted, distinct) need to see other/all elements first, which costs memory and breaks short-circuiting.',['2.1']],
+ ['Can you reuse a stream?','No — a second terminal op throws IllegalStateException. Use a Supplier&lt;Stream&gt; or recreate it.',['4.2']],
+ ['map vs flatMap?','map: one element → one element. flatMap: one element → a stream, all merged into a single flat stream (e.g. all tests of all suites).',['2.3']],
+ ['groupingBy vs partitioningBy?','groupingBy groups by any key into a Map&lt;K, List&gt;; partitioningBy splits by a predicate into exactly two keys, true and false. Both accept downstream collectors.',['2.2']],
+ ['What happens with duplicate keys in Collectors.toMap?','It throws IllegalStateException. Pass a merge function — but first check the key is really meant to be unique.',['2.2','4.3']],
+ ['When should you avoid parallel streams?','Small data, blocking I/O, shared mutable state, order-sensitive work, or inside servers where the shared common ForkJoinPool is busy. Measure before using.',['2.3']],
+ ['orElse vs orElseGet?','orElse always evaluates its argument; orElseGet calls the supplier only when empty. Use orElseGet for anything costly.',['3.1']],
+ ['Where should you use Optional?','As a return type for "may be absent" results. Not for fields, method parameters or collections, and never return null for an Optional.',['3.1']],
+ ['Stream.toList() vs Collectors.toList()?','Stream.toList() (Java 16) returns an unmodifiable list; Collectors.toList() currently returns a mutable ArrayList but makes no guarantee.',['4.2']],
+ ['What does peek do and when is it useful?','Runs an action per element as it passes — for debugging only. It doesn\'t run without a terminal op and may be skipped by some optimisations (e.g. count()).',['4.2']]
+]);
+</script>
+</body></html>

@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Executors, Locks &amp; Atomics · Interview Prep</title>
+<link rel="stylesheet" href="../_shared/design-tokens.css">
+<link rel="stylesheet" href="../_shared/deck.css">
+<style>
+/* shared small bits */
+.stats{display:flex;gap:6px;flex-wrap:wrap}
+.stat{background:#fff;border:1.5px solid var(--line);border-radius:9px;padding:3px 10px;font-size:12.5px;color:var(--muted);font-weight:700}
+.stat b{font-size:15px;color:var(--ink);margin-right:3px}
+.meter{height:14px;border-radius:7px;background:#E2E8F0;overflow:hidden;position:relative}
+.meter i{position:absolute;inset:0 auto 0 0;background:var(--success);transition:width .3s,background .3s}
+.meter i.warn{background:var(--warning)}.meter i.bad{background:var(--danger)}
+.lblrow{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-weight:700;margin-bottom:3px}
+input[type=range]{width:100%;accent-color:var(--bd)}
+.fld{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--muted)}
+/* 1.2 thread pool simulator */
+.rules{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+.rules div{background:#fff;border:1.5px solid var(--line);border-radius:9px;padding:calc(3px*var(--k)) 7px;font-size:12px;line-height:1.3;transition:all .25s}
+.rules div b{display:block;font-size:12.5px}
+.rules div.hit{border-color:var(--warning);background:var(--warning-bg);box-shadow:0 0 0 3px #FDE68A}
+.rules div.hit.rj{border-color:#FCA5A5;background:var(--danger-bg);box-shadow:0 0 0 3px #FECACA}
+.pool{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+.wk{border:1.5px solid var(--line);border-radius:9px;background:#fff;padding:3px 7px;font-size:12px;min-height:calc(36px*var(--k))}
+.wk small{display:block;font-weight:800;color:var(--muted);font-size:11px}
+.wk.core{border-color:#93C5FD}.wk.extra{border-color:#FDBA74;border-style:dashed}
+.wk.busy{background:#F0FDF4}.wk.busy.extra{background:#FFF7ED}
+.wk .tk{font-family:var(--font-mono);font-weight:800;color:var(--ink)}
+.wk .bar{display:inline-block;height:6px;border-radius:3px;background:var(--success);vertical-align:middle;margin-left:4px}
+.wk.empty{border-style:dotted;background:transparent;color:var(--faint)}
+.q{display:flex;gap:4px;align-items:center;flex-wrap:wrap;min-height:26px}
+.q span{font-family:var(--font-mono);font-size:12px;font-weight:800;border:1.5px solid #C4B5FD;background:#F5F3FF;border-radius:7px;padding:2px 7px;animation:pop .2s}
+.q span.slot{border-style:dotted;background:transparent;color:var(--faint);animation:none}
+.q em{font-style:normal;font-size:12px;color:var(--muted);font-weight:700}
+.ctl{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+.ctl .seg button{padding:3px 8px;font-size:12.5px}
+/* 2.1 lock lanes */
+.lanes{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.lane{background:#fff;border:1.5px solid var(--line);border-radius:10px;padding:calc(6px*var(--k)) 9px;font-size:13px}
+.lane b{display:block;font-family:var(--font-mono)}
+/* 2.2 CAS rows */
+.casg{display:grid;grid-template-columns:minmax(0,1fr) 88px minmax(0,1fr);gap:4px 8px;align-items:center}
+.casg .hd{font-size:12px;font-weight:800;color:var(--muted);text-align:center}
+.casg .c{font-family:var(--font-mono);font-size:12.3px;background:#fff;border:1.5px solid var(--line);border-radius:8px;padding:2px 8px;animation:pop .2s}
+.casg .c.ok{border-color:#86EFAC;background:#F0FDF4}.casg .c.no{border-color:#FCA5A5;background:var(--danger-bg);color:#991B1B}
+.casg .m{font-family:var(--font-mono);font-weight:800;text-align:center;font-size:14px;color:var(--ink)}
+.casg .m.lost{color:var(--danger)}
+/* 3.2 thread local */
+.tlp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tlp div{background:#fff;border:1.5px solid var(--line);border-radius:10px;padding:calc(5px*var(--k)) 9px;font-size:12.5px}
+.tlp div b{font-family:var(--font-mono)}
+.tlp .tv{display:inline-block;font-family:var(--font-mono);font-weight:800;border-radius:6px;padding:1px 7px;margin-top:3px;background:#F1F5F9}
+.tlp .tv.set{background:var(--warning-bg);color:#92400E}
+.tq{display:flex;gap:5px;flex-wrap:wrap}
+.tq span{font-size:12px;font-weight:700;border:1.5px solid var(--line);border-radius:999px;padding:2px 9px;background:#fff}
+.tq span.done{opacity:.45;text-decoration:line-through}
+.tq span.nx{border-color:var(--bd);box-shadow:0 0 0 2px var(--lt)}
+.pq .opts button{font-family:var(--font-sans)}
+</style>
+</head>
+<body data-topic="java:Executors, Locks & Atomics">
+<header class="topbar">
+ <a class="tbrand" href="../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="00_Java_Core.html" title="All Java Core topics" style="color:#1D4ED8"><svg class="lg" data-logo="openjdk"></svg>Java Core</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<!-- ===================================================== 0. CONTENTS -->
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2><svg class="lg" data-logo="openjdk"></svg>Executors, Locks &amp; Atomics</h2><span class="sub">java.util.concurrent — the tools you use instead of raw threads</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="toc" id="toc"></div>
+ <div class="howuse"><span><b>← →</b> keys move between slides</span><span><b>▶ Try it</b> boxes are interactive</span><span>Examples are <b>simplified from FireFlink</b> parallel suite runs</span><span>CompletableFuture &amp; virtual threads → <b>page 10</b></span></div>
+</div>
+</section>
+
+<!-- ===================================================== 1. THREAD POOLS -->
+<section class="cat" data-name="1. Thread pools" data-col="b">
+<h1 class="cat-title">1. Thread pools</h1>
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.1</span><h2>Why not one thread per test case?</h2><span class="sub">drag the suite size</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="box"><h4>▶ Try it — run a suite in parallel</h4>
+    <div class="ctrl" style="margin-bottom:8px"><div class="seg" id="wp-mode"><button class="on" data-m="new">new Thread() per case</button><button data-m="pool">pool of 8 threads</button></div></div>
+    <div class="lblrow"><span>test cases in the suite</span><span id="wp-nv"></span></div>
+    <input type="range" id="wp-n" min="50" max="2000" step="50" value="400">
+    <div class="stats" id="wp-stats" style="margin:8px 0"></div>
+    <div class="lblrow"><span>thread stacks reserved (~1 MB each)</span><span>pod limit 2 GB</span></div>
+    <div class="meter"><i id="wp-bar"></i></div>
+    <p class="msg" id="wp-msg" style="margin:8px 0 0"></p></div>
+  </div>
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="SuiteRunner.java">
+// ❌ one OS thread per test case
+for (TestCase tc : suite.cases())
+    new Thread(() -> runner.run(tc)).start();
+
+// ✅ reuse a bounded set of threads
+ExecutorService pool = runPool();   // built in 1.2
+for (TestCase tc : suite.cases())
+    pool.submit(() -> runner.run(tc));</script></div>
+   <div class="box"><h4>What a pool gives you</h4><ul>
+    <li><b>Reuse</b> — no create/destroy cost per task</li>
+    <li><b>A limit</b> — at most N tasks run at once (protects CPU, DB, the device grid)</li>
+    <li><b>A queue</b> for the rest, plus <b>lifecycle</b>: <code>shutdown</code>, <code>Future</code>s</li></ul></div>
+   <p class="take"><b>Remember:</b> a platform thread is an OS thread — memory for its stack and real creation cost. Separate <b>what</b> runs (a <code>Runnable</code>/<code>Callable</code>) from <b>how</b> it runs (an <code>ExecutorService</code>).</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.2</span><h2>ThreadPoolExecutor — where does a task go?</h2><span class="sub">set the pool, submit tasks, watch which rule fires</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="ctl" id="tp-cfg">
+    <span class="fld">core <span class="seg" data-k="core"><button data-v="1">1</button><button class="on" data-v="2">2</button><button data-v="4">4</button></span></span>
+    <span class="fld">max <span class="seg" data-k="max"><button data-v="2">2</button><button class="on" data-v="4">4</button><button data-v="8">8</button></span></span>
+    <span class="fld">queue <span class="seg" data-k="q"><button class="on" data-v="3">bounded(3)</button><button data-v="inf">unbounded</button><button data-v="0">Synchronous</button></span></span>
+    <span class="fld">when full <span class="seg" data-k="pol"><button data-v="abort">Abort</button><button class="on" data-v="caller">CallerRuns</button><button data-v="discard">Discard</button><button data-v="oldest">DiscardOldest</button></span></span>
+   </div>
+   <div class="rules" id="tp-rules">
+    <div data-r="1"><b>① threads &lt; core?</b>start a new core thread</div>
+    <div data-r="2"><b>② queue has room?</b>wait in the queue</div>
+    <div data-r="3"><b>③ threads &lt; max?</b>start an extra thread</div>
+    <div data-r="4"><b>④ otherwise</b>rejection policy</div>
+   </div>
+   <div class="ctrl"><button class="btn p" id="tp-one">Submit task</button><button class="btn" id="tp-ten">Submit 10</button><button class="btn" id="tp-time">⏸ Pause time</button><button class="btn" id="tp-reset">↺ Reset</button><span class="stats" id="tp-stats"></span></div>
+   <div><div class="lblrow"><span>worker threads (blue = core · dashed orange = extra, dies after keepAlive)</span></div><div class="pool" id="tp-pool"></div></div>
+   <div><div class="lblrow"><span>work queue</span></div><div class="q" id="tp-q"></div></div>
+  </div>
+  <div class="stack">
+   <div class="code" id="tp-code"></div>
+   <div class="console" id="tp-log" style="min-height:calc(78px*var(--k))"></div>
+   <p class="take"><b>Remember:</b> extra threads start only when the <b>queue is full</b>. With an <b>unbounded</b> queue, <code>max</code> is never used and nothing is ever rejected — the queue just grows.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.3</span><h2><code>Executors.*</code> traps &amp; clean shutdown</h2><span class="sub">see what each factory really builds</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="seg" id="ef" style="flex-wrap:wrap"><button class="on" data-f="fixed">newFixedThreadPool(8)</button><button data-f="single">newSingleThreadExecutor()</button><button data-f="cached">newCachedThreadPool()</button><button data-f="sched">newScheduledThreadPool(2)</button></div>
+   <div class="code" id="ef-code"></div>
+   <div class="msg" id="ef-msg"></div>
+  </div>
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="RunPools.java">
+// ✅ explicit: bounded queue, named threads, a policy
+ThreadPoolExecutor runPool = new ThreadPoolExecutor(
+    8, 16, 30, SECONDS,
+    new ArrayBlockingQueue<>(500),
+    new CustomizableThreadFactory("suite-run-"),
+    new ThreadPoolExecutor.CallerRunsPolicy());
+
+// ✅ graceful shutdown (e.g. in @PreDestroy)
+runPool.shutdown();                       // no new tasks
+if (!runPool.awaitTermination(30, SECONDS))
+    runPool.shutdownNow();                // interrupt the rest</script></div>
+   <div class="gtk"><b>Good to know</b> In Spring use <code>ThreadPoolTaskExecutor</code> (core / max / queueCapacity properties, shuts down with the context). <code>execute()</code> lets an exception kill the worker and print it; <code>submit()</code> stores it in the <code>Future</code> — you only see it via <code>get()</code>.</div>
+   <p class="take"><b>Remember:</b> name your threads, bound your queues, choose a rejection policy, and always shut pools down.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 2. LOCKS & ATOMICS -->
+<section class="cat" data-name="2. Locks &amp; atomics" data-col="p">
+<h1 class="cat-title">2. Locks &amp; atomics</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.1</span><h2>ReentrantLock vs synchronized</h2><span class="sub">thread A holds the device lock and its Appium call hangs — how does B wait?</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="seg" id="lk-m" style="flex-wrap:wrap"><button class="on" data-m="sync">synchronized</button><button data-m="lock">lock()</button><button data-m="try">tryLock(5, SECONDS)</button><button data-m="int">lockInterruptibly()</button></div>
+   <div class="lanes">
+    <div class="lane"><b>run-A</b>holds <code>device-7</code> lock<br><span class="chip warn">stuck in Appium call</span></div>
+    <div class="lane"><b>run-B</b>wants <code>device-7</code><br><span class="chip" id="lk-st"></span></div>
+   </div>
+   <div class="ctrl"><button class="btn p" id="lk-wait">⏱ Wait 5 s</button><button class="btn" id="lk-int">✋ Cancel run-B (interrupt)</button><button class="btn" id="lk-reset">↺ Reset</button></div>
+   <div class="msg" id="lk-msg"></div>
+   <div class="code"><script type="text/plain" data-mac="DeviceLock.java">
+if (lock.tryLock(5, SECONDS)) {
+    try {
+        runOn(device);
+    } finally {
+        lock.unlock();   // ✅ always in finally
+    }
+} else {
+    requeue(testCase);   // device busy — try later
+}</script></div>
+  </div>
+  <div class="stack">
+   <table class="t">
+    <tr><th></th><th>synchronized</th><th>ReentrantLock</th></tr>
+    <tr><td>Release</td><td><span class="chip ok">automatic</span></td><td><span class="chip warn">manual — <code>finally</code></span></td></tr>
+    <tr><td>Wait with timeout</td><td><span class="chip bad">no</span></td><td><span class="chip ok"><code>tryLock(t)</code></span></td></tr>
+    <tr><td>Interruptible wait</td><td><span class="chip bad">no</span></td><td><span class="chip ok"><code>lockInterruptibly()</code></span></td></tr>
+    <tr><td>Fairness</td><td><span class="chip bad">no</span></td><td><span class="chip ok"><code>new ReentrantLock(true)</code></span></td></tr>
+    <tr><td>Wait / signal</td><td><code>wait/notify</code> (one set)</td><td>many <code>Condition</code>s</td></tr>
+    <tr><td>Reentrant</td><td><span class="chip ok">yes</span></td><td><span class="chip ok">yes — hold count</span></td></tr>
+   </table>
+   <div class="gtk"><b>Good to know</b> <code>ReentrantReadWriteLock</code>: many readers <b>or</b> one writer — good for a read-heavy config cache. <code>StampedLock</code> adds optimistic reads (not reentrant). <code>synchronized</code> pinning virtual threads → page 10.</div>
+   <p class="take"><b>Remember:</b> default to <code>synchronized</code> (simple, can't forget to unlock). Reach for <code>ReentrantLock</code> when you need a <b>timeout</b>, <b>interruptible</b> wait, <b>fairness</b> or several <b>conditions</b>.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.2</span><h2>Atomics &amp; compare-and-set</h2><span class="sub">two threads add a passed test to the counter (currently 5)</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="ctrl"><div class="seg" id="cas-m"><button class="on" data-m="plain">int count++</button><button data-m="cas">AtomicInteger.incrementAndGet()</button></div></div>
+   <div class="ctrl"><button class="btn p" id="cas-next">Next ▶</button><button class="btn" id="cas-reset">↺ Reset</button><span class="chip no" id="cas-n"></span></div>
+   <div class="casg" id="cas-g"></div>
+   <div class="msg" id="cas-msg"></div>
+  </div>
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="AtomicInteger (simplified).java">
+public int incrementAndGet() {
+    while (true) {
+        int cur = get();                       // read
+        int next = cur + 1;
+        if (compareAndSet(cur, next))          // CPU instruction:
+            return next;                       // "set only if still cur"
+        // someone else won → loop and retry
+    }
+}</script></div>
+   <div class="gtk"><b>Good to know</b> Under heavy contention many threads spin on one value — <code>LongAdder</code> spreads counts over cells and sums on read (great for metrics). <b>ABA</b>: a value goes A→B→A and CAS can't tell — <code>AtomicStampedReference</code> adds a version.</div>
+   <p class="take"><b>Remember:</b> <code>count++</code> is <b>read-modify-write</b> — three steps, not atomic, even on a <code>volatile</code>. Atomics are <b>lock-free</b>: no blocking, just retry. Combine two atomics and you need a lock again.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 3. COORDINATION -->
+<section class="cat" data-name="3. Coordination" data-col="g">
+<h1 class="cat-title">3. Coordination</h1>
+<div class="slide c-g">
+ <div class="sh"><span class="sn">3.1</span><h2>Latch, barrier or semaphore?</h2><span class="sub">pick the right tool for each FireFlink scenario</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <table class="t" style="margin-bottom:calc(8px*var(--k))">
+  <tr><th>Tool</th><th>Idea</th><th>Reusable?</th><th>Key calls</th></tr>
+  <tr><td><b>CountDownLatch(n)</b></td><td>one or more threads <b>wait until n events</b> happened</td><td><span class="chip bad">no — one shot</span></td><td><code>countDown()</code> · <code>await()</code></td></tr>
+  <tr><td><b>CyclicBarrier(n)</b></td><td><b>n threads wait for each other</b>, then all continue</td><td><span class="chip ok">yes — every round</span></td><td><code>await()</code></td></tr>
+  <tr><td><b>Semaphore(n)</b></td><td>at most <b>n permits</b> in use at once</td><td><span class="chip ok">yes</span></td><td><code>acquire()</code> · <code>release()</code> in finally</td></tr>
+ </table>
+ <div class="pqs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="pq" data-opts="Latch|Barrier|Semaphore" data-ans="Latch"><pre>Start the suite only after all 5
+device sessions report "ready"</pre><div class="why">Main thread <code>await()</code>s, each session calls <code>countDown()</code> once. One-time event.</div></div>
+  <div class="pq" data-opts="Latch|Barrier|Semaphore" data-ans="Semaphore"><pre>Licence allows at most 3 parallel
+browser sessions per tenant</pre><div class="why">A <code>Semaphore(3)</code> per tenant: <code>acquire()</code> before opening a session, <code>release()</code> in finally.</div></div>
+  <div class="pq" data-opts="Latch|Barrier|Semaphore" data-ans="Barrier"><pre>4 load-test workers must all finish
+phase N before anyone starts N+1</pre><div class="why">Workers wait for <b>each other</b>, repeatedly → <code>CyclicBarrier(4)</code>.</div></div>
+  <div class="pq" data-opts="Latch|Barrier|Semaphore" data-ans="Semaphore"><pre>Jira API is rate-limited: max 5
+calls in flight from our service</pre><div class="why">Limit concurrent access to a resource → <code>Semaphore(5)</code>.</div></div>
+  <div class="pq" data-opts="Latch|Barrier|Semaphore" data-ans="Latch"><pre>Wait for 10 report-chunk uploads,
+then mark the report "complete"</pre><div class="why">Count 10 events down to zero. (With futures: <code>CompletableFuture.allOf</code> → page 10.)</div></div>
+  <div class="pq" data-opts="Latch|Barrier|Semaphore" data-ans="Latch"><pre>Tests: make 2 threads hit save()
+at the exact same moment</pre><div class="why">A <code>CountDownLatch(1)</code> as a starting gun: both <code>await()</code>, the test calls <code>countDown()</code>.</div></div>
+ </div>
+</div>
+
+<div class="slide c-g">
+ <div class="sh"><span class="sn">3.2</span><h2>ThreadLocal in a pool</h2><span class="sub">pool threads are reused — so is whatever you left in them</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="ctrl"><button class="btn p" id="tl-next">Run next task ▶</button><button class="btn" id="tl-reset">↺ Reset</button><label class="chk" id="tl-fix"><input type="checkbox"> <code>remove()</code> in finally</label></div>
+   <div class="tq" id="tl-q"></div>
+   <div class="tlp" id="tl-pool"></div>
+   <div class="console" id="tl-log" style="min-height:calc(70px*var(--k))"></div>
+   <div class="msg" id="tl-msg"></div>
+  </div>
+  <div class="stack">
+   <div class="code" id="tl-code"></div>
+   <div class="gtk"><b>Good to know</b> Same rule for MDC log context (<code>MDC.clear()</code>) and security context. Spring's <code>TaskDecorator</code> copies context into a task and clears it afterwards. Java 25 <code>ScopedValue</code> is the leak-free alternative.</div>
+   <p class="take"><b>Remember:</b> a <code>ThreadLocal</code> lives as long as the <b>thread</b>, not the task. In a pool, always <code>set</code> at the start and <code>remove()</code> in <code>finally</code> — or the next task inherits the last tenant (and old values never get garbage-collected).</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 4. ALL IN ACTION -->
+<section class="cat" data-name="4. All in action" data-col="k">
+<h1 class="cat-title">4. All in action</h1>
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.1</span><h2>Predict the output</h2><span class="sub">pools, locks and atomics</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="pqs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="pq" data-opts="stack trace|nothing" data-ans="nothing"><pre>pool.submit(() -> {
+    throw new RuntimeException("boom");
+});
+// never call get()</pre><div class="why"><code>submit</code> captures the exception inside the <code>Future</code>. Nobody calls <code>get()</code> → silently lost. <code>execute</code> would print it. <a class="go" data-go="1.3">1.3</a></div></div>
+  <div class="pq" data-opts="2|10|50" data-ans="2"><pre>new ThreadPoolExecutor(2, 10,
+    60, SECONDS,
+    new LinkedBlockingQueue<>());
+// submit 50 slow tasks
+// max threads alive?</pre><div class="why">The unbounded queue never fills, so extra threads are never created. <a class="go" data-go="1.2">1.2</a></div></div>
+  <div class="pq" data-opts="runs|exception" data-ans="exception"><pre>pool.shutdown();
+pool.submit(task);</pre><div class="why"><code>RejectedExecutionException</code> — a shut-down pool accepts no new work (already queued tasks still finish).</div></div>
+  <div class="pq" data-opts="gets it|blocked" data-ans="blocked"><pre>// thread A
+lock.lock();
+lock.lock();   // reentrant: ok
+lock.unlock();
+// thread B: lock.lock() → ?</pre><div class="why">Hold count is still 1. Every <code>lock()</code> needs its own <code>unlock()</code>.</div></div>
+  <div class="pq" data-opts="never &gt; 3|can exceed 3" data-ans="can exceed 3"><pre>// many threads
+if (active.get() < 3)
+    active.incrementAndGet();</pre><div class="why">Each call is atomic, the <b>check-then-act</b> pair isn't. Use a loop with <code>compareAndSet</code>, or a <code>Semaphore</code>. <a class="go" data-go="2.2">2.2</a></div></div>
+  <div class="pq" data-opts="returns at once|blocks" data-ans="returns at once"><pre>var latch = new CountDownLatch(2);
+latch.countDown(); latch.countDown();
+latch.await();
+latch.await();   // second time?</pre><div class="why">Count stays at 0 — a latch can't be reset. Need rounds? Use <code>CyclicBarrier</code>. <a class="go" data-go="3.1">3.1</a></div></div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.2</span><h2>Production bug: result uploader OOM</h2><span class="sub">S3 got slow at 14:00 — drag the clock and compare the two pools</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="seg" id="ob-m"><button class="on" data-m="bad">Executors.newFixedThreadPool(8)</button><button data-m="good">bounded(1000) + CallerRuns</button></div>
+   <div class="code" id="ob-code"></div>
+   <div class="msg" id="ob-msg"></div>
+  </div>
+  <div class="stack">
+   <div class="box"><h4>▶ Minutes since S3 slowed down</h4>
+    <div class="lblrow"><span>14:00 → <b id="ob-tv"></b></span><span>results in 300/s · uploads out 100/s</span></div>
+    <input type="range" id="ob-t" min="0" max="15" step="1" value="0">
+    <div class="stats" id="ob-stats" style="margin:8px 0"></div>
+    <div class="lblrow"><span>heap used</span><span>-Xmx2g</span></div>
+    <div class="meter"><i id="ob-bar"></i></div></div>
+   <div class="console" id="ob-log" style="min-height:calc(66px*var(--k))"></div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 5. INTERVIEW Q&A -->
+<section class="cat" data-name="5. Interview Q&amp;A" data-col="i">
+<h1 class="cat-title">5. Interview Q&amp;A</h1>
+<div class="slide c-i">
+ <div class="sh"><span class="sn">5.1</span><h2>Interview questions</h2><span class="sub">click a question to reveal the answer · pill = slide that explains it</span></div>
+ <div class="qbar"><input id="qa-find" type="search" placeholder="Filter questions… (e.g. queue, tryLock, CAS)"><span class="chip ok" id="qa-count"></span><button class="btn" id="qa-random">🎲 Random question</button><label class="donebox" style="margin-left:auto"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="acc" id="qa-list"></div>
+</div>
+</section>
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <span class="kbd">← → keys</span>
+</footer>
+
+<script src="../_shared/deck.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const segPick=(el,b)=>el.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+
+// ===================================================== 1.1 why a pool
+(function(){
+ let mode='new';
+ function draw(){const n=+$('wp-n').value,pool=mode==='pool',peak=pool?8:n,created=pool?8:n,mb=peak;
+  $('wp-nv').textContent=n;
+  $('wp-stats').innerHTML=`<span class="stat"><b>${created}</b>threads created</span><span class="stat"><b>${peak}</b>alive at peak</span><span class="stat"><b>${mb>=1000?(mb/1024).toFixed(1)+' GB':mb+' MB'}</b>stack reserved</span>`;
+  const pct=Math.min(100,mb/2048*100),bar=$('wp-bar');bar.style.width=pct+'%';bar.className=pct>70?'bad':pct>35?'warn':'';
+  $('wp-msg').innerHTML=pool?`✅ 8 threads handle all <b>${n}</b> cases one after another — the rest wait in the queue. Memory stays flat whatever the suite size.`
+   :n>=1500?`💥 <code>OutOfMemoryError: unable to create native thread</code> — the pod hits its thread / memory limit. Even below that, ${n} threads fight over a few CPU cores (context switching) and hammer the device grid at once.`
+   :`⚠️ <b>${n}</b> OS threads for ${n} cases. Each one costs a stack and creation time, and they all compete for a few CPU cores. Drag to 1500+.`;}
+ $('wp-mode').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;mode=b.dataset.m;segPick($('wp-mode'),b);draw();};
+ $('wp-n').oninput=draw;draw();
+})();
+
+// ===================================================== 1.2 ThreadPoolExecutor simulator
+(function(){
+ const cfg={core:2,max:4,q:'3',pol:'caller'};
+ let W,Q,n,stats,log,hit,running=true,bad;
+ const qcap=()=>cfg.q==='inf'?Infinity:+cfg.q;
+ const dur=()=>3+Math.floor(Math.random()*4);
+ function reset(){W=[];Q=[];n=0;stats={done:0,rej:0,caller:0};log=[];hit=0;bad=cfg.max<cfg.core;
+  if(bad)say('<span class="err">IllegalArgumentException: maximumPoolSize &lt; corePoolSize</span>');draw();}
+ function say(s){log.push(s);if(log.length>4)log.shift();}
+ function newWorker(core,t){const c=W.filter(w=>w.core===core).length+1;W.push({core,name:(core?'core-':'extra-')+c,task:t,idle:0});}
+ function submit(){if(bad)return;const t={id:++n,left:dur()};t.total=t.left;
+  if(W.length<cfg.core){newWorker(true,t);hit=1;say(`#${t.id} → ① new core thread`);return;}
+  const idle=W.find(w=>!w.task);
+  if(cfg.q==='0'?!!idle:Q.length<qcap()){
+   if(cfg.q==='0'){idle.task=t;idle.idle=0;say(`#${t.id} → ② handed straight to idle ${idle.name}`);}
+   else{Q.push(t);say(`#${t.id} → ② queued (${Q.length}${cfg.q==='inf'?'':'/'+cfg.q})`);dispatch();}
+   hit=2;return;}
+  if(W.length<cfg.max){newWorker(false,t);hit=3;say(`#${t.id} → ③ queue full, new <span class="nar">extra</span> thread`);return;}
+  hit=4;stats.rej++;
+  if(cfg.pol==='abort')say(`<span class="err">#${t.id} → ④ RejectedExecutionException</span>`);
+  else if(cfg.pol==='caller'){stats.caller++;say(`<span class="nar">#${t.id} → ④ runs on the caller thread (submitter slows down)</span>`);}
+  else if(cfg.pol==='discard')say(`<span class="dim">#${t.id} → ④ dropped silently 🤫</span>`);
+  else if(Q.length){const o=Q.shift();Q.push(t);say(`<span class="dim">#${t.id} → ④ dropped oldest #${o.id}, queued #${t.id}</span>`);}
+  else say(`<span class="dim">#${t.id} → ④ nothing to drop — task lost</span>`);}
+ function dispatch(){W.forEach(w=>{if(!w.task&&Q.length){w.task=Q.shift();w.idle=0;}});}
+ function tick(){if(bad)return;
+  W.forEach(w=>{if(w.task){w.task.left--;if(w.task.left<=0){stats.done++;w.task=null;}}});
+  dispatch();
+  W.forEach(w=>{if(!w.task)w.idle++;});
+  const gone=W.filter(w=>!w.core&&!w.task&&w.idle>=3);
+  if(gone.length){gone.forEach(w=>say(`<span class="dim">${w.name} idle past keepAlive → stopped</span>`));W=W.filter(w=>!gone.includes(w));}
+  draw();}
+ function code(){const q=cfg.q==='inf'?'new LinkedBlockingQueue<>()     // ❌ unbounded':cfg.q==='0'?'new SynchronousQueue<>()        // no capacity':'new ArrayBlockingQueue<>('+cfg.q+')       // ✅ bounded';
+  const p={abort:'AbortPolicy()',caller:'CallerRunsPolicy()',discard:'DiscardPolicy()',oldest:'DiscardOldestPolicy()'}[cfg.pol];
+  $('tp-code').innerHTML=macHTML('RunPool.java',`ExecutorService runPool = new ThreadPoolExecutor(
+    ${cfg.core}, ${cfg.max},                  // core, max threads
+    30, SECONDS,                // keepAlive for extra threads
+    ${q}
+    new ThreadPoolExecutor.${p});`,'java');}
+ function draw(){
+  $('tp-rules').querySelectorAll('[data-r]').forEach(d=>{d.classList.toggle('hit',+d.dataset.r===hit);d.classList.toggle('rj',hit===4);});
+  const slots=Math.max(cfg.max,4);
+  $('tp-pool').innerHTML=Array.from({length:Math.min(slots,8)},(_,i)=>{const w=W[i];if(!w)return `<div class="wk empty"><small>${i<cfg.max?'—':''}</small>${i<cfg.max?'not started':''}</div>`;
+   const t=w.task;return `<div class="wk ${w.core?'core':'extra'} ${t?'busy':''}"><small>${w.name}</small>${t?`<span class="tk">#${t.id}</span><span class="bar" style="width:${t.left*7}px"></span>`:'<span style="color:var(--muted)">idle</span>'}</div>`;}).join('');
+  const qc=qcap();
+  $('tp-q').innerHTML=cfg.q==='0'?'<em>SynchronousQueue has no slots — a task is handed over only if a thread is idle</em>'
+   :Q.slice(0,8).map(t=>`<span>#${t.id}</span>`).join('')+(Q.length>8?`<em>+${Q.length-8} more…</em>`:'')+(qc!==Infinity?Array.from({length:Math.max(0,qc-Q.length)},()=>'<span class="slot">·</span>').join(''):'')+(cfg.q==='inf'?`<em>(${Q.length} queued · no limit)</em>`:'');
+  $('tp-stats').innerHTML=`<span class="stat"><b>${stats.done}</b>done</span><span class="stat"><b>${stats.rej}</b>rejected</span>`;
+  $('tp-log').innerHTML=log.length?log.join('\n'):'<span class="dim">press Submit task — or Submit 10 to overflow the pool</span>';
+  $('tp-time').textContent=running?'⏸ Pause time':'▶ Resume time';}
+ $('tp-cfg').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;const s=b.closest('[data-k]');cfg[s.dataset.k]=s.dataset.k==='q'||s.dataset.k==='pol'?b.dataset.v:+b.dataset.v;segPick(s,b);code();reset();};
+ $('tp-one').onclick=()=>{submit();draw();};
+ $('tp-ten').onclick=()=>{for(let i=0;i<10;i++)submit();draw();};
+ $('tp-time').onclick=()=>{running=!running;draw();};
+ $('tp-reset').onclick=reset;
+ setInterval(()=>{if(running&&$('tp-pool').closest('.slide').classList.contains('on'))tick();},900);
+ code();reset();
+})();
+
+// ===================================================== 1.3 Executors factories
+(function(){
+ const F={
+  fixed:['Executors.newFixedThreadPool(8)',`// what it really builds
+new ThreadPoolExecutor(8, 8, 0L, MILLISECONDS,
+    new LinkedBlockingQueue<Runnable>());  // ❌ capacity 2³¹-1`,'bad','Unbounded queue','Threads are capped at 8 — but the queue is <b>unbounded</b>. If tasks arrive faster than they finish, they pile up in memory until <b>OOM</b>. Exactly the bug in <a class="go" data-go="4.2">4.2</a>.'],
+  single:['Executors.newSingleThreadExecutor()',`// what it really builds (wrapped)
+new ThreadPoolExecutor(1, 1, 0L, MILLISECONDS,
+    new LinkedBlockingQueue<Runnable>());  // ❌ unbounded`,'bad','Unbounded queue','Same trap with one thread. Useful for strictly ordered work (e.g. one writer per run log), but bound it yourself.'],
+  cached:['Executors.newCachedThreadPool()',`// what it really builds
+new ThreadPoolExecutor(0, Integer.MAX_VALUE, // ❌ no thread cap
+    60L, SECONDS,
+    new SynchronousQueue<Runnable>());`,'bad','Unbounded threads','No queue — every task without an idle thread gets a <b>new thread</b>. A burst of 5,000 tasks → 5,000 threads → <code>unable to create native thread</code>. Fine only for short, few tasks.'],
+  sched:['Executors.newScheduledThreadPool(2)',`// what it really builds
+new ScheduledThreadPoolExecutor(2);
+// DelayedWorkQueue — unbounded too
+pool.scheduleAtFixedRate(this::pollDevices, 0, 30, SECONDS);`,'warn','Watch exceptions','For timers (poll the device grid every 30 s). If the task <b>throws</b>, later runs are <b>silently cancelled</b> — catch everything inside a periodic task.']};
+ function show(f){const x=F[f];$('ef-code').innerHTML=macHTML(x[0],x[1],'java');$('ef-msg').innerHTML=`<span class="chip ${x[2]}">${x[3]}</span> ${x[4]}`;}
+ $('ef').onclick=e=>{const b=e.target.closest('[data-f]');if(!b)return;segPick($('ef'),b);show(b.dataset.f);};show('fixed');
+})();
+
+// ===================================================== 2.1 lock waiting styles
+(function(){
+ const M={sync:['BLOCKED','bad','BLOCKED on the monitor — no timeout, and it can\'t be cancelled.'],lock:['WAITING','bad','<code>lock()</code> parks like synchronized — no timeout, ignores interrupts.'],try:['WAITING (max 5 s)','warn','<code>tryLock(5, SECONDS)</code> waits up to 5 s, then returns <b>false</b>.'],int:['WAITING','warn','<code>lockInterruptibly()</code> waits until it gets the lock <b>or</b> is interrupted.']};
+ let m='sync',ev='';
+ function draw(){const x=M[m];let st=x[0],cl=x[1],msg=x[2];
+  if(ev==='wait'){if(m==='try'){st='gave up → requeued';cl='ok';msg='✅ After 5 s <code>tryLock</code> returns false — run-B <b>requeues the test</b> and its thread serves other work.';}else{msg='⏱ 5 s later… still waiting. '+(m==='int'?'Waits forever unless someone interrupts it — try ✋.':'It will wait <b>forever</b> — a thread lost from the pool.');}}
+  if(ev==='int'){if(m==='int'){st='InterruptedException';cl='ok';msg='✅ The user cancelled the run → <code>InterruptedException</code> → run-B cleans up and exits.';}else if(m==='try'){st='InterruptedException';cl='ok';msg='✅ <code>tryLock(timeout)</code> is interruptible too.';}else msg='❌ Interrupt <b>ignored</b> — '+(m==='sync'?'a thread blocked on <code>synchronized</code>':'<code>lock()</code>')+' can\'t be cancelled. Cancel button does nothing; thread stays stuck.';}
+  const c=$('lk-st');c.textContent=st;c.className='chip '+cl;$('lk-msg').innerHTML=msg;}
+ $('lk-m').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;m=b.dataset.m;ev='';segPick($('lk-m'),b);draw();};
+ $('lk-wait').onclick=()=>{ev='wait';draw();};$('lk-int').onclick=()=>{ev='int';draw();};$('lk-reset').onclick=()=>{ev='';draw();};draw();
+})();
+
+// ===================================================== 2.2 CAS stepper
+(function(){
+ // [thread(1|2), text, ok(true/false/null), memory]
+ const S={plain:[[1,'read count → 5',null,5],[2,'read count → 5',null,5],[1,'write 5+1 = 6',true,6],[2,'write 5+1 = 6',true,6]],
+  cas:[[1,'read → 5',null,5],[2,'read → 5',null,5],[1,'CAS(5 → 6) ✅',true,6],[2,'CAS(5 → 6) ❌ value is 6',false,6],[2,'retry: read → 6',null,6],[2,'CAS(6 → 7) ✅',true,7]]};
+ let m='plain',i=-1;
+ function draw(){const st=S[m];
+  $('cas-g').innerHTML='<div class="hd">thread run-1</div><div class="hd">count</div><div class="hd">thread run-2</div><div></div><div class="m">5</div><div></div>'+st.slice(0,i+1).map((s,k)=>{const c=`<div class="c ${s[2]===true?'ok':s[2]===false?'no':''}">${s[1]}</div>`;const last=k===st.length-1&&m==='plain';return (s[0]===1?c:'<div></div>')+`<div class="m ${last?'lost':''}">${s[3]}</div>`+(s[0]===2?c:'<div></div>');}).join('');
+  $('cas-n').textContent=i<0?'ready':`step ${i+1} / ${st.length}`;$('cas-next').disabled=i>=st.length-1;
+  $('cas-msg').innerHTML=i<st.length-1?'Two passed tests finish at the same time. What should the counter end at? Press <b>Next ▶</b>.'
+   :m==='plain'?'❌ <b>Lost update</b>: two increments, counter shows <b>6</b> instead of 7. Both threads read 5 before either wrote.'
+   :'✅ <b>7</b>. run-2\'s CAS failed because the value changed under it — it simply re-read and retried. No lock, no blocking.';}
+ $('cas-next').onclick=()=>{i++;draw();};$('cas-reset').onclick=()=>{i=-1;draw();};
+ $('cas-m').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;m=b.dataset.m;i=-1;segPick($('cas-m'),b);draw();};draw();
+})();
+
+// ===================================================== 3.2 ThreadLocal leak
+(function(){
+ const T=[['acme','run suite (tenant acme)'],['globex','run suite (tenant globex)'],[null,'cleanup old reports'],['acme','run suite (tenant acme)'],[null,'cleanup old reports']];
+ let i,th,log;const fix=()=>$('tl-fix').querySelector('input').checked;
+ function reset(){i=0;th=[null,null];log=[];draw();}
+ function step(){if(i>=T.length)return;const [ten,name]=T[i],w=i%2;
+  if(ten){th[w]=ten;log.push(`pool-${w+1}: ${name} → TenantContext.set("${ten}")`);if(fix()){th[w]=null;log.push(`<span class="okc">pool-${w+1}: finally → remove()</span>`);}}
+  else{const v=th[w];log.push(v?`<span class="err">pool-${w+1}: ${name} reads tenant "${v}" → deleted 312 reports of ${v} ❌</span>`:`<span class="okc">pool-${w+1}: ${name} reads null → IllegalStateException("no tenant") ✅ fails fast</span>`);}
+  while(log.length>4)log.shift();i++;draw();}
+ function draw(){$('tl-fix').classList.toggle('on',fix());
+  $('tl-q').innerHTML=T.map((t,k)=>`<span class="${k<i?'done':k===i?'nx':''}">${k+1}. ${t[1].replace(/ \(tenant (\w+)\)/,' · $1')}</span>`).join('');
+  $('tl-pool').innerHTML=th.map((v,k)=>`<div><b>pool-${k+1}</b> (reused thread)<br>TenantContext = <span class="tv ${v?'set':''}">${v?'"'+v+'"':'null'}</span></div>`).join('');
+  $('tl-log').innerHTML=log.length?log.join('\n'):'<span class="dim">tasks alternate between pool-1 and pool-2 — press Run next task</span>';
+  const leaked=log.some(l=>l.includes('❌'));
+  $('tl-msg').innerHTML=fix()?'✅ Each task leaves its thread clean — a task that forgets to set a tenant <b>fails loudly</b> instead of using someone else\'s.':leaked?'❌ The cleanup job never set a tenant, so it used the <b>previous task\'s</b> tenant — data of the wrong customer deleted. Tick <b>remove() in finally</b> and rerun.':'Watch what the cleanup task (it sets no tenant) finds in the thread.';
+  $('tl-code').innerHTML=macHTML('TenantTask.java',`static final ThreadLocal<String> TENANT = new ThreadLocal<>();
+
+pool.submit(() -> {
+    TENANT.set(job.tenantId());
+${fix()?`    try {
+        job.run();
+    } finally {
+        TENANT.remove();          // ✅ thread goes back clean
+    }`:`    job.run();
+    // ❌ value stays on the pool thread`}
+});`,'java');
+  $('tl-next').disabled=i>=T.length;}
+ $('tl-next').onclick=step;$('tl-reset').onclick=reset;$('tl-fix').querySelector('input').onchange=reset;reset();
+})();
+
+// ===================================================== 4.2 OOM production bug
+(function(){
+ let m='bad';
+ function draw(){const t=+$('ob-t').value,good=m==='good';
+  $('ob-tv').textContent=`14:${String(t).padStart(2,'0')}`;
+  const backlog=200*60*t;                       // 300 in - 100 out per second
+  const queued=good?Math.min(backlog,1000):backlog,heapMb=Math.round(500+queued*20/1024); // ~20 KB per queued result
+  const oom=!good&&heapMb>=2048,heap=Math.min(heapMb,2048);
+  $('ob-stats').innerHTML=`<span class="stat"><b>${queued.toLocaleString()}</b>tasks queued</span><span class="stat"><b>${oom?'2048+':heap} MB</b>heap</span><span class="stat"><b>${good&&t>0?'~100/s':'300/s'}</b>results accepted</span>`;
+  const bar=$('ob-bar');bar.style.width=(heap/2048*100)+'%';bar.className=heap>1700?'bad':heap>1100?'warn':'';
+  $('ob-log').innerHTML=t===0?'<span class="dim">14:00 WARN  S3 PutObject p99 latency 80 ms → 240 ms</span>'
+   :good?`<span class="dim">14:${String(t).padStart(2,'0')} WARN  upload queue full (1000) — CallerRuns: executor threads upload results themselves</span>\n<span class="okc">suite runs ~3× slower, heap steady, nothing lost</span>`
+   :oom?`<span class="dim">14:${String(t).padStart(2,'0')} WARN  GC overhead — 95% time in GC</span>\n<span class="err">java.lang.OutOfMemoryError: Java heap space\n    at LinkedBlockingQueue.offer(…)</span>\n<span class="err">pod restarted — ${queued.toLocaleString()} queued results LOST</span>`
+   :`<span class="dim">14:${String(t).padStart(2,'0')} INFO  uploads ok</span> <span class="nar">(queue silently growing…)</span>`;
+  $('ob-msg').innerHTML=good?'✅ <b>Back-pressure</b>: when the queue is full, the submitting thread runs the upload itself, so test execution slows to the speed S3 can take. Heap stays flat, no data lost. Also add a metric/alert on queue size.'
+   :oom?`❌ <b>${queued.toLocaleString()}</b> results waiting in an unbounded <code>LinkedBlockingQueue</code> — each holding a result + screenshot. The pod dies and every queued result is gone.`
+   :'The pool caps threads at 8, so it <i>looks</i> safe. But the work queue has no limit. Drag the clock →';
+  $('ob-code').innerHTML=macHTML('ResultUploader.java',good?`ExecutorService uploads = new ThreadPoolExecutor(
+    8, 8, 0, SECONDS,
+    new ArrayBlockingQueue<>(1000),           // ✅ bounded
+    new ThreadPoolExecutor.CallerRunsPolicy()); // ✅ back-pressure
+
+void onResult(TestResult r) {
+    uploads.execute(() -> s3.put(r));
+}`:`ExecutorService uploads =
+    Executors.newFixedThreadPool(8);   // ❌ unbounded queue inside
+
+void onResult(TestResult r) {
+    uploads.execute(() -> s3.put(r));  // never blocks, never rejects
+}`,'java');}
+ $('ob-m').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;m=b.dataset.m;segPick($('ob-m'),b);draw();};
+ $('ob-t').oninput=draw;draw();
+})();
+
+// ===================================================== 5.1 interview Q&A
+DECK.qa([
+ ['Why use a thread pool instead of new Thread()?','Threads are expensive OS resources. A pool reuses them, caps concurrency, queues extra work and gives lifecycle control (shutdown, Futures).',['1.1']],
+ ['Explain ThreadPoolExecutor\'s parameters.','corePoolSize, maximumPoolSize, keepAliveTime (for threads above core), the work queue, a ThreadFactory (names) and a RejectedExecutionHandler.',['1.2']],
+ ['In what order does ThreadPoolExecutor handle a new task?','Below core → new thread; else try the queue; if the queue is full and below max → new extra thread; else reject.',['1.2']],
+ ['Why is max ignored with an unbounded queue?','Extra threads are created only when the queue rejects an offer — an unbounded queue never does.',['1.2','4.1']],
+ ['What rejection policies exist?','AbortPolicy (throws, default), CallerRunsPolicy (submitter runs it — back-pressure), DiscardPolicy, DiscardOldestPolicy. Or your own handler.',['1.2']],
+ ['What\'s wrong with Executors.newFixedThreadPool / newCachedThreadPool?','Fixed/single use an unbounded LinkedBlockingQueue (OOM risk); cached allows Integer.MAX_VALUE threads. Prefer an explicit ThreadPoolExecutor with bounds.',['1.3','4.2']],
+ ['execute() vs submit()?','execute takes a Runnable, returns nothing, exceptions reach the thread\'s handler. submit returns a Future and stores the exception — you see it only via get() (ExecutionException).',['1.3','4.1']],
+ ['How do you shut down an ExecutorService properly?','shutdown() → awaitTermination(timeout) → shutdownNow() if needed (interrupts running tasks). Restore the interrupt flag if interrupted while waiting.',['1.3']],
+ ['How do you size a thread pool?','CPU-bound: about the number of cores. I/O-bound: more — cores × (1 + wait time / compute time). Then measure and bound the queue.',['1.2']],
+ ['synchronized vs ReentrantLock?','synchronized is simpler and auto-releases. ReentrantLock adds tryLock with timeout, interruptible waits, fairness and multiple Conditions — but must be unlocked in finally.',['2.1']],
+ ['What is a reentrant lock?','The thread holding it can acquire it again; a hold count tracks it, and it\'s released only when the count returns to 0.',['2.1','4.1']],
+ ['When would you use a ReadWriteLock?','Read-heavy shared data (config/caches): many readers at once, writers exclusive.',['2.1']],
+ ['What is CAS and how do atomics use it?','Compare-and-set: update a value only if it still equals the expected one, in one CPU instruction. Atomics loop read → compute → CAS, retrying on failure — lock-free.',['2.2']],
+ ['AtomicLong vs LongAdder?','LongAdder spreads increments across cells to reduce contention; sum() adds them. Better for hot counters/metrics, but no compareAndSet.',['2.2']],
+ ['CountDownLatch vs CyclicBarrier vs Semaphore?','Latch: wait for N events, one-shot. Barrier: N threads wait for each other, reusable. Semaphore: limit concurrent access to N permits.',['3.1']],
+ ['What\'s the ThreadLocal problem with thread pools?','Pool threads are reused, so values leak into later tasks (wrong tenant/user) and are never GC\'d. Always remove() in finally.',['3.2']],
+ ['Where do CompletableFuture and virtual threads fit?','CompletableFuture composes async steps on top of executors; virtual threads make thread-per-task cheap for blocking I/O. Covered on page 10.',['1.1']]
+]);
+</script>
+</body></html>

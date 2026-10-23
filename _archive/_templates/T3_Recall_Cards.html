@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JVM Memory · Recall Cards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F6F6F8;--panel:#fff;--ink:#1C1D21;--text:#3C3F47;--muted:#7A7F8C;--faint:#A9ADB8;--line:#E7E7EC;--line2:#D9D9E0;
+ --acc:#5B5BD6;--acc-dk:#4343B8;--acc-bg:#EFEFFD;
+ --heap:#16A34A;--heap-bg:#ECFDF3;--meta:#9333EA;--meta-bg:#F6EEFF;--stk:#0284C7;--stk-bg:#EAF6FD;--old:#D97706;--old-bg:#FFF7E8;--bad:#DC2626;--bad-bg:#FEF1F1;
+ --sans:'Inter','Segoe UI',system-ui,sans-serif;--mono:'JetBrains Mono',Consolas,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+body{display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden}
+b{color:var(--ink);font-weight:600}
+code,.mono{font-family:var(--mono);font-size:.88em}
+code{background:#F1F1F5;border-radius:5px;padding:1px 5px;color:#2F3140;white-space:nowrap}
+button{font:inherit;cursor:pointer}
+
+/* ---------- top bar */
+.top{display:flex;align-items:center;gap:16px;padding:0 18px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;min-width:236px}
+.logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#6E6EF0,#4343B8);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px}
+.brand b{font-size:15px}.brand span{color:var(--muted);font-size:13px}
+.modes{display:flex;background:#F1F1F5;border-radius:10px;padding:3px;gap:2px}
+.modes button{border:0;background:transparent;color:var(--muted);font-weight:600;font-size:13px;padding:6px 14px;border-radius:8px;display:flex;align-items:center;gap:6px}
+.modes button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(20,20,40,.1)}
+.modes kbd{font:600 10.5px var(--sans);color:var(--faint);border:1px solid var(--line2);border-radius:4px;padding:0 4px}
+.topr{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:#fff;font-weight:600;color:var(--text)}
+.pill i{font-style:normal;color:var(--acc)}
+
+/* ---------- views */
+.view{display:none;min-height:0}
+.view.on{display:grid;grid-template-columns:248px minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.rail{background:var(--panel);border-right:1px solid var(--line);padding:14px 12px;overflow:auto;display:flex;flex-direction:column;gap:2px}
+.rail h6{margin:8px 6px 3px;font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+.rail h6:first-child{margin-top:0}
+.dot{width:7px;height:7px;border-radius:50%;flex:none}
+.ri{border:0;background:transparent;text-align:left;font-size:13px;color:var(--text);padding:3px 8px;border-radius:7px;display:flex;align-items:center;gap:8px}
+.ri:hover{background:#F4F4F7}
+.ri.on{background:var(--acc-bg);color:var(--acc-dk);font-weight:600}
+.ri .ck{margin-left:auto;font-size:11px;color:var(--heap);opacity:0}
+.ri.seen .ck{opacity:1}
+.main{min-width:0;min-height:0;display:flex;flex-direction:column;align-items:center;padding:20px 28px 14px;gap:12px}
+
+/* ---------- the flip card (with a stack behind it) */
+.flip{position:relative;width:min(740px,100%);flex:1;min-height:0;perspective:1800px;cursor:pointer}
+.flip::before,.flip::after{content:'';position:absolute;left:16px;right:16px;bottom:-6px;height:40px;border-radius:16px;background:#fff;border:1px solid var(--line);z-index:0}
+.flip::after{left:32px;right:32px;bottom:-12px;background:#FAFAFC}
+.flip::after{z-index:-1}
+.inner{position:relative;z-index:1;width:100%;height:100%;transition:transform .55s cubic-bezier(.2,.75,.2,1);transform-style:preserve-3d}
+.flip.flipped .inner{transform:rotateY(180deg)}
+.flip.swipe-l .inner{animation:swl .28s ease}.flip.swipe-r .inner{animation:swr .28s ease}
+@keyframes swl{from{transform:translateX(40px);opacity:.3}to{transform:none;opacity:1}}
+@keyframes swr{from{transform:translateX(-40px);opacity:.3}to{transform:none;opacity:1}}
+.face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px rgba(20,20,40,.04),0 10px 30px rgba(20,20,40,.07);padding:20px 26px;display:flex;flex-direction:column;overflow:hidden}
+.back{transform:rotateY(180deg)}
+.flip.flipped .front,.flip:not(.flipped) .back{pointer-events:none}
+.fh{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+.tag{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--text);font-size:12px}
+.fh .n{margin-left:auto;font-variant-numeric:tabular-nums}
+.boxes{display:inline-flex;gap:3px}.boxes i{width:7px;height:7px;border-radius:2px;background:var(--line2)}.boxes i.f{background:var(--acc)}
+.qwrap{flex:1;display:flex;flex-direction:column;justify-content:center;gap:12px;padding:0 4px}
+.q{font-size:21px;line-height:1.38;font-weight:600;color:var(--ink);letter-spacing:-.2px;max-width:600px}
+.q code{font-size:.82em}
+.hint{font-size:13px;color:var(--muted)}
+.hint::before{content:'💭 '}
+.ffoot{font-size:12px;color:var(--faint);display:flex;gap:14px}
+.fbody{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;padding-top:12px}
+.ans{font-size:14.5px;line-height:1.6;color:var(--text);margin:0}
+.say{background:var(--acc-bg);border-radius:10px;padding:9px 13px;font-size:13.5px;color:#2B2C6B;border-left:3px solid var(--acc)}
+.say small{display:block;font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;font-weight:700;color:var(--acc);margin-bottom:1px}
+.fu{margin-top:auto;border:1px dashed var(--line2);background:#FAFAFC;border-radius:10px;padding:7px 12px;text-align:left;font-size:13px;color:var(--text);width:100%}
+.fu>span{font-weight:600;color:var(--ink)}
+.fu>span::before{content:'↪ Follow-up: ';color:var(--acc);font-weight:700}
+.fu em{display:none;font-style:normal;margin-top:4px;color:var(--text)}
+.fu.open{border-style:solid;background:#fff}.fu.open em{display:block}
+
+/* ---------- tiny visuals inside cards */
+.viz{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px}
+.b{display:inline-flex;flex-direction:column;align-items:center;border:1.5px solid var(--line2);background:#fff;border-radius:8px;padding:4px 10px;font-weight:600;color:var(--ink);line-height:1.3}
+.b small{font-size:10.5px;font-weight:500;color:var(--muted)}
+.b.h{border-color:#86EFAC;background:var(--heap-bg);color:#166534}
+.b.m{border-color:#D8B4FE;background:var(--meta-bg);color:#6B21A8}
+.b.s{border-color:#7DD3FC;background:var(--stk-bg);color:#075985}
+.b.o{border-color:#FCD34D;background:var(--old-bg);color:#92400E}
+.b.r{border-color:#FCA5A5;background:var(--bad-bg);color:#991B1B}
+.b.strike{text-decoration:line-through;opacity:.75}
+.b.big{padding:8px 14px;font-family:var(--mono);font-weight:600;font-size:12px}
+.arr{color:var(--faint);font-weight:600;font-size:12px}
+.grp{display:flex;align-items:center;gap:6px;border:1.5px dashed var(--line2);border-radius:10px;padding:6px 8px}
+.grp>i{font-style:normal;font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;margin-right:2px}
+.frame{border:1.5px solid #7DD3FC;background:var(--stk-bg);border-radius:9px;padding:6px 10px;font-family:var(--mono);font-size:12px;color:#075985;line-height:1.55}
+.frame small{display:block;font-family:var(--sans);font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+.stackv{display:flex;flex-direction:column-reverse;gap:3px;font-family:var(--mono);font-size:11.5px}
+.stackv span{border:1.5px solid #7DD3FC;background:var(--stk-bg);color:#075985;border-radius:6px;padding:1px 10px;width:230px}
+.stackv span.r{border-color:#FCA5A5;background:var(--bad-bg);color:#991B1B;font-weight:600}
+.leaks{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:100%}
+.leaks .b{align-items:flex-start;font-weight:500}
+table.mt{border-collapse:collapse;font-size:12.5px;width:100%}
+table.mt th{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);text-align:left;padding:3px 9px;font-weight:700}
+table.mt td{border-top:1px solid var(--line);padding:5px 9px;vertical-align:top}
+table.mt td:first-child{white-space:nowrap}
+table.mt.mono td:first-child{font-family:var(--mono);font-size:11.5px;color:#2F3140}
+td.bad{color:var(--bad);font-weight:600}
+.steps{display:flex;flex-direction:column;gap:5px;width:100%}
+.steps div{display:grid;grid-template-columns:22px 1fr;gap:8px;align-items:baseline;font-size:13px}
+.steps i{font-style:normal;width:20px;height:20px;border-radius:50%;background:var(--acc-bg);color:var(--acc-dk);font-weight:700;font-size:11px;display:grid;place-items:center}
+.rg{display:grid;grid-template-columns:repeat(12,20px);gap:3px}
+.rg span,.rgl span{width:20px;height:20px;border-radius:4px;display:grid;place-items:center;font:600 10px var(--mono)}
+.rE{background:#DCFCE7;color:#166534}.rS{background:#CFFAFE;color:#155E75}.rO{background:#FEF3C7;color:#92400E}.rH{background:#FEE2E2;color:#991B1B}.r_{background:#F1F1F5;color:#C4C4CC}
+.rgl{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)}
+.rgl span{display:inline-grid;width:16px;height:16px;margin-left:6px}
+
+/* ---------- controls under the card */
+.ctrls{display:flex;align-items:center;gap:8px;width:min(740px,100%)}
+.btn{border:1px solid var(--line2);background:#fff;color:var(--ink);font-weight:600;font-size:13px;padding:7px 14px;border-radius:9px;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--faint)}
+.btn.p{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.p:hover{background:var(--acc-dk)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn kbd,.rate kbd{font:600 10.5px var(--sans);opacity:.6}
+.ctrls .sp{flex:1}
+.meta{font-size:12.5px;color:var(--muted)}
+
+/* ---------- drill */
+.side{background:var(--panel);border-right:1px solid var(--line);padding:18px 16px;display:flex;flex-direction:column;gap:14px;overflow:auto}
+.ring{position:relative;width:132px;height:132px;align-self:center}
+.ring svg{transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:10}
+.ring .bg{stroke:#EEEEF3}.ring .fg{stroke:var(--acc);stroke-linecap:round;transition:stroke-dashoffset .5s ease}
+.ring div{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+.ring b{font-size:22px;display:block;line-height:1}.ring small{font-size:11.5px;color:var(--muted)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+.stat small{display:block;font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700}
+.stat b{font-size:17px}
+.lbox h6{margin:0 0 6px;font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted)}
+.bars{display:flex;align-items:flex-end;gap:6px;height:76px}
+.bars div{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;color:var(--muted)}
+.bars span{width:100%;border-radius:4px 4px 2px 2px;background:var(--acc);opacity:.85;min-height:3px;transition:height .4s}
+.side .btns{display:flex;gap:6px;margin-top:auto}
+.side .btns .btn{flex:1;justify-content:center;font-size:12.5px;padding:6px 8px}
+.rates{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:min(740px,100%)}
+.rate{border:1px solid var(--line2);background:#fff;border-radius:10px;padding:6px 8px;text-align:center;font-weight:600;font-size:13px;color:var(--ink)}
+.rate small{display:block;font-weight:500;font-size:11px;color:var(--muted)}
+.rate:disabled{opacity:.35;cursor:default}
+.rate.again{border-color:#FCA5A5}.rate.again:not(:disabled):hover{background:var(--bad-bg)}
+.rate.hard{border-color:#FCD34D}.rate.hard:not(:disabled):hover{background:var(--old-bg)}
+.rate.good{border-color:#86EFAC}.rate.good:not(:disabled):hover{background:var(--heap-bg)}
+.rate.easy{border-color:#C7C7F5}.rate.easy:not(:disabled):hover{background:var(--acc-bg)}
+.done-card{width:min(740px,100%);flex:1;background:#fff;border:1px solid var(--line);border-radius:16px;padding:26px 30px;display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 30px rgba(20,20,40,.07)}
+.done-card h3{margin:0;font-size:19px;color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;border:1px solid var(--line2);background:#fff}
+.chip.again{border-color:#FCA5A5;color:#991B1B}.chip.hard{border-color:#FCD34D;color:#92400E}.chip.good{border-color:#86EFAC;color:#166534}.chip.easy{border-color:#C7C7F5;color:var(--acc-dk)}
+.toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--ink);color:#fff;font-size:12.5px;padding:6px 14px;border-radius:999px;transition:all .25s;pointer-events:none}
+.toast.on{opacity:1;transform:translateX(-50%)}
+
+/* ---------- scenarios */
+.si{border:1px solid transparent;background:transparent;text-align:left;border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+.si:hover{background:#F4F4F7}
+.si.on{background:var(--acc-bg);border-color:#D9D9F8}
+.si b{font-size:13px}.si small{font-size:11.5px;color:var(--muted)}
+.si .st{font-size:11px;font-weight:700}
+.scard{width:min(860px,100%);flex:1;min-height:0;background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 24px;display:flex;flex-direction:column;gap:11px;box-shadow:0 10px 30px rgba(20,20,40,.06);overflow:hidden}
+.inc{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.inc .sev{font-weight:700;color:#991B1B;background:var(--bad-bg);border-radius:6px;padding:1px 8px}
+.scard h3{margin:0;font-size:17px;color:var(--ink);line-height:1.4;font-weight:600}
+.log{background:#17181C;color:#D4D6DD;font:12px/1.55 var(--mono);border-radius:10px;padding:9px 13px;white-space:pre;overflow:hidden}
+.log .e{color:#FCA5A5}.log .c{color:#7A7F8C}
+.opts{display:flex;flex-direction:column;gap:7px}
+.opt{border:1.5px solid var(--line2);background:#fff;border-radius:10px;padding:8px 12px;text-align:left;font-size:13.5px;color:var(--text);display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center}
+.opt:hover:not(:disabled){border-color:var(--acc)}
+.opt i{font-style:normal;width:22px;height:22px;border-radius:6px;background:#F1F1F5;display:grid;place-items:center;font-weight:700;font-size:12px;color:var(--muted)}
+.opt:disabled{cursor:default}
+.opt.best{border-color:#4ADE80;background:var(--heap-bg)}.opt.part{border-color:#FBBF24;background:var(--old-bg)}.opt.bad{border-color:#F87171;background:var(--bad-bg)}
+.opt.dim{opacity:.55}
+.opt em{font-style:normal;font-size:11.5px;font-weight:700}
+.fb{display:none;border-radius:10px;padding:9px 13px;font-size:13.5px;background:#FAFAFC;border:1px solid var(--line)}
+.fb.on{display:block}
+.fb .say{margin-top:7px}
+
+/* ---------- cheat sheet */
+#v-cheat.on{display:flex;flex-direction:column;padding:16px 22px 14px;gap:12px}
+.chead{display:flex;align-items:center;gap:12px}
+.chead h2{margin:0;font-size:17px;color:var(--ink)}
+.chead .meta{flex:1}
+.cgrid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:12px}
+.cg{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 15px;display:flex;flex-direction:column;gap:5px;min-height:0}
+.cg h4{margin:0 0 3px;font-size:13px;color:var(--ink);display:flex;align-items:center;gap:7px}
+.cf{display:grid;grid-template-columns:auto 1fr;gap:8px;font-size:12.5px;line-height:1.45;align-items:baseline}
+.cf>span:first-child{font-weight:600;color:var(--ink);white-space:nowrap}
+.cf .mono{font-size:11.5px}
+.cf>span:last-child{color:var(--text);transition:filter .2s}
+body.quiz .cf>span:last-child{filter:blur(5px);cursor:pointer;user-select:none}
+body.quiz .cf.rev>span:last-child{filter:none}
+.tgl{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer}
+.tgl input{display:none}
+.tgl span{width:34px;height:20px;border-radius:999px;background:var(--line2);position:relative;transition:background .2s}
+.tgl span::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.tgl input:checked+span{background:var(--acc)}.tgl input:checked+span::after{transform:translateX(14px)}
+</style>
+</head>
+<body>
+<header class="top">
+ <div class="brand"><div class="logo">J</div><div><b>JVM Memory</b> <span>· Recall cards</span></div></div>
+ <nav class="modes" id="modes">
+  <button data-m="learn" class="on">📖 Learn <kbd>L</kbd></button>
+  <button data-m="drill">🔁 Drill <kbd>D</kbd></button>
+  <button data-m="scen">🚨 Scenarios <kbd>S</kbd></button>
+  <button data-m="cheat">📋 Cheat sheet <kbd>C</kbd></button>
+ </nav>
+ <div class="topr"><span class="pill" id="mastery">★ <i>0</i> / 13 mastered</span></div>
+</header>
+
+<!-- ============================== LEARN -->
+<section class="view on" id="v-learn">
+ <aside class="rail" id="rail"></aside>
+ <div class="main">
+  <div class="flip" id="lc"><div class="inner"><div class="face front"></div><div class="face back"></div></div></div>
+  <div class="ctrls">
+   <button class="btn" id="l-prev">◀ Prev</button>
+   <button class="btn p" id="l-flip">Flip <kbd>Space</kbd></button>
+   <button class="btn" id="l-next">Next ▶</button>
+   <span class="sp"></span>
+   <span class="meta" id="l-meta"></span>
+  </div>
+ </div>
+</section>
+
+<!-- ============================== DRILL -->
+<section class="view" id="v-drill">
+ <aside class="side">
+  <div class="ring"><svg width="132" height="132"><circle class="bg" cx="66" cy="66" r="56"/><circle class="fg" id="ring" cx="66" cy="66" r="56" stroke-dasharray="351.86" stroke-dashoffset="351.86"/></svg><div><span><b id="r-n">0/10</b><small>this session</small></span></div></div>
+  <div class="stats">
+   <div class="stat"><small>Streak</small><b id="d-streak">0</b> 🔥</div>
+   <div class="stat"><small>Mastered</small><b id="d-mast">0</b><span style="color:var(--muted)"> / 13</span></div>
+  </div>
+  <div class="lbox"><h6>Cards per box · 0 weak → 4 solid</h6><div class="bars" id="bars"></div></div>
+  <div class="meta" style="font-size:12px;line-height:1.5"><b>Again</b> → back in 1 card · <b>Hard</b> → in 3 cards · <b>Good / Easy</b> → done for this session. Weakest boxes come first next time.</div>
+  <div class="btns"><button class="btn" id="d-new">↻ New</button><button class="btn" id="d-reset">Reset stats</button></div>
+ </aside>
+ <div class="main" id="d-main">
+  <div class="flip" id="dc"><div class="inner"><div class="face front"></div><div class="face back"></div></div></div>
+  <div class="rates" id="rates">
+   <button class="rate again" data-r="again" disabled>Again <kbd>1</kbd><small>didn't recall</small></button>
+   <button class="rate hard" data-r="hard" disabled>Hard <kbd>2</kbd><small>partly</small></button>
+   <button class="rate good" data-r="good" disabled>Good <kbd>3</kbd><small>recalled it</small></button>
+   <button class="rate easy" data-r="easy" disabled>Easy <kbd>4</kbd><small>instant</small></button>
+  </div>
+ </div>
+</section>
+
+<!-- ============================== SCENARIOS -->
+<section class="view" id="v-scen">
+ <aside class="side" style="gap:6px">
+  <div class="lbox"><h6>Scenario round · simplified from FireFlink</h6></div>
+  <div id="slist" style="display:flex;flex-direction:column;gap:4px"></div>
+  <div class="stats" style="margin-top:8px"><div class="stat"><small>Score</small><b id="s-score">0</b><span style="color:var(--muted)"> / 3</span></div><div class="stat"><small>Answered</small><b id="s-ans">0</b><span style="color:var(--muted)"> / 3</span></div></div>
+  <div class="meta" style="font-size:12px;margin-top:6px">Pick the answer outline you'd give the interviewer. Best = 1 point, partial = ½.</div>
+  <div class="btns"><button class="btn" id="s-reset">↻ Try again</button></div>
+ </aside>
+ <div class="main"><div class="scard" id="scard"></div></div>
+</section>
+
+<!-- ============================== CHEAT SHEET -->
+<section class="view" id="v-cheat">
+ <div class="chead"><h2>JVM Memory — everything on one screen</h2><span class="meta">must-know facts only · read in 3 minutes before the interview</span>
+  <label class="tgl"><input type="checkbox" id="quiz"><span></span>Quiz me (blur answers) <kbd style="font:600 10.5px var(--sans);color:var(--faint)">Q</kbd></label></div>
+ <div class="cgrid" id="cgrid"></div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
+const toast=m=>{const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),1400);};
+
+// ===================================================================== content
+const G={areas:['Memory areas','#5B5BD6'],sh:['Stack vs heap','#0284C7'],gc:['Object life & GC','#16A34A'],oom:['OutOfMemory family','#DC2626'],flags:['Flags','#D97706'],leak:['Leaks & diagnosis','#9333EA']};
+const RG='EOEESOOHHOEO_OEOESOEO_EEO';
+const C=[
+ {id:'areas',g:'areas',t:'Runtime areas',q:'Name the JVM runtime memory areas. Which are <b>shared</b> and which are <b>per thread</b>?',hint:'What every thread sees vs what each thread owns.',
+  a:'<b>Shared:</b> the <b>Heap</b> (all objects) and <b>Metaspace</b> (class metadata). <b>Per thread:</b> the <b>Java stack</b> (one frame per method call), the <b>PC register</b> and the native method stack.',
+  viz:`<div class="grp"><i>shared</i><span class="b h">Heap</span><span class="b m">Metaspace</span></div><div class="grp"><i>per thread × N</i><span class="b s">Stack</span><span class="b s">PC</span><span class="b s">Native stack</span></div>`,
+  say:'Heap and Metaspace are shared by all threads; each thread gets its own stack and PC — that\'s why local variables are thread-safe.',
+  fu:['Where is the String pool?','In the <b>heap</b> since Java 7 (it was in PermGen before), so unused pooled strings can be garbage-collected.']},
+ {id:'meta',g:'areas',t:'PermGen → Metaspace',q:'What replaced PermGen in Java 8, and why does it matter?',hint:'Where does class metadata live now?',
+  a:'<b>Metaspace</b>. It lives in <b>native memory</b> (outside the heap) and grows on demand — no more <code>PermGen space</code> errors, but an unbounded Metaspace can eat the container\'s RAM. Cap it with <code>-XX:MaxMetaspaceSize</code>.',
+  viz:`<span class="b r strike">PermGen<small>fixed size</small></span><span class="arr">── Java 8 ──▶</span><span class="b m">Metaspace<small>native memory · auto-grows</small></span>`,
+  say:'Class metadata moved to Metaspace in native memory in Java 8; it grows on demand, so in containers I cap it.',
+  fu:['What fills Metaspace in practice?','Loaded classes — many dynamic proxies / generated classes, or a <b>classloader leak</b> where old classloaders stay reachable.']},
+ {id:'where',g:'sh',t:'What lives where',q:'<code>Run run = new Run(42);</code> inside a method — what is on the <b>stack</b> and what is on the <b>heap</b>?',hint:'Reference vs object.',
+  a:'The <b>reference</b> <code>run</code> and primitive locals sit in the method\'s <b>stack frame</b>. The <b>Run object</b> is on the <b>heap</b>. When the method returns the frame is popped; the object lives on until nothing references it.',
+  viz:`<div class="frame"><small>stack frame · execute()</small>id  = 42<br>run = ●</div><span class="arr">────▶</span><div class="b h big">Run { id: 42, status: RUNNING }<small>heap</small></div>`,
+  say:'Locals and references live in the stack frame; objects always live on the heap and are freed by GC once unreachable.',
+  fu:['Can an object ever skip the heap?','With <b>escape analysis</b> the JIT may scalar-replace an object that never leaves the method — good to know, never something to rely on.']},
+ {id:'tsafe',g:'sh',t:'Locals & thread safety',q:'Are local variables thread-safe? Is the <b>object</b> a local points to?',hint:'Who can see a stack frame?',
+  a:'Locals are <b>thread-safe</b> — each thread has its own stack. The referenced <b>object</b> sits on the shared heap, so it\'s only safe while it doesn\'t <b>escape</b> (stored in a field or static map, or handed to another thread).',
+  viz:`<div class="grp"><i>thread A</i><span class="b s">results ●</span></div><span class="arr">──▶</span><span class="b h">List&lt;StepResult&gt;<small>heap</small></span><span class="arr">◀──</span><div class="grp"><i>thread B</i><span class="b s">shared ●</span></div>`,
+  say:'Locals are confined to the thread; once the object is shared I need synchronization, a concurrent type, or immutability.',
+  fu:['FireFlink example?','A step-result list built inside <code>executeStep()</code> is safe; the same list in a static map read by parallel runs is not.']},
+ {id:'life',g:'gc',t:'Life of an object',q:'Walk me through the life of an object in the heap.',hint:'Eden → ? → ?',
+  a:'New objects go to <b>Eden</b>. A <b>minor GC</b> copies survivors to a <b>survivor space</b> (S0/S1) and bumps their <b>age</b>. After surviving enough GCs (threshold up to 15) they\'re <b>promoted to Old</b>. Most objects die young, so minor GCs are cheap.',
+  viz:`<span class="b h">Eden<small>new objects</small></span><span class="arr">minor GC ▶</span><span class="b h">S0 ⇄ S1<small>age 1 … 15</small></span><span class="arr">promote ▶</span><span class="b o">Old gen<small>long-lived</small></span>`,
+  say:'Allocate in Eden, survivors bounce between the survivor spaces gaining age, long-lived ones get promoted — the generational hypothesis.',
+  fu:['And a huge object?','In G1, an object ≥ half a region is <b>humongous</b> and goes straight into old-gen regions.']},
+ {id:'gctypes',g:'gc',t:'Minor vs Major vs Full',q:'Minor vs Major vs Full GC — what\'s the difference?',hint:'Which part of the heap? How long is the pause?',
+  viz:`<table class="mt"><tr><th></th><th>Collects</th><th>Pause</th></tr><tr><td><b>Minor</b></td><td>Young gen (Eden + survivors)</td><td>short, frequent — normal</td></tr><tr><td><b>Major / mixed</b></td><td>Old gen (G1: young + some old regions)</td><td>longer</td></tr><tr><td><b>Full</b></td><td>Whole heap (+ Metaspace)</td><td class="bad">long stop-the-world — red flag</td></tr></table>`,
+  say:'Minor GCs are routine; frequent Full GCs mean the old gen keeps filling — usually a leak or an undersized heap.',
+  fu:['What is stop-the-world?','All application threads pause at a safepoint while the GC works. Tuning is mostly about keeping those pauses short and rare.']},
+ {id:'g1',g:'gc',t:'G1 (and ZGC)',q:'Which GC is the default today, and what\'s the idea behind it?',hint:'Default since Java 9…',
+  a:'<b>G1</b>. The heap is split into equal <b>regions</b>, each acting as Eden, Survivor, Old or Humongous. G1 collects the regions with the most garbage first, aiming for a pause target (<code>-XX:MaxGCPauseMillis</code>, default 200 ms).',
+  viz:`<div class="rg">${[...RG].map(c=>`<span class="r${c}">${c==='_'?'':c}</span>`).join('')}</div><div class="rgl"><span class="rE">E</span>Eden<span class="rS">S</span>Survivor<span class="rO">O</span>Old<span class="rH">H</span>Humongous</div>`,
+  say:'G1 splits the heap into regions and collects the garbage-first regions to stay within a pause-time goal.',
+  fu:['When would you pick ZGC?','Large heaps that need <b>sub-millisecond</b> pauses (generational ZGC since Java 21), at a little extra CPU.']},
+ {id:'heapoom',g:'oom',t:'Java heap space',q:'<code>OutOfMemoryError: Java heap space</code> — what are your first steps?',hint:'Evidence before tuning.',
+  a:'Either live data really exceeds <code>-Xmx</code>, or there\'s a <b>leak</b>. Get a <b>heap dump</b> (<code>-XX:+HeapDumpOnOutOfMemoryError</code> or <code>jcmd &lt;pid&gt; GC.heap_dump</code>), open it in <b>Eclipse MAT</b>, read the <b>dominator tree</b>, then fix the leak or size the heap.',
+  viz:`<span class="b r">OOM</span><span class="arr">▶</span><span class="b">heap dump</span><span class="arr">▶</span><span class="b">MAT · dominator tree</span><span class="arr">▶</span><span class="b h">fix leak / resize</span>`,
+  say:'I don\'t just raise Xmx — I take a heap dump, find what retains the memory in MAT, and fix that.',
+  fu:['Leak or just too small?','Watch old gen after each full GC (<code>jstat -gcutil</code>): a <b>rising floor</b> = leak; a flat floor near max = heap too small.']},
+ {id:'oomfam',g:'oom',t:'Other OOMs',q:'Match the error to its cause: <code>Metaspace</code> · <code>GC overhead limit exceeded</code> · <code>unable to create native thread</code>.',hint:'Not every OOM is about the heap.',
+  viz:`<table class="mt"><tr><th>Error</th><th>Cause</th><th>Fix</th></tr><tr><td><code>Metaspace</code></td><td>too many classes / classloader leak</td><td>find the leak; cap MaxMetaspaceSize</td></tr><tr><td><code>GC overhead limit</code></td><td>&gt; 98% time in GC, &lt; 2% freed</td><td>same as heap space</td></tr><tr><td><code>native thread</code></td><td>too many threads for the OS / container</td><td>bounded thread pools</td></tr></table>`,
+  say:'Only heap space and GC overhead are heap problems; Metaspace is class metadata and native-thread is a thread-count problem.',
+  fu:['Why can raising -Xmx make native-thread OOM worse?','A bigger heap leaves <b>less native memory</b> for thread stacks inside the same container limit.']},
+ {id:'so',g:'oom',t:'StackOverflowError',q:'What causes <code>StackOverflowError</code>, and how do you fix it?',hint:'Each thread\'s stack is finite.',
+  a:'Too-deep or infinite <b>recursion</b> fills the thread\'s stack (size = <code>-Xss</code>). Classic: Jackson serialising a <b>bidirectional</b> entity (Suite ↔ TestCase) forever. Fix the recursion; <code>-Xss</code> only moves the limit.',
+  viz:`<div class="stackv"><span>toJson(Suite)</span><span>toJson(TestCase)</span><span>toJson(Suite)</span><span>toJson(TestCase)</span><span class="r">… 💥 StackOverflowError</span></div><span class="arr" style="margin-left:6px">frames pile up until the stack is full</span>`,
+  say:'It\'s unbounded recursion; I break the cycle — a DTO or @JsonManagedReference / @JsonBackReference — rather than raise -Xss.',
+  fu:['Is the heap involved?','No — it\'s the <b>thread stack</b>; the heap can be nearly empty.']},
+ {id:'flags',g:'flags',t:'Container flags',q:'Which JVM memory flags would you set for a service running in a container?',hint:'Heap size, evidence, limits.',
+  viz:`<table class="mt mono"><tr><td>-XX:MaxRAMPercentage=75</td><td>heap = 75% of the container limit</td></tr><tr><td>-Xms = -Xmx</td><td>no heap-resize pauses, when you do set them</td></tr><tr><td>-XX:+HeapDumpOnOutOfMemoryError</td><td>a dump (to <code>-XX:HeapDumpPath</code>) when it dies</td></tr><tr><td>-XX:MaxMetaspaceSize=256m</td><td>cap native class metadata</td></tr><tr><td>-Xss512k</td><td>per-thread stack size</td></tr></table>`,
+  say:'In Kubernetes I size the heap as a percentage of the container limit and keep ~25% headroom for non-heap memory.',
+  fu:['Why not give the heap 100%?','Metaspace, thread stacks, code cache and direct buffers live <b>outside</b> the heap — the pod gets OOMKilled.']},
+ {id:'leak',g:'leak',t:'Leaks with a GC',q:'Java has a garbage collector — can it still leak memory? Give examples.',hint:'Reachable, but useless.',
+  a:'Yes. GC frees only <b>unreachable</b> objects; a leak is something still <b>reachable but no longer needed</b>.',
+  viz:`<div class="leaks"><span class="b r">static Map / cache with no eviction</span><span class="b r">ThreadLocal in a pool, never remove()d</span><span class="b r">listeners / callbacks never unregistered</span><span class="b r">unclosed streams & connections</span></div>`,
+  say:'GC can\'t collect what you still reference — unbounded static caches and ThreadLocals on pooled threads are the usual suspects.',
+  fu:['FireFlink example?','A static <code>Map&lt;runId, RunContext&gt;</code> filled on every suite run and never cleared — fix with <code>remove()</code> in finally or a bounded cache (Caffeine + TTL).']},
+ {id:'diag',g:'leak',t:'Diagnosing in prod',q:'How do you diagnose a memory problem in production?',hint:'Watch → dump → analyse.',
+  viz:`<div class="steps"><div><i>1</i><span><code>jstat -gcutil &lt;pid&gt; 5s</code> — watch old gen and the full-GC count</span></div><div><i>2</i><span><code>jcmd &lt;pid&gt; GC.heap_dump /dumps/h.hprof</code> (or the automatic OOM dump)</span></div><div><i>3</i><span>Eclipse MAT → leak suspects, <b>dominator tree</b>, path to GC roots</span></div><div><i>4</i><span>Compare two dumps taken minutes apart — <b>what grows?</b></span></div></div>`,
+  say:'I confirm the trend with jstat or metrics, capture heap dumps, and use MAT\'s dominator tree and path-to-GC-roots to find who holds the memory.',
+  fu:['And off-heap memory?','<b>Native Memory Tracking</b>: <code>-XX:NativeMemoryTracking=summary</code>, then <code>jcmd &lt;pid&gt; VM.native_memory</code>.']}
+];
+const S=[
+ {t:'Pod OOMKilled, no Java error',sub:'execution-engine restarts',
+  log:`<span class="c">$ kubectl describe pod exec-engine-7f9c</span>
+  Last State:  Terminated
+  Reason:      <span class="e">OOMKilled</span>      Exit Code: <span class="e">137</span>
+<span class="c"># app logs: no OutOfMemoryError · heap usage ~60% · 400 threads</span>`,
+  q:'The FireFlink execution-engine pod keeps restarting. What\'s going on, and what do you do?',
+  o:[['Increase <code>-Xmx</code> to the pod\'s memory limit so the heap has more room.','bad','This makes it <b>worse</b>: the heap would claim the whole limit, leaving nothing for non-heap memory.'],
+     ['The kernel killed the process: heap + non-heap (Metaspace, ~400 thread stacks, direct buffers) exceeded the container limit. Use <code>MaxRAMPercentage≈75</code>, bound the thread pools, check NMT.','best','Exactly — exit 137 means the <b>container</b> limit was hit, not the Java heap. Leave headroom and measure native memory.'],
+     ['It\'s a heap leak — take a heap dump and analyse it in MAT.','part','A good reflex, but the heap is only at 60% and there\'s no Java OOM — the memory is going <b>outside</b> the heap.']],
+  say:'Exit 137 with no Java OOM means total process memory crossed the container limit, so I look at non-heap: thread count, Metaspace, direct buffers.'},
+ {t:'Heap grows after every run',sub:'old gen floor keeps rising',
+  log:`<span class="c">$ jstat -gcutil 4123 10s   # sampled after each nightly suite run</span>
+  O (old gen):  41% → 55% → 68% → <span class="e">82%</span>
+  FGC (full GCs): 3 → 7 → <span class="e">15</span>      <span class="c"># floor never comes back down</span>`,
+  q:'After every nightly suite run the old-gen floor rises and never comes back. What do you do?',
+  o:[['Take two heap dumps a few runs apart, compare them in MAT, follow the path to GC roots — likely a static map or ThreadLocal holding <code>RunContext</code>. Fix with <code>remove()</code> / eviction.','best','Right — a rising floor after full GCs is a <b>leak</b>; comparing dumps shows what grows and who holds it.'],
+     ['Raise <code>-Xmx</code> so it survives until the weekly restart.','part','Buys time, but <b>hides the bug</b> — the leak will still kill it, just later.'],
+     ['Call <code>System.gc()</code> at the end of each run.','bad','GC can\'t free objects that are still <b>referenced</b> — and you add a Full GC pause.']],
+  say:'A rising old-gen floor after full GCs is a leak; I compare heap dumps in MAT and follow the path to GC roots to find the owner.'},
+ {t:'StackOverflow on an API call',sub:'GET /api/suites/42 → 500',
+  log:`GET /api/suites/42 → 500
+<span class="e">java.lang.StackOverflowError</span>
+  at c.f.j.databind.ser.BeanSerializer.serialize(BeanSerializer.java:178)
+  at … TestCase["suite"] → Suite["testCases"] → TestCase["suite"] → …`,
+  q:'Returning a test suite from the REST API crashes with <code>StackOverflowError</code>. Your fix?',
+  o:[['Increase <code>-Xss</code> to 4 MB.','part','Might survive small suites, but the recursion is <b>infinite</b> — it only moves the crash.'],
+     ['The heap is full — raise <code>-Xmx</code>.','bad','<code>StackOverflowError</code> is about the <b>thread stack</b>, not the heap.'],
+     ['Suite ↔ TestCase is bidirectional, so Jackson recurses forever. Return a DTO, or use <code>@JsonManagedReference</code> / <code>@JsonBackReference</code>.','best','Yes — break the <b>cycle</b>; a DTO also stops leaking your entity model into the API.']],
+  say:'The trace repeats TestCase → Suite → TestCase, so it\'s a serialization cycle; I break it with a DTO or managed/back references.'}
+];
+const CHEAT=[
+ ['areas',[['Heap','shared · all objects · String pool (since 7)'],['Metaspace','shared · class metadata · native memory · replaced PermGen (8)'],['Stack','per thread · frames: locals + references'],['PC / native stack','per thread'],['Good to know','code cache (JIT code), direct buffers (off-heap)']]],
+ ['sh',[['Stack','primitive locals + references; popped on return'],['Heap','every object, freed by GC when unreachable'],['Thread safety','locals yes · shared objects no'],['Errors','stack → StackOverflowError · heap → OOM']]],
+ ['gc',[['Path','Eden → S0/S1 (age) → Old (≤ 15)'],['Minor GC','young gen · frequent · short'],['Full GC','whole heap · long STW · red flag'],['G1','default (9+) · regions · 200 ms target'],['ZGC','sub-ms pauses for big heaps']]],
+ ['oom',[['Java heap space','leak or small heap → dump + MAT'],['GC overhead','>98% time in GC → same as above'],['Metaspace','classloader leak → cap + find'],['native thread','too many threads → bounded pools'],['OOMKilled 137','container limit · non-heap memory']]],
+ ['flags',[['<span class="mono">-Xms / -Xmx</span>','initial / max heap'],['<span class="mono">MaxRAMPercentage</span>','heap as % of container (≈75)'],['<span class="mono">-Xss</span>','thread stack size'],['<span class="mono">MaxMetaspaceSize</span>','cap class metadata'],['<span class="mono">HeapDumpOnOOM</span>','+ HeapDumpPath — always on']]],
+ ['leak',[['Usual suspects','static caches, ThreadLocal, listeners, unclosed resources'],['Watch','jstat -gcutil · rising old-gen floor'],['Capture','jcmd GC.heap_dump · auto dump on OOM'],['Analyse','MAT: dominator tree, path to GC roots'],['Off-heap','Native Memory Tracking (NMT)']]]];
+
+// ===================================================================== shared card rendering
+const tag=c=>`<span class="tag"><span class="dot" style="background:${G[c.g][1]}"></span>${G[c.g][0]}</span>`;
+function fillCard(el,c,label,extra){
+ el.querySelector('.front').innerHTML=`<div class="fh">${tag(c)}${extra||''}<span class="n">${label}</span></div>
+  <div class="qwrap"><div class="q">${c.q}</div><div class="hint">${c.hint}</div></div>
+  <div class="ffoot"><span>Say your answer out loud, then flip</span><span>Space / click to flip</span></div>`;
+ el.querySelector('.back').innerHTML=`<div class="fh">${tag(c)}<span style="color:var(--faint)">·</span><span>${c.t}</span><span class="n">${label}</span></div>
+  <div class="fbody">${c.a?`<p class="ans">${c.a}</p>`:''}<div class="viz">${c.viz}</div>
+  <div class="say"><small>Say it like this</small>${c.say}</div>
+  <button class="fu"><span>${c.fu[0]}</span><em>${c.fu[1]}</em></button></div>`;
+ el.classList.remove('flipped');}
+document.addEventListener('click',e=>{const f=e.target.closest('.fu');if(f){f.classList.toggle('open');e.stopPropagation();}},true);
+
+// swipe + click-to-flip on a card element
+function cardInput(el,{flip,next,prev}){let x0=null,moved=false;
+ el.addEventListener('pointerdown',e=>{x0=e.clientX;moved=false;});
+ el.addEventListener('pointerup',e=>{if(x0===null)return;const dx=e.clientX-x0;x0=null;
+  if(Math.abs(dx)>70){moved=true;dx<0?next&&next():prev&&prev();}});
+ el.addEventListener('click',e=>{if(moved||e.target.closest('button'))return;flip();});}
+
+// ===================================================================== mastery (shared by learn + drill)
+let stats=store.get('t3-stats',{});
+const box=id=>(stats[id]||{}).box||0;
+function drawMastery(){const m=C.filter(c=>box(c.id)>=3).length;$('mastery').innerHTML=`★ <i>${m}</i> / ${C.length} mastered`;
+ $('d-mast').textContent=m;
+ const per=[0,0,0,0,0];C.forEach(c=>per[Math.min(4,box(c.id))]++);const mx=Math.max(...per,1);
+ $('bars').innerHTML=per.map((n,i)=>`<div><span style="height:${4+n/mx*40}px;opacity:${.35+i*.16}"></span>${i}<b style="font-size:10.5px;color:var(--text)">${n}</b></div>`).join('');}
+
+// ===================================================================== LEARN
+let li=0;const seen=new Set(store.get('t3-seen',[]));
+function drawRail(){let h='',last='';C.forEach((c,i)=>{if(c.g!==last){last=c.g;h+=`<h6><span class="dot" style="background:${G[c.g][1]}"></span>${G[c.g][0]}</h6>`;}
+  h+=`<button class="ri ${i===li?'on':''} ${seen.has(c.id)?'seen':''}" data-i="${i}">${c.t}<span class="ck">✓</span></button>`;});$('rail').innerHTML=h;}
+function showLearn(dir){const c=C[li];fillCard($('lc'),c,`${li+1} / ${C.length}`);
+ if(dir){const f=$('lc');f.classList.remove('swipe-l','swipe-r');void f.offsetWidth;f.classList.add(dir>0?'swipe-l':'swipe-r');}
+ drawRail();$('l-meta').textContent=`${seen.size} of ${C.length} flipped`;
+ $('l-prev').disabled=li===0;$('l-next').disabled=li===C.length-1;}
+function lFlip(){const f=$('lc');f.classList.toggle('flipped');if(f.classList.contains('flipped')&&!seen.has(C[li].id)){seen.add(C[li].id);store.set('t3-seen',[...seen]);drawRail();$('l-meta').textContent=`${seen.size} of ${C.length} flipped`;}}
+const lGo=d=>{const n=li+d;if(n<0||n>=C.length)return;li=n;showLearn(d);};
+$('rail').onclick=e=>{const b=e.target.closest('[data-i]');if(b){const n=+b.dataset.i;const d=n>li?1:-1;li=n;showLearn(d);}};
+$('l-prev').onclick=()=>lGo(-1);$('l-next').onclick=()=>lGo(1);$('l-flip').onclick=lFlip;
+cardInput($('lc'),{flip:lFlip,next:()=>lGo(1),prev:()=>lGo(-1)});
+
+// ===================================================================== DRILL
+let q=[],total=0,doneN=0,streak=0,counts={},revealed=false;
+const RATE_TXT={again:'Again — back in 1 card',hard:'Hard — back in 3 cards',good:'Good — box +1',easy:'Easy — box +2'};
+function newSession(){q=C.slice().sort((a,b)=>box(a.id)-box(b.id)||Math.random()-.5).slice(0,10).map(c=>c.id);
+ total=q.length;doneN=0;streak=0;counts={again:0,hard:0,good:0,easy:0};showDrill();}
+function ring(){const p=total?doneN/total:0;$('ring').style.strokeDashoffset=351.86*(1-p);$('r-n').textContent=`${doneN}/${total}`;$('d-streak').textContent=streak;}
+function showDrill(){ring();drawMastery();const main=$('d-main');
+ if(!q.length){const weak=C.filter(c=>box(c.id)<=1).slice(0,5);
+  main.innerHTML=`<div class="done-card"><h3>🎉 Session complete — ${total} cards</h3>
+   <div class="chips">${Object.entries(counts).map(([k,n])=>`<span class="chip ${k}">${k} · ${n}</span>`).join('')}</div>
+   <p class="ans">Cards in the lower boxes come first next time. Mastered = box 3 or higher.</p>
+   ${weak.length?`<div><div class="meta" style="margin-bottom:6px">Still weak — glance at these before the interview:</div><div class="chips">${weak.map(c=>`<span class="chip">${c.t}</span>`).join('')}</div></div>`:'<p class="ans">No weak cards left. 💪</p>'}
+   <div style="margin-top:auto;display:flex;gap:8px"><button class="btn p" onclick="restoreDrill();newSession()">↻ New session</button><button class="btn" onclick="setMode('cheat')">📋 Open cheat sheet</button></div></div>`;return;}
+ restoreDrill(true);const c=C.find(x=>x.id===q[0]);
+ const bx=`<span class="boxes" title="box ${box(c.id)}">${[1,2,3,4].map(i=>`<i class="${box(c.id)>=i?'f':''}"></i>`).join('')}</span>`;
+ fillCard($('dc'),c,`${q.length} left`,bx);revealed=false;setRates();}
+function restoreDrill(keep){const main=$('d-main');if(main.querySelector('#dc'))return;
+ main.innerHTML=`<div class="flip" id="dc"><div class="inner"><div class="face front"></div><div class="face back"></div></div></div>
+  <div class="rates" id="rates">${['again','hard','good','easy'].map((r,i)=>`<button class="rate ${r}" data-r="${r}" disabled>${r[0].toUpperCase()+r.slice(1)} <kbd>${i+1}</kbd><small>${['didn\'t recall','partly','recalled it','instant'][i]}</small></button>`).join('')}</div>`;
+ wireDrill();}
+function setRates(){document.querySelectorAll('#rates .rate').forEach(b=>b.disabled=!revealed);}
+function dFlip(){const f=$('dc');if(!f)return;f.classList.toggle('flipped');revealed=true;setRates();}
+function rate(r){if(!revealed||!q.length)return;const id=q.shift();const s=stats[id]||{box:0,n:0};
+ s.n++;s.box=r==='again'?0:r==='hard'?Math.max(0,s.box):r==='good'?Math.min(4,s.box+1):Math.min(4,s.box+2);stats[id]=s;store.set('t3-stats',stats);
+ counts[r]++;if(r==='again'){q.splice(Math.min(1,q.length),0,id);streak=0;}else if(r==='hard'){q.splice(Math.min(3,q.length),0,id);streak=0;}else{doneN++;streak++;}
+ toast(RATE_TXT[r]);showDrill();}
+function wireDrill(){$('rates').onclick=e=>{const b=e.target.closest('[data-r]');if(b)rate(b.dataset.r);};cardInput($('dc'),{flip:dFlip});}
+wireDrill();
+$('d-new').onclick=()=>{restoreDrill();newSession();toast('New session — weakest cards first');};
+$('d-reset').onclick=()=>{stats={};store.set('t3-stats',stats);restoreDrill();newSession();toast('Stats cleared');};
+
+// ===================================================================== SCENARIOS
+let si=0;const picks={};
+function drawScen(){const pts=Object.entries(picks).reduce((a,[i,p])=>a+({best:1,part:.5,bad:0})[S[i].o[p][1]],0);
+ $('s-score').textContent=pts;$('s-ans').textContent=Object.keys(picks).length;
+ $('slist').innerHTML=S.map((s,i)=>{const p=picks[i],v=p!==undefined?S[i].o[p][1]:null;
+  return `<button class="si ${i===si?'on':''}" data-i="${i}"><b>${i+1}. ${s.t}</b><small>${s.sub}</small>${v?`<span class="st" style="color:${v==='best'?'var(--heap)':v==='part'?'var(--old)':'var(--bad)'}">${v==='best'?'✓ best answer':v==='part'?'◐ partial':'✗ missed'}</span>`:''}</button>`;}).join('');
+ const s=S[si],p=picks[si];
+ $('scard').innerHTML=`<div class="inc"><span class="sev">INCIDENT</span><span>Scenario ${si+1} of ${S.length} · simplified from FireFlink</span></div>
+  <h3>${s.q}</h3><div class="log">${s.log}</div>
+  <div class="opts">${s.o.map((o,i)=>{let cl='';if(p!==undefined){cl=o[1]==='best'||i===p?o[1]:'dim';}
+   return `<button class="opt ${cl}" data-o="${i}" ${p!==undefined?'disabled':''}><i>${'ABC'[i]}</i><span>${o[0]}</span>${p!==undefined&&(i===p||o[1]==='best')?`<em>${o[1]==='best'?'BEST':o[1]==='part'?'PARTIAL':'WRONG'}</em>`:''}</button>`;}).join('')}</div>
+  <div class="fb ${p!==undefined?'on':''}">${p!==undefined?`${s.o[p][2]}<div class="say"><small>Say it like this</small>${s.say}</div>`:''}</div>`;}
+$('slist').onclick=e=>{const b=e.target.closest('[data-i]');if(b){si=+b.dataset.i;drawScen();}};
+$('scard').onclick=e=>{const b=e.target.closest('[data-o]');if(b&&picks[si]===undefined){picks[si]=+b.dataset.o;drawScen();}};
+$('s-reset').onclick=()=>{for(const k in picks)delete picks[k];si=0;drawScen();};
+
+// ===================================================================== CHEAT SHEET
+$('cgrid').innerHTML=CHEAT.map(([g,rows])=>`<div class="cg"><h4><span class="dot" style="background:${G[g][1]}"></span>${G[g][0]}</h4>${rows.map(r=>`<div class="cf"><span>${r[0]}</span><span>${r[1]}</span></div>`).join('')}</div>`).join('');
+$('quiz').onchange=e=>{document.body.classList.toggle('quiz',e.target.checked);document.querySelectorAll('.cf').forEach(x=>x.classList.remove('rev'));};
+$('cgrid').onclick=e=>{const f=e.target.closest('.cf');if(f&&document.body.classList.contains('quiz'))f.classList.toggle('rev');};
+
+// ===================================================================== modes + keys
+function setMode(m){document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+ document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+m));history.replaceState(null,'','#'+m);mode=m;}
+let mode='learn';
+$('modes').onclick=e=>{const b=e.target.closest('[data-m]');if(b)setMode(b.dataset.m);};
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;const k=e.key;
+ if(!e.ctrlKey&&!e.metaKey){const mk={l:'learn',d:'drill',s:'scen',c:'cheat'}[k.toLowerCase()];if(mk){setMode(mk);return;}}
+ if(mode==='learn'){if(k===' '||k==='Enter'){lFlip();e.preventDefault();}if(k==='ArrowRight')lGo(1);if(k==='ArrowLeft')lGo(-1);}
+ if(mode==='drill'){if(k===' '||k==='Enter'){dFlip();e.preventDefault();}const r=['1','2','3','4'].indexOf(k);if(r>=0)rate(['again','hard','good','easy'][r]);}
+ if(mode==='scen'){const o=['1','2','3'].indexOf(k);if(o>=0&&picks[si]===undefined){picks[si]=o;drawScen();}
+  if(k==='ArrowRight'&&si<S.length-1){si++;drawScen();}if(k==='ArrowLeft'&&si>0){si--;drawScen();}}
+ if(mode==='cheat'&&k.toLowerCase()==='q'){$('quiz').click();}});
+
+showLearn();newSession();drawScen();drawMastery();
+const hm=location.hash.slice(1);if(['learn','drill','scen','cheat'].includes(hm))setMode(hm);
+</script>
+</body></html>

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" data-cat="java"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Java Core · Interview Prep</title>
+<link rel="stylesheet" href="../_shared/prep.css">
+</head><body>
+<div id="nav"></div>
+<main class="pwrap">
+ <p class="psub" id="sub"></p>
+ <div class="tgrid" id="topics"></div>
+ <div class="plegend"><span class="st new">NEW STYLE</span> slide mode · interactive <span class="st done">DONE</span> <span class="st v2">OLD VERSION</span> previous page, kept in _archive until rebuilt <span class="st todo">TO DO</span> planned</div>
+</main>
+<script src="../_shared/prep.js"></script>
+<script>
+// Category hub: same file in every category folder, only data-cat differs.
+const P=window.PREP,id=document.documentElement.dataset.cat,k=P.CATS.find(c=>c.id===id);
+document.getElementById('nav').innerHTML=P.nav('../',k);
+const c=P.PAL[k.col];
+function counts(){P.refreshProgress();document.getElementById('sub').innerHTML=`${k.desc} · <b>${P.doneIn(k)} of ${k.items.length}</b> completed`;}
+const done=P.getDone();
+// one card; lane cards put the Completed checkbox in the bottom row so titles get the full width
+const card=([t,d,s,href,extra],i,lane)=>{const cc=P.PAL[P.CARD_CYCLE[i%P.CARD_CYCLE.length]],st=P.ST[s],id=P.topicId(k,t),on=done.has(id);
+ const chk=`<label class="tcheck" title="Mark this topic as completed"><input type="checkbox" data-id="${id}" ${on?'checked':''}>Completed</label>`;
+ return `<div class="tcard ${href?'link':'todo'}${on?' is-done':''}" ${href?`data-href="../${href}" role="link" tabindex="0"`:''} style="border-color:${cc[0]};background:${cc[1]}">
+  ${lane?'':chk}<span class="tn" style="background:${cc[0]}">${String(i+1).padStart(2,'0')}</span>
+  <b>${t}</b><span class="d">${d}</span>
+  <span class="row">${lane?chk:''}${extra?`<span class="extra">${extra.map(([l,h])=>`<a href="../${h}">${l} ↗</a>`).join(' ')}</span>`:''}<span class="st ${st[0]}">${st[1]}</span></span></div>`;};
+const g=document.getElementById('topics');
+if(k.groups){ // study path: one lane per group, left → right
+ let n=0;g.className='tlanes';g.style.setProperty('--lanes',k.groups.length);
+ g.innerHTML=k.groups.map(([letter,name,count])=>{const its=k.items.slice(n,n+count),start=n;n+=count;
+  return `<div class="tlane"><h3><span>${letter}</span>${name}</h3>${its.map((it,j)=>card(it,start+j,true)).join('')}</div>`;}).join('');
+}else g.innerHTML=k.items.map((it,i)=>card(it,i,false)).join('');
+g.addEventListener('click',e=>{if(e.target.closest('a,.tcheck'))return;const t=e.target.closest('.tcard.link');if(t)location.href=t.dataset.href;});
+g.addEventListener('change',e=>{const cb=e.target.closest('.tcheck input');if(!cb)return;P.setDone(cb.dataset.id,cb.checked);cb.closest('.tcard').classList.toggle('is-done',cb.checked);counts();});
+counts();
+g.addEventListener('keydown',e=>{const t=e.target.closest('.tcard.link');if(t&&e.key==='Enter')location.href=t.dataset.href;});
+</script>
+</body></html>

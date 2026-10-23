@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JVM Memory · T1 Bento Keynote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F5F6FA;--ink:#0F172A;--tx:#334155;--mu:#64748B;--fa:#94A3B8;--ln:#E5E7EF;--acc:#6366F1;--tint:#EEF0FF;--top:52px;--foot:44px;
+ --ok:#059669;--okbg:#E7F8F1;--bad:#E11D48;--badbg:#FFECEF}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);font-family:Inter,"Segoe UI",system-ui,sans-serif;font-size:14px;color:var(--tx);-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+b{color:var(--ink);font-weight:600}
+code,.mono{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:12.5px}
+code{background:rgba(15,23,42,.06);padding:1px 5px;border-radius:5px;color:var(--ink)}
+
+/* ---------- chrome */
+.top{position:fixed;top:0;left:0;right:0;height:var(--top);display:flex;align-items:center;gap:12px;padding:0 24px;background:rgba(255,255,255,.82);backdrop-filter:blur(10px);border-bottom:1px solid var(--ln);z-index:10}
+.logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--acc),#0F172A);color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px;transition:background .5s}
+.ttl b{display:block;font-size:14.5px;line-height:1.15}
+.ttl small{color:var(--mu);font-size:11.5px}
+.top .sp{flex:1}
+.pill{border:1px solid var(--ln);background:#fff;color:var(--tx);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:500}
+.pill:hover{border-color:var(--acc);color:var(--acc)}
+.cnt{font-size:12.5px;color:var(--mu);font-variant-numeric:tabular-nums}
+.prog{position:fixed;top:var(--top);left:0;height:3px;background:var(--acc);width:0;transition:width .5s cubic-bezier(.2,.8,.2,1),background .5s;z-index:11;border-radius:0 3px 3px 0}
+.foot{position:fixed;bottom:0;left:0;right:0;height:var(--foot);display:flex;align-items:center;gap:10px;padding:0 24px;z-index:10}
+.nav{width:30px;height:30px;border-radius:50%;border:1px solid var(--ln);background:#fff;color:var(--ink);display:grid;place-items:center;font-size:12px}
+.nav:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+.nav:disabled{opacity:.35;cursor:default}
+.dots{display:flex;gap:6px}
+.dots button{width:7px;height:7px;border-radius:99px;border:0;padding:0;background:#CBD2DE;transition:all .35s}
+.dots button.on{width:22px;background:var(--acc)}
+.hint{margin-left:auto;font-size:12px;color:var(--fa)}
+.hint kbd{font-family:inherit;font-size:11px;border:1px solid var(--ln);border-bottom-width:2px;border-radius:5px;padding:0 5px;background:#fff;color:var(--mu)}
+
+/* ---------- slides */
+#stage{position:fixed;top:calc(var(--top) + 3px);bottom:var(--foot);left:0;right:0}
+.slide{position:absolute;inset:0;padding:14px 28px 6px;display:flex;flex-direction:column;opacity:0;transform:translateX(48px);transition:opacity .45s ease,transform .6s cubic-bezier(.2,.8,.2,1);pointer-events:none}
+.slide.left{transform:translateX(-48px)}
+.slide.on{opacity:1;transform:none;pointer-events:auto}
+.hd{display:flex;align-items:center;gap:12px;margin-bottom:12px;min-height:30px}
+.hd .num{font-size:12px;font-weight:600;color:var(--acc);background:var(--tint);padding:4px 10px;border-radius:999px}
+.hd h2{margin:0;font-size:21px;font-weight:700;color:var(--ink);letter-spacing:-.3px}
+.hd .sub{color:var(--mu);font-size:13.5px}
+.hd .act{margin-left:auto;display:flex;gap:6px}
+.grid{flex:1;min-height:0;display:grid;gap:12px}
+
+/* ---------- tiles */
+.tile{position:relative;background:#fff;border:1px solid var(--ln);border-radius:18px;padding:14px 16px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px -16px rgba(15,23,42,.18);overflow:hidden;min-height:0;min-width:0;display:flex;flex-direction:column;gap:7px;transition:transform .22s,box-shadow .22s,border-color .22s}
+.slide.on .tile,.slide.on .card{animation:rise .55s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(var(--i,0)*55ms + 120ms)}
+@keyframes rise{from{opacity:0;transform:translateY(12px) scale(.985)}}
+.tile.click{cursor:pointer}
+.tile.click:hover{transform:translateY(-2px);box-shadow:0 2px 4px rgba(15,23,42,.05),0 14px 30px -14px rgba(15,23,42,.25);border-color:color-mix(in srgb,var(--acc) 35%,var(--ln))}
+.tile.click::after{content:"+";position:absolute;top:11px;right:12px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--tint);color:var(--acc);font-weight:600;font-size:15px;line-height:1;transition:transform .25s}
+.tile.click:hover::after{transform:rotate(90deg)}
+.tile.soft{background:var(--tint);border-color:transparent}
+.tile.soft.click::after{background:#fff}
+.k{font-size:10.5px;font-weight:600;letter-spacing:.7px;text-transform:uppercase;color:var(--mu)}
+.tile h3{margin:0;font-size:15.5px;font-weight:600;color:var(--ink);padding-right:26px}
+.tile p{margin:0;line-height:1.5}
+.tile .dim{color:var(--mu);font-size:13px}
+.tile.stat>:nth-last-child(2){margin-top:auto}
+.spool{display:grid;grid-template-columns:auto 1fr;gap:5px 10px;align-items:center;font-family:"JetBrains Mono",monospace;font-size:12px;margin-top:4px}
+.spool .v{background:#F8FAFC;border:1px solid var(--ln);border-radius:7px;padding:3px 8px}
+.spool .tg{border-radius:7px;padding:3px 8px;text-align:center}
+.spool .pl{background:#F0FDF7;border:1px dashed #A7F3D0;color:#047857}
+.spool .hp{background:#FFF1F2;border:1px dashed #FECDD3;color:#BE123C}
+.map{display:flex;flex-wrap:wrap;gap:6px}
+.map button{border:1px solid #fff;background:rgba(255,255,255,.7);border-radius:99px;padding:5px 11px;font-size:12.5px;color:var(--ink);transition:all .2s}
+.map button:hover{background:#fff;border-color:var(--acc);color:var(--acc)}
+.map button span{color:var(--acc);font-weight:600;margin-right:5px}
+.big{font-size:26px;font-weight:700;color:var(--acc);letter-spacing:-.6px;line-height:1.05}
+.more{display:none}
+.gtk{font-size:10px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:#92400E;background:#FEF3C7;border-radius:99px;padding:2px 8px;align-self:flex-start}
+.btn{border:1px solid var(--ln);background:#fff;border-radius:9px;padding:5px 11px;font-size:12.5px;font-weight:500;color:var(--ink)}
+.btn:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+.btn.p{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.p:hover:not(:disabled){filter:brightness(1.07);color:#fff}
+.btn:disabled{opacity:.4;cursor:default}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.seg{display:inline-flex;background:#F1F3F8;border-radius:9px;padding:2px}
+.seg button{border:0;background:none;border-radius:7px;padding:4px 10px;font-size:12px;font-weight:500;color:var(--mu)}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(15,23,42,.12)}
+
+/* ---------- expand overlay */
+#veil{position:fixed;inset:0;background:rgba(15,23,42,.22);backdrop-filter:blur(3px);display:none;place-items:center;z-index:30}
+#veil.open{display:grid;animation:fade .2s}
+@keyframes fade{from{opacity:0}}
+#panel{position:relative;background:#fff;border-radius:22px;padding:20px 24px 20px;width:min(600px,92vw);box-shadow:0 30px 70px -20px rgba(15,23,42,.45);animation:pop .32s cubic-bezier(.2,.9,.3,1.15)}
+@keyframes pop{from{opacity:0;transform:scale(.88)}}
+#panel .x{position:absolute;top:14px;right:14px;width:28px;height:28px;border-radius:50%;border:0;background:#F1F3F8;color:var(--mu);font-size:15px}
+#panel .x:hover{background:var(--tint);color:var(--acc)}
+#panel h3{margin:3px 0 10px;font-size:18px;color:var(--ink);padding-right:30px}
+#panel p{margin:0 0 8px;line-height:1.6}
+#panel ul{margin:0 0 8px;padding-left:18px;line-height:1.6}
+.say{margin-top:12px;background:var(--tint);border-left:4px solid var(--acc);border-radius:12px;padding:10px 14px;line-height:1.55;color:var(--ink)}
+.say::before{content:"Say it in the interview";display:block;font-size:10.5px;font-weight:600;letter-spacing:.7px;text-transform:uppercase;color:var(--acc);margin-bottom:3px}
+.ff{margin-top:10px!important;font-size:12.5px;color:var(--mu)}
+.ff::before{content:"FireFlink";font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;background:#F1F3F8;color:var(--tx);border-radius:99px;padding:2px 7px;margin-right:6px}
+
+/* ---------- overview */
+#ov{position:fixed;inset:var(--top) 0 0 0;background:rgba(245,246,250,.97);backdrop-filter:blur(6px);z-index:20;display:none;padding:26px 28px;overflow:auto}
+#ov.open{display:block;animation:fade .2s}
+#ov h4{margin:0 0 14px;font-size:13px;color:var(--mu);font-weight:500}
+.ovg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.ovc{text-align:left;border:1px solid transparent;border-radius:16px;padding:14px 16px;background:var(--t);min-height:96px;display:flex;flex-direction:column;gap:6px;transition:transform .2s}
+.ovc:hover{transform:translateY(-2px)}
+.ovc.on{border-color:var(--a);box-shadow:0 0 0 3px color-mix(in srgb,var(--a) 22%,transparent)}
+.ovc span{font-size:11.5px;font-weight:600;color:var(--a)}
+.ovc b{font-size:15px}
+.ovc small{color:var(--mu);font-size:12.5px}
+
+/* ---------- slide-specific widgets */
+/* heap bar */
+.hbar{display:flex;gap:4px;height:46px;margin-top:2px}
+.hbar div{border-radius:10px;display:grid;place-items:center;font-size:11.5px;font-weight:600;color:#0F172A}
+/* stack frames */
+.frames{display:flex;flex-direction:column;gap:4px;margin-top:2px}
+.frames div{font-family:"JetBrains Mono",monospace;font-size:12px;border:1px solid var(--ln);background:#FAFBFD;border-radius:8px;padding:4px 10px}
+.frames div:first-child{border-color:var(--acc);background:var(--tint);color:var(--ink)}
+/* quick check */
+.qc{display:flex;flex-wrap:wrap;gap:6px}
+.qc button{border:1px dashed #CBD2DE;background:#fff;border-radius:99px;padding:4px 11px;font-size:12.5px;font-weight:500;color:var(--ink)}
+.qc button.sh{border-style:solid;border-color:#A7D8F5;background:#E8F6FD;color:#075985}
+.qc button.pt{border-style:solid;border-color:#C4B5FD;background:#F3EEFF;color:#5B21B6}
+.qc button em{font-style:normal;font-size:11px;opacity:.8;margin-left:4px}
+/* stack vs heap stepper */
+.sv{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr);gap:10px;flex:1;min-height:0}
+.code{background:#0F172A;border-radius:12px;padding:10px 0;color:#E2E8F0;font-family:"JetBrains Mono",monospace;font-size:12.5px;line-height:1.75;overflow:hidden}
+.code div{padding:0 12px;white-space:pre;transition:background .25s,opacity .25s}
+.code div.cur{background:rgba(250,204,21,.16);box-shadow:inset 3px 0 0 #FACC15}
+.code .kw{color:#C4B5FD}.code .st{color:#86EFAC}.code .ty{color:#7DD3FC}
+.mem{border:1px dashed #CBD2DE;border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-height:0}
+.mem>small{font-size:10.5px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--mu)}
+.fr{border:1px solid var(--acc);background:var(--tint);border-radius:10px;padding:6px 8px;display:flex;flex-direction:column;gap:3px;animation:rise .35s}
+.fr>i{font-style:normal;font-size:11px;font-weight:600;color:var(--acc)}
+.var{display:flex;justify-content:space-between;gap:6px;font-family:"JetBrains Mono",monospace;font-size:12px;background:#fff;border-radius:6px;padding:2px 7px;animation:rise .35s}
+.ref{color:#fff;background:var(--acc);border-radius:5px;padding:0 5px;font-size:11px}
+.obj{border:1px solid var(--ln);background:#fff;border-radius:9px;padding:5px 8px;font-family:"JetBrains Mono",monospace;font-size:12px;animation:rise .35s;transition:opacity .4s}
+.obj i{font-style:normal;color:#fff;background:var(--acc);border-radius:5px;padding:0 5px;font-size:11px;margin-right:6px}
+.obj.gone{opacity:.4;border-style:dashed}
+.obj.gone::after{content:"  unreachable → GC";color:var(--bad);font-size:11px}
+.pool{border:1px dashed #A7F3D0;background:#F0FDF7;border-radius:9px;padding:5px 8px;display:flex;flex-direction:column;gap:4px}
+.pool>small{font-size:10.5px;font-weight:600;color:var(--ok)}
+.msgl{background:#F8FAFC;border-radius:10px;padding:8px 11px;font-size:13px;line-height:1.5;min-height:40px}
+.mtab{width:100%;border-collapse:collapse;font-size:12.5px}
+.mtab td{padding:4px 0;border-bottom:1px solid var(--ln);vertical-align:top}
+.mtab tr:last-child td{border-bottom:0}
+.mtab td:first-child{color:var(--mu);width:28%}
+/* GC simulator */
+.gcw{flex:1;min-height:0;display:flex;flex-direction:column;gap:9px;position:relative}
+.gens{display:grid;grid-template-columns:2.1fr 1fr 1fr 2.6fr;gap:8px;flex:1;min-height:0}
+.gen{border:1.5px solid var(--ln);border-radius:12px;padding:7px 8px;display:flex;flex-direction:column;gap:6px;transition:border-color .3s,background .3s;min-height:0}
+.gen.hot{border-color:var(--acc);background:var(--tint)}
+.gen>div:first-child{display:flex;justify-content:space-between;font-size:11.5px;font-weight:600;color:var(--ink)}
+.gen>div:first-child small{color:var(--mu);font-weight:500}
+.slots{display:flex;flex-wrap:wrap;gap:5px;align-content:flex-start}
+.o{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:10.5px;font-weight:600;color:#fff;background:#10B981;animation:popin .35s cubic-bezier(.2,.9,.3,1.3);transition:opacity .4s,background .4s}
+.o.surv{background:#0EA5E9}.o.old{background:#6366F1}
+.o.dead{background:#CBD5E1;color:#64748B;opacity:.65}
+@keyframes popin{from{transform:scale(0)}}
+.stw{position:absolute;inset:0;border-radius:12px;background:rgba(225,29,72,.08);border:2px solid rgba(225,29,72,.5);display:none;place-items:center;font-weight:600;color:var(--bad);font-size:13px;letter-spacing:.4px}
+.stw.on{display:grid;animation:fade .15s}
+.leg{display:flex;gap:12px;font-size:11.5px;color:var(--mu);flex-wrap:wrap}
+.leg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+/* OOM tiles */
+.err{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--bad);background:var(--badbg);border-radius:8px;padding:6px 9px;line-height:1.45;word-break:break-word}
+.err.k8s{color:#9A3412;background:#FFF1E6}
+.lbl{display:inline-block;font-size:11px;font-weight:600;color:var(--mu);margin-right:4px}
+/* flags builder */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{border:1px solid var(--ln);background:#fff;border-radius:99px;padding:5px 11px;font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--tx);transition:all .2s}
+.chips button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.cmd{background:#0F172A;color:#E2E8F0;border-radius:12px;padding:10px 14px;font-family:"JetBrains Mono",monospace;font-size:12.5px;line-height:1.6;word-break:break-word}
+.cmd .p{color:#94A3B8}.cmd .f{color:#FCD34D}
+.warn{font-size:12.5px;color:#92400E;background:#FEF3C7;border-radius:8px;padding:5px 10px}
+/* leak chart & steps */
+.chart{flex:1;min-height:0;width:100%}
+.chart path{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.steps button{border:1px solid var(--ln);background:#fff;border-radius:10px;padding:6px 8px;text-align:left;font-size:12px;color:var(--tx);line-height:1.35}
+.steps button i{font-style:normal;display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#F1F3F8;font-size:11px;font-weight:600;margin-right:5px}
+.steps button.on{border-color:var(--acc);background:var(--tint);color:var(--ink)}
+.steps button.on i{background:var(--acc);color:#fff}
+/* flip cards */
+.card{position:relative;perspective:1100px;min-height:0;min-width:0;cursor:pointer}
+.card .in{position:absolute;inset:0;transition:transform .65s cubic-bezier(.3,.7,.2,1);transform-style:preserve-3d}
+.card.on .in{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:18px;padding:13px 16px;background:#fff;border:1px solid var(--ln);box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px -16px rgba(15,23,42,.18);display:flex;flex-direction:column;gap:6px;overflow:hidden}
+.face.back{transform:rotateY(180deg);background:var(--tint);border-color:transparent}
+.face .q{font-size:15px;font-weight:600;color:var(--ink);line-height:1.4}
+.face .a{font-size:13px;line-height:1.5;color:var(--ink)}
+.tag{align-self:flex-start;font-size:10.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;border-radius:99px;padding:2px 8px;background:#F1F3F8;color:var(--mu)}
+.tag.sc{background:#FFF1E6;color:#C2410C}
+.face .hintf{margin-top:auto;font-size:11.5px;color:var(--fa)}
+</style>
+</head>
+<body>
+
+<header class="top">
+ <div class="logo">NP</div>
+ <div class="ttl"><b>JVM Memory</b><small>Java Core · template T1 — Bento keynote</small></div>
+ <div class="sp"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="pill" id="ovbtn" title="All slides (O)">▦ Overview</button>
+</header>
+<div class="prog" id="prog"></div>
+
+<main id="stage">
+
+<!-- =============================================================== 1. COVER -->
+<section class="slide" data-sub="The map of this deck" style="--acc:#6366F1;--tint:#EEF0FF">
+ <div class="hd"><span class="num">01</span><h2>JVM Memory in one screen</h2><span class="sub">the five facts everything else hangs on</span></div>
+ <div class="grid" style="grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:1fr 1fr">
+  <div class="tile soft" style="grid-column:1/3;grid-row:1/3;justify-content:space-between;padding:22px 24px">
+   <div><div class="k">Java Core · interview recall</div>
+   <h3 style="font-size:24px;margin-top:8px;letter-spacing:-.4px">Where objects live, how they die, and what to say when the heap explodes.</h3></div>
+   <div><div class="k" style="margin-bottom:7px">Jump to</div><div class="map" id="map"></div></div>
+   <p class="dim" style="font-size:13.5px;max-width:440px">Every slide is a grid of small tiles — one idea each. Tiles with a <b style="color:var(--acc)">+</b> open into the detail and the one line to say in an interview. Grey tiles with buttons are things to play with.</p>
+   <div class="row" style="gap:16px;font-size:12.5px;color:var(--mu)"><span><b>8</b> slides</span><span><b>6</b> playgrounds</span><span><b>9</b> interview cards</span><span>examples simplified from FireFlink</span></div>
+  </div>
+  <div class="tile click stat"><div class="k">Areas</div><div class="big">5</div><p>runtime data areas — 2 shared, 2 per thread, 1 native</p>
+   <div class="more" data-k="Runtime data areas"><h3>Five areas to name</h3><ul><li><b>Heap</b> — all objects, shared, garbage-collected</li><li><b>Metaspace</b> — class metadata, shared, native memory</li><li><b>Stack</b> — one per thread, method frames</li><li><b>PC register</b> — one per thread, current instruction</li><li><b>Native</b> — code cache, direct buffers, thread stacks themselves</li></ul><div class="say">Heap and Metaspace are shared by all threads; each thread gets its own stack and PC register.</div></div></div>
+  <div class="tile click stat"><div class="k">Heap</div><div class="big">2 gens</div><p>young (Eden + 2 survivors) and old</p>
+   <div class="more" data-k="Generations"><h3>Why two generations?</h3><p>Most objects die young — a request DTO, a step result being mapped. Collecting the small young space often is cheap; the few survivors are promoted to the old generation, which is collected rarely.</p><div class="say">The heap is split by object age because most objects die young — it lets the GC do frequent, cheap minor collections.</div></div></div>
+  <div class="tile click stat"><div class="k">Threads</div><div class="big">1 : 1</div><p>one thread = one stack (≈1 MB, <code>-Xss</code>)</p>
+   <div class="more" data-k="Stacks"><h3>Every thread owns a stack</h3><p>A stack holds one frame per method call: local variables, references and partial results. It's freed automatically when the method returns — no GC involved. 500 threads ≈ 500 MB of stack memory <b>outside</b> the heap.</p><div class="say">Stacks are per thread and never garbage-collected — frames are popped on return. That's why too many threads can exhaust memory even when the heap is fine.</div><p class="ff">Parallel suite execution with 200 threads reserves ~200 MB of stacks before a single test runs.</p></div></div>
+  <div class="tile click stat"><div class="k">Java 8</div><div class="big" style="font-size:20px">PermGen → Metaspace</div><p>class metadata moved off the heap</p>
+   <div class="more" data-k="Java 8 change"><h3>PermGen is gone</h3><p>Before Java 8, class metadata lived in a fixed-size <b>PermGen</b> inside the heap — hot redeploys famously hit <code>PermGen space</code>. Java 8 moved it to <b>Metaspace</b> in native memory, which grows on demand.</p><div class="say">Java 8 replaced PermGen with Metaspace in native memory. It grows automatically, so I still cap it with MaxMetaspaceSize to catch classloader leaks early.</div></div></div>
+ </div>
+</section>
+
+<!-- =============================================================== 2. AREAS -->
+<section class="slide" style="--acc:#0EA5E9;--tint:#E8F6FD">
+ <div class="hd"><span class="num">02</span><h2>The runtime data areas</h2><span class="sub">shared by every thread vs private to each thread</span></div>
+ <div class="grid" style="grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:1fr 1fr">
+  <div class="tile click" style="grid-column:1/3"><div class="k">Shared · garbage-collected</div><h3>Heap</h3>
+   <div class="hbar"><div style="flex:3;background:#D1FAE5">Eden</div><div style="flex:1;background:#E0F2FE">S0</div><div style="flex:1;background:#E0F2FE">S1</div><div style="flex:4;background:#E0E7FF">Old</div></div>
+   <p class="dim">every <code>new</code> object lives here · sized with <code>-Xms</code> / <code>-Xmx</code></p>
+   <div class="more" data-k="Heap"><h3>Heap = young + old</h3><ul><li><b>Young</b>: Eden (new objects) + two survivor spaces (objects that survived a GC)</li><li><b>Old</b>: objects that survived several young GCs</li><li>Shared by all threads → objects here need synchronization if mutated concurrently</li></ul><div class="say">The heap is shared and garbage-collected, split into young and old generations so the GC can focus on short-lived objects.</div><p class="ff">A <code>TestRun</code> and its 2,000 step results stay on the heap until the run report is saved.</p></div></div>
+  <div class="tile click"><div class="k">Shared · native memory</div><h3>Metaspace</h3><p class="dim">class structure, method bytecode, constant pools</p>
+   <div class="more" data-k="Metaspace"><h3>Metaspace</h3><p>Holds what the JVM knows about each loaded <b>class</b> — not your objects. Lives in native memory and grows until <code>-XX:MaxMetaspaceSize</code> (unlimited by default).</p><p>Grows abnormally with classloader leaks: repeated hot redeploys, runaway dynamic proxies, generated Groovy/script classes.</p><div class="say">Metaspace stores class metadata in native memory; it only grows abnormally when classloaders leak.</div></div></div>
+  <div class="tile click"><span class="gtk">Good to know</span><h3>Code cache & direct memory</h3><p class="dim">JIT output and NIO buffers — outside the heap</p>
+   <div class="more" data-k="Off-heap"><h3>Off-heap memory adds up</h3><p><b>Code cache</b> holds JIT-compiled native code. <b>Direct buffers</b> (Netty, Kafka client, Mongo driver) are allocated outside the heap — <code>-Xmx</code> does not limit them.</p><div class="say">Process memory = heap + metaspace + thread stacks + code cache + direct buffers. That's why a container can be OOMKilled while the heap looks healthy.</div></div></div>
+  <div class="tile click" style="grid-column:1/3"><div class="k">Per thread</div><h3>Stack</h3>
+   <div class="frames"><div>click(locator)          ← top: running now</div><div>executeStep(step)</div><div>runSuite(suiteId)</div></div>
+   <div class="more" data-k="Stack"><h3>One frame per method call</h3><p>A frame holds local variables, references, the operand stack and the return address. It's pushed on call and popped on return — no GC needed. Size per thread is set by <code>-Xss</code>; recursion that's too deep throws <code>StackOverflowError</code>.</p><div class="say">The stack is private to a thread, holds method frames with locals and references, and is freed automatically on return.</div></div></div>
+  <div class="tile click"><div class="k">Per thread</div><h3>PC register</h3><p class="dim">address of the bytecode instruction this thread runs next</p>
+   <div class="more" data-k="PC register"><h3>Program counter</h3><p>Each thread keeps its own pointer to the instruction it's executing (undefined while in a native method). It's what lets a thread resume exactly where it left off after a context switch.</p><div class="say">Every thread needs its own PC so it can resume at the right instruction after the CPU switches threads.</div></div></div>
+  <div class="tile" data-qc><div class="k">Quick check — tap each</div><h3 style="padding:0">Shared or per thread?</h3>
+   <div class="qc" id="qc"></div><p class="dim" id="qc-n" style="margin-top:auto"></p></div>
+ </div>
+</section>
+
+<!-- =============================================================== 3. STACK VS HEAP -->
+<section class="slide" style="--acc:#8B5CF6;--tint:#F3EEFF">
+ <div class="hd"><span class="num">03</span><h2>Stack vs heap</h2><span class="sub">step through one method call and watch both sides</span></div>
+ <div class="grid" style="grid-template-columns:minmax(0,2.15fr) minmax(0,1fr);grid-template-rows:1fr 1fr">
+  <div class="tile" style="grid-row:1/3">
+   <div class="row"><div class="k" style="flex:1">Playground · simplified from FireFlink</div><button class="btn p" id="sv-next">Next line ▶</button><button class="btn" id="sv-reset">↺ Reset</button></div>
+   <div class="sv">
+    <div class="code" id="sv-code"></div>
+    <div class="mem"><small>Stack · thread exec-3</small><div id="sv-stack" style="display:flex;flex-direction:column;gap:6px"></div></div>
+    <div class="mem"><small>Heap · shared</small><div id="sv-heap" style="display:flex;flex-direction:column;gap:6px"></div></div>
+   </div>
+   <div class="msgl" id="sv-msg"></div>
+  </div>
+  <div class="tile click"><div class="k">Remember</div>
+   <table class="mtab"><tr><td></td><td><b>Stack</b></td><td><b>Heap</b></td></tr><tr><td>Holds</td><td>locals, refs</td><td>objects</td></tr><tr><td>Scope</td><td>one thread</td><td>all threads</td></tr><tr><td>Freed</td><td>on return</td><td>by GC</td></tr><tr><td>Fails with</td><td>StackOverflow</td><td>OutOfMemory</td></tr></table>
+   <div class="more" data-k="Stack vs heap"><h3>The one-line rule</h3><p>Primitives and references declared <b>inside a method</b> live in its stack frame. Objects — and every field inside them, even an <code>int</code> — live on the heap.</p><p><span class="gtk">Good to know</span> Escape analysis lets the JIT avoid heap allocation for objects that never leave a method.</p><div class="say">Locals and references live in the thread's stack frame; the objects they point to live on the shared heap. A field of an object is on the heap, even if it's a primitive.</div></div></div>
+  <div class="tile click"><div class="k">Strings</div><h3>String pool</h3><p class="dim">literals are interned once — the pool sits <b>in the heap</b> since Java 7</p>
+   <div class="spool"><span class="v">a = "staging"</span><span class="tg pl" style="grid-row:span 2">→ one pooled "staging"</span><span class="v">b = "staging"</span><span class="v">c = new String(..)</span><span class="tg hp">→ its own heap object</span></div>
+   <p class="dim"><code>a == b</code> true · <code>a == c</code> false</p>
+   <div class="more" data-k="String pool"><h3>String pool</h3><p><code>"staging"</code> written twice → one pooled object. <code>new String("staging")</code> → a separate heap object every time. The pool moved from PermGen into the heap in Java 7, so unused pooled strings can be collected.</p><div class="say">Literals are interned in the String pool, which lives in the heap since Java 7; <code>new String()</code> always creates a new object.</div></div></div>
+ </div>
+</section>
+
+<!-- =============================================================== 4. OBJECT LIFE / GC -->
+<section class="slide" style="--acc:#10B981;--tint:#E7F8F1">
+ <div class="hd"><span class="num">04</span><h2>An object's life</h2><span class="sub">allocate → minor GC → promote — press the buttons</span></div>
+ <div class="grid" style="grid-template-columns:minmax(0,2.15fr) minmax(0,1fr);grid-template-rows:1fr 1fr">
+  <div class="tile" style="grid-row:1/3">
+   <div class="row"><div class="k" style="flex:1">GC playground · each dot = one object, number = age</div><button class="btn p" id="gc-new">＋ New objects</button><button class="btn" id="gc-minor">Minor GC</button><button class="btn" id="gc-full">Full GC</button><button class="btn" id="gc-reset">↺</button></div>
+   <div class="gcw">
+    <div class="gens" id="gc-gens"></div>
+    <div class="stw" id="gc-stw">⏸ STOP-THE-WORLD — application threads paused</div>
+   </div>
+   <div class="leg"><span><i style="background:#10B981"></i>new (Eden)</span><span><i style="background:#0EA5E9"></i>survivor</span><span><i style="background:#6366F1"></i>old</span><span><i style="background:#CBD5E1"></i>unreachable (garbage)</span><span>promotion age here = 3 (real default up to 15)</span></div>
+   <div class="msgl" id="gc-msg"></div>
+  </div>
+  <div class="tile click"><div class="k">Collections</div><h3>Minor vs full GC</h3>
+   <p><b>Minor</b> — young gen only, frequent, milliseconds.</p><p><b>Full</b> — whole heap, rare, can take seconds.</p><p class="dim">Both pause the app (stop-the-world).</p>
+   <div class="more" data-k="GC types"><h3>Minor, major, full</h3><ul><li><b>Minor</b>: collects the young generation; live objects are copied to a survivor space or promoted</li><li><b>Major / Full</b>: collects the old generation (full = whole heap); much slower</li><li><b>Stop-the-world</b>: all application threads pause so the GC can move objects safely</li></ul><div class="say">Minor GCs clean the young generation often and quickly; full GCs clean the whole heap and cause the long pauses — frequent full GCs usually mean a leak or an undersized heap.</div></div></div>
+  <div class="tile click"><div class="k">Collectors</div><h3>G1 is the default</h3><p class="dim">heap split into equal regions, aims for a pause target (200 ms)</p><span class="gtk">Good to know · ZGC: sub-ms pauses</span>
+   <div class="more" data-k="Which GC"><h3>G1 and ZGC</h3><p><b>G1</b> (default since Java 9) splits the heap into ~2,048 equal regions and collects the ones with most garbage first, aiming at <code>-XX:MaxGCPauseMillis=200</code>.</p><p><b>ZGC</b> (generational since 21) does almost everything concurrently — pauses under 1 ms even on huge heaps.</p><div class="say">We run G1 with defaults; I'd only switch to ZGC if p99 latency from GC pauses became a real problem.</div></div></div>
+ </div>
+</section>
+
+<!-- =============================================================== 5. OOM FAMILY -->
+<section class="slide" style="--acc:#F43F5E;--tint:#FFECEF">
+ <div class="hd"><span class="num">05</span><h2>The OutOfMemoryError family</h2><span class="sub">read the message → know where to look</span></div>
+ <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:1fr 1fr">
+  <div class="tile click"><div class="k">Most common</div><div class="err">OutOfMemoryError: Java heap space</div><p><span class="lbl">Cause</span>live objects need more than <code>-Xmx</code></p><p><span class="lbl">Fix</span>heap dump → who holds it? stream / paginate</p>
+   <div class="more" data-k="Java heap space"><h3>Java heap space</h3><p><b>Cause:</b> a leak (objects still referenced) or a real load spike — e.g. loading 50,000 step results into one list.</p><p><b>Fix:</b> heap dump → find what holds the memory; stream or paginate; raise <code>-Xmx</code> only if the load is genuine.</p><div class="say">First I check whether it's a leak or real load: if Old gen doesn't drop after full GCs, it's a leak and the heap dump tells me who holds the objects.</div></div></div>
+  <div class="tile click"><div class="k">Class metadata</div><div class="err">OutOfMemoryError: Metaspace</div><p><span class="lbl">Cause</span>too many classes loaded</p><p><span class="lbl">Fix</span>find the leaking classloader; cap <code>MaxMetaspaceSize</code></p>
+   <div class="more" data-k="Metaspace"><h3>Metaspace</h3><p><b>Cause:</b> classloader leaks — hot redeploys, endless dynamic proxies, generated script classes.</p><p><b>Fix:</b> find the leaking classloader in a heap dump; set <code>MaxMetaspaceSize</code> so it fails fast instead of eating the node.</p><div class="say">Metaspace OOM means classes keep being loaded and never unloaded — almost always a classloader leak, not a heap problem.</div></div></div>
+  <div class="tile click"><div class="k">GC thrashing</div><div class="err">OutOfMemoryError: GC overhead limit exceeded</div><p><span class="lbl">Cause</span>98% of time in GC, &lt;2% freed</p><p><span class="lbl">Fix</span>same as heap space — it's the early warning</p>
+   <div class="more" data-k="GC overhead"><h3>GC overhead limit exceeded</h3><p><b>Cause:</b> the heap is nearly full of live objects, so the GC runs constantly and frees almost nothing. The app crawls before it dies.</p><p><b>Fix:</b> same as heap space — it's the early warning of the same problem.</p><div class="say">It's the JVM giving up early: GC is running almost all the time but recovering almost nothing — treat it exactly like a heap-space OOM.</div></div></div>
+  <div class="tile click"><div class="k">Threads</div><div class="err">OutOfMemoryError: unable to create native thread</div><p><span class="lbl">Cause</span>OS refuses another thread — heap may be fine</p><p><span class="lbl">Fix</span>bounded pools; count threads in a thread dump</p>
+   <div class="more" data-k="Native thread"><h3>Unable to create native thread</h3><p><b>Cause:</b> thread leak — <code>new Thread()</code> per task, unbounded cached pool — hitting the OS/pod thread or memory limit. Heap may be nearly empty.</p><p><b>Fix:</b> bounded thread pools; count threads in a thread dump.</p><div class="say">It's not heap — the process can't get another OS thread. I'd take a thread dump, see which pool keeps growing, and bound it.</div><p class="ff">A per-test-case <code>new Thread()</code> in a 5,000-case suite.</p></div></div>
+  <div class="tile click"><div class="k">Not an OOM — but asked together</div><div class="err">java.lang.StackOverflowError</div><p><span class="lbl">Cause</span>recursion too deep (e.g. JSON back-references)</p><p><span class="lbl">Fix</span>break the cycle — <code>-Xss</code> only moves the limit</p>
+   <div class="more" data-k="StackOverflowError"><h3>StackOverflowError</h3><p><b>Cause:</b> infinite or very deep recursion — classic: Jackson serializing <code>Suite ↔ TestCase</code> back-references forever.</p><p><b>Fix:</b> break the cycle (DTO, <code>@JsonManagedReference</code>/<code>@JsonBackReference</code>) or make it iterative. Raising <code>-Xss</code> only moves the limit.</p><div class="say">A StackOverflowError is a stack problem, not heap — one thread's frames ran out, almost always from unbounded recursion.</div></div></div>
+  <div class="tile click"><div class="k">Kubernetes</div><div class="err k8s">OOMKilled · exit code 137</div><p><span class="lbl">Cause</span>process RSS &gt; pod limit — no Java error at all</p><p><span class="lbl">Fix</span><code>MaxRAMPercentage=75</code>, check non-heap</p>
+   <div class="more" data-k="OOMKilled"><h3>OOMKilled</h3><p><b>Cause:</b> the kernel killed the process because heap + metaspace + stacks + direct buffers exceeded the container limit. Java never threw anything.</p><p><b>Fix:</b> size the heap as a percentage (<code>-XX:MaxRAMPercentage=75</code>), leave headroom, check thread count and direct memory.</p><div class="say">Exit 137 with no Java OOM means the container, not the heap, ran out — I check non-heap memory and leave ~25% headroom.</div></div></div>
+ </div>
+</section>
+
+<!-- =============================================================== 6. FLAGS -->
+<section class="slide" style="--acc:#F59E0B;--tint:#FFF5E0">
+ <div class="hd"><span class="num">06</span><h2>Flags you should know</h2><span class="sub">tap flags to build the launch command</span></div>
+ <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto 1fr">
+  <div class="tile" style="grid-column:1/4">
+   <div class="k">Command builder · fireflink-runner</div>
+   <div class="chips" id="fl-chips"></div>
+   <div class="cmd" id="fl-cmd"></div>
+   <div class="msgl" id="fl-msg" style="min-height:0"></div>
+  </div>
+  <div class="tile click"><div class="k">Servers</div><h3>Set <code>-Xms</code> = <code>-Xmx</code></h3><p class="dim">no heap resizing, predictable footprint</p><div class="cmd" style="margin-top:auto">-Xms2g -Xmx2g</div>
+   <div class="more" data-k="Heap size"><h3>Why equal min and max?</h3><p>The JVM won't spend time growing and shrinking the heap, and you find out at startup — not at 3 a.m. — whether the memory is really available.</p><div class="say">On servers I set Xms equal to Xmx so the heap is committed up front and never resized under load.</div></div></div>
+  <div class="tile click"><div class="k">Containers</div><h3>Use <code>MaxRAMPercentage</code></h3><p class="dim">heap follows the pod limit — keep ~25% for non-heap</p><div class="cmd" style="margin-top:auto">4 GB pod × 75% = <span class="f">3 GB heap</span></div>
+   <div class="more" data-k="Containers"><h3>Container-aware sizing</h3><p>The JVM reads the cgroup memory limit (since 10 / 8u191). <code>-XX:MaxRAMPercentage=75.0</code> gives a 3 GB heap in a 4 GB pod and scales automatically when the limit changes.</p><div class="say">In Kubernetes I size the heap with MaxRAMPercentage around 75 instead of a hard Xmx, leaving room for metaspace, stacks and buffers.</div></div></div>
+  <div class="tile click"><div class="k">Always on</div><h3>Dump on OOM</h3><p class="dim"><code>HeapDumpOnOutOfMemoryError</code> + a path on a mounted volume</p><div class="cmd" style="margin-top:auto">-XX:HeapDumpPath=<span class="f">/dumps</span>  # PVC</div>
+   <div class="more" data-k="Heap dump"><h3>Keep the evidence</h3><p>Without a dump you can only guess. Write it to a persistent volume — a dump inside the container dies with the pod restart.</p><div class="say">Every service runs with HeapDumpOnOutOfMemoryError and a HeapDumpPath on a mounted volume, so the first OOM is already diagnosable.</div></div></div>
+ </div>
+</section>
+
+<!-- =============================================================== 7. LEAKS -->
+<section class="slide" style="--acc:#14B8A6;--tint:#E6F7F5">
+ <div class="hd"><span class="num">07</span><h2>Leaks — and how to find one</h2><span class="sub">a leak = objects you no longer need that are still reachable</span></div>
+ <div class="grid" style="grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:1.2fr 1fr">
+  <div class="tile" style="grid-column:1/3">
+   <div class="row"><div class="k" style="flex:1">Heap after each GC</div><div class="seg" id="lk-seg"><button class="on" data-v="ok">Healthy</button><button data-v="leak">Leaking</button></div></div>
+   <svg class="chart" id="lk-svg" viewBox="0 0 420 130" preserveAspectRatio="none"></svg>
+   <p class="dim" id="lk-cap"></p>
+  </div>
+  <div class="tile" style="grid-column:3/5">
+   <div class="k">Diagnose in 4 steps — tap each</div>
+   <div class="steps" id="dg-steps"></div>
+   <div class="cmd" id="dg-cmd" style="font-size:12px"></div>
+   <p class="dim" id="dg-msg"></p>
+  </div>
+  <div class="tile click"><div class="k">Leak #1</div><h3>Static cache</h3><p class="dim"><code>static Map</code> that only grows</p><p style="margin-top:auto"><span class="lbl">Fix</span>bounded cache with TTL (Caffeine)</p>
+   <div class="more" data-k="Static collections"><h3>Static collections</h3><p>Static fields are GC roots — everything they reference lives forever. A <code>static Map&lt;runId, RunResult&gt;</code> without eviction grows with every run.</p><p><b>Fix:</b> a bounded cache with size/TTL (Caffeine), or don't cache at all.</p><div class="say">The most common leak I've seen is an unbounded static map used as a cache — statics are GC roots, so nothing in it is ever collected.</div></div></div>
+  <div class="tile click"><div class="k">Leak #2</div><h3>ThreadLocal in pools</h3><p class="dim">pool threads never die → values never go</p><p style="margin-top:auto"><span class="lbl">Fix</span><code>remove()</code> in <code>finally</code></p>
+   <div class="more" data-k="ThreadLocal"><h3>ThreadLocal in a thread pool</h3><p>Pool threads live forever, so a value set in a ThreadLocal stays reachable after the task ends — and leaks into the next task.</p><p><b>Fix:</b> always <code>remove()</code> in <code>finally</code>.</p><div class="say">ThreadLocals in pooled threads must be removed in a finally block, otherwise they leak memory and even data between requests.</div><p class="ff">Tenant context set per test run and never removed.</p></div></div>
+  <div class="tile click"><div class="k">Leak #3</div><h3>Listeners</h3><p class="dim">registered per run, never removed</p><p style="margin-top:auto"><span class="lbl">Fix</span>unregister in cleanup</p>
+   <div class="more" data-k="Listeners"><h3>Listeners & callbacks</h3><p>An object registered with a long-lived publisher stays reachable through it. Register per run, forget to unregister → every run's listener (and what it references) survives.</p><p><b>Fix:</b> unregister in cleanup, or use weak references.</p><div class="say">Anything you register with a long-lived object must be unregistered, or the registry keeps it alive forever.</div></div></div>
+  <div class="tile click"><div class="k">Leak #4</div><h3>Unclosed resources</h3><p class="dim">streams, connections, browser sessions</p><p style="margin-top:auto"><span class="lbl">Fix</span>try-with-resources · <code>driver.quit()</code></p>
+   <div class="more" data-k="Resources"><h3>Unclosed resources</h3><p>Open streams, JDBC connections or WebDriver sessions hold buffers and native memory until closed.</p><p><b>Fix:</b> try-with-resources; <code>driver.quit()</code> in <code>finally</code>.</p><div class="say">Anything closeable goes in try-with-resources; leaked connections and sessions leak native memory, not just heap.</div><p class="ff">A WebDriver session not quit after a failed step keeps a browser process alive.</p></div></div>
+ </div>
+</section>
+
+<!-- =============================================================== 8. INTERVIEW ROUND -->
+<section class="slide" style="--acc:#EC4899;--tint:#FDECF5">
+ <div class="hd"><span class="num">08</span><h2>Interview round</h2><span class="sub">say your answer out loud first, then tap to flip</span>
+  <div class="act"><span class="cnt" id="iv-n"></span><button class="btn" id="iv-all">Flip all</button><button class="btn" id="iv-reset">↺ Reset</button></div></div>
+ <div class="grid" id="iv" style="grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr))"></div>
+</section>
+
+</main>
+
+<footer class="foot">
+ <button class="nav" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <button class="nav" id="next" title="Next (→)">▶</button>
+ <span class="hint">tap <b style="color:var(--acc)">+</b> tiles to open · <kbd>←</kbd> <kbd>→</kbd> move · <kbd>O</kbd> overview · <kbd>Esc</kbd> close</span>
+</footer>
+
+<div id="veil"><div id="panel"><button class="x" id="px" title="Close (Esc)">✕</button><div class="k" id="pk"></div><div id="pb"></div></div></div>
+<div id="ov"><h4>All slides — click one to jump</h4><div class="ovg" id="ovg"></div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const slides=[...document.querySelectorAll('.slide')];
+let cur=0;
+
+// ---------------------------------------------------------- deck
+slides.forEach(s=>s.querySelectorAll('.grid > .tile, .grid > .card').forEach((t,i)=>t.style.setProperty('--i',i)));
+$('dots').innerHTML=slides.map((_,i)=>`<button data-n="${i}" title="${slides[i].querySelector('h2').textContent}"></button>`).join('');
+function go(n){
+ n=Math.max(0,Math.min(slides.length-1,n));cur=n;
+ slides.forEach((s,i)=>{s.classList.toggle('on',i===n);s.classList.toggle('left',i<n);});
+ const st=slides[n].style,root=document.documentElement.style;
+ root.setProperty('--acc',st.getPropertyValue('--acc'));root.setProperty('--tint',st.getPropertyValue('--tint'));
+ $('prog').style.width=((n+1)/slides.length*100)+'%';
+ $('cnt').textContent=`${n+1} / ${slides.length}`;
+ $('dots').querySelectorAll('button').forEach((b,i)=>b.classList.toggle('on',i===n));
+ $('prev').disabled=n===0;$('next').disabled=n===slides.length-1;
+ history.replaceState(null,'','#'+(n+1));
+ // replay the tile entrance
+ slides[n].querySelectorAll('.grid > .tile, .grid > .card').forEach(t=>{t.style.animation='none';t.offsetHeight;t.style.animation='';});
+}
+$('prev').onclick=()=>go(cur-1);$('next').onclick=()=>go(cur+1);
+$('dots').onclick=e=>{const b=e.target.closest('[data-n]');if(b)go(+b.dataset.n);};
+
+// ---------------------------------------------------------- expand overlay
+function openTile(t){
+ const m=t.querySelector('.more');if(!m)return;
+ $('pk').textContent=m.dataset.k||'';$('pb').innerHTML=m.innerHTML;
+ const r=t.getBoundingClientRect();
+ $('panel').style.transformOrigin=`${r.left+r.width/2-innerWidth/2+300}px ${r.top+r.height/2-innerHeight/2+150}px`;
+ $('veil').classList.add('open');}
+const closeTile=()=>$('veil').classList.remove('open');
+document.addEventListener('click',e=>{const t=e.target.closest('.tile.click');if(t&&!e.target.closest('button'))openTile(t);});
+$('veil').onclick=e=>{if(e.target===$('veil'))closeTile();};$('px').onclick=closeTile;
+
+$('map').innerHTML=slides.slice(1).map((s,i)=>`<button data-n="${i+1}"><span>${String(i+2).padStart(2,'0')}</span>${s.querySelector('h2').textContent}</button>`).join('');
+$('map').onclick=e=>{const b=e.target.closest('[data-n]');if(b)go(+b.dataset.n);};
+// ---------------------------------------------------------- overview
+$('ovg').innerHTML=slides.map((s,i)=>`<button class="ovc" data-n="${i}" style="--a:${s.style.getPropertyValue('--acc')};--t:${s.style.getPropertyValue('--tint')}"><span>${String(i+1).padStart(2,'0')}</span><b>${s.querySelector('h2').textContent}</b><small>${s.querySelector('.sub').textContent}</small></button>`).join('');
+const ov=open=>{$('ov').classList.toggle('open',open);$('ovg').querySelectorAll('.ovc').forEach((c,i)=>c.classList.toggle('on',i===cur));};
+$('ovbtn').onclick=()=>ov(!$('ov').classList.contains('open'));
+$('ovg').onclick=e=>{const b=e.target.closest('[data-n]');if(b){go(+b.dataset.n);ov(false);}};
+
+document.addEventListener('keydown',e=>{
+ if(e.key==='Escape'){closeTile();ov(false);return;}
+ if($('veil').classList.contains('open'))return;
+ if(e.key==='ArrowRight'||e.key==='PageDown'){go(cur+1);e.preventDefault();}
+ if(e.key==='ArrowLeft'||e.key==='PageUp'){go(cur-1);e.preventDefault();}
+ if(e.key==='o'||e.key==='O')ov(!$('ov').classList.contains('open'));});
+
+// ---------------------------------------------------------- 2: shared or per thread
+(function(){
+ const I=[['Heap','sh'],['Stack','pt'],['Metaspace','sh'],['PC register','pt'],['Code cache','sh']];
+ const seen=new Set();
+ const draw=()=>{$('qc').innerHTML=I.map(([n,c],i)=>`<button data-i="${i}" class="${seen.has(i)?c:''}">${n}${seen.has(i)?`<em>${c==='sh'?'shared':'per thread'}</em>`:''}</button>`).join('');
+  $('qc-n').textContent=seen.size===I.length?'Rule: only the stack and PC are private to a thread.':`${seen.size} / ${I.length} revealed`;};
+ $('qc').onclick=e=>{const b=e.target.closest('[data-i]');if(!b)return;const i=+b.dataset.i;seen.has(i)?seen.delete(i):seen.add(i);draw();};draw();
+})();
+
+// ---------------------------------------------------------- 3: stack vs heap stepper
+(function(){
+ const CODE=[`<span class="kw">void</span> runSuite(<span class="ty">String</span> suiteId) {`,
+  `    <span class="kw">int</span> retries = 2;`,
+  `    <span class="kw">var</span> suite = <span class="kw">new</span> <span class="ty">TestSuite</span>(suiteId);`,
+  `    <span class="ty">String</span> env = <span class="st">"staging"</span>;`,`}`];
+ const S=[
+  {l:1,st:[['suiteId','#A']],hp:[['A','"S-42"']],pool:[],m:'Calling <code>runSuite</code> pushes a new <b>frame</b> on this thread\'s stack. The argument is only a <b>reference</b> to a String on the heap.'},
+  {l:2,st:[['suiteId','#A'],['retries','2']],hp:[['A','"S-42"']],pool:[],m:'A primitive local lives <b>inside the frame</b> — no heap object at all.'},
+  {l:3,st:[['suiteId','#A'],['retries','2'],['suite','#B']],hp:[['A','"S-42"'],['B','TestSuite{id=#A, cases=[]}']],pool:[],m:'<code>new</code> always allocates on the <b>heap</b>; the local <code>suite</code> just holds a reference to it.'},
+  {l:4,st:[['suiteId','#A'],['retries','2'],['suite','#B'],['env','#C']],hp:[['A','"S-42"'],['B','TestSuite{id=#A, cases=[]}']],pool:[['C','"staging"']],m:'A string <b>literal</b> is interned in the String pool — which is part of the heap since Java 7.'},
+  {l:5,st:null,hp:[['A','"S-42"'],['B','TestSuite{id=#A, cases=[]}']],pool:[['C','"staging"']],gone:true,m:'Method returns → the frame is <b>popped</b> instantly. Nothing points to <code>#B</code> any more, so the GC may reclaim it. No GC was needed for the stack.'}];
+ let i=-1;
+ function draw(){const s=S[i];
+  $('sv-code').innerHTML=CODE.map((c,k)=>`<div class="${s&&s.l===k+1?'cur':''}">${c}</div>`).join('');
+  $('sv-stack').innerHTML=!s?'<span class="dim" style="font-size:12.5px">empty</span>':s.st?`<div class="fr"><i>frame: runSuite()</i>${s.st.map(([n,v])=>`<div class="var"><span>${n}</span>${v.startsWith('#')?`<span class="ref">→ ${v}</span>`:`<b>${v}</b>`}</div>`).join('')}</div>`:'<span class="dim" style="font-size:12.5px">frame popped — stack empty</span>';
+  $('sv-heap').innerHTML=!s?'<span class="dim" style="font-size:12.5px">nothing yet</span>':s.hp.map(([id,v])=>`<div class="obj ${s.gone&&id!=='A'?'gone':''}"><i>#${id}</i>${v}</div>`).join('')+(s.pool.length?`<div class="pool"><small>String pool</small>${s.pool.map(([id,v])=>`<div class="obj"><i>#${id}</i>${v}</div>`).join('')}</div>`:'');
+  $('sv-msg').innerHTML=s?s.m:'Press <b>Next line ▶</b> and watch what lands on the <b>stack</b> and what lands on the <b>heap</b>.';
+  $('sv-next').disabled=i>=S.length-1;}
+ $('sv-next').onclick=()=>{if(i<S.length-1){i++;draw();}};$('sv-reset').onclick=()=>{i=-1;draw();};draw();
+})();
+
+// ---------------------------------------------------------- 4: GC playground
+(function(){
+ const EDEN=10,SURV=4,OLD=12,AGE=3;let st,id,timer;
+ function reset(){st={eden:[],s:[[],[]],from:0,old:[]};id=0;msg('Press <b>＋ New objects</b>. Most of them become garbage almost immediately — just like request DTOs and step results.');draw();}
+ const msg=h=>$('gc-msg').innerHTML=h;
+ const dot=(o,c)=>`<span class="o ${c} ${o.dead?'dead':''}" title="object ${o.id}">${o.dead?'×':o.age}</span>`;
+ function draw(hot){const to=1-st.from;
+  const G=[['Eden','eden',st.eden,EDEN,''],[`S${st.from} · from`,'s0',st.s[st.from],SURV,'surv'],[`S${to} · to`,'s1',st.s[to],SURV,'surv'],['Old generation','old',st.old,OLD,'old']];
+  $('gc-gens').innerHTML=G.map(([n,k,a,cap,c])=>`<div class="gen ${hot&&hot.includes(k)?'hot':''}"><div><span>${n}</span><small>${a.length}/${cap}</small></div><div class="slots">${a.map(o=>dot(o,c)).join('')}</div></div>`).join('');}
+ function stw(ms){$('gc-stw').classList.add('on');setTimeout(()=>$('gc-stw').classList.remove('on'),ms);}
+ function minor(auto){
+  const from=st.s[st.from],to=st.s[1-st.from];let freed=0,copied=0,prom=0,early=0;
+  for(const o of [...st.eden,...from]){if(o.dead||o.fate){freed++;continue;}o.age++;
+   if(o.age>=AGE){st.old.push(o);prom++;}else if(to.length<SURV){to.push(o);copied++;}else{st.old.push(o);early++;}}
+  st.eden=[];st.s[st.from]=[];st.from=1-st.from;
+  st.old.forEach(o=>{if(!o.dead&&Math.random()<.22)o.dead=true;});
+  stw(450);draw(['eden','s0','s1']);
+  msg(`${auto?'<b>Eden is full</b> → ':''}<b>Minor GC</b>: freed <b>${freed}</b> dead objects, copied <b>${copied}</b> to the empty survivor, promoted <b>${prom}</b> to Old${early?` (+${early} early — survivor overflow)`:''}. Pause ≈ 5 ms. Eden is empty again.`);
+  if(st.old.length>=OLD)setTimeout(()=>full(true),900);}
+ function full(auto){const before=st.old.length;st.old=st.old.filter(o=>!o.dead);const f=before-st.old.length;
+  stw(1100);draw(['old','eden','s0','s1']);
+  msg(`${auto?'<b>Old generation is full</b> → ':''}<b>Full GC</b>: scanned the whole heap, freed <b>${f}</b> old objects. Pause ≈ 300 ms — the app was frozen.${st.old.length>=OLD-2?' <b style="color:var(--bad)">Old is still nearly full after a full GC → that\'s what a leak looks like.</b>':''}`);}
+ function alloc(){if(st.eden.length+3>EDEN){minor(true);return;}
+  const n=[];for(let k=0;k<3;k++){const o={id:++id,age:0,dead:false,fate:Math.random()<.65};st.eden.push(o);n.push(o);}
+  draw();msg('3 objects allocated in <b>Eden</b> (allocation is just a pointer bump — very cheap). Watch: most become unreachable on their own…');
+  clearTimeout(timer);timer=setTimeout(()=>{n.forEach(o=>{if(o.fate)o.dead=true;});draw();},750);}
+ $('gc-new').onclick=alloc;$('gc-minor').onclick=()=>minor(false);$('gc-full').onclick=()=>full(false);$('gc-reset').onclick=()=>{reset();alloc();};reset();alloc();
+})();
+
+// ---------------------------------------------------------- 6: flags builder
+(function(){
+ const F=[['-Xms2g','Initial heap size. Set equal to -Xmx on servers.',1],['-Xmx2g','Maximum heap size — the "Java heap space" limit.',1],['-Xss512k','Stack size per thread. Smaller = more threads fit; too small = StackOverflowError.',0],
+  ['-XX:MaxMetaspaceSize=256m','Cap Metaspace (unlimited by default) so a classloader leak fails fast.',0],['-XX:+HeapDumpOnOutOfMemoryError','Write a heap dump when an OOM happens — your evidence.',1],['-XX:HeapDumpPath=/dumps','Where the dump goes — put it on a mounted volume.',0],
+  ['-XX:MaxRAMPercentage=75.0','Heap = 75% of the container limit. Use instead of -Xmx in Kubernetes.',0],['-XX:+UseG1GC','G1 collector — already the default since Java 9, so this flag changes nothing.',0]];
+ const on=new Set(F.map((f,i)=>f[2]?i:-1).filter(i=>i>=0));let last=-1;
+ function draw(){$('fl-chips').innerHTML=F.map((f,i)=>`<button data-i="${i}" class="${on.has(i)?'on':''}">${f[0]}</button>`).join('');
+  const sel=[...on].sort((a,b)=>a-b).map(i=>F[i][0]);
+  $('fl-cmd').innerHTML=`<span class="p">$</span> java ${sel.map(s=>`<span class="f">${s}</span>`).join(' ')} -jar fireflink-runner.jar`;
+  let m=last>=0?`<b><code>${F[last][0]}</code></b> — ${F[last][1]}`:'Tap a flag to toggle it and see what it does.';
+  const has=s=>sel.some(x=>x.startsWith(s));
+  if(has('-Xmx')&&has('-XX:MaxRAMPercentage'))m+=`<div class="warn" style="margin-top:6px">⚠ Both set: <code>-Xmx</code> wins and MaxRAMPercentage is ignored. Pick one.</div>`;
+  else if(has('-XX:HeapDumpPath')&&!has('-XX:+HeapDump'))m+=`<div class="warn" style="margin-top:6px">⚠ HeapDumpPath does nothing without <code>-XX:+HeapDumpOnOutOfMemoryError</code>.</div>`;
+  $('fl-msg').innerHTML=m;}
+ $('fl-chips').onclick=e=>{const b=e.target.closest('[data-i]');if(!b)return;const i=+b.dataset.i;on.has(i)?on.delete(i):on.add(i);last=i;draw();};draw();
+})();
+
+// ---------------------------------------------------------- 7: leak chart + diagnose steps
+(function(){
+ const W=420,H=130,top=18;
+ function saw(leak){let p=[],base=leak?96:100,x=8;p.push(`M${x},${base}`);
+  for(let c=0;c<6;c++){const peak=Math.max(top+4,base-58);x+=34;p.push(`L${x},${peak}`);x+=34;base=leak?base-14:100;if(leak&&c===5)base=Math.max(top+6,base);p.push(`L${x},${Math.max(base,top+4)}`);}
+  return p.join(' ');}
+ function draw(v){const leak=v==='leak',d=saw(leak);
+  $('lk-svg').innerHTML=`<line x1="0" x2="${W}" y1="${top}" y2="${top}" stroke="#F43F5E" stroke-dasharray="4 4" stroke-width="1.2"/><text x="${W-4}" y="${top-5}" text-anchor="end" font-size="10" fill="#F43F5E" font-family="Inter">-Xmx</text>
+   <path id="lk-p" d="${d}" stroke="${leak?'#F43F5E':'#14B8A6'}"/>${leak?`<text x="${W-8}" y="${top+16}" text-anchor="end" font-size="10.5" font-weight="600" fill="#F43F5E" font-family="Inter">OOM</text>`:''}`;
+  const p=$('lk-p'),L=p.getTotalLength();p.style.strokeDasharray=L;p.style.strokeDashoffset=L;p.getBoundingClientRect();p.style.transition='stroke-dashoffset 1.4s ease';p.style.strokeDashoffset=0;
+  $('lk-cap').innerHTML=leak?'Each GC frees less — the <b>floor rises</b> until the heap hits -Xmx. Watch the low points, not the peaks.':'A healthy <b>sawtooth</b>: memory climbs, GC drops it back to the same floor.';}
+ $('lk-seg').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;$('lk-seg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));draw(b.dataset.v);};
+ document.addEventListener('keydown',()=>{});draw('ok');
+ const D=[['Confirm','jstat -gcutil 4211 5s','Watch the <b>O</b> (old %) column after each full GC. A rising floor confirms a leak.'],
+  ['Dump','jcmd 4211 GC.heap_dump /dumps/runner.hprof','Take a heap dump of the live process (or use the one from HeapDumpOnOutOfMemoryError).'],
+  ['Analyse','Eclipse MAT → Leak Suspects · Dominator tree','The dominator tree shows which single object retains the most memory.'],
+  ['Root cause','Path to GC roots → static RUN_CACHE','Follow the chain to the GC root holding it — usually a static field, ThreadLocal or listener list.']];
+ let s=0;const dd=()=>{$('dg-steps').innerHTML=D.map((d,i)=>`<button data-i="${i}" class="${i===s?'on':''}"><i>${i+1}</i>${d[0]}</button>`).join('');$('dg-cmd').innerHTML=`<span class="p">$</span> ${D[s][1]}`;$('dg-msg').innerHTML=D[s][2];};
+ $('dg-steps').onclick=e=>{const b=e.target.closest('[data-i]');if(b){s=+b.dataset.i;dd();}};dd();
+})();
+
+// ---------------------------------------------------------- 8: interview flip cards
+(function(){
+ const Q=[
+  ['q','Heap vs stack?','The stack is per thread and holds method frames — locals and references — freed on return. The heap is shared, holds every object, and is cleaned by the GC.'],
+  ['q','Why young and old generations?','Most objects die young. Collecting a small young space often is cheap; the few survivors are promoted to old, which is collected rarely.'],
+  ['q','What is Metaspace? Why did it replace PermGen?','Class metadata moved in Java 8 from fixed-size PermGen to Metaspace in native memory, which grows as needed. I still cap it to catch classloader leaks.'],
+  ['q','Can Java leak memory if it has a GC?','Yes. GC only frees unreachable objects — a static map, a ThreadLocal or a listener that still references them keeps them alive forever.'],
+  ['q','What is a stop-the-world pause?','All application threads stop so the GC can move objects safely. Minor pauses are short; G1 and ZGC do most old-gen work concurrently to keep them small.'],
+  ['q','-Xmx or MaxRAMPercentage in Kubernetes?','MaxRAMPercentage — the heap follows the pod limit. Around 75% leaves room for metaspace, thread stacks and direct buffers.'],
+  ['s','Pod restarts with OOMKilled, but there\'s no Java OOM in the logs.','The process, not the heap, exceeded the limit. Check non-heap: thread count, direct buffers, metaspace (Native Memory Tracking). Cap heap at ~75% of the limit.'],
+  ['s','Runner heap grows after every suite run and never comes back down.','A leak. Confirm with jstat (old-gen floor rising), take two heap dumps, compare in MAT, follow the path to GC roots — usually a static cache or ThreadLocal.'],
+  ['s','StackOverflowError when an API returns a Suite as JSON.','Suite ↔ TestCase back-references make Jackson recurse forever. Break the cycle with a DTO or @JsonManagedReference/@JsonBackReference — raising -Xss won\'t help.']];
+ $('iv').innerHTML=Q.map(([t,q,a],i)=>`<div class="card" data-i="${i}" style="--i:${i}"><div class="in"><div class="face"><span class="tag ${t==='s'?'sc':''}">${t==='s'?'Scenario':'Question '+(i+1)}</span><div class="q">${q}</div><span class="hintf">tap to flip ↻</span></div><div class="face back"><span class="tag ${t==='s'?'sc':''}">${t==='s'?'How I\'d answer':'Answer'}</span><div class="a">${a}</div></div></div></div>`).join('');
+ const cards=[...$('iv').children];
+ const cnt=()=>$('iv-n').textContent=`${cards.filter(c=>c.classList.contains('on')).length} / ${cards.length} flipped`;
+ $('iv').onclick=e=>{const c=e.target.closest('.card');if(c){c.classList.toggle('on');cnt();}};
+ $('iv-all').onclick=()=>{cards.forEach((c,i)=>setTimeout(()=>{c.classList.add('on');cnt();},i*70));};
+ $('iv-reset').onclick=()=>{cards.forEach(c=>c.classList.remove('on'));cnt();};cnt();
+})();
+
+// ---------------------------------------------------------- start
+const h=+location.hash.slice(1);go(h>=1&&h<=slides.length?h-1:0);
+</script>
+</body></html>

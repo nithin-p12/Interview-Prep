@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modern Java 8 → 25 · Interview Prep</title>
+<link rel="stylesheet" href="../_shared/design-tokens.css">
+<link rel="stylesheet" href="../_shared/deck.css">
+<style>
+/* 1.1 timeline */
+.tl{position:relative;display:flex;justify-content:space-between;align-items:center;padding:calc(10px*var(--k)) 6px}
+.tl::before{content:"";position:absolute;left:20px;right:20px;top:50%;height:4px;border-radius:4px;background:var(--blue-lt)}
+.tl .tick{position:relative;width:7px;height:7px;border-radius:50%;background:var(--line-strong)}
+.tl .v{position:relative;font:inherit;cursor:pointer;background:#fff;border:2.5px solid var(--blue);color:var(--blue-dk);border-radius:12px;padding:calc(5px*var(--k)) 11px;text-align:center;min-width:70px}
+.tl .v b{display:block;font-size:20px;color:inherit;line-height:1.1}
+.tl .v small{font-size:11.5px;font-weight:700;color:var(--muted)}
+.tl .v.on{background:var(--blue);color:#fff}.tl .v.on small{color:#DBEAFE}
+.feat{display:flex;flex-wrap:wrap;gap:calc(6px*var(--k))}
+.feat span{background:#fff;border:1.5px solid var(--blue-lt);border-radius:999px;padding:calc(3px*var(--k)) 10px;font-size:13px;font-weight:600}
+.feat span i{font-style:normal;font-size:11px;font-weight:800;color:var(--muted);margin-left:4px}
+.feat span.gone{border-color:#FCA5A5;color:#991B1B;text-decoration:line-through}
+/* 1.2 comparison */
+table.cmp td,table.cmp th{font-size:12.8px;padding:calc(4px*var(--k)) 7px}
+table.cmp th:first-child,table.cmp td:first-child{width:96px;font-weight:800;color:var(--ink);background:var(--subtle)}
+table.cmp th.cv{text-align:center;font-size:14px}
+table.cmp .old{color:var(--faint)}
+table.cmp .gain{background:#F0FDF4}
+table.cmp th.gain{background:var(--success-bg);color:#166534}
+table.cmp small{color:var(--muted);font-weight:700}
+/* 2.1 versions */
+.loc{display:flex;gap:10px;align-items:baseline;font-size:13px;color:var(--muted);font-weight:700}
+.loc b{font-size:22px;color:var(--purple-dk)}
+.chg{display:flex;flex-direction:column;gap:calc(5px*var(--k))}
+.chg div{background:#fff;border:1.5px solid var(--purple-lt);border-radius:9px;padding:calc(4px*var(--k)) 10px;font-size:13px;animation:pop .25s}
+.chg div i{font-style:normal;font-weight:800;color:var(--purple-dk);margin-right:6px}
+/* 3.1 grab bag */
+.gb{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:calc(5px*var(--k))}
+.gb button{font:inherit;font-size:13px;font-weight:700;text-align:left;background:#fff;border:1.5px solid var(--green-lt);border-radius:9px;padding:calc(5px*var(--k)) 9px;cursor:pointer;display:flex;justify-content:space-between;gap:6px}
+.gb button em{font-style:normal;font-size:11px;font-weight:800;color:var(--green-dk)}
+.gb button.on{border-color:var(--green);background:var(--green);color:#fff}.gb button.on em{color:#fff}
+/* 3.2 java 25 */
+.j25{display:flex;flex-direction:column;gap:calc(6px*var(--k))}
+.j25 .lbl{margin:0}
+.j25 .row{display:flex;flex-wrap:wrap;gap:5px}
+.j25 button{font:inherit;font-size:12.5px;font-weight:700;border-radius:999px;padding:calc(3px*var(--k)) 10px;cursor:pointer;background:#fff;border:1.5px solid var(--green)}
+.j25 button.pv{border-style:dashed;border-color:var(--amber)}
+.j25 button.rm{border-color:#FCA5A5;color:#991B1B}
+.j25 button.on{box-shadow:0 0 0 3px #FDE68A;border-color:var(--warning)}
+/* 4.2 upgrade */
+.fixes{display:flex;flex-direction:column;gap:calc(5px*var(--k))}
+.fixes .chk{align-items:flex-start;font-size:13px}
+.fixes .chk input{margin-top:3px}
+</style>
+</head>
+<body data-topic="java:Modern Java: 8 → 11 → 17 → 25">
+<header class="topbar">
+ <a class="tbrand" href="../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="00_Java_Core.html" title="All Java Core topics" style="color:#1D4ED8"><svg class="lg" data-logo="openjdk"></svg>Java Core</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<!-- ===================================================== 0. CONTENTS -->
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2><svg class="lg" data-logo="openjdk"></svg>Modern Java: 8 → 11 → 17 → 25</h2><span class="sub">what changed, what to use, what breaks when you upgrade</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="toc" id="toc"></div>
+ <div class="howuse"><span><b>← →</b> keys move between slides</span><span><b>▶ Try it</b> boxes are interactive</span><span>Examples are <b>simplified from FireFlink</b> suite runs</span></div>
+</div>
+</section>
+
+<!-- ===================================================== 1. BIG PICTURE -->
+<section class="cat" data-name="1. The big picture" data-col="b">
+<h1 class="cat-title">1. The big picture</h1>
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.1</span><h2>The LTS timeline</h2><span class="sub">click a version — small dots are the 6-monthly releases in between</span></div>
+ <div class="tl" id="tl"></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="box"><h4 id="tl-h"></h4><div class="feat" id="tl-f"></div></div>
+   <div class="msg" id="tl-msg"></div>
+  </div>
+  <div class="stack">
+   <p class="take"><b>Remember:</b> since Java 10 a new version ships <b>every 6 months</b> (March and September). Companies run <b>LTS</b> versions: 8, 11, 17, 21, 25 — now one every <b>2 years</b>. Features usually arrive as <b>preview</b> first and become final a few releases later.</p>
+   <div class="gtk"><b>Good to know</b><br>"Java 21 feature" in an interview usually means <i>final</i> in 21. A <b>preview</b> feature needs <code>--enable-preview</code> and may still change — don't ship it to production.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.2</span><h2>8 vs 11 vs 17 vs 25 — side by side</h2><span class="sub">pick the version you're on to see what an upgrade gives you</span></div>
+ <div class="ctrl" style="margin-bottom:calc(6px*var(--k))"><span style="font-size:13px;font-weight:800">▶ I'm on Java</span><div class="seg" id="cmp-from"><button class="on" data-v="0">8</button><button data-v="1">11</button><button data-v="2">17</button></div><span class="msg" id="cmp-msg" style="flex:1;padding:4px 10px"></span></div>
+ <table class="t cmp" id="cmp"></table>
+ <p class="take" style="margin-top:calc(8px*var(--k))"><b>Remember:</b> <b>8 → 17</b> is the big jump (records, sealed, text blocks, Spring Boot 3). <b>17 → 21/25</b> adds virtual threads and pattern-matching <code>switch</code>, plus free runtime wins (GC, smaller object headers) without code changes. <small>(21) = arrived in 21, included in 25.</small></p>
+</div>
+</section>
+
+<!-- ===================================================== 2. LANGUAGE -->
+<section class="cat" data-name="2. Language features" data-col="p">
+<h1 class="cat-title">2. Language features</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.1</span><h2>Same code, four versions</h2><span class="sub">step result labels — simplified from FireFlink</span></div>
+ <div class="cols wide-l">
+  <div class="code" id="v-code"></div>
+  <div class="stack">
+   <div class="seg" id="v-seg"><button class="on" data-v="0">Java 8</button><button data-v="1">11</button><button data-v="2">17</button><button data-v="3">21 / 25</button></div>
+   <div class="loc">result types: <b id="v-loc"></b> lines</div>
+   <div class="chg" id="v-chg"></div>
+   <p class="take"><b>Remember:</b> records kill boilerplate, <code>sealed</code> lists every subtype, and pattern-matching <code>switch</code> makes the compiler check you handled them all. Together they model "one of these results" cleanly.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.2</span><h2>Records</h2><span class="sub">immutable data carriers — can a record…?</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="RunRequest.java">
+public record RunRequest(String suiteId, int threads, List<String> tags) {
+    public RunRequest {                        // compact constructor
+        Objects.requireNonNull(suiteId, "suiteId");
+        if (threads < 1)
+            throw new IllegalArgumentException("threads must be >= 1");
+        tags = List.copyOf(tags);              // ✅ defensive copy
+    }
+    static RunRequest quick(String id) {       // static factory is fine
+        return new RunRequest(id, 1, List.of());
+    }
+}
+// generated: private final fields, canonical constructor,
+// suiteId(), threads(), tags(), equals, hashCode, toString</script></div>
+   <p class="take"><b>Remember:</b> a record is <b>final</b>, its fields are <b>final</b>, accessors have no <code>get</code> prefix. Validate in the <b>compact constructor</b>. Immutability is <b>shallow</b> — copy mutable lists.</p>
+  </div>
+  <div class="pqs">
+   <div class="pq" data-opts="yes|no" data-ans="no"><pre>extend another class?</pre><div class="why">Records implicitly extend <code>java.lang.Record</code> and are final.</div></div>
+   <div class="pq" data-opts="yes|no" data-ans="yes"><pre>implement an interface?</pre><div class="why">Yes — e.g. <code>record Passed(long ms) implements Outcome</code>.</div></div>
+   <div class="pq" data-opts="yes|no" data-ans="no"><pre>declare an extra
+instance field?</pre><div class="why">Only the components are instance fields. Static fields and methods are allowed.</div></div>
+   <div class="pq" data-opts="yes|no" data-ans="no"><pre>be a JPA @Entity?</pre><div class="why">No — JPA needs a no-arg constructor, mutable state and proxies. Use records for DTOs and query projections.</div></div>
+   <div class="pq" data-opts="yes|no" data-ans="yes"><pre>be a Spring request /
+response DTO?</pre><div class="why">Yes — Jackson (2.12+) maps records, and <code>@Valid</code> works on components.</div></div>
+   <div class="pq" data-opts="yes|no" data-ans="yes"><pre>override toString()
+or an accessor?</pre><div class="why">Yes, you can override generated methods — e.g. mask a token in <code>toString()</code>.</div></div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.3</span><h2>Sealed types + pattern-matching switch</h2><span class="sub">toggle changes and watch the compiler</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="fixes" id="sw-opts">
+    <label class="chk"><input type="checkbox" data-o="add"> add a new result type <code>Retried</code></label>
+    <label class="chk"><input type="checkbox" data-o="case"> handle <code>case Retried r</code></label>
+    <label class="chk"><input type="checkbox" data-o="def"> add a <code>default -&gt;</code> branch</label>
+    <label class="chk"><input type="checkbox" data-o="swap"> put the plain <code>Passed</code> case before the guarded one</label>
+   </div>
+   <div class="console" id="sw-out"></div>
+   <div class="msg" id="sw-msg"></div>
+  </div>
+  <div class="stack">
+   <div class="code" id="sw-code"></div>
+   <div class="gtk"><b>Good to know</b><br><code>when</code> adds a condition (a <b>guard</b>). Record patterns like <code>Passed(var ms)</code> pull the fields out directly (21). <code>non-sealed</code> re-opens one branch for extension.</div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 3. APIS & 25 -->
+<section class="cat" data-name="3. Everyday APIs &amp; Java 25" data-col="g">
+<h1 class="cat-title">3. Everyday APIs &amp; Java 25</h1>
+<div class="slide c-g">
+ <div class="sh"><span class="sn">3.1</span><h2>Small upgrades you'll use daily</h2><span class="sub">click one: the old way, the new way, and the trap</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="gb" id="gb"></div>
+   <div class="msg" id="gb-msg"></div>
+  </div>
+  <div class="code" id="gb-code"></div>
+ </div>
+</div>
+
+<div class="slide c-g">
+ <div class="sh"><span class="sn">3.2</span><h2>What's new in Java 25 (LTS, Sept 2025)</h2><span class="sub">click a feature — solid = final, dashed = still preview</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="j25" id="j25"></div>
+   <div class="msg" id="j25-msg"></div>
+  </div>
+  <div class="stack">
+   <div class="code"><script type="text/plain" data-mac="Java25.java">
+// JEP 512 — no class, no static, no String[] args
+void main() {
+    IO.println("FireFlink agent up");      // run: java Agent.java
+}
+
+// JEP 513 — validate BEFORE super(...)
+class MobileRun extends Run {
+    MobileRun(Device d) {
+        if (d == null) throw new IllegalArgumentException("device");
+        super(d.id());                     // ✅ legal in 25
+    }
+}
+
+// JEP 506 — ThreadLocal's successor for virtual threads
+static final ScopedValue<String> TENANT = ScopedValue.newInstance();
+ScopedValue.where(TENANT, "acme").run(() -> runner.execute(suite));</script></div>
+   <p class="take"><b>Remember:</b> for an interview, know that 25 is the current LTS and name 3–4 features: <b>compact object headers</b> (less memory for free), <b>scoped values</b>, <b>flexible constructor bodies</b>, and <b>simpler <code>main</code></b>.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 4. ALL IN ACTION -->
+<section class="cat" data-name="4. All in action" data-col="k">
+<h1 class="cat-title">4. All in action</h1>
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.1</span><h2>Lowest LTS that compiles it?</h2><span class="sub">pick the oldest LTS version where this works</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="pqs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="pq" data-opts="8|11|17|21|25" data-ans="11"><pre>var runs = new ArrayList&lt;Run&gt;();</pre><div class="why"><code>var</code> came in <b>10</b> (not LTS) → first LTS is <b>11</b>. Local variables only — not fields or parameters.</div></div>
+  <div class="pq" data-opts="8|11|17|21|25" data-ans="17"><pre>String q = """
+    SELECT * FROM runs
+    WHERE status = 'FAILED'
+    """;</pre><div class="why">Text blocks: final in <b>15</b> → LTS <b>17</b>. <a class="go" data-go="3.1">3.1</a></div></div>
+  <div class="pq" data-opts="8|11|17|21|25" data-ans="17"><pre>List&lt;String&gt; ids = runs.stream()
+    .map(Run::id)
+    .toList();</pre><div class="why"><code>Stream.toList()</code> came in <b>16</b> → <b>17</b>. It returns an <b>unmodifiable</b> list.</div></div>
+  <div class="pq" data-opts="8|11|17|21|25" data-ans="21"><pre>return switch (o) {
+    case Passed p -&gt; "PASS";
+    case Failed f -&gt; "FAIL";
+};</pre><div class="why">Pattern matching for <code>switch</code> became final in <b>21</b>. In 17 it was only a preview. <a class="go" data-go="2.3">2.3</a></div></div>
+  <div class="pq" data-opts="8|11|17|21|25" data-ans="21"><pre>Run last = runs.getLast();</pre><div class="why">Sequenced collections (<b>21</b>): <code>getFirst()</code>, <code>getLast()</code>, <code>reversed()</code> on List, Deque, LinkedHashSet/Map.</div></div>
+  <div class="pq" data-opts="8|11|17|21|25" data-ans="25"><pre>void main() {
+    IO.println("hi");
+}</pre><div class="why">Compact source files and instance <code>main</code> methods — final in <b>25</b> (JEP 512). <a class="go" data-go="3.2">3.2</a></div></div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.2</span><h2>Upgrade bug: "8 → 17 + Spring Boot 3 won't start"</h2><span class="sub">tick each fix and watch the startup log — simplified from a FireFlink service upgrade</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="fixes" id="up"></div>
+   <div class="msg" id="up-msg"></div>
+  </div>
+  <div class="console" id="up-log"></div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 5. INTERVIEW Q&A -->
+<section class="cat" data-name="5. Interview Q&amp;A" data-col="i">
+<h1 class="cat-title">5. Interview Q&amp;A</h1>
+<div class="slide c-i">
+ <div class="sh"><span class="sn">5.1</span><h2>Interview questions</h2><span class="sub">click a question to reveal the answer · pill = slide that explains it</span></div>
+ <div class="qbar"><input id="qa-find" type="search" placeholder="Filter questions… (e.g. record, sealed, jakarta)"><span class="chip ok" id="qa-count"></span><button class="btn" id="qa-random">🎲 Random question</button><label class="donebox" style="margin-left:auto"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="acc" id="qa-list"></div>
+</div>
+</section>
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <span class="kbd">← → keys</span>
+</footer>
+
+<script src="../_shared/deck.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const on=(box,b)=>box.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+
+// ===================================================== 1.1 timeline
+(function(){
+ const V=[
+  ['8','Mar 2014',[['Lambdas &amp; Streams'],['Optional'],['java.time'],['default methods'],['CompletableFuture'],['Metaspace replaces PermGen']],'The baseline every interviewer assumes you know cold — Streams, Optional and lambdas are still daily tools.',0],
+  ['11','Sep 2018',[['var','10'],['List.of / Map.of','9'],['modules','9'],['G1 default GC','9'],['HttpClient'],['String isBlank / strip / lines / repeat'],['Files.readString'],['java App.java'],['Java EE &amp; CORBA modules','gone']],'First LTS of the 6-month era. Upgrading from 8 often breaks on the <b>removed</b> Java EE modules (JAXB, javax.annotation).',8],
+  ['17','Sep 2021',[['switch expressions','14'],['helpful NPEs','14'],['text blocks','15'],['records','16'],['instanceof patterns','16'],['Stream.toList','16'],['sealed classes'],['strong encapsulation of JDK internals']],'The modern baseline: <b>Spring Boot 3 needs 17+</b>. Most of the "new Java" language features you\'re asked about are here.',5],
+  ['21','Sep 2023',[['virtual threads'],['pattern-matching switch'],['record patterns'],['sequenced collections'],['generational ZGC']],'The concurrency release — virtual threads make blocking I/O cheap again (page 10 covers them).',3],
+  ['25','Sep 2025',[['instance main &amp; compact source files'],['flexible constructor bodies'],['module imports'],['scoped values'],['compact object headers'],['AOT startup improvements'],['generational Shenandoah']],'The current LTS. Mostly polish plus free runtime wins — see <a class="go" data-go="3.2">3.2</a>.',3]];
+ let html='';V.forEach((v,i)=>{if(i)html+='<span class="tick"></span>'.repeat(Math.min(v[4],3));html+=`<button class="v" data-i="${i}"><b>${v[0]}</b><small>${v[1]}</small></button>`;});
+ $('tl').innerHTML=html;
+ function pick(i){const v=V[i];$('tl').querySelectorAll('.v').forEach(b=>b.classList.toggle('on',+b.dataset.i===i));
+  $('tl-h').innerHTML=`Java ${v[0]} <span class="chip ok">LTS</span> <span style="font-size:12.5px;color:var(--muted)">${v[1]}</span>`;
+  $('tl-f').innerHTML=v[2].map(f=>`<span class="${f[1]==='gone'?'gone':''}">${f[0]}${f[1]&&f[1]!=='gone'?`<i>${f[1]}</i>`:''}${f[1]==='gone'?' <i>removed</i>':''}</span>`).join('');
+  $('tl-msg').innerHTML=v[3]+(i>0?'<br><small style="color:var(--muted)">Small grey numbers = the non-LTS release where it first became final.</small>':'');}
+ $('tl').onclick=e=>{const b=e.target.closest('.v');if(b)pick(+b.dataset.i);};pick(2);
+})();
+
+// ===================================================== 1.2 comparison
+(function(){
+ const H=['8','11','17','25'];
+ const R=[
+  ['Language','lambdas, method refs, default methods','+ <code>var</code>, <code>var</code> in lambdas','+ records, sealed, text blocks, switch expressions, <code>instanceof</code> patterns','+ pattern-matching switch, record patterns <small>(21)</small>, flexible constructors, instance <code>main</code>'],
+  ['APIs','Streams, Optional, java.time','+ <code>List.of</code>, HttpClient, String &amp; Files helpers','+ <code>Stream.toList()</code>, helpful NPE messages','+ <code>getFirst/getLast</code> <small>(21)</small>, stream gatherers <small>(24)</small>, ScopedValue'],
+  ['Concurrency','platform threads, CompletableFuture','same','same','+ <b>virtual threads</b> <small>(21)</small>, no pinning on <code>synchronized</code> <small>(24)</small>'],
+  ['GC &amp; runtime','Parallel GC default, Metaspace','G1 default, JFR free, container-aware','ZGC &amp; Shenandoah production-ready','generational ZGC <small>(21)</small> &amp; Shenandoah, compact object headers, AOT cache'],
+  ['Spring Boot','2.x only','2.x only','3.x / 4.x minimum','3.x / 4.x ✅'],
+  ['Upgrade pain','—','Java EE modules removed (JAXB…)','deep reflection blocked, <code>javax</code> → <code>jakarta</code> with Boot 3','small — mostly library versions']];
+ const GAIN=['Records, sealed types, text blocks, Spring Boot 3, a far better GC, and later virtual threads. This is the upgrade with the biggest payoff.','Records, sealed types and pattern matching, Spring Boot 3, plus virtual threads in 21+.','Virtual threads, pattern-matching switch, sequenced collections and free memory/GC wins — usually with little code change.'];
+ function draw(from){
+  $('cmp').innerHTML=`<tr><th></th>${H.map((h,j)=>`<th class="cv ${j>from?'gain':''}">Java ${h}</th>`).join('')}</tr>`+
+   R.map(r=>`<tr><td>${r[0]}</td>${r.slice(1).map((c,j)=>`<td class="${j<from?'old':j>from?'gain':''}">${c}</td>`).join('')}</tr>`).join('');
+  $('cmp-msg').innerHTML='<b>You gain:</b> '+GAIN[from];}
+ $('cmp-from').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;on($('cmp-from'),b);draw(+b.dataset.v);};draw(0);
+})();
+
+// ===================================================== 2.1 same code, four versions
+(function(){
+ const S=[
+`// Outcome, Passed, Failed: classes with fields, constructor,
+// getters, equals, hashCode, toString           (~60 lines)
+
+List<StepResult> failed = results.stream()
+        .filter(r -> r.getStatus() == Status.FAILED)
+        .collect(Collectors.toList());
+StepResult last = results.get(results.size() - 1);
+
+String label(Outcome o) {
+    if (o instanceof Passed) {
+        Passed p = (Passed) o;                    // cast by hand
+        return "PASS in " + p.getMs() + "ms";
+    } else if (o instanceof Failed) {
+        Failed f = (Failed) o;
+        return "FAIL: " + f.getReason();
+    }
+    throw new IllegalStateException("unknown " + o); // ❌ found at runtime
+}`,
+`// Outcome, Passed, Failed: still ~60 lines of boilerplate
+
+var failed = results.stream()                     // ✅ var (10)
+        .filter(r -> r.getStatus() == Status.FAILED)
+        .collect(Collectors.toList());
+var last = results.get(results.size() - 1);
+if (last.getReason().isBlank()) skip(last);       // ✅ String API (11)
+
+String label(Outcome o) {
+    if (o instanceof Passed) {
+        Passed p = (Passed) o;
+        return "PASS in " + p.getMs() + "ms";
+    } else if (o instanceof Failed) {
+        Failed f = (Failed) o;
+        return "FAIL: " + f.getReason();
+    }
+    throw new IllegalStateException("unknown " + o);
+}`,
+`sealed interface Outcome permits Passed, Failed {}  // ✅ sealed (17)
+record Passed(long ms) implements Outcome {}       // ✅ record (16)
+record Failed(String reason) implements Outcome {}
+
+var failed = results.stream()
+        .filter(r -> r.status() == Status.FAILED)
+        .toList();                                 // ✅ toList (16)
+var last = results.get(results.size() - 1);
+
+String label(Outcome o) {
+    if (o instanceof Passed p)                     // ✅ pattern (16)
+        return "PASS in " + p.ms() + "ms";
+    if (o instanceof Failed f)
+        return "FAIL: " + f.reason();
+    throw new IllegalStateException("unknown " + o);
+}`,
+`sealed interface Outcome permits Passed, Failed, Skipped {}
+record Passed(long ms) implements Outcome {}
+record Failed(String reason) implements Outcome {}
+record Skipped() implements Outcome {}
+
+var failed = results.stream()
+        .filter(r -> r.status() == Status.FAILED)
+        .toList();
+var last = results.getLast();                      // ✅ sequenced (21)
+
+String label(Outcome o) {
+    return switch (o) {                            // ✅ pattern switch (21)
+        case Passed(var ms) when ms > 5_000 -> "SLOW " + ms + "ms";
+        case Passed(var ms)  -> "PASS in " + ms + "ms";
+        case Failed(var why) -> "FAIL: " + why;
+        case Skipped s       -> "SKIP";
+    };                     // ✅ no default — compiler checks every case
+}`];
+ const LOC=['~60','~60','3','4'];
+ const CH=[
+  [['8','Getters, casts, and an if/else chain that can silently miss a new type.'],['8','<code>collect(Collectors.toList())</code> returns a mutable list.']],
+  [['10','<code>var</code> — the type is inferred, still static typing.'],['11','<code>isBlank()</code>, <code>strip()</code>, <code>lines()</code>, <code>repeat()</code>.'],['—','The result classes are unchanged — nothing new for data modelling.']],
+  [['16','<b>Records</b> replace about 60 lines with 3.'],['17','<b>sealed</b> lists every allowed subtype.'],['16','<code>instanceof Passed p</code> checks and casts in one step.'],['16','<code>.toList()</code> — shorter, and <b>unmodifiable</b>.']],
+  [['21','<b>switch</b> on types with record patterns and <code>when</code> guards.'],['21','Add <code>Skipped</code> and forget a case → <b>compile error</b>, not a production bug.'],['21','<code>getLast()</code> from sequenced collections.']]];
+ function draw(v){$('v-code').innerHTML=macHTML(['Label8.java','Label11.java','Label17.java','Label25.java'][v],S[v],'java');
+  const lines=S[v].split('\n');markLines($('v-code').querySelector('.mac'),lines.map((l,i)=>l.includes('✅')?i+1:0).filter(Boolean));
+  $('v-loc').textContent=LOC[v];$('v-chg').innerHTML=CH[v].map(c=>`<div><i>${c[0]}</i>${c[1]}</div>`).join('');}
+ $('v-seg').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;on($('v-seg'),b);draw(+b.dataset.v);};draw(0);
+})();
+
+// ===================================================== 2.3 sealed + switch
+(function(){
+ const box=$('sw-opts'),get=o=>box.querySelector(`[data-o=${o}]`).checked;
+ function draw(){box.querySelectorAll('.chk').forEach(l=>l.classList.toggle('on',l.querySelector('input').checked));
+  const add=get('add'),cs=get('case')&&add,def=get('def'),swap=get('swap');
+  const g='        case Passed(var ms) when ms > 5_000 -> "SLOW";',p='        case Passed(var ms) -> "PASS";';
+  const src=`sealed interface Outcome permits Passed, Failed${add?', Retried':''} {}
+record Passed(long ms) implements Outcome {}
+record Failed(String reason) implements Outcome {}${add?'\nrecord Retried(int attempt) implements Outcome {}':''}
+
+String label(Outcome o) {
+    return switch (o) {
+${swap?p+'\n'+g:g+'\n'+p}
+        case Failed(var why) -> "FAIL: " + why;${cs?'\n        case Retried r -> "RETRY #" + r.attempt();':''}${def?'\n        default -> "?";':''}
+    };
+}`;
+  $('sw-code').innerHTML=macHTML('Label.java',src,'java');
+  const L=src.split('\n'),ln=t=>L.findIndex(x=>x.includes(t))+1;
+  let out,msg,mark=[];
+  if(swap){out=`<span class="err">Label.java:${ln('when')}: error: this case label is dominated by a preceding case label</span>`;msg='❌ The plain <code>Passed</code> case already matches every Passed, so the guarded one can never run. Put <b>specific</b> (guarded) cases first.';mark=[ln('when')];}
+  else if(add&&!cs&&!def){out=`<span class="err">Label.java:${ln('switch')}: error: the switch expression does not cover all possible input values</span>`;msg='✅ This error is the feature: you added a type, and the compiler lists <b>every switch</b> you forgot to update.';mark=[ln('switch'),ln('Retried(')];}
+  else{out='<span class="okc">$ javac Label.java\nBUILD SUCCESS</span>';
+   msg=def&&add&&!cs?'⚠️ It compiles, but <code>Retried</code> silently becomes <b>"?"</b>. A <code>default</code> turns off the exhaustiveness check — avoid it with sealed types.'
+    :def?'⚠️ Compiles, but the <code>default</code> is unnecessary — and it will hide the next type someone adds.'
+    :add?'✅ Every subtype handled, no default — the compiler is guarding future changes.'
+    :'✅ The switch covers Passed and Failed — exactly the permitted types, so no <code>default</code> is needed.';
+   mark=def?[ln('default')]:cs?[ln('case Retried')]:[];}
+  markLines($('sw-code').querySelector('.mac'),mark);$('sw-out').innerHTML=out;$('sw-msg').innerHTML=msg;}
+ box.querySelectorAll('input').forEach(i=>i.onchange=draw);draw();
+})();
+
+// ===================================================== 3.1 grab bag
+(function(){
+ const G=[
+  ['var','10',`// before
+Map<String, List<StepResult>> byTc = new HashMap<>();
+// after
+var byTc = new HashMap<String, List<StepResult>>();`,'Local variables only, needs an initializer: <code>var x = null;</code> and <code>var</code> fields don\'t compile. Skip it when the type isn\'t obvious from the right-hand side.'],
+  ['Text blocks','15',`String sql = """
+    SELECT id, status
+    FROM runs
+    WHERE suite_id = ?
+    """;`,'Indentation is stripped up to the closing <code>"""</code>. Great for SQL, JSON and test payloads.','text'],
+  ['switch expression','14',`String color = switch (status) {
+    case PASSED -> "green";
+    case FAILED, ERROR -> "red";
+    default -> {
+        log.warn("odd status {}", status);
+        yield "grey";                     // value from a block
+    }
+};`,'Arrow cases don\'t fall through. A switch <b>expression</b> must cover every value. <code>yield</code> returns a value from a block.'],
+  ['String helpers','11',`"  ".isBlank();               // true
+"\\u2003 id ".strip();       // Unicode-aware trim()
+log.lines().count();          // count lines
+"-".repeat(40);               // separator`,'<code>strip()</code> handles Unicode whitespace; <code>trim()</code> only removes chars ≤ space.'],
+  ['List.of / toList','9 · 16',`List<String> a = List.of("chrome", "firefox");  // immutable
+List<String> b = stream.toList();               // unmodifiable
+List<String> c = stream.collect(Collectors.toList()); // mutable
+a.add("edge");                     // ❌ UnsupportedOperationException
+List.of("x", null);                // ❌ NullPointerException`,'<code>List.of</code> rejects <b>nulls</b> and changes. <code>Stream.toList()</code> allows nulls but is still unmodifiable.'],
+  ['Files.readString','11',`// before
+String s = new String(Files.readAllBytes(path), UTF_8);
+// after
+String s = Files.readString(path);           // UTF-8
+Files.writeString(report, html);`,'Fine for small files. For huge logs, stream lines with <code>Files.lines(path)</code> instead.'],
+  ['HttpClient','11',`HttpClient client = HttpClient.newHttpClient();
+HttpRequest req = HttpRequest.newBuilder(URI.create(hookUrl))
+        .POST(BodyPublishers.ofString(json))
+        .header("Content-Type", "application/json")
+        .build();
+client.sendAsync(req, BodyHandlers.ofString())
+      .thenAccept(r -> log.info("hook {}", r.statusCode()));`,'Supports HTTP/2 and async out of the box. Reuse one client — it holds the connection pool.'],
+  ['Sequenced collections','21',`results.getFirst();          // was results.get(0)
+results.getLast();           // was results.get(size - 1)
+results.reversed();          // a view, not a copy
+linkedMap.firstEntry();      // also on LinkedHashMap / Set`,'New interfaces <code>SequencedCollection</code> / <code>SequencedMap</code> — one API for "first and last".'],
+  ['Helpful NPE','14',`run.getSuite().getOwner().getEmail();
+// Java 8:  java.lang.NullPointerException
+// Java 14+: Cannot invoke "Owner.getEmail()" because
+//   the return value of "Suite.getOwner()" is null`,'The message names <b>which</b> part of the chain was null. On by default since 15.'],
+  ['Optional additions','9 · 10 · 11',`findRun(id).orElseThrow();            // 10: NoSuchElementException
+findRun(id).isEmpty();                // 11
+findRun(id).ifPresentOrElse(this::show, this::notFound); // 9
+findRun(id).or(() -> archive.find(id));                  // 9`,'Prefer <code>orElseThrow()</code> over <code>get()</code> — same behaviour, but the name makes the risk obvious.']];
+ $('gb').innerHTML=G.map((g,i)=>`<button data-i="${i}">${g[0]}<em>${g[1]}</em></button>`).join('');
+ function pick(i){const g=G[i];on($('gb'),$('gb').children[i]);
+  $('gb-code').innerHTML=macHTML(g[0].replace(/\W+/g,'')+'.java',g[2],g[4]||'java');
+  $('gb-msg').innerHTML=`<b>${g[0]}</b> <span class="chip ok">Java ${g[1]}</span><br><b>Trap:</b> ${g[3]}`;}
+ $('gb').onclick=e=>{const b=e.target.closest('[data-i]');if(b)pick(+b.dataset.i);};pick(4);
+})();
+
+// ===================================================== 3.2 java 25
+(function(){
+ const F=[
+  ['f','Compact source &amp; instance main','JEP 512','Write <code>void main()</code> without a class or <code>static</code>; <code>IO.println</code> is built in. Great for scripts and teaching.'],
+  ['f','Flexible constructor bodies','JEP 513','Run statements (validation, computing arguments) <b>before</b> <code>super(...)</code> — as long as they don\'t use <code>this</code>.'],
+  ['f','Module import declarations','JEP 511','<code>import module java.base;</code> imports every exported package of a module in one line.'],
+  ['f','Scoped values','JEP 506','Immutable per-request data (tenant, trace id) shared with called code. Cheaper and safer than <code>ThreadLocal</code> with millions of virtual threads.'],
+  ['f','Compact object headers','JEP 519','Object header shrinks from 12 to 8 bytes → less heap for the same data. Opt-in: <code style="white-space:nowrap">-XX:+UseCompactObjectHeaders</code>.'],
+  ['f','AOT ergonomics &amp; profiling','JEP 514 · 515','Easier to create an AOT cache, which also stores method profiles → faster startup and warm-up.'],
+  ['f','Generational Shenandoah','JEP 521','The low-pause Shenandoah GC gets a young generation — now a production feature.'],
+  ['p','Primitive types in patterns','JEP 507 · preview','<code>case int i when i &gt; 100</code> — patterns on primitives. Still preview.'],
+  ['p','Structured concurrency','JEP 505 · preview','Treat a group of subtasks as one unit: if one fails, cancel the rest. Still preview (page 10).'],
+  ['p','Stable values','JEP 502 · preview','Lazily initialised, set-once values the JVM can optimise like constants. Preview.'],
+  ['r','32-bit x86 port removed','JEP 503','No more 32-bit x86 builds.']];
+ const grp=(t,c,l)=>`<p class="lbl">${l}</p><div class="row">${F.map((f,i)=>f[0]===t?`<button class="${c}" data-i="${i}">${f[1]}</button>`:'').join('')}</div>`;
+ $('j25').innerHTML=grp('f','','Final ✅')+grp('p','pv','Still preview ⚠️')+grp('r','rm','Removed');
+ function pick(i){const f=F[i];$('j25').querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.i===i));
+  $('j25-msg').innerHTML=`<b>${f[1]}</b> <span class="chip ${f[0]==='p'?'warn':f[0]==='r'?'bad':'ok'}">${f[2]}</span><br>${f[3]}`;}
+ $('j25').onclick=e=>{const b=e.target.closest('[data-i]');if(b)pick(+b.dataset.i);};pick(4);
+})();
+
+// ===================================================== 4.2 upgrade bug
+(function(){
+ const X=[
+  ['Build &amp; image on 17','<code>&lt;release&gt;17&lt;/release&gt;</code> in Maven and an <code>eclipse-temurin:17-jre</code> base image','<span class="err">Error: UnsupportedClassVersionError: RunService has been compiled by a more recent version of the Java Runtime (class file version 61.0), this version only recognizes up to 52.0</span>','Code compiled for 17 but the container still runs Java 8.'],
+  ['<code>javax.*</code> → <code>jakarta.*</code>','Spring Boot 3 uses Jakarta EE 9+: servlet, persistence, validation','<span class="err">[ERROR] RunController.java:[5] package javax.validation.constraints does not exist</span>','Boot 3 moved to the <code>jakarta</code> namespace — an OpenRewrite recipe does most of it.'],
+  ['Upgrade reflection-heavy libraries','old Lombok, mockito, cglib, XML mappers','<span class="err">InaccessibleObjectException: Unable to make field private final byte[] java.lang.String.value accessible: module java.base does not "opens java.lang" to unnamed module</span>','Java 17 blocks deep reflection into JDK internals. Upgrade the library; <code>--add-opens</code> is only a temporary workaround.'],
+  ['Add JAXB back','removed from the JDK in 11','<span class="err">NoClassDefFoundError: javax/xml/bind/DatatypeConverter</span>','JAXB left the JDK in 11. Use <code>java.util.Base64</code> or add <code>jakarta.xml.bind-api</code>.']];
+ $('up').innerHTML=X.map((x,i)=>`<label class="chk" data-i="${i}"><input type="checkbox"><span><b>${x[0]}</b><br><small style="color:var(--muted)">${x[1]}</small></span></label>`).join('');
+ const boxes=[...$('up').querySelectorAll('input')];
+ function draw(){const done=boxes.map(b=>b.checked);$('up').querySelectorAll('.chk').forEach((l,i)=>l.classList.toggle('on',done[i]));
+  const first=done.indexOf(false);
+  const log=['<span class="dim">$ docker run fireflink/run-service:2.0</span>'];
+  if(first<0)log.push('<span class="dim">  .   ____          _\n :: Spring Boot ::  (v3.x)</span>','Starting RunServiceApplication using Java 17','Tomcat started on port 8080 (http)','<span class="okc">Started RunServiceApplication in 4.1 seconds ✅</span>');
+  else log.push(X[first][2]);
+  $('up-log').innerHTML=log.join('\n');
+  $('up-msg').innerHTML=first<0?'✅ <b>All fixed.</b> Real upgrades fail <b>one error at a time</b> like this, so fix in this order: build/runtime → namespaces → libraries → removed modules.'
+   :`<b>Why:</b> ${X[first][3]}<br><small style="color:var(--muted)">${done.filter(Boolean).length} / ${X.length} fixed — each fix reveals the next error.</small>`;}
+ boxes.forEach(b=>b.onchange=draw);draw();
+})();
+
+// ===================================================== 5.1 interview Q&A
+DECK.qa([
+ ['Why move from Java 8 to 17, 21 or 25?','Language (records, sealed, pattern matching, text blocks), better GCs and container support, virtual threads (21+), security updates — and Spring Boot 3 requires 17+.',['1.1','1.2']],
+ ['What is an LTS release and how often do they come?','A release with years of vendor support. Since 17 there\'s an LTS every 2 years (17, 21, 25); a feature release ships every 6 months.',['1.1']],
+ ['What is a record? What does it generate?','A final, shallowly immutable data carrier: private final fields, canonical constructor, accessors (<code>id()</code>), equals, hashCode, toString.',['2.2']],
+ ['How do you validate data in a record?','In the compact constructor (<code>public RunRequest { … }</code>); also defensively copy mutable components with <code>List.copyOf</code>.',['2.2']],
+ ['Can a record be a JPA entity?','No — JPA needs a no-arg constructor, mutable fields and non-final classes for proxies. Use records for DTOs and projections.',['2.2']],
+ ['Why use sealed classes?','To restrict which classes can implement a type, so the hierarchy is closed and the compiler can check switches for exhaustiveness.',['2.3']],
+ ['Why avoid default in a switch over a sealed type?','A default disables the exhaustiveness check — new subtypes silently fall into it instead of failing compilation.',['2.3']],
+ ['What does "dominated case label" mean?','A more general case placed before a more specific one (e.g. unguarded before guarded) — the later case can never match, so it\'s a compile error.',['2.3']],
+ ['Switch statement vs switch expression?','An expression returns a value, uses arrow cases without fall-through, must be exhaustive, and uses <code>yield</code> to return from a block.',['3.1']],
+ ['What are the rules for var?','Local variables with an initializer only (also for-loops, try-with-resources, lambda params from 11). Not fields, method params or return types; still statically typed.',['3.1','4.1']],
+ ['List.of vs Arrays.asList vs Stream.toList vs Collectors.toList?','List.of: immutable, no nulls. Arrays.asList: fixed size, backed by the array. Stream.toList: unmodifiable, allows nulls. Collectors.toList: mutable ArrayList in practice.',['3.1']],
+ ['What are sequenced collections?','Java 21 interfaces adding <code>getFirst</code>, <code>getLast</code>, <code>addFirst</code>, <code>reversed</code> to ordered collections like List, Deque, LinkedHashSet/Map.',['3.1','4.1']],
+ ['What are helpful NullPointerExceptions?','Since Java 14, NPE messages name exactly which variable or method call was null in a chain.',['3.1']],
+ ['What are virtual threads, in one line?','Lightweight JVM-managed threads (21) that make blocking I/O code scale like async code — covered in depth on page 10.',['1.2']],
+ ['What\'s new in Java 25?','LTS. Final: instance main methods, flexible constructor bodies, module imports, scoped values, compact object headers, AOT improvements, generational Shenandoah. Preview: structured concurrency, primitive patterns, stable values.',['3.2']],
+ ['What breaks when moving to Spring Boot 3?','Java 17 baseline, <code>javax.*</code> → <code>jakarta.*</code>, libraries that need upgrading, and removed or renamed configuration properties.',['4.2']],
+ ['What is InaccessibleObjectException and how do you fix it?','Since 16/17 the JDK blocks deep reflection into its internals. Upgrade the library; use <code>--add-opens</code> only as a temporary workaround.',['4.2']]
+]);
+</script>
+</body></html>

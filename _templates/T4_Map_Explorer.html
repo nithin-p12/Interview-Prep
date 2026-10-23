@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JVM Memory · Map Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F172A;--text:#334155;--muted:#64748B;--faint:#94A3B8;--line:#E2E8F0;--soft:#F8FAFC;--brand:#4F46E5;--red:#DC2626;
+ --font:'Inter',system-ui,'Segoe UI',sans-serif;--mono:'JetBrains Mono',ui-monospace,Consolas,monospace}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:14px/1.5 var(--font);color:var(--text);background:#fff;display:grid;grid-template-rows:52px minmax(0,1fr) 46px;grid-template-columns:minmax(0,1fr) 380px;height:100vh;overflow:hidden}
+code{font-family:var(--mono);font-size:.86em;background:#F1F5F9;border-radius:4px;padding:0 4px;color:#0F172A}
+button{font:inherit;cursor:pointer}
+/* header */
+header{grid-column:1/3;display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--line);background:#fff;z-index:3}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#6366F1,#0EA5E9);display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px}
+.brand b{display:block;color:var(--ink);font-size:15px;line-height:1.2}
+.brand small{color:var(--muted);font-size:11.5px}
+.lenses{display:flex;gap:2px;background:#F1F5F9;border-radius:10px;padding:3px;margin-left:auto}
+.lenses button{border:0;background:transparent;border-radius:8px;padding:5px 12px;font-size:13px;font-weight:600;color:var(--muted)}
+.lenses button:hover{color:var(--ink)}
+.lenses button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(15,23,42,.12)}
+.hbtn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 11px;font-size:13px;font-weight:600;color:var(--ink)}
+.hbtn:hover{background:var(--soft)}
+.tag{font-size:11px;font-weight:600;color:var(--muted);border:1px dashed var(--line);border-radius:6px;padding:2px 7px}
+/* stage */
+main{grid-column:1;grid-row:2;display:flex;flex-direction:column;min-height:0;min-width:0;background:#FBFCFE radial-gradient(#E2E8F0 1px,transparent 1px) 0 0/18px 18px}
+.lensbar{display:flex;flex-wrap:nowrap;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.92);font-size:13px;height:44px;overflow:hidden;white-space:nowrap}
+.lensbar .d{color:var(--muted)}
+.lensbar .d b{color:var(--ink)}
+.btn{border:1px solid var(--line);background:#fff;border-radius:7px;padding:3px 10px;font-size:12.5px;font-weight:600;color:var(--ink)}
+.btn:hover{background:var(--soft)}
+.btn.p{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.p:hover{background:#1E293B}
+.btn:disabled{opacity:.45;cursor:default}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{border:0;background:#fff;padding:3px 9px;font-size:12px;font-weight:600;color:var(--muted)}
+.seg button.on{background:#EEF2FF;color:var(--brand)}
+.stat{font-family:var(--mono);font-size:12px;color:var(--ink);background:#F1F5F9;border-radius:6px;padding:2px 8px}
+.log{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);max-width:86%;font-size:12.5px;color:var(--text);background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:999px;padding:4px 14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 8px rgba(15,23,42,.08);transition:border-color .4s}
+.log:empty{display:none}
+.log.flash{border-color:#A5B4FC}
+.lg{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
+.lg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.fx{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;border:1px solid var(--line);border-radius:7px;padding:2px 8px;background:#fff;cursor:pointer;user-select:none}
+.fx input{margin:0;accent-color:#16A34A}
+.fx.on{border-color:#86EFAC;background:#F0FDF4;color:#166534}
+.pbars{display:inline-flex;align-items:flex-end;gap:3px;height:18px;padding:0 4px;border-left:1px solid var(--line)}
+.pbars i{display:block;height:12px;border-radius:2px;background:#93C5FD}
+.pbars i.f{background:#F87171}
+.mapwrap{flex:1;min-height:0;position:relative}
+svg#map{width:100%;height:100%;display:block}
+.stw{position:absolute;top:8px;left:50%;transform:translate(-50%,-6px);background:#0F172A;color:#fff;font-size:12.5px;font-weight:600;padding:5px 14px;border-radius:999px;opacity:0;pointer-events:none;transition:all .25s;white-space:nowrap}
+.stw.on{opacity:1;transform:translate(-50%,0)}
+.stw.full{background:#B91C1C}
+.fit{position:absolute;top:8px;right:10px;display:none}
+.fit.on{display:block}
+#tip{position:fixed;z-index:9;pointer-events:none;background:#0F172A;color:#E2E8F0;font-size:12.5px;line-height:1.4;padding:7px 10px;border-radius:8px;max-width:260px;opacity:0;transition:opacity .15s}
+#tip b{color:#fff;display:block;font-size:13px}
+#tip.on{opacity:1}
+/* svg */
+.rg{cursor:pointer}
+.rg>rect.box{stroke-width:1.5;transition:opacity .3s,stroke-width .15s}
+.rg:hover>rect.box{stroke-width:2.6}
+.rg.sel>rect.box{stroke-width:3;filter:url(#glow)}
+.rg{transition:opacity .35s}
+.rg.dim{opacity:.32}
+.lb{font:600 12px var(--font);fill:#334155;pointer-events:none}
+.lb.sm{font:500 10.5px var(--font);fill:#64748B}
+.chip rect{fill:#fff;stroke:#E2E8F0}
+.chip text{font:500 10.5px var(--mono);fill:#334155}
+.chip{pointer-events:none}
+.frame rect{fill:#fff;stroke:#A7F3D0;transition:fill .2s}
+.frame.hot rect{fill:#BBF7D0}
+.frame text{font:500 10.5px var(--mono);fill:#065F46}
+.pc rect{fill:#065F46}
+.pc text{font:600 9.5px var(--mono);fill:#fff}
+.pz{opacity:0;transition:opacity .2s;font:700 11px var(--font);fill:#B91C1C}
+.rg.stw .frame rect{fill:#F1F5F9;stroke:#CBD5E1}
+.rg.stw .frame text{fill:#94A3B8}
+.rg.stw .pz{opacity:1}
+.ob{transition:transform .6s cubic-bezier(.3,.7,.3,1),opacity .45s}
+.ob circle{transition:fill .3s;stroke:#fff;stroke-width:1.5}
+.ob.a0 circle{fill:#38BDF8}.ob.a1 circle{fill:#6366F1}.ob.a2 circle{fill:#8B5CF6}.ob.old circle{fill:#7C3AED}
+.ob.base circle{fill:#C4B5FD}.ob.gb circle{fill:#CBD5E1}
+.ob.cache circle{fill:#F97316}.ob.tl circle{fill:#EC4899}.ob.lst circle{fill:#14B8A6}
+.ob.dead circle{fill:#E2E8F0}
+.ob.dead{opacity:0}
+#objs,#leak{pointer-events:none}
+svg.lens-leak .rg[data-r=young],svg.lens-leak .rg[data-r=eden],svg.lens-leak .rg[data-r=s0],svg.lens-leak .rg[data-r=s1]{opacity:.25}
+.root rect{stroke-width:1.5}
+.root text{font:600 11px var(--mono)}
+.root text.s{font:500 10px var(--font);fill:#64748B}
+.ln{stroke-width:1.2;opacity:.55;transition:opacity .35s}
+.ln.off{opacity:0}
+.pin{cursor:pointer}
+.pin .ring{fill:none;stroke:#EF4444;stroke-width:2;transform-box:fill-box;transform-origin:center;animation:ring 1.8s ease-out infinite}
+@keyframes ring{0%{transform:scale(.6);opacity:.9}100%{transform:scale(2.2);opacity:0}}
+.pin .dot{fill:#EF4444}
+.pin .ex{font:700 12px var(--font);fill:#fff}
+.pin .pill{fill:#fff;stroke:#FCA5A5}
+.pin .pt{font:600 11px var(--font);fill:#B91C1C}
+.pin:hover .pill,.pin.sel .pill{fill:#FEF2F2;stroke:#EF4444}
+/* drawer */
+aside{grid-column:2;grid-row:2;border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:#fff}
+.dhead{display:flex;gap:10px;align-items:flex-start;padding:14px 18px 8px}
+.dhead .dot{width:12px;height:12px;border-radius:4px;margin-top:5px;flex:none}
+.kind{font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+.dhead h2{margin:0;font-size:17px;color:var(--ink);line-height:1.3}
+.tnote{margin:0 18px 8px;padding:7px 10px;background:#EEF2FF;border-radius:8px;font-size:12.5px;color:#3730A3}
+.tnote[hidden]{display:none}
+.dtabs{display:flex;gap:2px;padding:0 14px;border-bottom:1px solid var(--line)}
+.dtabs button{border:0;background:none;padding:7px 8px 8px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.dtabs button.on{color:var(--ink);border-bottom-color:var(--brand)}
+.dtabs button b{font-size:11px;background:#EEF2FF;color:var(--brand);border-radius:999px;padding:0 6px;margin-left:3px}
+.dbody{flex:1;min-height:0;overflow:auto;padding:12px 18px 16px;font-size:13.5px}
+.must{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+.must li{position:relative;padding-left:16px;line-height:1.5}
+.must li:before{content:'';position:absolute;left:2px;top:8px;width:6px;height:6px;border-radius:50%;background:var(--c,#6366F1)}
+.q{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden}
+.q>button{display:flex;gap:8px;width:100%;text-align:left;border:0;background:#fff;padding:9px 11px;font-size:13.5px;font-weight:600;color:var(--ink)}
+.q>button span{color:var(--brand);font-weight:700}
+.q>button:hover{background:var(--soft)}
+.q .a{display:none;padding:0 11px 10px 30px;color:var(--text);line-height:1.55}
+.q.open .a{display:block}
+.q.open{border-color:#C7D2FE}
+.case{background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px}
+.case small{display:block;font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:#B45309;margin-bottom:2px}
+.case b{color:var(--ink)}
+.case p{margin:4px 0 0}
+.steps{margin:10px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:5px}
+.steps li{animation:in .3s ease}
+@keyframes in{from{opacity:0;transform:translateY(4px)}}
+.say{margin-top:10px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:8px 11px;color:#166534;font-weight:500}
+.sbtn{margin-top:10px}
+table.fl{width:100%;border-collapse:collapse;font-size:13px}
+table.fl td{border-bottom:1px solid var(--line);padding:7px 4px;vertical-align:top}
+table.fl td:first-child{white-space:nowrap;padding-right:10px}
+.oo h4{margin:12px 0 3px;font-size:11.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.oo h4:first-child{margin-top:0}
+.oo p{margin:0}
+.see{margin-top:12px}
+/* footer */
+footer{grid-column:1/3;display:flex;align-items:center;gap:8px;padding:0 14px;border-top:1px solid var(--line);background:#fff;min-width:0}
+.crumbs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;min-width:0;flex:1}
+.crumbs::-webkit-scrollbar{display:none}
+.crumbs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
+.crumbs button.done{color:var(--ink);border-color:#C7D2FE;background:#F5F7FF}
+.crumbs button.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.keys{font-size:11.5px;color:var(--faint);white-space:nowrap}
+@media (max-width:1050px){body{grid-template-columns:minmax(0,1fr) 320px}.tag,.keys{display:none}}
+</style>
+</head>
+<body>
+<header>
+ <div class="brand"><div class="logo">JVM</div><div><b>JVM Memory</b><small>map explorer · click any box</small></div></div>
+ <div class="lenses" id="lenses">
+  <button data-l="areas" class="on" title="1">◻ Areas</button><button data-l="alloc" title="2">⟳ Allocation</button><button data-l="gc" title="3">⏸ GC</button><button data-l="oom" title="4">⚠ OOM</button><button data-l="leak" title="5">💧 Leaks</button>
+ </div>
+ <button class="hbtn" id="rand">🎲 Random question</button>
+ <span class="tag">Template T4</span>
+</header>
+
+<main>
+ <div class="lensbar" id="lensbar"></div>
+ <div class="mapwrap" id="wrap">
+  <svg id="map" viewBox="0 0 900 500" preserveAspectRatio="xMidYMid meet">
+   <defs><filter id="glow" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#6366F1" flood-opacity=".35"/></filter></defs>
+   <g id="regions"></g><g id="leak"></g><g id="objs"></g><g id="pins"></g>
+  </svg>
+  <div class="stw" id="stw"></div>
+  <div class="log" id="log"></div>
+  <button class="btn fit" id="fit">⤢ Fit map</button>
+ </div>
+</main>
+
+<aside id="drawer">
+ <div class="dhead"><i class="dot" id="d-dot"></i><div><div class="kind" id="d-kind"></div><h2 id="d-name"></h2></div></div>
+ <div class="tnote" id="d-tour" hidden></div>
+ <nav class="dtabs" id="d-tabs"></nav>
+ <div class="dbody" id="d-body"></div>
+</aside>
+
+<footer>
+ <button class="btn p" id="tstart">🧭 Guided tour</button>
+ <button class="btn" id="tprev" title="←">◀</button>
+ <div class="crumbs" id="crumbs"></div>
+ <button class="btn" id="tnext" title="→">Next ▶</button>
+ <span class="keys">← → tour · 1–5 lenses · Esc fit</span>
+</footer>
+<div id="tip"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const NS='http://www.w3.org/2000/svg';
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;}
+function tx(parent,x,y,s,cls,anchor){const t=el('text',{x,y,class:cls||''},parent);if(anchor)t.setAttribute('text-anchor',anchor);t.textContent=s;return t;}
+
+// ======================================================= geometry
+const G={
+ container:{x:8,y:8,w:884,h:484,rx:18,lb:'Pod / container memory limit · 2 GiB',lx:24,ly:27,c:['#FFF8F8','#F87171'],dash:true},
+ jvm:{x:22,y:36,w:856,h:444,rx:14,lb:'JVM process · runner.jar',lx:38,ly:55,c:['#FFFFFF','#CBD5E1']},
+ heap:{x:38,y:66,w:540,h:262,lb:'Heap · -Xms / -Xmx · shared by all threads',lx:52,ly:84,c:['#F5F9FF','#93C5FD']},
+ young:{x:52,y:94,w:210,h:222,lb:'Young gen',lx:64,ly:110,c:['#F0F9FF','#7DD3FC'],sel:'eden'},
+ eden:{x:62,y:118,w:190,h:120,lb:'Eden',lx:72,ly:134,c:['#E0F2FE','#38BDF8']},
+ s0:{x:62,y:246,w:92,h:62,lb:'S0',lx:70,ly:262,c:['#EEF2FF','#818CF8'],sel:'survivor'},
+ s1:{x:160,y:246,w:92,h:62,lb:'S1',lx:168,ly:262,c:['#EEF2FF','#818CF8'],sel:'survivor'},
+ old:{x:272,y:94,w:294,h:222,lb:'Old gen (tenured)',lx:284,ly:110,c:['#F5F3FF','#A78BFA']},
+ stack:{x:592,y:66,w:270,h:262,lb:'Thread stacks + PC · per thread',lx:606,ly:84,c:['#F0FDF7','#34D399']},
+ meta:{x:38,y:342,w:250,h:124,lb:'Metaspace · native',lx:52,ly:360,c:['#FFFBEB','#FBBF24']},
+ code:{x:300,y:342,w:180,h:124,lb:'Code cache · JIT',lx:314,ly:360,c:['#FDF2F8','#F472B6']},
+ direct:{x:492,y:342,w:370,h:124,lb:'Direct & other native memory · off-heap',lx:506,ly:360,c:['#F8FAFC','#94A3B8']}};
+const ORDER=['container','jvm','heap','young','eden','s0','s1','old','stack','meta','code','direct'];
+const ANC={eden:['young','heap','jvm','container'],survivor:['young','heap','jvm','container'],old:['heap','jvm','container'],heap:['jvm','container'],stack:['jvm','container'],meta:['jvm','container'],code:['jvm','container'],direct:['jvm','container'],jvm:['container'],container:[]};
+const DESC={heap:['young','eden','s0','s1','old'],jvm:ORDER.slice(2),container:ORDER.slice(1)};
+const keyOf=k=>G[k].sel||k;
+const regLayer=$('regions'),objLayer=$('objs'),leakLayer=$('leak'),pinLayer=$('pins'),svg=$('map');
+const groups={};
+ORDER.forEach(k=>{const g=G[k];const grp=el('g',{class:'rg','data-r':k},regLayer);groups[k]=grp;
+ const r=el('rect',{class:'box',x:g.x,y:g.y,width:g.w,height:g.h,rx:g.rx||10,fill:g.c[0],stroke:g.c[1]},grp);
+ if(g.dash)r.setAttribute('stroke-dasharray','7 5');
+ tx(grp,g.lx,g.ly,g.lb,'lb');});
+// decorations
+function chip(parent,x,y,w,s){const c=el('g',{class:'chip'},parent);el('rect',{x,y,width:w,height:20,rx:6},c);tx(c,x+8,y+14,s);return c;}
+[['RunService.class',52,374],['TestStep.class',176,374],['$Proxy87.class',52,400],['Script_412.class',162,400]].forEach(a=>chip(groups.meta,a[1],a[2],a[0].length*6.3+14,a[0]));
+tx(groups.meta,52,450,'class metadata · not your objects','lb sm');
+[['runStep() · C2',314,374],['click() · C1',314,398],['toJson() · C2',314,422]].forEach(a=>chip(groups.code,a[1],a[2],150,a[0]));
+[['NIO/Kafka buffers',506,374],['Netty buffers',636,374],['GC structures',738,374],['thread stacks',506,400],['JNI / libs',604,400],['JIT compiler',684,400]].forEach(a=>chip(groups.direct,a[1],a[2],a[0].length*6.3+14,a[0]));
+tx(groups.direct,506,450,'not counted in -Xmx · see Native Memory Tracking','lb sm');
+tx(groups.heap,430,84,'','lb sm');
+// thread stacks
+const THREADS=[['exec-1',['run()','runSuite()','runStep()','click()']],['exec-2',['run()','runSuite()','runStep()','assert()']],['kafka-1',['run()','poll()','publish()']]];
+const frames=[];
+THREADS.forEach(([name,fr],i)=>{const x=604+i*86,g=groups.stack;
+ el('rect',{x,y:92,width:76,height:226,rx:8,fill:'#fff',stroke:'#A7F3D0','stroke-dasharray':'4 3','pointer-events':'none'},g);
+ tx(g,x+38,108,name,'lb sm','middle');
+ const pc=el('g',{class:'pc','pointer-events':'none'},g);el('rect',{x:x+10,y:114,width:56,height:16,rx:5},pc);tx(pc,x+38,125.5,'PC → 0x'+(40+i*13).toString(16),'','middle');
+ const col=[];fr.forEach((f,j)=>{const fy=288-j*28;const fg=el('g',{class:'frame','pointer-events':'none'},g);el('rect',{x:x+6,y:fy,width:64,height:24,rx:5},fg);tx(fg,x+38,fy+16,f,'','middle');col.push(fg);});
+ frames.push(col);
+ const pz=tx(g,x+38,150,'⏸ paused','pz','middle');pz.setAttribute('pointer-events','none');});
+
+// ======================================================= content
+const R={
+ jvm:{name:'JVM memory · the big picture',kind:'start here',tip:'Shared: heap + metaspace. Per thread: stack + PC. Everything else is native.',
+  must:['<b>Shared by all threads:</b> Heap (objects) and Metaspace (class metadata).','<b>Per thread:</b> a Stack of frames (locals, references) and a PC register (current instruction).','Only the <b>heap</b> is limited by <code>-Xmx</code> and managed by the GC — everything else is native memory.','Process memory ≈ heap + metaspace + thread stacks + code cache + direct buffers + GC overhead, so it is <b>always bigger than -Xmx</b>.'],
+  qs:[['Explain the JVM memory areas (30-second answer).','Heap holds all objects, split into Young (Eden + two survivors) and Old; it is shared and GC-managed. Metaspace holds class metadata in native memory (it replaced PermGen in Java 8). Each thread has its own stack of frames and a PC register. On top: code cache for JIT code and direct/native memory.'],
+   ['Which areas are thread-safe by design?','Stack and PC register — private to each thread. Heap and Metaspace are shared, so objects reachable from several threads need synchronization.']],
+  sc:{t:'"-Xmx is 2g but the process uses 2.8 GB" — bug?',s:'An interviewer shows <code>top</code> for a FireFlink results service: RSS 2.8 GB with <code>-Xmx2g</code>.',steps:['Not a bug: -Xmx limits <b>only the heap</b>.','Add metaspace (~150 MB), thread stacks (~1 MB × 250 threads), code cache, direct buffers, GC structures.','Measure: <code>-XX:NativeMemoryTracking=summary</code> + <code>jcmd &lt;pid&gt; VM.native_memory summary</code>.'],say:'"-Xmx caps the heap, not the process — I check non-heap with NMT."'},
+  flags:[['-Xms / -Xmx','initial / max heap'],['-Xss','stack size per thread'],['-XX:MaxMetaspaceSize','cap metaspace'],['-XX:MaxRAMPercentage','heap as % of container RAM'],['-XX:+HeapDumpOnOutOfMemoryError','write a heap dump on OOM']]},
+ container:{name:'Container / pod memory limit',kind:'outside the JVM · Kubernetes',tip:'Cross this line and the kernel kills the whole JVM (exit 137).',
+  must:['The JVM is container-aware (Java 10+, 8u191): default max heap = 25% of the container limit.','Prefer <code>-XX:MaxRAMPercentage=75</code> over a fixed <code>-Xmx</code> — it scales with the pod.','Leave ~25% headroom for non-heap: metaspace, thread stacks, direct buffers, code cache.','Over the limit → Linux OOM killer → <b>OOMKilled, exit 137</b>. No Java exception, no heap dump.'],
+  qs:[['Pod is OOMKilled but heap is only 60% used — how?','The limit applies to the whole process, not the heap. Non-heap memory (thread stacks, direct buffers, metaspace) pushed RSS over the limit. Size the heap at ~75% of the limit and check native memory with NMT.'],
+   ['How do you size the heap in Kubernetes?','Set the container limit, then <code>-XX:MaxRAMPercentage=70–75</code> (InitialRAMPercentage the same for steady services). Never set -Xmx equal to the limit.']],
+  sc:{t:'Runner pod restarts during a 2,000-case suite',s:'Execution pod (limit 2 GiB, <code>-Xmx2g</code>) restarts mid-suite. <code>kubectl describe pod</code>: <b>OOMKilled · exit 137</b>. App logs: no OutOfMemoryError.',steps:['Exit 137 and no Java error ⇒ the kernel killed it: <b>total</b> memory, not heap.','-Xmx equals the limit → zero room for non-heap.','300 parallel session threads × ~1 MB stack ≈ 300 MB of native memory.','Confirm with NMT: <code>jcmd &lt;pid&gt; VM.native_memory summary</code>.','Fix: <code>-XX:MaxRAMPercentage=75</code>, a bounded executor, cap direct memory.'],say:'"137 means the kernel, not the JVM — so I look at total process memory, not the heap."'},
+  flags:[['-XX:MaxRAMPercentage=75.0','max heap = 75% of container RAM'],['-XX:InitialRAMPercentage','starting heap'],['-XX:NativeMemoryTracking=summary','track non-heap areas'],['kubectl describe pod','Last State: OOMKilled, exit 137']]},
+ heap:{name:'Heap',kind:'shared · GC-managed',tip:'All objects and arrays. Young + Old. Sized by -Xms / -Xmx.',
+  must:['Every object and array lives here — including the <b>String pool</b> (moved from PermGen in Java 7).','Split into <b>Young</b> (Eden + S0 + S1) and <b>Old</b>. G1 (default since Java 9) cuts it into equal regions that play these roles.','Garbage = objects <b>not reachable from GC roots</b>: stack locals, static fields, live threads, JNI refs.','Set <code>-Xms</code> = <code>-Xmx</code> in services to avoid resize pauses.'],
+  qs:[['Stack vs heap?','Stack: per thread, frames with primitives and references, freed on return, fast. Heap: shared, all objects, freed by the GC. <code>Run r = new Run();</code> → <code>r</code> on the stack, the Run object on the heap.'],
+   ['What are GC roots?','The starting points the GC traces from: local variables on thread stacks, static fields, active threads, JNI references. Anything not reachable from them is garbage — even objects in a cycle.'],
+   ['Where is the String pool?','In the heap since Java 7 (before that, PermGen). Interned strings are garbage-collected like other objects.']],
+  sc:{t:'Heap grows after every suite run',s:'Old gen <b>after each full GC</b>: 30% → 45% → 60% → 78% across nightly runs, then <code>OutOfMemoryError: Java heap space</code>.',steps:['A rising <b>after-GC floor</b> = leak (a sawtooth with a flat floor is healthy).','Heap dump: <code>jcmd &lt;pid&gt; GC.heap_dump /tmp/h.hprof</code>.','Open in Eclipse MAT → Leak Suspects / Dominator Tree.','Found: <code>static Map&lt;String, ExecutionContext&gt; runCache</code> never evicted.','Fix: bounded cache (Caffeine maxSize + TTL) or remove on run completion.'],say:'"I compare heap after GC across runs, then use a heap dump and MAT\'s dominator tree to find who holds it."'},
+  lens:['leak','Watch it in the Leaks lens'],
+  flags:[['-Xms / -Xmx','initial / max heap'],['-XX:+HeapDumpOnOutOfMemoryError','dump on OOM'],['-XX:HeapDumpPath=/dumps','where to write it'],['jcmd &lt;pid&gt; GC.heap_dump','dump a live process'],['jstat -gcutil &lt;pid&gt; 1000','% used per area, every second']]},
+ eden:{name:'Young gen · Eden',kind:'heap · young generation',tip:'Every new object starts here. Eden full → minor GC.',
+  must:['Every <code>new</code> lands in Eden — a fast pointer bump in a per-thread buffer (TLAB).','Most objects <b>die young</b> (request DTOs, step results, temp strings).','Eden full → <b>minor GC</b>: copy the few live objects out, wipe Eden. Short stop-the-world pause.','Minor GC cost ∝ <b>live</b> objects, not garbage — that is why generations pay off.'],
+  qs:[['What triggers a minor GC?','Eden is full (an allocation fails). Live objects from Eden + the active survivor are copied to the empty survivor (or promoted to Old); Eden is then empty.'],
+   ['Why split the heap into generations?','Most objects die young (weak generational hypothesis). Collecting the small young gen often is cheap because cost depends on survivors; the old gen is collected rarely.']],
+  sc:{t:'Minor GC every 200 ms during report export',s:'Exporting a 5,000-case run: GC log shows <code>Pause Young</code> every ~200 ms and high CPU. Old gen is stable.',steps:['Old gen stable ⇒ not a leak — a high <b>allocation rate</b>.','Find the allocators: JFR or async-profiler allocation view.','Culprit: all results loaded into Lists + String concatenation in loops.','Fix: stream/paginate from Mongo, StringBuilder, reuse buffers.','Only then consider a larger young gen.'],say:'"Frequent minor GCs mean a high allocation rate — I cut garbage before tuning sizes."'},
+  lens:['alloc','Watch it in the Allocation lens'],
+  flags:[['-Xmn','young gen size (G1 sizes it itself)'],['-Xlog:gc','look for "Pause Young"'],['jcmd &lt;pid&gt; JFR.start','record allocations']]},
+ survivor:{name:'Survivor spaces S0 / S1',kind:'heap · young generation',tip:'Live objects bounce S0 ↔ S1 and gain age each minor GC.',
+  must:['Two equal spaces; <b>one is always empty</b>.','Each minor GC copies live objects (Eden + active survivor) into the empty one and adds 1 to their <b>age</b>.','Age ≥ threshold (up to 15) → <b>promoted</b> to Old.','Survivor too small → objects promoted early (<b>premature promotion</b>) → Old fills with short-lived data.'],
+  qs:[['Why two survivor spaces?','It is a copying collector: live objects are copied compactly into the empty space, so there is no fragmentation. The roles swap after every minor GC.'],
+   ['What is premature promotion?','Short-lived objects reach Old because the survivor overflowed or the threshold is low, so Old fills faster and major GCs happen more often.']],
+  sc:{t:'Old gen fills, but full GC empties it',s:'Each suite run pushes old gen up ~10%, yet a full GC brings it back down.',steps:['Floor returns after full GC ⇒ <b>not a leak</b>.','<code>-Xlog:gc+age=trace</code> shows survivors overflowing.','Medium-lived per-run buffers get promoted early.','Fix: larger young gen / survivors, or keep less data per run.'],say:'"If a full GC recovers it, it is premature promotion, not a leak."'},
+  lens:['alloc','Watch it in the Allocation lens'],
+  flags:[['-XX:MaxTenuringThreshold=15','max age before promotion'],['-XX:SurvivorRatio=8','Eden : one survivor'],['-Xlog:gc+age=trace','age histogram']]},
+ old:{name:'Old gen (tenured)',kind:'heap · long-lived',tip:'Caches, singletons, pools. Collected rarely, longer pauses.',
+  must:['Holds long-lived data: Spring singletons, caches, connection pools, session maps.','<b>Minor</b> = young only · <b>Major</b> = old · <b>Full GC</b> = whole heap, stop-the-world, usually compacts.','G1 cleans old regions concurrently + in mixed GCs (target <code>MaxGCPauseMillis=200</code>). A <b>Full GC in G1 is a red flag</b>.','Still full after GC → <code>Java heap space</code> or <code>GC overhead limit exceeded</code>.'],
+  qs:[['Minor vs major vs full GC?','Minor: young gen only, frequent, short. Major: old gen. Full: the whole heap (and metaspace), the longest stop-the-world. In G1 you mostly see young and mixed GCs; a full GC means it could not keep up.'],
+   ['What is stop-the-world?','All application threads pause at a safepoint so the GC sees a consistent heap. Every collector has some; ZGC and Shenandoah keep it around a millisecond.'],
+   ['Which GC would you choose?','G1 (default) for most services. ZGC for large heaps needing very low latency. Parallel for batch throughput. Serial for tiny containers.']],
+  sc:{t:'API p99 jumps to 3 s every few minutes',s:'Results API GC log: <code>Pause Full (G1 Compaction Pause) 2.8s</code>.',steps:['A G1 full GC means concurrent cleaning could not keep up.','Check the after-GC floor and huge allocations (humongous: ≥ half a region).','Found: whole run reports (50 MB byte[]) loaded into memory.','Fix: stream the report; raise heap only if the live set is real; ZGC for strict latency.'],say:'"A full GC in G1 is a symptom; I find why the concurrent cycle couldn\'t keep up."'},
+  lens:['gc','Compare pauses in the GC lens'],
+  flags:[['-XX:+UseG1GC','default collector'],['-XX:MaxGCPauseMillis=200','G1 pause target'],['-XX:+UseZGC','sub-ms pauses'],['-Xlog:gc*:file=gc.log','GC log'],['jstat -gcutil &lt;pid&gt; 1000','live view']]},
+ meta:{name:'Metaspace',kind:'shared · native memory',tip:'Class metadata, not objects. Native. Replaced PermGen in Java 8.',
+  must:['Stores <b>class metadata</b>: class structure, methods, bytecode, constant pool — not your objects.','<b>Native memory</b>, outside the heap; replaced PermGen in Java 8; grows until RAM runs out unless capped.','Static <b>field values</b> live in the heap (on the Class object), not in Metaspace — classic trap.','Freed only when the <b>classloader</b> is collected → classloader leaks cause Metaspace OOM.'],
+  qs:[['PermGen vs Metaspace?','PermGen (≤ Java 7) was a fixed-size area of the heap → frequent "PermGen space" errors. Metaspace (Java 8+) is native and grows on demand; cap it with MaxMetaspaceSize. Interned strings and statics moved to the heap.'],
+   ['Where are static variables stored?','Since Java 8, in the heap, on the java.lang.Class object. Metaspace only holds class metadata.']],
+  sc:{t:'OutOfMemoryError: Metaspace after a week',s:'Each run compiles user-written Groovy script steps. Metaspace rises run after run.',steps:['<code>jcmd &lt;pid&gt; VM.metaspace</code> → thousands of classloaders.','Each run compiles scripts in a new GroovyClassLoader that stays referenced.','Fix: cache compiled scripts by hash; release the loaders.','Set <code>-XX:MaxMetaspaceSize</code> so it fails fast instead of eating node RAM.'],say:'"Metaspace growth means classes are generated and their classloaders never freed."'},
+  flags:[['-XX:MaxMetaspaceSize=256m','cap it'],['-XX:MetaspaceSize','first GC trigger'],['jcmd &lt;pid&gt; VM.metaspace','loaders and usage']]},
+ stack:{name:'Thread stacks + PC register',kind:'per thread · native memory',tip:'One stack per thread: frames of locals & references. Too deep → StackOverflowError.',
+  must:['Each method call pushes a <b>frame</b> (locals, primitives, references, return address), popped on return.','Objects are never on the stack — only <b>references</b> to them.','Locals are thread-safe; the <b>objects</b> they point to may be shared.','~1 MB each (<code>-Xss</code>). Too deep → <code>StackOverflowError</code>; too many threads → <code>unable to create native thread</code>.','PC register: per thread, the instruction being executed.'],
+  qs:[['What exactly is stored on the stack?','Frames: local variables (primitives by value, objects by reference), the operand stack and return address. <code>int n = 5; Run r = new Run();</code> → n and r on the stack, the Run object on the heap.'],
+   ['StackOverflowError vs OutOfMemoryError?','SOE: one thread\'s stack is too deep (recursion). OOM: a memory area (heap, metaspace, native) cannot satisfy an allocation. Both are Errors — don\'t catch them.']],
+  sc:{t:'StackOverflowError when returning a suite as JSON',s:'<code>GET /suites/42</code> fails with StackOverflowError deep inside Jackson.',steps:['The same frames repeat in the trace → infinite recursion.','<code>TestSuite.cases</code> ↔ <code>TestCase.suite</code>: Jackson serializes the cycle forever.','Fix: <code>@JsonManagedReference/@JsonBackReference</code>, <code>@JsonIgnore</code>, or return a DTO.','Raising <code>-Xss</code> only delays it — never the fix.'],say:'"Repeating frames mean a cycle; I break the cycle, I don\'t raise -Xss."'},
+  flags:[['-Xss1m','stack size per thread'],['jstack &lt;pid&gt;','dump all thread stacks'],['jcmd &lt;pid&gt; Thread.print','same, via jcmd']]},
+ code:{name:'Code cache (JIT)',kind:'non-heap · native · good to know',tip:'Native machine code of hot methods compiled by the JIT.',
+  must:['The JVM <b>interprets</b> bytecode first; hot methods are compiled by the <b>JIT</b> (C1 quick, C2 optimized) into native code kept here.','Fixed size (~240 MB with tiered compilation).','If full: "CodeCache is full. Compiler has been disabled" — the app keeps running, but slower.'],
+  qs:[['What is JIT compilation?','The JVM profiles running code and compiles hot methods to native code (C1, then C2 with inlining and escape analysis). That is why Java speeds up after warm-up.']],
+  sc:{t:'Runner slows down after days of uptime',s:'The same suite takes 40% longer on day 5. CPU is higher; GC looks normal.',steps:['Log warning: <code>CodeCache is full. Compiler has been disabled.</code>','New hot code now runs interpreted → slow.','Fix: <code>-XX:ReservedCodeCacheSize=512m</code>; check with <code>jcmd Compiler.codecache</code>.'],say:'"Slowdown with normal GC — I check the JIT and code cache."'},
+  flags:[['-XX:ReservedCodeCacheSize=512m','code cache size'],['jcmd &lt;pid&gt; Compiler.codecache','usage']]},
+ direct:{name:'Direct & native memory',kind:'off-heap',tip:'NIO/Netty buffers, thread stacks, GC structures, native libs. Not in -Xmx.',
+  must:['<b>Direct buffers</b> (<code>ByteBuffer.allocateDirect</code>) used by NIO, Netty, the Kafka client, WebClient — no copy on I/O.','Not part of <code>-Xmx</code>; cap with <code>-XX:MaxDirectMemorySize</code> (default ≈ max heap).','Freed only when the owning ByteBuffer is GC\'d → <code>OutOfMemoryError: Direct buffer memory</code>.','Track all native areas with <b>Native Memory Tracking</b>.'],
+  qs:[['What is off-heap memory and why use it?','Memory outside the GC-managed heap, used for fast I/O (no copying between heap and OS) and large caches without GC pauses. Downside: invisible to heap dumps and easy to leak.']],
+  sc:{t:'Direct buffer OOM while heap sits at 40%',s:'Kafka result publisher during a burst of 10k events: <code>OutOfMemoryError: Direct buffer memory</code>.',steps:['Heap is fine ⇒ off-heap. NMT shows "Other" growing.','Large producer batches + slow broker → buffers pile up.','Fix: tune <code>buffer.memory</code> / batch size, add back-pressure, set <code>MaxDirectMemorySize</code>.'],say:'"Heap fine but OOM → off-heap; NMT tells me which native area."'},
+  flags:[['-XX:MaxDirectMemorySize=256m','cap direct buffers'],['-XX:NativeMemoryTracking=summary','enable NMT'],['jcmd &lt;pid&gt; VM.native_memory summary','read NMT']]}};
+
+const OOM=[
+ {id:'heap',x:330,y:200,lb:'Java heap space',msg:'OutOfMemoryError: Java heap space',r:'old',cause:'Live data bigger than -Xmx, or a leak (static cache, ThreadLocal, listeners).',ff:'Loading all 50k results of a run into a List to build one report.',fix:'Heap dump (<code>HeapDumpOnOutOfMemoryError</code>) → MAT dominator tree; stream / paginate; bound caches. Raise -Xmx only if the live set is real.'},
+ {id:'gcol',x:400,y:80,lb:'GC overhead limit',msg:'OutOfMemoryError: GC overhead limit exceeded',r:'heap',cause:'More than 98% of time in GC while recovering under 2% of heap — the heap is nearly full (Parallel GC).',ff:'The same leak as above, caught a little earlier.',fix:'Same as Java heap space: find who holds the memory.'},
+ {id:'meta',x:200,y:420,lb:'Metaspace',msg:'OutOfMemoryError: Metaspace',r:'meta',cause:'Too many classes, usually a classloader leak.',ff:'Compiling Groovy script steps in a new classloader every run.',fix:'Cache compiled scripts, release classloaders, cap <code>MaxMetaspaceSize</code>.'},
+ {id:'soe',x:606,y:160,lb:'StackOverflowError',msg:'StackOverflowError (an Error, same family)',r:'stack',cause:'Recursion too deep — usually infinite.',ff:'Jackson serializing the Suite ↔ Case cycle.',fix:'Break the cycle or make it iterative; -Xss is not the fix.'},
+ {id:'thread',x:606,y:236,lb:'unable to create native thread',msg:'OutOfMemoryError: unable to create native thread',r:'stack',cause:'The OS / container cannot give another thread (pids limit or native memory).',ff:'<code>new Thread()</code> per test case → 3,000 threads.',fix:'Bounded thread pool (or virtual threads, Java 21); check <code>ulimit -u</code> / pod pids limit.'},
+ {id:'direct',x:520,y:428,lb:'Direct buffer memory',msg:'OutOfMemoryError: Direct buffer memory',r:'direct',cause:'Direct ByteBuffers not released fast enough.',ff:'Kafka producer batches piling up when the broker is slow.',fix:'Tune producer buffers, back-pressure, set <code>MaxDirectMemorySize</code>.'},
+ {id:'killed',x:690,y:24,lb:'OOMKilled · exit 137',msg:'OOMKilled · exit 137 (not a Java error)',r:'container',cause:'Process RSS crossed the container limit — the Linux kernel killed it.',ff:'<code>-Xmx</code> = pod limit, plus 300 session threads.',fix:'<code>MaxRAMPercentage=75</code>, NMT, fewer threads. No heap dump will exist.'}];
+OOM.forEach(p=>{const g=el('g',{class:'pin','data-pin':p.id,transform:`translate(${p.x},${p.y})`},pinLayer);
+ el('circle',{class:'ring',r:9},g);el('circle',{class:'dot',r:9},g);tx(g,0,4,'!','ex','middle');
+ const w=p.lb.length*6.3+16;el('rect',{class:'pill',x:14,y:-10,width:w,height:20,rx:10},g);tx(g,22,4,p.lb,'pt');});
+pinLayer.style.display='none';
+
+// ======================================================= drawer
+let cur='jvm',tab='must',curPin=null;
+const TABS=[['must','Must know'],['qs','Interview Q'],['sc','Scenario'],['flags','Flags']];
+function colorOf(k){const g=G[k]||G[Object.keys(G).find(x=>G[x].sel===k)];return g.c[1];}
+function drawer(){const d=R[cur];
+ $('d-dot').style.background=colorOf(cur);$('d-kind').textContent=d.kind;$('d-name').textContent=d.name;
+ $('d-tabs').style.display='';
+ $('d-tabs').innerHTML=TABS.map(([k,n])=>`<button data-t="${k}" class="${k===tab?'on':''}">${n}${k==='qs'?`<b>${d.qs.length}</b>`:''}</button>`).join('');
+ const b=$('d-body');b.style.setProperty('--c',colorOf(cur));
+ if(tab==='must')b.innerHTML=`<ul class="must">${d.must.map(m=>`<li>${m}</li>`).join('')}</ul>`+(d.lens?`<button class="btn see" data-lens="${d.lens[0]}">▶ ${d.lens[1]}</button>`:'');
+ if(tab==='qs')b.innerHTML=d.qs.map((q,i)=>`<div class="q"><button><span>Q${i+1}</span>${q[0]}</button><div class="a">${q[1]}</div></div>`).join('')+'<div class="lb" style="font-size:12px;color:var(--faint)">Answer out loud first, then click to check.</div>';
+ if(tab==='sc'){const s=d.sc;b.innerHTML=`<div class="case"><small>Scenario · simplified from FireFlink</small><b>${s.t}</b><p>${s.s}</p></div><ol class="steps" id="steps"></ol><button class="btn p sbtn" id="snext">What do you check first? ▸</button>`;
+  let n=0;$('snext').onclick=()=>{if(n<s.steps.length){$('steps').insertAdjacentHTML('beforeend',`<li>${s.steps[n]}</li>`);n++;$('snext').textContent=n<s.steps.length?'Next step ▸':'Show the interview line ▸';}else{$('snext').outerHTML=`<div class="say">💬 ${s.say}</div>`;}};}
+ if(tab==='flags')b.innerHTML=`<table class="fl">${d.flags.map(f=>`<tr><td><code>${f[0]}</code></td><td>${f[1]}</td></tr>`).join('')}</table>`;}
+function drawPin(p){$('d-dot').style.background='#EF4444';$('d-kind').textContent='OOM family · thrown in '+R[p.r].name.split(' ·')[0];$('d-name').textContent=p.msg;
+ $('d-tabs').style.display='none';
+ $('d-body').innerHTML=`<div class="oo"><h4>Typical cause</h4><p>${p.cause}</p><h4>Seen in FireFlink (simplified)</h4><p>${p.ff}</p><h4>Fix</h4><p>${p.fix}</p></div><button class="btn see" data-sel="${p.r}">Open the ${R[p.r].name.split(' ·')[0]} card ▸</button>`;}
+$('d-tabs').onclick=e=>{const b=e.target.closest('[data-t]');if(b){tab=b.dataset.t;drawer();}};
+$('d-body').onclick=e=>{const q=e.target.closest('.q>button');if(q)q.parentElement.classList.toggle('open');
+ const l=e.target.closest('[data-lens]');if(l)setLens(l.dataset.lens);
+ const s=e.target.closest('[data-sel]');if(s){select(s.dataset.sel);}};
+
+// ======================================================= selection + zoom
+let vb=[0,0,900,500],zoomAnim;
+function zoomTo(t){const from=vb.slice(),t0=performance.now();cancelAnimationFrame(zoomAnim);
+ const f=now=>{const p=Math.min(1,(now-t0)/450),e=1-Math.pow(1-p,3);vb=from.map((v,i)=>v+(t[i]-v)*e);svg.setAttribute('viewBox',vb.map(v=>v.toFixed(1)).join(' '));if(p<1)zoomAnim=requestAnimationFrame(f);};
+ zoomAnim=requestAnimationFrame(f);$('fit').classList.toggle('on',t[2]<899);}
+function bbox(key){const ks=ORDER.filter(k=>keyOf(k)===key&&k!=='young');const b=ks.map(k=>G[k]);
+ const x=Math.min(...b.map(g=>g.x)),y=Math.min(...b.map(g=>g.y));return [x,y,Math.max(...b.map(g=>g.x+g.w))-x,Math.max(...b.map(g=>g.y+g.h))-y];}
+function zoomRegion(key){if(!key||key==='jvm'||key==='container'||key==='heap'){zoomTo([0,0,900,500]);return;}
+ const [x,y,w,h]=bbox(key);let W=Math.max(w+90,900/1.2),H=Math.max(h+90,500/1.2);if(W/H>1.8)H=W/1.8;else W=H*1.8;
+ let X=x+w/2-W/2,Y=y+h/2-H/2;X=Math.max(0,Math.min(900-W,X));Y=Math.max(0,Math.min(500-H,Y));zoomTo([X,Y,W,H]);}
+function highlight(key){const keep=new Set([...(ANC[key]||[]),...(DESC[key]||[])]);
+ ORDER.forEach(k=>{const s=keyOf(k)===key;groups[k].classList.toggle('sel',s);groups[k].classList.toggle('dim',!!key&&!s&&!keep.has(k));});}
+function select(key,opts={}){cur=key;curPin=null;if(!opts.keepTab)tab='must';highlight(key);drawer();if(opts.zoom!==false)zoomRegion(key);
+ pinLayer.querySelectorAll('.pin').forEach(p=>p.classList.remove('sel'));if(!opts.tour)tourNote(null);}
+function selectPin(id,opts={}){const p=OOM.find(o=>o.id===id);curPin=id;highlight(p.r);drawPin(p);
+ pinLayer.querySelectorAll('.pin').forEach(x=>x.classList.toggle('sel',x.dataset.pin===id));if(!opts.tour)tourNote(null);}
+regLayer.addEventListener('click',e=>{const g=e.target.closest('[data-r]');if(g)select(keyOf(g.dataset.r));});
+pinLayer.addEventListener('click',e=>{const g=e.target.closest('[data-pin]');if(g)selectPin(g.dataset.pin);});
+$('fit').onclick=()=>zoomTo([0,0,900,500]);
+// tooltip
+const tip=$('tip');
+svg.addEventListener('mousemove',e=>{const g=e.target.closest('[data-r],[data-pin]');if(!g){tip.classList.remove('on');return;}
+ if(g.dataset.pin){const p=OOM.find(o=>o.id===g.dataset.pin);tip.innerHTML=`<b>${p.msg}</b>${p.cause}`;}
+ else{const d=R[keyOf(g.dataset.r)];tip.innerHTML=`<b>${g.dataset.r==='young'?'Young gen (Eden + S0 + S1)':d.name}</b>${d.tip}`;}
+ tip.classList.add('on');const x=Math.min(e.clientX+14,innerWidth-275),y=Math.min(e.clientY+14,innerHeight-90);tip.style.left=x+'px';tip.style.top=y+'px';});
+svg.addEventListener('mouseleave',()=>tip.classList.remove('on'));
+
+// ======================================================= allocation / GC simulation
+const SL={eden:[],s0:[],s1:[],old:[]};
+for(let j=0;j<4;j++)for(let i=0;i<7;i++)SL.eden.push([84+24*i,154+24*j]);
+for(let j=0;j<2;j++)for(let i=0;i<4;i++){SL.s0.push([80+20*i,278+18*j]);SL.s1.push([178+20*i,278+18*j]);}
+for(let j=0;j<9;j++)for(let i=0;i<13;i++)SL.old.push([290+22*i,130+22*j]);
+const OLDCAP=SL.old.length;
+let objs=[],from='s0',to='s1',busy=false,minorN=0,fullN=0,promoted=0,sp=1,playing=true,timer=null,pauses=[],oid=0;
+const count=r=>objs.filter(o=>o.reg===r).length;
+function freeSlot(list,r,cap){const used=new Set(list.filter(o=>o.reg===r).map(o=>o.slot));for(let i=0;i<cap;i++)if(!used.has(i))return i;return -1;}
+function put(o){const [x,y]=SL[o.reg][o.slot];o.g.style.transform=`translate(${x}px,${y}px)`;}
+function cls(o){o.g.setAttribute('class','ob '+(o.reg==='old'?'old':'a'+Math.min(o.age,2)));}
+function mk(layer,reg,slot,klass,origin){const g=el('g',{class:'ob '+klass},layer);el('circle',{r:6},g);
+ const o={id:++oid,reg,slot,g,age:0};
+ if(origin){g.style.transition='none';g.style.transform=`translate(${origin[0]}px,${origin[1]}px)`;g.style.opacity='0';g.getBoundingClientRect();g.style.transition='';g.style.opacity='1';}
+ put(o);return o;}
+function kill(o,list){o.g.classList.add('dead');setTimeout(()=>o.g.remove(),600);const i=list.indexOf(o);if(i>=0)list.splice(i,1);}
+function life(){const r=Math.random();return r<.8?0:r<.93?1+Math.floor(Math.random()*2):9;}
+function seed(){objLayer.innerHTML='';objs=[];from='s0';to='s1';
+ for(let i=0;i<11;i++){const o=mk(objLayer,'eden',i,'a0');o.life=life();objs.push(o);}
+ for(let i=0;i<3;i++){const o=mk(objLayer,'s0',i,'a1');o.age=1;o.life=1;objs.push(o);}
+ for(let i=0;i<22;i++){const o=mk(objLayer,'old',i,'old');o.age=3;o.oldDies=Math.random()<.55;objs.push(o);}}
+function log(s){const l=$('log');if(!l)return;l.innerHTML=s;l.classList.add('flash');setTimeout(()=>l.classList.remove('flash'),600);}
+function stats(){const s=$('st');if(s)s.textContent=`minor ${minorN} · full ${fullN} · old ${Math.round(count('old')/OLDCAP*100)}%`;
+ const pb=$('pbars');if(pb)pb.innerHTML=pauses.slice(-8).map(p=>`<i class="${p.f?'f':''}" style="width:${p.f?44:5}px" title="${p.f?'Full GC ~800 ms':'Minor GC ~5 ms'}"></i>`).join('');}
+function stw(on,label,full){const b=$('stw');b.textContent=label||'';b.classList.toggle('on',on);b.classList.toggle('full',!!full);groups.stack.classList.toggle('stw',on);}
+function alloc(){if(busy)return;if(count('eden')>=SL.eden.length){minorGC(true);return;}
+ const t=Math.floor(Math.random()*3),col=frames[t],top=col[col.length-1];top.classList.add('hot');setTimeout(()=>top.classList.remove('hot'),300);
+ const o=mk(objLayer,'eden',freeSlot(objs,'eden',SL.eden.length),'a0',[642+t*86,200]);o.life=life();objs.push(o);}
+async function youngPass(){let surv=0,pro=0,pre=0;
+ const young=objs.filter(o=>o.reg==='eden'||o.reg===from);
+ for(const o of young){if(o.life<=0){kill(o,objs);continue;}o.life--;o.age++;
+  if(o.age>=3){if(promote(o))pro++;continue;}
+  const s=freeSlot(objs,to,SL[to].length);if(s<0){if(promote(o))pre++;continue;}o.reg=to;o.slot=s;put(o);cls(o);surv++;}
+ [from,to]=[to,from];return [surv,pro,pre];}
+function promote(o){const s=freeSlot(objs,'old',OLDCAP);if(s<0){kill(o,objs);return false;}o.reg='old';o.slot=s;o.oldDies=Math.random()<.6;put(o);cls(o);promoted++;return true;}
+async function minorGC(auto){if(busy)return;busy=true;stw(true,'⏸ Stop-the-world · minor GC (young only) · ~5 ms');await sleep(450/sp);
+ const [s,p,pre]=await youngPass();minorN++;pauses.push({f:0});
+ log(`${auto?'Eden full → ':''}<b>minor GC #${minorN}</b>: ${s} copied to ${from.toUpperCase()}, ${p} promoted${pre?`, <b>${pre} premature</b> (survivor full)`:''} — the rest was garbage`);
+ stats();await sleep(550/sp);stw(false);busy=false;
+ if(mode==='alloc'&&count('old')>OLDCAP*.72)fullGC(true);}
+async function fullGC(auto){if(busy)return;busy=true;stw(true,'⏸ Stop-the-world · FULL GC · whole heap + compaction · ~800 ms',true);
+ groups.old.classList.add('sel');await sleep(600/sp);
+ await youngPass();let freed=0;objs.filter(o=>o.reg==='old'&&o.oldDies).forEach(o=>{kill(o,objs);freed++;});
+ await sleep(500/sp);
+ objs.filter(o=>o.reg==='old').sort((a,b)=>a.slot-b.slot).forEach((o,i)=>{o.slot=i;put(o);});
+ fullN++;pauses.push({f:1});log(`${auto?'Old gen 72% full → ':''}<b>full GC</b>: freed ${freed} old objects, then <b>compacted</b> the survivors to the front`);
+ stats();await sleep(700/sp);groups.old.classList.toggle('sel',keyOf('old')===cur);stw(false);busy=false;}
+function play(){clearInterval(timer);timer=null;if(mode==='alloc'&&playing)timer=setInterval(alloc,330/sp);}
+
+// ======================================================= leak simulation
+const ROOTS={cache:{y:128,c:'#F97316',a:'static Map runCache',b:'RunRegistry · never evicted'},tl:{y:178,c:'#EC4899',a:'ThreadLocal<List<Log>>',b:'pool thread exec-2 · no remove()'},lst:{y:228,c:'#14B8A6',a:'listeners List',b:'EventBus.register(this) per run'}};
+let L={objs:[],runs:0,fix:{cache:false,tl:false,lst:false},hist:[],oom:false};
+function leakInit(){leakLayer.innerHTML='';L={objs:[],runs:0,fix:L.fix,hist:[],oom:false};
+ el('rect',{x:56,y:98,width:202,height:212,rx:10,fill:'#fff',stroke:'#E2E8F0'},leakLayer);
+ const lines=el('g',{id:'lines'},leakLayer);
+ Object.entries(ROOTS).forEach(([k,r])=>{const g=el('g',{class:'root'},leakLayer);el('rect',{x:62,y:r.y,width:190,height:38,rx:8,fill:'#fff',stroke:r.c},g);
+  const t=tx(g,72,r.y+16,r.a);t.setAttribute('fill',r.c);tx(g,72,r.y+30,r.b,'s');});
+ tx(leakLayer,66,116,'GC ROOTS · still referenced','lb sm');
+ for(let i=0;i<12;i++){const o=mk(leakLayer,'old',i,'base');o.src='base';o.linked=true;L.objs.push(o);}
+ L.hist=[pct()];leakStats();}
+const pct=()=>Math.round(L.objs.length/OLDCAP*100);
+function link(o){const r=ROOTS[o.src];const [x,y]=SL.old[o.slot];o.line=el('line',{class:'ln',x1:252,y1:r.y+19,x2:x,y2:y,stroke:r.c},$('lines'));}
+function unlink(o){o.linked=false;if(o.line){o.line.classList.add('off');const l=o.line;setTimeout(()=>l.remove(),400);o.line=null;}}
+function leakAdd(src){const s=freeSlot(L.objs,'old',OLDCAP);if(s<0)return false;const o=mk(leakLayer,'old',s,src==='gb'?'gb':src,[150+Math.random()*60,90]);o.src=src;o.linked=src!=='gb';L.objs.push(o);if(o.linked&&src!=='base')link(o);return true;}
+function applyFixNow(k){const list=L.objs.filter(o=>o.src===k&&o.linked);
+ const victims=k==='cache'?list.slice(0,Math.max(0,list.length-6)):list;victims.forEach(unlink);
+ if(victims.length)log(`✅ fix applied: <b>${victims.length}</b> objects no longer reachable — the next GC frees them`);}
+async function runSuite(){if(busy||L.oom)return;busy=true;L.runs++;
+ const plan=[...Array(8).fill('gb'),...Array(4).fill('cache'),...Array(3).fill('tl'),...Array(2).fill('lst')];
+ for(const s of plan){if(!leakAdd(s)){await oom();return;}await sleep(35);}
+ log(`Suite run #${L.runs}: 8 temp objects (garbage) + 9 objects attached to roots`);
+ await sleep(650);
+ if(L.fix.cache)applyFixNow('cache');if(L.fix.tl)applyFixNow('tl');if(L.fix.lst)applyFixNow('lst');
+ await sleep(300);stw(true,'⏸ Full GC · frees only what no root can reach',true);await sleep(450);
+ let freed=0;L.objs.filter(o=>!o.linked).forEach(o=>{kill(o,L.objs);freed++;});
+ await sleep(450);
+ $('lines').style.opacity=0;L.objs.sort((a,b)=>a.slot-b.slot).forEach((o,i)=>{o.slot=i;put(o);if(o.line){const [x,y]=SL.old[i];o.line.setAttribute('x2',x);o.line.setAttribute('y2',y);}});
+ await sleep(550);$('lines').style.opacity=1;
+ L.hist.push(pct());const d=L.hist[L.hist.length-1]-L.hist[L.hist.length-2];
+ log(`GC freed ${freed}. Old gen after GC: <b>${pct()}%</b> ${d>0?`(▲ ${d}% — the floor keeps rising = <b>leak</b>)`:'(flat floor = healthy ✅)'}`);
+ leakStats();stw(false);busy=false;}
+async function oom(){L.oom=true;stw(true,'💥 java.lang.OutOfMemoryError: Java heap space',true);log('💥 <b>OutOfMemoryError: Java heap space</b> — heap dump → MAT would show runCache / ThreadLocal / listeners as dominators. Press Reset.');busy=false;leakStats();}
+function leakStats(){const m=$('meter');if(!m)return;m.textContent=`after GC: ${L.hist[L.hist.length-1]}%`;
+ const h=L.hist,pts=h.map((v,i)=>`${4+i*(112/Math.max(1,Math.max(h.length-1,8)))},${26-v*.24}`).join(' ');
+ $('spark').innerHTML=`<line x1="0" y1="2" x2="120" y2="2" stroke="#FCA5A5" stroke-dasharray="3 3"/><polyline points="${pts}" fill="none" stroke="${h.length>1&&h[h.length-1]>h[0]?'#DC2626':'#16A34A'}" stroke-width="2"/>`;}
+
+// ======================================================= lenses
+let mode='areas';
+const BAR={
+ areas:()=>`<span class="d"><b>Areas</b> · hover a box · click it for must-know, Qs, a scenario and flags</span>
+  <span class="lg" style="margin-left:auto"><i style="background:#93C5FD"></i>heap</span><span class="lg"><i style="background:#FBBF24"></i>metaspace</span><span class="lg"><i style="background:#34D399"></i>per thread</span><span class="lg"><i style="background:#94A3B8"></i>off-heap</span>`,
+ alloc:()=>`<span class="d"><b>Allocation</b> · new → Eden → S0↔S1 (age +1 per GC) → Old at age 3 <small>(demo; real ≤ 15)</small></span>
+  <button class="btn" id="pp">${playing?'⏸ Pause':'▶ Play'}</button><span class="seg" id="spd"><button data-v="1" class="${sp===1?'on':''}">1×</button><button data-v="2" class="${sp===2?'on':''}">2×</button></span>
+  <span class="stat" id="st" style="margin-left:auto"></span>`,
+ gc:()=>`<span class="d"><b>GC</b> · compare the pauses</span><button class="btn" id="g-al">+ Allocate 8</button><button class="btn p" id="g-mi">Minor GC</button><button class="btn p" id="g-fu" style="background:#B91C1C;border-color:#B91C1C">Full GC</button>
+  <span class="lg">pauses</span><span class="pbars" id="pbars"></span><span class="stat" id="st" style="margin-left:auto"></span>`,
+ oom:()=>`<span class="d"><b>OOM</b> · every error points to the area that throws it — click a pin for cause, FireFlink example and fix</span><span class="stat" style="margin-left:auto;color:#B91C1C">7 errors</span>`,
+ leak:()=>`<span class="d"><b>Leaks</b></span><button class="btn p" id="l-run">▶ Run suite</button><button class="btn" id="l-auto">×5</button><button class="btn" id="l-reset" title="Reset">↺</button>
+  <span class="lg" style="margin-left:6px">Fix:</span>${Object.entries({cache:'bounded cache',tl:'TL.remove()',lst:'unregister'}).map(([k,n])=>`<label class="fx ${L.fix[k]?'on':''}" data-fx="${k}"><input type="checkbox" ${L.fix[k]?'checked':''}>${n}</label>`).join('')}
+  <span class="stat" id="meter" style="margin-left:auto"></span><svg id="spark" width="120" height="28" style="flex:none"></svg>`};
+const CAP={areas:'',alloc:'Threads allocate objects (green frame flash) — watch Eden fill up.',gc:'Allocate, then press Minor GC vs Full GC. G1 (default) aims for 200 ms pauses; ZGC ~1 ms.',oom:'',leak:'Run a few suites and watch the <b>after-GC</b> floor. Then tick the fixes.'};
+function setLens(l){if(!BAR[l])return;mode=l;
+ $('lenses').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.l===l));
+ $('lensbar').innerHTML=BAR[l]();
+ $('log').innerHTML=CAP[l];
+ svg.classList.toggle('lens-leak',l==='leak');objLayer.style.display=l==='leak'?'none':'';leakLayer.style.display=l==='leak'?'':'none';pinLayer.style.display=l==='oom'?'':'none';
+ if(l!=='leak'&&L.oom)stw(false);
+ if(l==='leak'){if(!L.objs.length||L.oom)leakInit();else leakStats();}
+ if(l==='alloc'||l==='gc')stats();
+ play();wireBar();}
+function wireBar(){const on=(id,f)=>{const b=$(id);if(b)b.onclick=f;};
+ on('pp',()=>{playing=!playing;$('pp').textContent=playing?'⏸ Pause':'▶ Play';play();});
+ const s=$('spd');if(s)s.onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;sp=+b.dataset.v;s.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));play();};
+ on('g-al',async()=>{for(let i=0;i<8;i++){if(busy)break;alloc();await sleep(60);}stats();});
+ on('g-mi',()=>minorGC(false));on('g-fu',()=>fullGC(false));
+ $('lensbar').querySelectorAll('[data-pinb]').forEach(b=>b.onclick=()=>selectPin(b.dataset.pinb));
+ on('l-run',runSuite);on('l-auto',async()=>{for(let i=0;i<5&&!L.oom;i++){while(busy)await sleep(100);await runSuite();}});
+ on('l-reset',()=>{if(busy&&!L.oom)return;stw(false);busy=false;leakInit();log('Reset. 12 objects = Spring singletons (legit long-lived data).');});
+ $('lensbar').querySelectorAll('[data-fx]').forEach(lb=>lb.querySelector('input').onchange=e=>{const k=lb.dataset.fx;L.fix[k]=e.target.checked;lb.classList.toggle('on',L.fix[k]);if(L.fix[k])applyFixNow(k);});}
+$('lenses').onclick=e=>{const b=e.target.closest('[data-l]');if(b)setLens(b.dataset.l);};
+
+// ======================================================= tour
+const TOUR=[
+ {c:'JVM',r:'jvm',l:'areas',t:'JVM memory = shared areas (heap, metaspace) + per-thread areas (stack, PC).'},
+ {c:'Pod',r:'container',l:'areas',t:'Everything sits inside the pod limit — cross it and the kernel kills the JVM (exit 137).'},
+ {c:'Heap',r:'heap',l:'areas',t:'Heap: every object. Young + Old. The GC frees what roots can\'t reach.'},
+ {c:'Eden',r:'eden',l:'alloc',t:'Watch new objects land in Eden; most die at the next minor GC.'},
+ {c:'Survivors',r:'survivor',l:'alloc',t:'Survivors bounce S0 ↔ S1 and age; old enough → promoted to Old.'},
+ {c:'Old gen',r:'old',l:'gc',t:'Long-lived data. Press Minor GC, then Full GC — compare the pause bars.'},
+ {c:'Stacks',r:'stack',l:'areas',t:'One stack per thread: frames with locals and references. Deep recursion → StackOverflowError.'},
+ {c:'Metaspace',r:'meta',l:'areas',t:'Class metadata in native memory (PermGen before Java 8).'},
+ {c:'Off-heap',r:'direct',l:'areas',t:'NIO / Kafka buffers, thread memory, GC structures — none of it counted in -Xmx.'},
+ {c:'OOMs',pin:'heap',l:'oom',t:'Every OutOfMemoryError points to an area. Click the other pins too.'},
+ {c:'Leaks',r:'heap',l:'leak',t:'Run suites, watch the after-GC floor rise, then tick the three fixes.'}];
+let ti=-1;
+$('crumbs').innerHTML=TOUR.map((s,i)=>`<button data-i="${i}">${i+1}. ${s.c}</button>`).join('');
+function tourNote(s){const n=$('d-tour');if(!s){n.hidden=true;ti=-1;crumbs();return;}n.hidden=false;n.innerHTML=`🧭 <b>Tour ${ti+1}/${TOUR.length}</b> · ${s}`;}
+function crumbs(){$('crumbs').querySelectorAll('button').forEach((b,i)=>{b.classList.toggle('on',i===ti);b.classList.toggle('done',ti>=0&&i<ti);});
+ $('tprev').disabled=ti<=0;$('tnext').textContent=ti<0?'Start ▶':ti>=TOUR.length-1?'Done ✓':'Next ▶';}
+function goTour(i){if(i<0||i>=TOUR.length)return;ti=i;const s=TOUR[i];setLens(s.l);
+ if(s.pin){selectPin(s.pin,{tour:1});zoomTo([0,0,900,500]);}else select(s.r,{tour:1});
+ tourNote(s.t);crumbs();}
+$('crumbs').onclick=e=>{const b=e.target.closest('[data-i]');if(b)goTour(+b.dataset.i);};
+$('tstart').onclick=()=>goTour(0);
+$('tnext').onclick=()=>{if(ti>=TOUR.length-1){tourNote(null);select('jvm');setLens('areas');return;}goTour(ti+1);};
+$('tprev').onclick=()=>goTour(ti-1);
+document.addEventListener('keydown',e=>{if(/INPUT|TEXTAREA/.test(e.target.tagName))return;
+ if(e.key==='ArrowRight'){$('tnext').click();e.preventDefault();}
+ if(e.key==='ArrowLeft'&&ti>0){goTour(ti-1);e.preventDefault();}
+ if(e.key==='Escape')zoomTo([0,0,900,500]);
+ const n=+e.key;if(n>=1&&n<=5)setLens(['areas','alloc','gc','oom','leak'][n-1]);});
+
+// random question
+$('rand').onclick=()=>{const ks=Object.keys(R);const k=ks[Math.floor(Math.random()*ks.length)];select(k);tab='qs';drawer();
+ const qs=$('d-body').querySelectorAll('.q');const q=qs[Math.floor(Math.random()*qs.length)];q.style.borderColor='#6366F1';q.scrollIntoView({block:'nearest'});};
+
+// ======================================================= start (hash: #lens=gc&r=old&tab=qs&pin=heap&tour=3)
+seed();
+const H=Object.fromEntries(location.hash.slice(1).split('&').filter(Boolean).map(p=>p.split('=')));
+setLens(H.lens||'areas');
+if(H.runs)setTimeout(async()=>{for(let i=0;i<+H.runs;i++)await runSuite();},300);
+if(H.tour)goTour(+H.tour);else if(H.pin)selectPin(H.pin);else{select(H.r||'jvm',{zoom:!!H.r});if(H.tab){tab=H.tab;drawer();}}
+crumbs();
+</script>
+</body></html>

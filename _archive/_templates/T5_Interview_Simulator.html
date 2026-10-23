@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JVM Memory · Interview Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e1116;--pane:#13171f;--pane2:#181d27;--card:#1b2130;--line:#242b3a;--line2:#2f3748;--tx:#c5cdd9;--mut:#8590a6;--dim:#5d677c;--hi:#e8edf5;
+ --blue:#6ea8fe;--green:#4ec98a;--teal:#3fc1c9;--amber:#e3b341;--red:#f47067;--purple:#b392f0;
+ --f:'Inter','Segoe UI',system-ui,sans-serif;--m:'JetBrains Mono',Consolas,monospace}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--tx);font:13.5px/1.5 var(--f);overflow:hidden}
+code,pre,.mono{font-family:var(--m);font-size:12px}
+code{background:#222a3a;color:#d6deeb;padding:0 4px;border-radius:4px}
+pre{margin:6px 0 0;white-space:pre-wrap;color:#d6deeb}
+b{color:var(--hi);font-weight:600}
+button{font:inherit;color:inherit;cursor:pointer}
+.gtk{font-size:10.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--purple);border:1px solid #4a3d6b;border-radius:4px;padding:0 5px;margin-right:4px}
+
+/* header */
+header{height:42px;display:flex;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--pane)}
+.logo{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#6ea8fe,#b392f0);display:grid;place-items:center;color:#0e1116;font-weight:700;font-size:12px}
+header h1{font-size:14.5px;margin:0;color:var(--hi);font-weight:600}
+header .sub{color:var(--mut);font-size:12.5px}
+header .sp{flex:1}
+.hchip{font-size:11.5px;color:var(--mut);border:1px solid var(--line2);border-radius:999px;padding:2px 9px}
+header a{color:var(--blue);text-decoration:none;font-size:12.5px}
+
+/* layout */
+.app{display:grid;grid-template-columns:206px minmax(0,1fr) 384px;grid-template-rows:minmax(0,1fr);height:calc(100vh - 42px)}
+.left{border-right:1px solid var(--line);background:var(--pane);display:flex;flex-direction:column;padding:12px 10px;gap:10px;min-height:0}
+.center{display:flex;flex-direction:column;gap:10px;padding:12px 14px;min-width:0;min-height:0;overflow:auto}
+.right{border-left:1px solid var(--line);background:var(--pane);display:flex;flex-direction:column;min-height:0}
+
+/* left: outline */
+.lt{font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--dim);font-weight:600;padding:0 6px}
+.chs{display:flex;flex-direction:column;gap:2px}
+.ch{display:flex;align-items:center;gap:8px;padding:7px 7px;border-radius:8px;border:1px solid transparent;background:none;text-align:left;color:var(--tx)}
+.ch:hover{background:var(--pane2)}
+.ch.on{background:var(--card);border-color:var(--line2);color:var(--hi)}
+.ch .dot{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line2);display:grid;place-items:center;font-size:10px;color:var(--dim);flex:none;font-family:var(--m)}
+.ch .dot.v{border-color:var(--blue);color:var(--blue)}
+.ch .dot.s{background:var(--green);border-color:var(--green);color:#0e1116}
+.ch .dot.p{background:var(--amber);border-color:var(--amber);color:#0e1116}
+.ch .dot.r{background:var(--line2);border-color:var(--line2);color:var(--tx)}
+.ch span{flex:1;font-size:13px;line-height:1.3;white-space:nowrap}
+.ch small{font-size:9.5px;color:var(--mut);border:1px solid var(--line2);border-radius:4px;padding:0 4px}
+.ch small.g{color:var(--red);border-color:#5b2b2b}
+.scard{margin-top:auto;background:var(--pane2);border:1px solid var(--line);border-radius:10px;padding:9px 10px;font-size:12px;color:var(--mut)}
+.scard b{font-size:15px}
+.scard .bar{height:5px;background:var(--line);border-radius:3px;margin:6px 0 4px;overflow:hidden}
+.scard .bar i{display:block;height:100%;background:var(--green);width:0;transition:width .4s}
+.how{font-size:11.5px;color:var(--dim);line-height:1.55;padding:0 4px}
+.how b{color:var(--mut)}
+
+/* center: concept */
+.concept{background:var(--pane2);border:1px solid var(--line);border-radius:12px;padding:9px 14px;flex:none}
+.ctop{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ctop h2{font-size:15.5px;margin:0;color:var(--hi);font-weight:600}
+.ctop .n{font-family:var(--m);font-size:11.5px;color:var(--blue)}
+.ctop .tag{font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--green);border:1px solid #275a40;border-radius:4px;padding:0 5px}
+.must{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;margin:0;padding:0;list-style:none}
+.must li{position:relative;padding-left:14px;font-size:13px;line-height:1.45}
+.must li::before{content:'';position:absolute;left:2px;top:7px;width:5px;height:5px;border-radius:50%;background:var(--blue)}
+table.oom{width:100%;border-collapse:collapse;font-size:12.5px}
+table.oom th{text-align:left;color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:2px 8px 3px 0;border-bottom:1px solid var(--line)}
+table.oom td{padding:2px 8px 2px 0;white-space:nowrap;border-bottom:1px solid #1f2533;vertical-align:top}
+table.oom td:first-child{font-family:var(--m);font-size:11.5px;color:var(--red);white-space:nowrap}
+.try{margin-top:7px;font-size:12.5px;color:var(--mut);display:flex;gap:7px;align-items:baseline}
+.try em{font-style:normal;font-size:10.5px;font-weight:700;letter-spacing:.5px;color:#0e1116;background:var(--blue);border-radius:4px;padding:0 6px;flex:none}
+
+/* center: monitor */
+.mon{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0}
+.ctl{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.ctl button,.ctl select{font-family:var(--m);font-size:11.5px;background:var(--card);border:1px solid var(--line2);border-radius:6px;padding:4px 8px;color:var(--tx)}
+.ctl button:hover{border-color:var(--blue)}
+.ctl button.go{border-color:#2f6b4c;color:var(--green)}
+.ctl button.bad{border-color:#6b2f2f;color:var(--red)}
+.ctl button.on{background:#3a1f22;border-color:var(--red);color:#ffb3ad}
+.ctl .grp{display:flex;align-items:center;gap:5px;font-family:var(--m);font-size:11.5px;color:var(--mut)}
+.ctl .sp{flex:1}
+.ctl .hint,.ctl .grp.hint select{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(110,168,254,.0)}50%{box-shadow:0 0 0 3px rgba(110,168,254,.45)}}
+.mrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:10px;flex:none}
+.panel{background:var(--pane);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+.ptitle{font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--dim);font-weight:600;display:flex;justify-content:space-between;margin-bottom:5px}
+.ptitle .pc{display:flex;gap:4px}.ptitle .pc button{background:var(--card);border:1px solid var(--line2);border-radius:5px;font-size:10.5px;line-height:1;padding:2px 6px;color:var(--mut)}
+.ptitle span{text-transform:none;letter-spacing:0;font-family:var(--m);color:var(--mut);font-weight:400}
+.bars{display:flex;flex-direction:column;gap:4px}
+.br{display:grid;grid-template-columns:64px 1fr 92px;gap:8px;align-items:center;font-family:var(--m);font-size:11.5px}
+.br .l{color:var(--mut)}
+.br .tr{height:10px;background:#1d2331;border-radius:3px;overflow:hidden;position:relative}
+.br .tr i{display:block;height:100%;border-radius:3px;transition:width .35s,background .3s}
+.br .v{text-align:right;color:var(--tx)}
+.br.sep{margin-top:3px;padding-top:5px;border-top:1px dashed var(--line)}
+canvas{display:block;width:100%;height:116px}
+.legend{display:flex;gap:12px;font-size:11px;color:var(--mut);margin-top:3px;font-family:var(--m)}
+.legend i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
+.term{flex:1;min-height:100px;position:relative;display:flex;flex-direction:column;padding:0;overflow:hidden}
+.term .jst{font-family:var(--m);font-size:11.5px;padding:6px 10px;border-bottom:1px solid var(--line);color:var(--mut);white-space:pre;overflow:hidden}
+.term .jst b{color:var(--teal);font-weight:400}
+.term .log{flex:1;overflow:auto;padding:5px 10px;font-family:var(--m);font-size:11.5px;line-height:1.55;white-space:pre-wrap;color:#9aa5b8}
+.log .y{color:var(--green)}.log .f{color:var(--amber)}.log .w{color:var(--red)}.log .i{color:var(--blue)}
+.crash{position:absolute;inset:0;background:rgba(14,17,22,.94);padding:10px 14px;display:none;flex-direction:column;gap:6px;overflow:auto}
+.crash.on{display:flex}
+.crash h3{margin:0;font-family:var(--m);font-size:13px;color:var(--red);font-weight:600}
+.crash.warn h3{color:var(--amber)}
+.crash pre{margin:0;color:#c9a9a6;font-size:11.5px}
+.crash p{margin:0;font-size:12.5px;color:var(--tx)}
+.crash .row{display:flex;gap:8px;align-items:center}
+.crash button{font-family:var(--m);font-size:11.5px;background:var(--card);border:1px solid var(--line2);border-radius:6px;padding:4px 10px}
+.crash small{color:var(--mut);font-family:var(--m);font-size:11.5px}
+
+/* right: chat */
+.chead{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px}
+.chead .av{width:26px;height:26px;border-radius:50%;background:#2a3346;display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--blue)}
+.chead b{font-size:13.5px}
+.chead small{display:block;color:var(--mut);font-size:11.5px;line-height:1.2}
+.chead .tmr{margin-left:auto;font-family:var(--m);font-size:11.5px;color:var(--amber);display:none}
+.msgs{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:9px;min-height:0}
+.m{max-width:92%;border-radius:12px;padding:8px 11px;font-size:13px;line-height:1.5;animation:in .25s ease}
+@keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.m.iv{background:var(--card);border:1px solid var(--line2);border-top-left-radius:4px;align-self:flex-start}
+.m.iv .who{font-size:10.5px;color:var(--blue);font-weight:600;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:1px}
+.m.me{background:#1d2b45;border:1px solid #2c4470;border-top-right-radius:4px;align-self:flex-end;color:#d8e4fa}
+.m.fb{background:transparent;border:1px dashed var(--line2);align-self:flex-start;color:var(--tx)}
+.m.ans{background:#14231c;border:1px solid #23503a;align-self:flex-start;border-top-left-radius:4px}
+.m.ans .who{font-size:10.5px;color:var(--green);font-weight:600;letter-spacing:.4px;text-transform:uppercase;display:block;margin-bottom:1px}
+.m.ans.typing{cursor:pointer}
+.m.ans.typing::after{content:'▍';color:var(--green);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.m.sys{align-self:stretch;max-width:100%;background:var(--bg);border:1px solid var(--line);font-size:12.5px;color:var(--mut)}
+.m.sys pre{margin:0;color:#b8d4c4}
+.m.alert{align-self:stretch;max-width:100%;background:#2a1517;border:1px solid #6b2f2f;color:#f3c7c3}
+.m.pm{align-self:stretch;max-width:100%;background:#13241b;border:1px solid #2f6b4c;font-size:12.5px}
+.vchip{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;border-radius:4px;padding:0 6px;margin-right:5px;color:#0e1116}
+.vchip.s{background:var(--green)}.vchip.p{background:var(--amber)}.vchip.w{background:var(--red)}
+.acts{border-top:1px solid var(--line);padding:10px 14px 12px;display:flex;flex-direction:column;gap:6px;background:var(--pane2)}
+.acts .lbl{font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--dim);font-weight:600}
+.opt{display:grid;grid-template-columns:20px 1fr;gap:8px;align-items:start;text-align:left;background:var(--card);border:1px solid var(--line2);border-radius:9px;padding:6px 10px;font-size:12.5px;line-height:1.45}
+.opt:hover{border-color:var(--blue);background:#1f2738}
+.opt i{font-style:normal;font-family:var(--m);font-size:11px;color:var(--blue);border:1px solid #2c4470;border-radius:4px;text-align:center;line-height:17px;margin-top:1px}
+.opt code{font-size:11.5px}
+.link{background:none;border:none;color:var(--mut);font-size:12px;text-align:left;padding:2px 0;text-decoration:underline;text-underline-offset:3px}
+.link:hover{color:var(--blue)}
+.fu{background:none;border:1px solid var(--line2);border-radius:999px;padding:4px 11px;font-size:12px;text-align:left;color:var(--tx)}
+.fu:hover{border-color:var(--blue);color:var(--hi)}
+.fu::before{content:'↳ ';color:var(--blue)}
+.pbtn{background:var(--blue);color:#0e1116;border:none;border-radius:8px;padding:6px 12px;font-weight:600;font-size:12.5px;align-self:flex-start}
+.pbtn.ghost{background:none;color:var(--blue);border:1px solid #2c4470}
+.row2{display:flex;gap:8px;flex-wrap:wrap}
+
+@media (max-width:1100px){.app{grid-template-columns:170px minmax(0,1fr) 340px}.must{grid-template-columns:1fr}}
+@media (max-width:860px){html,body{overflow:auto}.app{grid-template-columns:1fr;height:auto}.left,.right{border:none}.right{min-height:560px}.mrow{grid-template-columns:1fr}.center{overflow:visible}header .hchip{display:none}}
+</style>
+</head>
+<body>
+<header>
+ <div class="logo">J</div>
+ <h1>JVM Memory</h1><span class="sub">· Interview Simulator</span>
+ <span class="sp"></span>
+ <span class="hchip">pod limit 1 GiB</span><span class="hchip">G1 · Java 21+</span><span class="hchip">simplified from FireFlink</span>
+ <a href="../00_Index.html">← Index</a>
+</header>
+
+<div class="app">
+ <!-- LEFT: outline -->
+ <aside class="left">
+  <div class="lt">Chapters</div>
+  <nav class="chs" id="chs"></nav>
+  <div class="how"><b>1</b> read the must-know · <b>2</b> poke the monitor · <b>3</b> answer the interviewer. <b>case</b> = scenario question. <b>↑ ↓</b> switch chapters.</div>
+  <div class="scard" id="score"></div>
+ </aside>
+
+ <!-- CENTER: concept + live monitor -->
+ <main class="center">
+  <section class="concept" id="concept"></section>
+  <section class="mon">
+   <div class="ctl" id="ctl">
+    <button class="go" data-k="alloc" id="b-alloc">Allocate</button>
+    <button class="bad" data-k="leak" id="b-leak">Start leak</button>
+    <button data-k="gc" id="b-gc">Full GC</button>
+    <span class="grp" data-k="xmx">-Xmx <select id="s-xmx"><option value="256">256m</option><option value="512" selected>512m</option><option value="768">768m</option><option value="1024">1g</option></select></span>
+    <button data-k="thr" id="b-thr">+250 threads</button>
+    <button data-k="cls" id="b-cls">Load classes</button>
+    <button data-k="rec" id="b-rec">Deep recursion</button>
+   </div>
+   <div class="mrow">
+    <div class="panel">
+     <div class="ptitle">Memory <span id="flags"></span><span class="pc"><button id="b-run" title="Pause / resume background traffic">⏸</button><button id="b-reset" title="Restart the JVM">↺</button></span></div>
+     <div class="bars" id="bars"></div>
+    </div>
+    <div class="panel">
+     <div class="ptitle">Heap used over time <span id="uptime">0s</span></div>
+     <canvas id="cv"></canvas>
+     <div class="legend"><span><i style="background:var(--blue)"></i>heap used</span><span><i style="background:var(--amber)"></i>old gen</span><span><i style="background:var(--red)"></i>-Xmx</span></div>
+    </div>
+   </div>
+   <div class="panel term">
+    <div class="jst" id="jst"></div>
+    <div class="log" id="log"></div>
+    <div class="crash" id="crash"></div>
+   </div>
+  </section>
+ </main>
+
+ <!-- RIGHT: interviewer -->
+ <aside class="right">
+  <div class="chead"><div class="av" id="cav">IV</div><div><b id="cwho">Interviewer</b><small id="csub">Senior backend engineer</small></div><span class="tmr" id="tmr"></span></div>
+  <div class="msgs" id="msgs"></div>
+  <div class="acts" id="acts"></div>
+ </aside>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const store={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v);}catch(e){return d;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
+
+/* ================================================================ CONTENT */
+const CH=[
+{t:'Runtime areas',must:[
+ '<b>Heap</b> (shared) holds every object. <b>Young</b> = Eden + S0 + S1, <b>Old</b> = long-lived objects.',
+ '<b>Metaspace</b> (native memory) holds class metadata. It replaced <b>PermGen</b> in Java 8.',
+ '<b>Per thread</b>: a <b>stack</b> of frames (locals, references) and a <b>PC register</b>.',
+ '<span class="gtk">good to know</span>Code cache (JIT code) and direct buffers are off-heap too — they count toward the pod limit.'],
+ try:'Press <b>Allocate</b> a few times — Eden fills, a young GC empties it.',keys:['alloc'],
+ q:'Walk me through the memory areas of a running JVM.',
+ opts:[['Heap and stack — objects go in the heap, primitives in the stack.',1,'Too thin: misses Metaspace and the shared vs per-thread split. Also, primitive <i>fields</i> live inside objects on the heap.'],
+  ['Shared: heap (young + old) and Metaspace (native). Per thread: stack + PC register. Plus off-heap code cache and direct buffers.',2,'That\'s the structure interviewers want — then go one level deeper wherever they point.'],
+  ['Heap, PermGen for strings and classes, and the stack.',0,'Dated: PermGen was removed in Java 8 (→ Metaspace) and the string pool moved to the heap in Java 7.']],
+ ans:'Two groups. <b>Shared by all threads</b>: the <b>heap</b> — young gen (Eden + two survivor spaces) and old gen — which holds every object, and <b>Metaspace</b> in native memory for class metadata (it replaced PermGen in Java 8). <b>Per thread</b>: a <b>stack</b> of frames with locals and references, and a <b>PC register</b>. Off-heap there\'s also the <b>code cache</b> for JIT-compiled code and <b>direct buffers</b> — worth mentioning, because in Kubernetes they count toward the pod\'s memory limit.',
+ fu:[['Why was PermGen replaced by Metaspace?','PermGen was a fixed-size slice of the heap, so apps loading many classes (Groovy scripts, proxies, redeploys) hit <code>OutOfMemoryError: PermGen space</code>. Metaspace lives in native memory and grows on demand — cap it with <code>-XX:MaxMetaspaceSize</code> so a class-loader leak can\'t eat the whole pod.'],
+  ['Where is the String pool?','On the heap since Java 7, so interned strings are garbage-collected like normal objects. Before that it was in PermGen.']]},
+
+{t:'Stack vs heap',must:[
+ '<b>Stack</b>: one per thread; one frame per call with locals + references; freed when the method returns — no GC.',
+ '<b>Heap</b>: objects, arrays and their fields (even <code>int</code> fields); shared → needs synchronization; cleaned by GC.',
+ 'The <b>String pool</b> lives in the heap since Java 7.',
+ 'Stack too deep → <code>StackOverflowError</code>. Size per thread: <code>-Xss</code> (~1 MB default).'],
+ try:'<b>+250 threads</b> — each new thread gets its own stack. <b>Deep recursion</b> overflows one.',keys:['thr','rec'],
+ q:'Where does each piece of this method live?<pre>void runStep() {\n  int retries = 3;\n  Step s = new Step("login");\n}</pre>',
+ opts:[['<code>retries</code> and the reference <code>s</code> on the stack; the <code>Step</code> object and its fields on the heap; <code>"login"</code> in the string pool (heap).',2,'Exactly — references on the stack point into the heap.'],
+  ['Everything is on the stack, because it\'s all local to the method.',0,'Only locals and references live on the stack. Objects live on the heap (escape analysis aside).'],
+  ['<code>retries</code> on the stack; <code>s</code> and the Step object on the heap.',1,'Close — but <code>s</code> itself is a local reference, so it\'s on the stack. Only the object is on the heap.']],
+ ans:'<code>retries</code> (a primitive local) and <code>s</code> (a reference) sit in <code>runStep</code>\'s <b>stack frame</b> and vanish when it returns. <code>new Step(...)</code> creates the object on the <b>heap</b>; the literal <code>"login"</code> is interned in the <b>string pool</b>, also on the heap. After the frame is gone nothing references the Step, so the next young GC reclaims it.',
+ fu:[['Is the heap thread-safe?','No. The heap is shared, so any object two threads can reach needs synchronization, immutability or a concurrent class. Stack locals are thread-confined — that\'s why stateless services are thread-safe.'],
+  ['When do you hit StackOverflowError in real code?','Unbounded recursion. Classic one: Jackson serializing a bidirectional <code>Suite ↔ TestCase</code> relation goes round forever. Break the cycle (a DTO, or <code>@JsonManagedReference</code>/<code>@JsonBackReference</code>). Raising <code>-Xss</code> only delays it.']]},
+
+{t:'Object life & GC',must:[
+ 'New objects go to <b>Eden</b>. Eden full → <b>minor (young) GC</b>: live objects are copied to a survivor space, age +1.',
+ 'Old enough (age threshold, max 15) or survivor full → <b>promoted to Old</b>.',
+ 'Old full → <b>full GC</b>: much slower, longer <b>stop-the-world</b> pause.',
+ '<b>G1</b> is the default since Java 9: regions + a pause target (<code>-XX:MaxGCPauseMillis=200</code>). <span class="gtk">good to know</span>ZGC: sub-ms pauses for big heaps.'],
+ try:'Keep pressing <b>Allocate</b> — watch <i>Pause Young</i> lines and Old creeping up. Then <b>Full GC</b>.',keys:['alloc','gc'],
+ q:'What happens in a minor GC — and why is it usually cheap?',
+ opts:[['It finds live objects in Eden + the "from" survivor, copies them to the empty survivor (or to Old if old enough), then wipes Eden. Cheap because most objects die young.',2,'Spot on — "most objects die young" is the key phrase.'],
+  ['It scans the whole heap and deletes unreferenced objects.',0,'That describes a full GC. A minor GC only touches the young generation.'],
+  ['It runs in the background with no pause at all.',0,'Young collections are stop-the-world — just short (a few ms), because so little survives.']],
+ ans:'When Eden fills, the JVM briefly pauses app threads (<b>stop-the-world</b>), traces live objects from GC roots (stack references, statics), and copies them from Eden and the "from" survivor into the empty "to" survivor, bumping their age. Objects past the age threshold are <b>promoted</b> to Old. Eden and the "from" space are then simply wiped. Cost is proportional to <b>live</b> objects, and most objects — request DTOs, step results — die young.',
+ fu:[['Why are there two survivor spaces?','Copying needs an empty target. Live objects from Eden + S0 are copied into S1, then Eden and S0 are cleared in one go — no fragmentation. Next GC they swap roles.'],
+  ['What is stop-the-world, and why do you care?','All application threads pause at a safepoint so the GC sees a consistent object graph. Young pauses are milliseconds; full GC pauses grow with the old gen — in a service that shows up as request timeouts or Kafka consumer rebalances.']]},
+
+{t:'The OOM family',tag:'case',table:`<table class="oom"><tr><th>Message</th><th>Usual cause</th><th>First fix</th></tr>
+<tr><td>Java heap space</td><td>live data &gt; <code>-Xmx</code> (leak / too small)</td><td>heap dump → find the retainer</td></tr>
+<tr><td>GC overhead limit exceeded</td><td>~98% time in GC, &lt;2% freed</td><td>same as heap space</td></tr>
+<tr><td>Metaspace</td><td>too many classes / loader leak</td><td>fix the leak, cap Metaspace</td></tr>
+<tr><td>unable to create native thread</td><td>too many threads for the pod</td><td>bounded thread pools</td></tr>
+<tr><td>StackOverflowError</td><td>infinite recursion (an <i>Error</i>)</td><td>fix the recursion</td></tr></table>`,
+ try:'Break it on purpose: <b>Load classes</b> ×3, <b>+250 threads</b> ×4, or <b>Start leak</b> + Allocate.',keys:['cls','thr','leak'],
+ q:'Scenario: <code>GET /api/suites/42</code> fails with <code>StackOverflowError</code> while the response is being serialized. Your first guess?',
+ opts:[['The stack is too small — raise <code>-Xss</code> to 4m.',0,'Treats the symptom. Infinite recursion overflows any stack size.'],
+  ['Infinite recursion in serialization — a bidirectional <code>Suite ↔ TestCase</code> entity. Break the cycle with a DTO or <code>@JsonBackReference</code>.',2,'Right — and the JVM survives: only that request\'s thread failed.'],
+  ['The heap is too small for this suite.',0,'Heap exhaustion is <code>OutOfMemoryError: Java heap space</code>, not a StackOverflowError.']],
+ ans:'StackOverflowError means one thread\'s stack ran out of frames — almost always <b>unbounded recursion</b>. During serialization the usual cause is a <b>cycle</b>: <code>Suite.testCases → TestCase.suite → Suite…</code>. Jackson reports it as <code>Infinite recursion (StackOverflowError)</code> with the reference chain. Fix it by returning a <b>DTO</b> (best — don\'t expose entities) or annotating the back-reference. Unlike a heap OOM, it\'s confined to that thread; the service keeps serving.',
+ fu:[['Should you catch OutOfMemoryError?','Not to "recover" — the heap is exhausted and state may be half-updated. Run with <code>-XX:+HeapDumpOnOutOfMemoryError</code> and <code>-XX:+ExitOnOutOfMemoryError</code> so Kubernetes restarts a clean pod and you keep the dump.'],
+  ['Heap space vs GC overhead limit exceeded?','Same root problem — the heap is full of live objects. "GC overhead" (Parallel GC) is the early warning: ~98% of time spent in GC, under 2% freed. G1 usually just reports "Java heap space".']]},
+
+{t:'Flags & containers',tag:'case',must:[
+ '<code>-Xms</code>/<code>-Xmx</code> initial/max heap · <code>-Xss</code> stack per thread · <code>-XX:MaxMetaspaceSize</code> caps Metaspace.',
+ '<code>-XX:+HeapDumpOnOutOfMemoryError</code> + <code>HeapDumpPath</code> — always on in prod.',
+ 'Process memory = heap + Metaspace + stacks + code cache + direct buffers. Over the <b>pod limit</b> → kernel kill: <b>OOMKilled, exit 137</b>, no Java exception.',
+ 'In containers prefer <code>-XX:MaxRAMPercentage=75</code>: the heap follows the pod limit and leaves room for non-heap.'],
+ try:'Set <b>-Xmx 1g</b> (the pod has 1 GiB) and Allocate until it dies. Then try <b>768m</b> (= 75%).',keys:['xmx','alloc'],
+ q:'Scenario: the execution-service pod restarts with <b>OOMKilled (exit 137)</b>, but the logs show no <code>OutOfMemoryError</code>. Why?',
+ opts:[['The JVM swallowed the OutOfMemoryError somewhere.',0,'A Java OOM would be logged (and dump the heap). Exit 137 is a SIGKILL from outside the JVM.'],
+  ['Total process memory crossed the container limit, so the kernel killed it. The heap is probably sized too close to the limit — use MaxRAMPercentage≈75 and check native memory.',2,'Exactly the distinction they look for: JVM OOM vs container OOMKill.'],
+  ['There\'s a heap leak.',1,'Maybe a contributor, but a pure heap leak ends in a Java <code>OutOfMemoryError</code>. A silent kill points at total process memory vs the pod limit.']],
+ ans:'Exit 137 = SIGKILL, and <code>Reason: OOMKilled</code> means the <b>kernel</b> did it: the container\'s total memory crossed its limit. The heap is only part of the process — Metaspace, one stack per thread, code cache, GC structures and Netty/NIO direct buffers add 150–300 MB. If <code>-Xmx</code> ≈ the pod limit, the JVM never feels pressure; the kernel kills it first. Fix: heap ≈ 75% (<code>-XX:MaxRAMPercentage=75</code>), check with <code>jcmd &lt;pid&gt; VM.native_memory</code>, and only then think about a bigger limit.',
+ fu:[['Why not just increase -Xmx?','It makes this worse. The heap already fills the pod; a bigger heap leaves even less room for non-heap memory, so the kernel kills it sooner. And if there\'s a leak, more heap only delays the crash and lengthens full GCs.'],
+  ['How do you see non-heap memory?','Start the JVM with <code>-XX:NativeMemoryTracking=summary</code>, then run <code>jcmd &lt;pid&gt; VM.native_memory summary</code>. Compare with <code>kubectl top pod</code>. Look for many threads, a big Metaspace or growing direct buffers.']]},
+
+{t:'Leaks & diagnosis',tag:'case',must:[
+ 'A Java leak = objects still <b>reachable</b> but never used again, so GC can\'t free them.',
+ 'Usual suspects: <b>static maps/caches</b> with no eviction, <b>ThreadLocal</b> not removed in pooled threads, listeners never unregistered, unclosed streams.',
+ 'Signal: old gen <b>after each full GC</b> keeps rising — the sawtooth\'s floor climbs.',
+ 'Diagnose: <code>jstat -gcutil &lt;pid&gt; 1s</code> → <code>jcmd &lt;pid&gt; GC.heap_dump</code> → Eclipse MAT dominator tree.'],
+ try:'<b>Start leak</b>, Allocate several times, then <b>Full GC</b> — the floor doesn\'t come back down.',keys:['leak','alloc','gc'],
+ q:'Scenario: heap usage grows after every suite run and never comes back down, even after a full GC. How do you find the cause?',
+ opts:[['Call <code>System.gc()</code> after each run.',0,'GC only frees unreachable objects. Leaked objects are reachable — no GC can remove them.'],
+  ['Confirm the trend (old gen after full GC rising), take two heap dumps a few runs apart, compare them in MAT — the dominator tree shows what retains the memory. Fix that retainer.',2,'That\'s the method. Bonus points for naming a likely culprit, e.g. a static map keyed by runId.'],
+  ['Increase -Xmx and restart the service nightly.',0,'A workaround, not a diagnosis — busy days still crash.']],
+ ans:'First <b>prove</b> it\'s a leak: in GC logs or <code>jstat -gcutil</code>, old-gen occupancy <i>after</i> full GCs keeps climbing. Then take a heap dump (<code>jcmd &lt;pid&gt; GC.heap_dump /dumps/h1.hprof</code>), run a few more suites, take another, and open both in <b>Eclipse MAT</b>: the <b>dominator tree</b> / <b>leak suspects</b> report shows what retains the memory and its path to a GC root. In FireFlink terms that might be a static <code>Map&lt;runId, ExecutionContext&gt;</code> that only ever gets <code>put</code>. Fix: remove on run completion, or use a bounded cache (Caffeine with <code>maximumSize</code>/<code>expireAfterWrite</code>).',
+ fu:[['How can ThreadLocal leak?','Pool threads live as long as the pool. A value set in a ThreadLocal during one task stays reachable from that thread until someone calls <code>remove()</code> — always do it in <code>finally</code>.'],
+  ['Weak vs soft references?','<span class="gtk">good to know</span>Weak: cleared at the next GC once only weakly reachable (e.g. <code>WeakHashMap</code> keys). Soft: cleared only under memory pressure. For caches today, prefer an explicit bounded cache like Caffeine.']]},
+
+{t:'3am incident',tag:'game',incident:true,must:[
+ '<b>1 · Who killed it?</b> <code>kubectl describe pod</code> — kernel OOMKill or a Java OOM?',
+ '<b>2 · Config vs limit</b> — <code>jcmd 1 VM.flags</code>: heap size vs the pod limit.',
+ '<b>3 · Trend</b> — GC logs / jstat: is old gen after full GC rising?',
+ '<b>4 · Evidence</b> — heap dump → MAT → fix the retainer and add guardrails.'],
+ try:'The monitor now replays the broken pod: <b>-Xmx1g</b> in a 1 GiB pod, leak on, heavy load. Work the incident on the right →',keys:[]}];
+
+const INC=[
+{ev:'🔔 <b>03:07 PagerDuty</b> — <code>execution-service</code> restarted 4× in 30 min · CrashLoopBackOff. Suite runs for 3 tenants are failing.',q:'What do you do first?',opts:[
+ ['Bump the pod memory limit to 2 Gi and go back to sleep.',0,'It may stay quiet tonight — but you don\'t know what\'s eating memory. If it\'s a leak, it pages again at 05:00.',30],
+ ['<code>kubectl describe pod</code> — find out <i>why</i> the container died.',2,'',3],
+ ['Grep the app logs for <code>OutOfMemoryError</code>.',1,'Good instinct, but <code>grep -c OutOfMemoryError</code> → 0. Something killed it from outside the JVM. Check the pod status.',5]],
+ found:'<pre>Last State:  Terminated\n  Reason:    OOMKilled\n  Exit Code: 137\nLimits:      memory: 1Gi</pre>'},
+{ev:'The container was <b>OOMKilled (exit 137)</b>, and the app log just stops — no <code>OutOfMemoryError</code>.',q:'What does that tell you, and what next?',opts:[
+ ['The kernel killed it — process memory went over the limit. Compare the JVM\'s memory settings with the limit: <code>jcmd 1 VM.flags</code>.',2,'',4],
+ ['Take a heap dump right away.',1,'Useful later, but the heap isn\'t what breached — the <i>process</i> did. First check how the JVM is sized vs the pod.',10],
+ ['Raise <code>-Xmx</code> to 1.5g so the JVM has more room.',0,'Worse: the heap would be bigger than the pod itself. It gets killed even sooner.',15]],
+ found:'<pre>$ jcmd 1 VM.flags | tr \' \' \'\\n\' | grep MaxHeap\n-XX:MaxHeapSize=1073741824     # 1 GiB = the whole pod</pre>'},
+{ev:'The heap may use the <b>whole 1 GiB</b> pod. Metaspace (~70 MB), ~120 thread stacks, code cache and Netty direct buffers need room <i>outside</i> the heap.',q:'Your fix?',opts:[
+ ['<code>-XX:MaxRAMPercentage=75</code> (heap ≈ 768 MB) + <code>-XX:+HeapDumpOnOutOfMemoryError</code>, so non-heap has ~25% headroom and a real heap OOM leaves a dump.',2,'',5],
+ ['Keep <code>-Xmx1g</code> but set <code>-XX:MaxMetaspaceSize=16m</code>.',0,'Spring Boot needs far more than 16 MB of Metaspace — you\'d swap OOMKilled for <code>OutOfMemoryError: Metaspace</code> at startup.',10],
+ ['Turn off GC logging to save memory.',0,'GC logs cost almost nothing — and they\'re your best evidence. Keep them.',10]],
+ found:'<pre>JAVA_OPTS="-XX:MaxRAMPercentage=75 -XX:+HeapDumpOnOutOfMemoryError\n           -XX:HeapDumpPath=/dumps -Xlog:gc*:file=/logs/gc.log"</pre>'},
+{ev:'Deployed ✅ No more OOMKilled. But next day <code>jstat -gcutil</code> shows old gen <b>after each full GC</b> climbing 41% → 55% → 68% → 79% — one step per suite run.',q:'Next?',opts:[
+ ['<code>jcmd 1 GC.heap_dump /dumps/h1.hprof</code> now and again after 3 runs; compare both in Eclipse MAT (dominator tree).',2,'',8],
+ ['Schedule a nightly restart.',0,'Hides the leak. A busy day still runs out of heap — now with a Java OOM.',20],
+ ['Call <code>System.gc()</code> at the end of every run.',0,'Leaked objects are still reachable — no GC can free them.',10]],
+ found:'<pre>MAT · Dominator tree\n  com.fireflink.exec.ResultCache.RESULTS   (static ConcurrentHashMap)\n    retained 412 MB · 1,830 × ExecutionContext — one per finished run, never removed</pre>'},
+{ev:'Root cause: a <b>static</b> <code>ResultCache.RESULTS</code> map keeps every finished run\'s <code>ExecutionContext</code> forever.',q:'Proper fix?',opts:[
+ ['Remove the entry when the run completes (in <code>finally</code>) and replace the static map with a bounded Caffeine cache (<code>maximumSize</code> + <code>expireAfterWrite</code>).',2,'',5],
+ ['Switch to a <code>WeakHashMap</code> keyed by runId.',1,'Fragile: weak keys clear only when nothing else references the key — with String ids that may be never, or surprisingly early. Make the lifecycle explicit.',10],
+ ['Give the pod 4 GiB.',0,'Still leaks — it just takes longer to fall over.',15]]}];
+const BEST_MIN=INC.reduce((a,s)=>a+s.opts.find(o=>o[1]===2)[3],0);
+
+/* ================================================================ JVM MONITOR */
+const LIM=1024,OTHER=120,MMAX=128,PIDS=1024;
+let M,running=true,restartT=null;
+const logBuf=[];
+function boot(xmx,leak,rate){clearTimeout(restartT);
+ const y=xmx/3;M={xmx,edenCap:y*.8,svCap:y*.1,oldCap:xmx-y,eden:0,edenLive:0,s:[0,0],act:0,leak:!!leak,leakMB:0,meta:64,threads:42,ygc:0,fgc:0,ygct:0,fgct:0,t:0,crashed:null,hist:[],peak:0,gcN:0,rate:rate||1,restarts:M?M.restarts:0};
+ M.oldBase=M.oldCap*.12;M.old=M.oldBase;M.peak=M.old;
+ $('s-xmx').value=xmx;$('b-leak').classList.toggle('on',M.leak);$('b-leak').textContent=M.leak?'Stop leak':'Start leak';
+ $('b-alloc').textContent=`Allocate ${allocMB()} MB`;
+ $('flags').textContent=`-Xmx${xmx>=1024?'1g':xmx+'m'} -Xss1m`;
+ hideCrash();
+ logLine(`[${ts()}][info][gc] Using G1 · heap ${xmx}M · pod limit ${LIM}Mi`,'i');draw();}
+const allocMB=()=>Math.round(M.xmx*.19);
+const used=()=>M.eden+M.s[0]+M.s[1]+M.old;
+const rss=()=>Math.max(M.peak,M.xmx*.3)+M.meta+M.threads*.1+OTHER;
+const ts=()=>(M?M.t:0).toFixed(3)+'s';
+const r0=v=>Math.round(v);
+let QUIET=false;
+function logLine(s,c){if(QUIET)return;logBuf.push(`<span class="${c||''}">${s}</span>`);if(logBuf.length>60)logBuf.shift();const L=$('log');L.innerHTML=logBuf.join('\n');L.scrollTop=L.scrollHeight;}
+function gclog(s,c){M.gcN++;logLine(`[${ts()}][info][gc] GC(${M.gcN}) ${s}`,c);}
+function alloc(mb,live){if(M.crashed)return;M.eden+=mb;M.edenLive+=mb*live;let g=0;
+ while(M.eden>M.edenCap&&!M.crashed&&g++<20){const over=M.eden-M.edenCap,ratio=M.edenLive/M.eden;M.eden=M.edenCap;M.edenLive=M.edenCap*ratio;minor();if(M.crashed)break;M.eden=Math.min(over,M.edenCap);M.edenLive=M.eden*ratio;}
+ M.peak=Math.max(M.peak,used());if(rss()>LIM)crash('killed');}
+function minor(){const before=used(),from=M.s[M.act];let keep=M.edenLive+from*.3,promo=from*.2;
+ if(keep>M.svCap){promo+=keep-M.svCap;keep=M.svCap;}
+ if(M.leak){const lk=M.xmx*.035;promo+=lk;M.leakMB+=lk;}
+ if(M.old+promo>M.oldCap){full('G1 Compaction Pause');if(M.crashed)return;if(M.old+promo>M.oldCap){crash('heap');return;}}
+ M.peak=Math.max(M.peak,before);if(rss()>LIM){crash('killed');return;}
+ M.old+=promo;M.s[M.act]=0;M.act^=1;M.s[M.act]=keep;M.eden=0;M.edenLive=0;M.ygc++;
+ const p=2.5+Math.random()*4+keep*.04;M.ygct+=p/1000;
+ gclog(`Pause Young (Normal) (G1 Evacuation Pause) ${r0(before)}M->${r0(used())}M(${M.xmx}M) ${p.toFixed(3)}ms`,'y');
+ if(M.old>M.oldCap*.9)full('G1 Compaction Pause');}
+function full(reason){const before=used();M.peak=Math.max(M.peak,before);if(rss()>LIM){crash('killed');return;}
+ M.old=Math.min(M.oldBase+M.leakMB,M.oldCap);M.eden=0;M.edenLive=0;M.fgc++;
+ const p=20+M.old*.55;M.fgct+=p/1000;
+ gclog(`Pause Full (${reason}) ${r0(before)}M->${r0(used())}M(${M.xmx}M) ${p.toFixed(1)}ms`,'f');
+ if(M.oldBase+M.leakMB>=M.oldCap*.97){crash('heap');return;}
+ if(M.old>M.oldCap*.6)logLine(`[${ts()}][warn][gc] old gen ${r0(M.old/M.oldCap*100)}% right after Full GC → live data, not garbage (leak?)`,'w');}
+
+const TRACE={
+ heap:{h:'java.lang.OutOfMemoryError: Java heap space',p:`Exception in thread "exec-pool-3" java.lang.OutOfMemoryError: Java heap space
+    at java.base/java.util.Arrays.copyOf(Arrays.java:3512)
+    at java.base/java.util.ArrayList.grow(ArrayList.java:237)
+    at com.fireflink.exec.ResultCache.put(ResultCache.java:41)
+    at com.fireflink.exec.SuiteRunner.onStepDone(SuiteRunner.java:118)
+Dumping heap to /dumps/java_pid1.hprof ...
+Heap dump file created [${'{SZ}'} bytes in 2.9 secs]`,x:'Live data no longer fits in <code>-Xmx</code>, even after a full GC. Next: open the dump in MAT.'},
+ killed:{h:'Pod OOMKilled — exit code 137',p:`$ kubectl get pod -l app=execution-service
+NAME                      READY  STATUS     RESTARTS
+execution-service-7d9f    0/1    OOMKilled  {R}
+# app log: last line is a GC pause — no OutOfMemoryError anywhere`,x:'Heap + non-heap went over the <b>1 GiB pod limit</b>. The kernel killed the JVM — no Java exception, no heap dump.'},
+ meta:{h:'java.lang.OutOfMemoryError: Metaspace',p:`java.lang.OutOfMemoryError: Metaspace
+    at java.base/java.lang.ClassLoader.defineClass1(Native Method)
+    at groovy.lang.GroovyClassLoader.doParseClass(GroovyClassLoader.java:365)
+    at com.fireflink.script.StepScriptEngine.compile(StepScriptEngine.java:52)`,x:'A new class per step script filled Metaspace (128 MB cap). Cache compiled scripts or fix the class-loader leak.'},
+ thread:{h:'java.lang.OutOfMemoryError: unable to create native thread',p:`java.lang.OutOfMemoryError: unable to create native thread: possibly out of memory or process/resource limits reached
+    at java.base/java.lang.Thread.start0(Native Method)
+    at java.base/java.lang.Thread.start(Thread.java:1526)
+    at com.fireflink.exec.DeviceSessionManager.open(DeviceSessionManager.java:77)`,x:'One thread per device session hit the pod\'s limit (1024). Each thread needs a native stack — use a bounded pool.'},
+ soe:{h:'StackOverflowError — request failed, JVM still alive',p:`com.fasterxml.jackson.databind.JsonMappingException: Infinite recursion (StackOverflowError)
+  (through reference chain: Suite["testCases"]->ArrayList[0]->TestCase["suite"]->Suite["testCases"]->…)
+GET /api/suites/42 → 500`,x:'Only this request\'s thread blew its stack. Break the Suite ↔ TestCase cycle with a DTO.',warn:1}};
+function crash(kind){const T=TRACE[kind];if(!T.warn){M.crashed=kind;M.restarts++;}
+ const c=$('crash');c.className='crash on'+(T.warn?' warn':'');
+ const inc=CH[cur].incident&&!T.warn;
+ c.innerHTML=`<div class="row"><h3>${T.h}</h3><span style="flex:1"></span>${T.warn?'<button id="cx">Dismiss</button>':inc?'<small>CrashLoopBackOff — restarting in 3 s…</small>':'<button id="cx">↺ Restart JVM</button>'}</div><p>${T.x}</p><pre>${T.p.replace('{SZ}',r0(used()*1048576).toLocaleString()).replace('{R}',M.restarts)}</pre>`;
+ if(!T.warn)logLine(`[${ts()}][error] ${T.h}`,'w');
+ const b=$('cx');if(b)b.onclick=()=>T.warn?hideCrash():boot(M.xmx,M.leak,M.rate);
+ if(inc)restartT=setTimeout(()=>{if(CH[cur].incident)boot(M.xmx,M.leak,M.rate);},3000);draw();}
+function hideCrash(){$('crash').className='crash';}
+
+/* draw */
+const BARS=[['Eden','var(--green)',()=>[M.eden,M.edenCap]],['S0','var(--teal)',()=>[M.s[0],M.svCap]],['S1','var(--teal)',()=>[M.s[1],M.svCap]],['Old','var(--amber)',()=>[M.old,M.oldCap]],
+ ['Metaspace','var(--purple)',()=>[M.meta,MMAX]],['Threads','var(--blue)',()=>[M.threads,PIDS],1],['Pod RSS','var(--blue)',()=>[rss(),LIM]]];
+$('bars').innerHTML=BARS.map((b,i)=>`<div class="br${i===4?' sep':''}"><span class="l">${b[0]}</span><span class="tr"><i id="bi${i}" style="background:${b[1]}"></i></span><span class="v" id="bv${i}"></span></div>`).join('');
+function draw(){BARS.forEach((b,i)=>{const [v,c]=b[2](),p=Math.min(100,v/c*100),el=$('bi'+i);el.style.width=p+'%';
+  if(i>=3)el.style.background=p>90?'var(--red)':b[1];
+  $('bv'+i).textContent=b[3]?`${r0(v)} / ${c}`:`${r0(v)} / ${r0(c)}M`;});
+ const pc=(a,b)=>(a/b*100).toFixed(1).padStart(6);
+ $('jst').innerHTML=`<b>$ jstat -gcutil 1 1s</b>\n    S0     S1      E      O      M    YGC   FGC     GCT\n${pc(M.s[0],M.svCap)} ${pc(M.s[1],M.svCap)} ${pc(M.eden,M.edenCap)} ${pc(M.old,M.oldCap)} ${pc(M.meta,MMAX)} ${String(M.ygc).padStart(6)} ${String(M.fgc).padStart(5)} ${(M.ygct+M.fgct).toFixed(3).padStart(7)}`;
+ $('uptime').textContent=`uptime ${Math.floor(M.t)}s${M.restarts?` · restarts ${M.restarts}`:''}`;
+ chart();}
+const cv=$('cv'),cx=cv.getContext('2d');
+function chart(){const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;if(!w)return;
+ if(cv.width!==w*dpr||cv.height!==h*dpr){cv.width=w*dpr;cv.height=h*dpr;}
+ cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,w,h);
+ const H=M.hist,N=150,max=M.xmx*1.08,y=v=>h-4-(v/max)*(h-10),x=i=>w-(H.length-1-i)*(w/(N-1));
+ cx.strokeStyle='#1f2533';cx.lineWidth=1;for(let g=1;g<4;g++){cx.beginPath();cx.moveTo(0,h*g/4);cx.lineTo(w,h*g/4);cx.stroke();}
+ cx.setLineDash([5,4]);cx.strokeStyle='#f47067';cx.beginPath();cx.moveTo(0,y(M.xmx));cx.lineTo(w,y(M.xmx));cx.stroke();cx.setLineDash([]);
+ cx.fillStyle='#8590a6';cx.font='10.5px JetBrains Mono, Consolas, monospace';cx.fillText(`Xmx ${M.xmx}M`,4,y(M.xmx)-4);
+ if(H.length<2)return;
+ cx.beginPath();H.forEach((p,i)=>i?cx.lineTo(x(i),y(p[0])):cx.moveTo(x(i),y(p[0])));cx.lineTo(x(H.length-1),h);cx.lineTo(x(0),h);cx.closePath();cx.fillStyle='rgba(110,168,254,.16)';cx.fill();
+ cx.beginPath();H.forEach((p,i)=>i?cx.lineTo(x(i),y(p[0])):cx.moveTo(x(i),y(p[0])));cx.strokeStyle='#6ea8fe';cx.lineWidth=1.6;cx.stroke();
+ cx.beginPath();H.forEach((p,i)=>i?cx.lineTo(x(i),y(p[1])):cx.moveTo(x(i),y(p[1])));cx.strokeStyle='#e3b341';cx.lineWidth=1.4;cx.stroke();}
+window.addEventListener('resize',chart);
+
+setInterval(()=>{if(!running||M.crashed)return;M.t+=.4;
+ alloc(M.xmx*(.012+Math.random()*.018)*M.rate,.07);
+ M.hist.push([used(),M.old]);if(M.hist.length>150)M.hist.shift();draw();},400);
+
+/* controls */
+$('b-alloc').onclick=()=>{if(M.crashed)return;const mb=allocMB();logLine(`[${ts()}][info][app] loaded results of suite run → +${mb} MB (half stays referenced for a while)`);alloc(mb,.5);draw();};
+$('b-leak').onclick=()=>{M.leak=!M.leak;$('b-leak').classList.toggle('on',M.leak);$('b-leak').textContent=M.leak?'Stop leak':'Start leak';
+ logLine(`[${ts()}][info][app] ${M.leak?'ResultCache.RESULTS.put(runId, ctx) — never removed':'leak stopped (already-leaked objects stay reachable)'}`,M.leak?'w':'');};
+$('b-gc').onclick=()=>{if(M.crashed)return;logLine(`[${ts()}][info][app] $ jcmd 1 GC.run`);full('System.gc()');draw();};
+$('s-xmx').onchange=e=>{logLine(`[${ts()}][info][app] restarting JVM with -Xmx${e.target.value}m …`,'i');boot(+e.target.value,M.leak,M.rate);};
+$('b-thr').onclick=()=>{if(M.crashed)return;if(M.threads+250>PIDS){M.threads=PIDS;crash('thread');return;}M.threads+=250;logLine(`[${ts()}][info][app] opened 250 device sessions → ${M.threads} threads (${r0(M.threads*1)} MB stack reserved)`);if(rss()>LIM)crash('killed');draw();};
+$('b-cls').onclick=()=>{if(M.crashed)return;M.meta+=22;logLine(`[${ts()}][info][app] compiled 500 Groovy step scripts → Metaspace ${r0(M.meta)} MB`);if(M.meta>MMAX){M.meta=MMAX;crash('meta');return;}draw();};
+$('b-rec').onclick=()=>{if(M.crashed)return;logLine(`[${ts()}][info][app] GET /api/suites/42 → serializing Suite ↔ TestCase…`);crash('soe');};
+$('b-run').onclick=()=>{running=!running;$('b-run').textContent=running?'⏸':'▶';};
+$('b-reset').onclick=()=>boot(M.xmx,false,M.rate);
+
+/* ================================================================ CHAPTERS + CHAT */
+let cur=0;
+const prog=store.get('t5-progress',{v:[],r:{},inc:null});
+const chat=CH.map(()=>({msgs:[],phase:'ask',used:[],pend:null,step:0,mins:0,first:[]}));
+let typing=null;
+
+function renderLeft(){
+ $('chs').innerHTML=CH.map((c,i)=>{const r=prog.r[i];let cls='',sym=i+1;
+  if(c.incident&&prog.inc!=null){cls='s';sym='✓';}else if(r===2){cls='s';sym='✓';}else if(r===1||r===0){cls='p';sym='•';}else if(r===-1){cls='r';sym='•';}else if(prog.v.includes(i))cls='v';
+  return `<button class="ch${i===cur?' on':''}" data-i="${i}"><span class="dot ${cls}">${sym}</span><span>${c.t}</span>${c.tag?`<small class="${c.tag==='game'?'g':''}">${c.tag}</small>`:''}</button>`;}).join('');
+ const n=CH.filter(c=>!c.incident).length,strong=Object.values(prog.r).filter(v=>v===2).length;
+ $('score').innerHTML=`Strong first answers<br><b>${strong}</b> / ${n}<div class="bar"><i style="width:${strong/n*100}%"></i></div>${prog.inc!=null?`Incident solved in <b style="font-size:12.5px">${prog.inc} min</b> (best ${BEST_MIN})`:'Incident: not played yet'}`;}
+$('chs').onclick=e=>{const b=e.target.closest('[data-i]');if(b)go(+b.dataset.i);};
+
+function renderConcept(){const c=CH[cur];
+ $('concept').innerHTML=`<div class="ctop"><span class="n">${String(cur+1).padStart(2,'0')}</span><h2>${c.t}</h2><span class="tag">${c.incident?'playbook':'must-know'}</span></div>
+ ${c.table||`<ul class="must">${c.must.map(x=>`<li>${x}</li>`).join('')}</ul>`}<div class="try"><em>TRY IT</em><span>${c.try}</span></div>`;
+ document.querySelectorAll('#ctl [data-k]').forEach(b=>b.classList.toggle('hint',c.keys.includes(b.dataset.k)));}
+
+function bubble(m){const d=document.createElement('div');d.className='m '+m.who;
+ if(m.who==='iv')d.innerHTML=`<span class="who">${m.lbl||'Interviewer'}</span>${m.html}`;
+ else if(m.who==='ans')d.innerHTML=`<span class="who">${m.lbl||'Model answer'}</span>${m.html}`;
+ else d.innerHTML=m.html;return d;}
+function finishTyping(){if(typing){clearInterval(typing.t);typing.el.innerHTML=typing.full;typing.el.classList.remove('typing');typing=null;}}
+function add(m,stream){const st=chat[cur];st.msgs.push(m);const box=$('msgs'),d=bubble(m);box.appendChild(d);
+ if(stream){finishTyping();const full=d.innerHTML,who=d.querySelector('.who').outerHTML,tmp=document.createElement('div');tmp.innerHTML=m.html;const txt=tmp.textContent;let k=0;
+  d.classList.add('typing');d.innerHTML=who;const span=document.createElement('span');d.appendChild(span);
+  typing={el:d,full,t:setInterval(()=>{k+=3;span.textContent=txt.slice(0,k);box.scrollTop=box.scrollHeight;if(k>=txt.length)finishTyping();},14)};
+  d.onclick=finishTyping;}
+ box.scrollTop=box.scrollHeight;}
+function renderChat(){finishTyping();const box=$('msgs');box.innerHTML='';chat[cur].msgs.forEach(m=>box.appendChild(bubble(m)));box.scrollTop=box.scrollHeight;
+ const inc=CH[cur].incident;$('cwho').textContent=inc?'On-call channel':'Interviewer';$('csub').textContent=inc?'#execution-service-alerts':'Senior backend engineer';$('cav').textContent=inc?'🔔':'IV';
+ $('tmr').style.display=inc?'block':'none';$('tmr').textContent=`${chat[cur].mins} min elapsed`;renderActs();}
+
+const L='ABC';
+function renderActs(){const c=CH[cur],st=chat[cur],A=$('acts');
+ if(c.incident){
+  if(st.step<INC.length){const s=INC[st.step];
+   A.innerHTML=`<span class="lbl">Your move</span>${s.opts.map((o,i)=>`<button class="opt" data-o="${i}"><i>${L[i]}</i><span>${o[0]}</span></button>`).join('')}`;}
+  else A.innerHTML=`<div class="row2"><button class="pbtn" id="a-replay">↺ Replay incident</button><button class="pbtn ghost" id="a-first">Back to chapter 1</button></div>`;
+  return wire();}
+ if(st.phase==='ask')A.innerHTML=`<span class="lbl">Pick the answer outline you'd give</span>${c.opts.map((o,i)=>`<button class="opt" data-o="${i}"><i>${L[i]}</i><span>${o[0]}</span></button>`).join('')}<button class="link" id="a-skip">Not sure — just show me the model answer</button>`;
+ else if(st.phase==='fu')A.innerHTML=`<button class="pbtn" id="a-reveal">Reveal answer</button>`;
+ else{const left=c.fu.map((f,i)=>i).filter(i=>!st.used.includes(i));
+  A.innerHTML=`${left.length?`<span class="lbl">Likely follow-ups</span>${left.map(i=>`<button class="fu" data-f="${i}">${c.fu[i][0]}</button>`).join('')}`:''}<div class="row2" style="margin-top:4px"><button class="pbtn" id="a-next">Next chapter →</button></div>`;}
+ wire();}
+function wire(){const A=$('acts');
+ A.querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>CH[cur].incident?pickInc(+b.dataset.o):pick(+b.dataset.o));
+ A.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{const st=chat[cur],i=+b.dataset.f;st.pend=i;st.phase='fu';add({who:'iv',lbl:'Follow-up',html:CH[cur].fu[i][0]});renderActs();});
+ const on=(id,f)=>{const e=$(id);if(e)e.onclick=f;};
+ on('a-skip',()=>{const st=chat[cur];if(prog.r[cur]===undefined){prog.r[cur]=-1;save();}st.phase='done';add({who:'ans',html:CH[cur].ans},1);renderActs();renderLeft();});
+ on('a-reveal',()=>{const st=chat[cur];st.used.push(st.pend);add({who:'ans',lbl:'Answer',html:CH[cur].fu[st.pend][1]},1);st.phase='done';renderActs();});
+ on('a-next',()=>go(Math.min(cur+1,CH.length-1)));
+ on('a-replay',()=>{chat[cur]={msgs:[],phase:'ask',used:[],pend:null,step:0,mins:0,first:[]};startChapter();});
+ on('a-first',()=>go(0));}
+const VC=['<span class="vchip w">weak</span>','<span class="vchip p">partial</span>','<span class="vchip s">strong</span>'];
+function pick(i){const c=CH[cur],st=chat[cur],o=c.opts[i];
+ if(prog.r[cur]===undefined){prog.r[cur]=o[1];save();}
+ add({who:'me',html:o[0]});add({who:'fb',html:VC[o[1]]+o[2]});add({who:'ans',html:c.ans},1);st.phase='done';renderActs();renderLeft();}
+function pickInc(i){const st=chat[cur],s=INC[st.step],o=s.opts[i];st.mins+=o[3];$('tmr').textContent=`${st.mins} min elapsed`;
+ add({who:'me',html:o[0]});
+ if(o[1]!==2){st.first[st.step]=false;add({who:'fb',html:VC[o[1]]+o[2]+` <span class="mono" style="color:var(--amber)">+${o[3]} min</span>`});return renderActs();}
+ if(st.first[st.step]===undefined)st.first[st.step]=true;
+ if(s.found)add({who:'sys',html:s.found});
+ if(st.step===2)boot(768,true,3),logLine(`[${ts()}][info][app] redeployed with -XX:MaxRAMPercentage=75 → heap 768M`,'i');
+ if(st.step===4)boot(768,false,1),logLine(`[${ts()}][info][app] fix deployed: bounded cache + remove() on run end`,'i');
+ st.step++;
+ if(st.step<INC.length){add({who:'alert',html:INC[st.step].ev});add({who:'iv',lbl:'You, thinking',html:INC[st.step].q});}
+ else{const clean=st.first.filter(Boolean).length;prog.inc=prog.inc==null?st.mins:Math.min(prog.inc,st.mins);save();
+  add({who:'pm',html:`<b>Resolved in ${st.mins} min</b> (best path ${BEST_MIN}) · ${clean}/${INC.length} steps right first time.<br><br><b>Root causes</b>: ① heap sized to the whole pod → kernel OOMKill; ② unbounded static result cache → old-gen leak.<br><b>Fixes</b>: <code>MaxRAMPercentage=75</code>, heap dump on OOM, bounded cache + <code>remove()</code> on run end, alert on "old gen after GC &gt; 70%".<br><br><b>Tell it in the interview (STAR)</b> — <i>Situation</i>: pods crash-looping at 3am · <i>Task</i>: restore runs, find the root cause · <i>Action</i>: describe pod → JVM flags vs limit → jstat trend → heap dumps in MAT · <i>Result</i>: no restarts since, memory flat across runs.`});renderLeft();}
+ renderActs();}
+
+function startChapter(){const c=CH[cur],st=chat[cur];
+ if(!st.msgs.length){
+  if(c.incident){st.msgs.push({who:'alert',html:INC[0].ev},{who:'iv',lbl:'You, thinking',html:INC[0].q});}
+  else st.msgs.push({who:'iv',html:c.q});}
+ if(c.incident&&st.step<3)boot(1024,true,3);
+ renderChat();}
+function go(i){finishTyping();if(CH[cur].incident&&!CH[i].incident)boot(512,false,1);cur=i;if(!prog.v.includes(i)){prog.v.push(i);save();}renderLeft();renderConcept();startChapter();}
+function save(){store.set('t5-progress',prog);}
+document.addEventListener('keydown',e=>{if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;
+ if(e.key==='ArrowDown'||e.key==='j'){go(Math.min(cur+1,CH.length-1));e.preventDefault();}
+ if(e.key==='ArrowUp'||e.key==='k'){go(Math.max(cur-1,0));e.preventDefault();}});
+
+boot(512,false,1);
+// warm-up: ~40 s of background traffic so the chart isn't empty on first load
+QUIET=true;for(let i=0;i<100;i++){M.t+=.4;alloc(M.xmx*(.012+Math.random()*.018),.07);M.hist.push([used(),M.old]);}QUIET=false;
+logLine(`[${ts()}][info][gc] ${M.ygc} young GCs so far · old gen ${r0(M.old)}M`,'i');draw();
+const h=+(location.hash.match(/^#(\d+)$/)||[])[1];
+go(h>=1&&h<=CH.length?h-1:0);
+</script>
+</body></html>

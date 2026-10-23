@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concepts Index</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#334155;font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;line-height:1.5}
+.wrap{max-width:1200px;margin:0 auto;padding:30px clamp(14px,3vw,28px) 60px}
+h1{margin:0;font-size:clamp(26px,3vw,36px);color:#0F172A}
+.sub{margin:6px 0 24px;color:#64748B;font-size:16px}
+section{border:2.5px solid;border-radius:16px;padding:18px;margin-bottom:20px}
+.sh{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.num{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;color:#fff;font-weight:700}
+h2{margin:0;font-size:22px;color:#0F172A}
+.folder{font-family:Consolas,monospace;font-size:13px;color:#64748B;margin-left:auto}
+.items{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+a.item{display:block;background:#fff;border:1.5px solid #CBD5E1;border-radius:12px;padding:14px 16px;text-decoration:none;color:#334155}
+a.item:hover{box-shadow:0 4px 14px rgba(15,23,42,.12)}
+a.item b{display:block;color:#0F172A;font-size:17px;margin-bottom:2px}
+a.item span{font-size:14.5px}
+a.item i{display:inline-block;margin-top:8px;font-style:normal;font-size:12px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:999px;border:1px solid #CBD5E1;color:#475569}
+.blue{background:#EEF5FF;border-color:#3B82F6}.blue .num{background:#3B82F6}
+.purple{background:#F7F0FF;border-color:#9333EA}.purple .num{background:#9333EA}
+.orange{background:#FFF6EC;border-color:#F97316}.orange .num{background:#F97316}
+.gray{background:#F8FAFC;border-color:#64748B}.gray .num{background:#64748B}
+ul{margin:0;padding-left:20px}
+code{font-family:Consolas,monospace;font-size:.92em}
+</style>
+</head><body><div class="wrap">
+<h1>Concepts — Study Index</h1>
+<p class="sub">Java backend interview prep · open any page in the browser, everything works offline</p>
+
+<section class="blue">
+ <div class="sh"><span class="num">1</span><h2>Java Core</h2><span class="folder">01_Java_Core/</span></div>
+ <div class="items">
+  <a class="item" href="01_Java_Core/01_JVM_Memory_Architecture.html"><b>JVM Memory &amp; Architecture</b><span>Java 25 HotSpot with G1 + 3 simulators: load a class, where things live, garbage collector.</span><br><i>HTML · interactive</i></a>
+  <a class="item" href="01_Java_Core/images/01_JVM_Memory_Java25_G1.png"><b>JVM Memory — poster</b><span>Single-image version of the JVM page.</span><br><i>PNG</i></a>
+  <a class="item" href="01_Java_Core/images/02_Thread_Lifecycle.png"><b>Thread Lifecycle</b><span>Thread states and transitions.</span><br><i>PNG</i></a>
+  <a class="item" href="01_Java_Core/03_HashMap_Internals_Interview.html"><b>HashMap, ConcurrentHashMap &amp; synchronizedMap</b><span>Buckets, collisions, resize, treeify, locking — with a HashMap playground and a lock simulator.</span><br><i>HTML · interactive</i></a>
+ </div>
+</section>
+
+<section class="purple">
+ <div class="sh"><span class="num">2</span><h2>Design Patterns</h2><span class="folder">02_Design_Patterns/</span></div>
+ <div class="items">
+  <a class="item" href="02_Design_Patterns/01_Design_Patterns_Roadmap.html"><b>Design Patterns Roadmap</b><span>All 59 patterns, one line each — search, filter, tick off as you learn.</span><br><i>HTML</i></a>
+  <a class="item" href="02_Design_Patterns/02_Design_Patterns_Interview.html"><b>Design Patterns — Interview Guide</b><span>Must-know patterns: problem, code without vs with the pattern, advantages, trade-offs, interview Q&amp;A.</span><br><i>HTML</i></a>
+  <a class="item" href="02_Design_Patterns/images/interview/"><b>Interview Guide — posters</b><span>5 long PNGs for phone revision.</span><br><i>PNG folder</i></a>
+  <a class="item" href="02_Design_Patterns/images/roadmap/"><b>Roadmap — posters</b><span>8 PNGs, one per category.</span><br><i>PNG folder</i></a>
+ </div>
+</section>
+
+<section class="orange">
+ <div class="sh"><span class="num">3</span><h2>System Design</h2><span class="folder">03_System_Design/</span></div>
+ <div class="items">
+  <a class="item" href="03_System_Design/01_FireFlink_Platform_Architecture.html"><b>FireFlink Platform Architecture</b><span>Tech stack, architecture, login &amp; tenant routing, execution flow, interview talking points.</span><br><i>HTML</i></a>
+ </div>
+</section>
+
+<section class="purple" style="background:#EFFCF3;border-color:#22C55E">
+ <div class="sh"><span class="num" style="background:#22C55E">4</span><h2>Spring</h2><span class="folder">04_Spring/</span></div>
+ <div class="items">
+  <a class="item" href="04_Spring/01_Spring_Boot_Startup_Flow.html"><b>Spring Boot — Startup Flow</b><span>java -jar → JarLauncher → run() → profiles → scan → auto-config → IoC/DI → @PostConstruct → Tomcat → requests → graceful shutdown. Slide mode + live simulator.</span><br><i>HTML · slides · interactive</i></a>
+ </div>
+</section>
+<section class="gray">
+ <div class="sh"><span class="num">i</span><h2>How this folder is organised</h2></div>
+ <ul>
+  <li>One folder per subject, numbered in study order: <code>01_Java_Core</code>, <code>02_Design_Patterns</code>, <code>03_System_Design</code> …</li>
+  <li>Inside a folder, files are numbered too: <code>01_…html</code>, <code>02_…html</code>. The HTML page is the main version.</li>
+  <li>Poster / image versions live in that folder's <code>images/</code> subfolder with the same number.</li>
+  <li>Superseded versions go to <code>_archive/</code> instead of being deleted.</li>
+  <li>New pages are added to this index. Progress: <code>PROGRESS.txt</code> · output rules for any agent: <code>AGENT_INSTRUCTIONS.txt</code>.</li>
+ </ul>
+</section>
+</div></body></html>

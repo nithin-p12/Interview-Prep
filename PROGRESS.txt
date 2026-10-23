@@ -1,0 +1,144 @@
+CONCEPTS — STUDY PROGRESS TRACKER
+Folder: D:\Nithin P\Learning\Concepts
+Last updated: 2026-10-21
+Legend: [NEW] built in slide-mode style · [OLD] old-style page, kept in _archive until rebuilt · [WIP] in progress · [TODO] not started
+Rules for every page: see AGENT_INSTRUCTIONS.txt
+
+====================================================================
+NEXT UP (in order)
+====================================================================
+1. Owner reviews the PAGE FLOW pilot: 12 JVM Memory (big picture stage) → then apply to other topics
+2. Decide which of Java 01–09 to restyle to the new flow
+3. Remaining Java: 10 CompletableFuture & Virtual Threads, 11 Generics/Annotations/Reflection, 13 JVM Troubleshooting
+4. Move JVM (12) + Spring Startup pages onto the shared engine when next edited
+5. Then: Design Patterns Interview Guide rebuild, FireFlink Architecture, other subjects
+
+====================================================================
+1. JAVA CORE  (folder 01_Java_Core) — 13 topics in 5 groups (hub shows them as lanes A → E)
+   Level: 4-yr experienced (traps, predict-the-output, production bugs); pages kept LIGHT.
+====================================================================
+A · Foundations
+[NEW]  01 Core Java Essentials — 11 slides: pass-by-value sim, Integer cache slider, String pool sim,
+          += cost, equals/hashCode HashSet sim, immutability builder, static/final, 6 predict-output,
+          2 production bugs, 17 Q&A                                   01_Core_Java_Essentials.html
+[NEW]  02 OOP & SOLID — 10 slides: pillars-in-one-example, overriding vs overloading dispatch, abstract vs
+          interface quiz, composition class-count, SOLID refactor (FireFlink notifier), spot-the-violation,
+          4 predict-output, "add WhatsApp" design review, 15 Q&A       02_OOP_SOLID.html
+[NEW]  03 Exception Handling — 10 slides: clickable hierarchy, checked/unchecked quiz, try/catch/finally stepper,
+          try-with-resources, best-practice fixes, Spring @Transactional rollback + ProblemDetail, 6 predict-output,
+          lost-root-cause log demo, 15 Q&A                              03_Exception_Handling.html
+B · Data structures
+[NEW]  04 Collections Framework — family tree, ArrayList vs LinkedList, Set order demo, Deque/PQ, sort builder,
+          remove-while-iterating, immutable vs unmodifiable, 17 Q&A     04_Collections_Framework.html
+[NEW]  05 HashMap · ConcurrentHashMap · synchronizedMap — hash calculator, playground + lock simulator (kept from v2),
+          CHM putVal cases, lost-update bug, 16 Q&A                  05_HashMap_ConcurrentHashMap.html
+C · Functional & modern
+[NEW]  06 Lambdas, Streams & Optional — lazy-stream stepper, collectors playground, Optional fix-it, drills, 16 Q&A
+                                                                     06_Lambdas_Streams_Optional.html
+[NEW]  07 Modern Java: 8 → 11 → 17 → 25 (07_Modern_Java_8_to_25.html, 17 Q&A) — version comparison table (LTS by LTS), var, text blocks, records,
+          sealed, pattern-matching switch, sequenced collections, Java 25 additions
+D · Concurrency
+[NEW]  08 Multithreading & Java Memory Model (08_Multithreading_JMM.html, 17 Q&A) — lifecycle state machine (replaces the old placeholder PNG),
+          synchronized, volatile, happens-before, wait/notify, deadlock sim, ThreadLocal
+[NEW]  09 Executors, Locks & Atomics (09_Executors_Locks_Atomics.html, 17 Q&A) — ThreadPoolExecutor sim, ReentrantLock/ReadWrite, CAS, latches/semaphores
+[TODO] 10 CompletableFuture & Virtual Threads — async pipelines, exceptions, pinning, structured concurrency
+E · Under the hood
+[TODO] 11 Generics, Annotations & Reflection — erasure, PECS, custom annotations, how Spring uses reflection
+[NEW]  12 JVM Memory & Architecture — PILOT of the new page flow: animated big picture + camera zoom per part,
+          15 slides, 5 simulators, 17 Q&A, 4 prod incidents (old deck: _archive/01_Java_Core/…_v3_deck.html)
+          (was 01_…; renamed 2026-10-21, Completed tick kept — ids use the title)
+[TODO] 13 JVM Troubleshooting — heap/thread dumps, leak hunt, GC logs, jcmd/JFR, high-CPU & OOM playbooks
+[--]   Thread Lifecycle placeholder PNG moved to _archive/01_Java_Core/images/02_Thread_Lifecycle_v0_placeholder.png
+
+====================================================================
+2. DESIGN PATTERNS  (folder 02_Design_Patterns)
+====================================================================
+[OLD]  01 Design Patterns Roadmap — all 59 patterns, search/filter/progress
+       _archive/02_Design_Patterns/01_Design_Patterns_Roadmap_v1.html + images/roadmap_v1/*.png
+[OLD]  02 Design Patterns Interview Guide — 20 must-know, without vs with code (FireFlink notifications)
+       _archive/02_Design_Patterns/02_Design_Patterns_Interview_v2.html + images/interview_v2/*.png
+
+====================================================================
+3. SYSTEM DESIGN  (folder 03_System_Design)
+====================================================================
+[OLD]  01 FireFlink Platform Architecture — tech stack, diagrams, flows, talking points
+       _archive/03_System_Design/01_FireFlink_Platform_Architecture_v1.html
+[WIP]  02 System Design Interview Simulator — one app, 12 design cards (8 planned + 4 coming soon).
+          Ticket Booking DONE (awaiting owner review): 10 slides — architecture tour, data model/state machine,
+          6 animated scenarios (happy path, A-vs-B race w/ wrong-way branch, hold expiry + late payment/C pays
+          branches, idempotency, outbox + Kafka redelivery w/ dedupe branch, stale cache), interview script
+          (7 sections + 60 s timer), 22 follow-ups with "Visualize failure". Other 7 designs: after owner OK,
+          add to the same file (data-driven: one design object + IMPL map).   02_SD_Interview_Simulator.html
+          NOTE: own app layout (sidebar · canvas · state panel · toolbar) per owner spec, not the deck engine.
+[TODO] 02 REST API design — methods, status codes, idempotency, versioning, pagination
+[TODO] 03 System design basics — scaling, load balancing, CAP, consistency, rate limiting
+[TODO] 04 Microservices patterns (interactive) — gateway, discovery, config server, resilience
+[TODO] 05 Docker & Kubernetes basics + CI/CD
+[TODO] 06 Observability — logging, metrics, tracing
+
+====================================================================
+4. SPRING  (folder 04_Spring)
+====================================================================
+[NEW]  01 Spring Boot Startup Flow — 19 slides, all fit the screen, 33 Q&A
+       01_Spring_Boot_Startup_Flow.html
+[TODO] 02 IoC & DI deep dive — bean lifecycle, scopes, @Qualifier/@Primary, circular deps
+[TODO] 03 AOP & proxies — @Transactional propagation/isolation, @Async, self-invocation
+[TODO] 04 Spring MVC request flow — DispatcherServlet, filters vs interceptors, validation, @ControllerAdvice
+[TODO] 05 Spring Security — JWT, OAuth2, Keycloak flow
+[TODO] 06 Config, profiles, Actuator, Spring Cloud (Config Server, OpenFeign, Resilience4j)
+[TODO] 07 Testing — JUnit 5, Mockito, @SpringBootTest, @WebMvcTest, Testcontainers
+
+====================================================================
+5. DATA  (folder 05_Data — to be created)
+====================================================================
+[TODO] 01 MongoDB — documents, indexes, aggregation, replica set, sharding, transactions, schema design
+[TODO] 02 SQL & DB fundamentals — joins, indexes, ACID, isolation levels, normalization
+[TODO] 03 Elasticsearch basics — inverted index, mappings, search vs filter
+[TODO] 04 Caching concepts — cache-aside, write-through, eviction, TTL
+
+====================================================================
+6. MESSAGING  (folder 06_Messaging — to be created)
+====================================================================
+[TODO] 01 Kafka — topics, partitions, consumer groups, offsets, rebalancing, delivery guarantees, retention
+
+====================================================================
+7. INTERVIEW EXTRAS  (folder 07_Interview — to be created)
+====================================================================
+[TODO] 01 Java coding round — Streams / String / Collections problems
+[TODO] 02 Git essentials
+
+====================================================================
+CHANGE LOG
+====================================================================
+2026-10-19  JVM memory images (v1 + Java 25 G1 version), FireFlink architecture PNG
+2026-10-20  Design Patterns roadmap + interview guide; folder structure + 00_Index.html
+2026-10-20  JVM HTML (+3 simulators), HashMap page simplified, FireFlink architecture HTML
+2026-10-20  Spring Boot Startup Flow (first slide-mode page); PROGRESS.txt + AGENT_INSTRUCTIONS.txt created
+2026-10-20  Startup Flow v2: coloured sections, heading arrows, Contents slide, 4 new steppers,
+            command builder, annotation toggles, proxyBeanMethods demo, logos, speeds 0.25–2×.
+            Index rebuilt as "Interview Prep — NITHIN P" (sticky nav, full TOC with status). Old index → _archive.
+2026-10-20  Index v3: large category cards → 7 category hub pages (00_*.html) with numbered topic cards.
+            _shared/prep.js holds the topic list (update it when status changes). Breadcrumbs on all pages.
+            Startup Flow: new "7. Interview Q&A" (33 questions, accordion + slide pills), 6.2 = startup failures.
+            Folders 05_Data, 06_Messaging, 07_Interview created (hubs only).
+2026-10-20  Breadcrumbs removed; nav centre = subject; "topics completed" via Completed checkboxes.
+2026-10-20  Folder clean-up: all old-style pages + posters moved to _archive/<subject folder>/ (nothing deleted);
+            hubs open them as "OLD VERSION". JVM Memory rebuilt in slide mode (21 slides, 12 interactive,
+            live-JVM finale, 35 Q&A). Unwanted scrolling removed: every slide of JVM + Startup, the index and
+            all hubs fit a 1365×620 view. Toggles renamed "Slides: on/off" and "Code: on/off".
+2026-10-21  Design system: _shared/design-tokens.css + _design_system/00_Design_System.html/.png, linked from
+            every nav ("🎨 Design system"). JVM + Startup: fonts fixed again, spare height = padding (--k);
+            Q&A rows fixed; 7.1 arrows edge-to-edge; 4.1 boxes 2 per row.
+2026-10-21  Java Core plan: 13 topics in 5 groups (A–E), 4-yr level. Hub shows groups as lanes A → E.
+            Shared slide engine _shared/deck.css + deck.js (pages now only hold content + their widgets).
+            Batch A built: 01 Core Java Essentials, 02 OOP & SOLID, 03 Exception Handling (all fit 620/650, no JS errors).
+            JVM page renamed 01_ → 12_. Thread Lifecycle PNG archived. Q&A "Completed" pill no longer stretched.
+            _tools/audit.py + shot.py added (fit/overflow audit and screenshots).
+            Batches B–D built: 04 Collections, 05 HashMap/CHM (rebuilt from archive v2), 06 Lambdas/Streams,
+            07 Modern Java 8→25, 08 Multithreading & JMM, 09 Executors/Locks/Atomics — all fit 620/650, no JS errors.
+            deck.js: `when` keyword coloured. deck.css: .fstep no longer animates padding (fit measured mid-animation).
+            audit.py: per-page temp file (parallel runs no longer clash). shot.py timeout 180 s.
+2026-10-21  Big picture stage (_shared/stage.css + stage.js). JVM Memory rebuilt on the new PAGE FLOW (Contents → big
+            picture → per part: focus zoom + text/code + simulator → Q&A → production scenarios); v3 deck archived.
+2026-10-23  03_System_Design/02_SD_Interview_Simulator.html: interactive system-design simulator, Ticket Booking first
+            (no JS errors, every scenario/branch stepped to the end, panels fit 1365×620/650). Added to prep.js.

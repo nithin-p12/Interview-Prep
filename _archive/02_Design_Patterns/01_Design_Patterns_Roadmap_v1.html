@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design Patterns Roadmap</title>
+<style>
+:root{
+  --ink:#0F172A; --text:#334155; --muted:#64748B; --line:#E2E8F0; --bg:#FFFFFF; --card:#FFFFFF;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif}
+.wrap{max-width:1560px;margin:0 auto;padding:28px 20px 60px}
+h1{margin:0;font-size:34px;color:var(--ink);letter-spacing:-.3px}
+.sub{margin:6px 0 0;color:var(--muted);font-size:16px}
+
+/* roadmap */
+.road{display:flex;gap:10px;align-items:stretch;margin:22px 0 18px;flex-wrap:wrap}
+.stage{flex:1 1 200px;border-radius:12px;padding:12px 16px;border:2px solid}
+.stage b{display:block;font-size:16px;color:var(--ink)}
+.stage span{font-size:13.5px;color:var(--muted)}
+.arrow{align-self:center;font-size:22px;color:#94A3B8}
+
+/* toolbar */
+.bar{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.96);backdrop-filter:blur(4px);padding:12px 0;border-bottom:1px solid var(--line);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.bar input{flex:1 1 260px;font:inherit;font-size:15px;padding:10px 14px;border:1.5px solid #CBD5E1;border-radius:10px;outline:none}
+.bar input:focus{border-color:#3B82F6}
+.chip{font:inherit;font-size:13.5px;font-weight:600;padding:7px 12px;border-radius:999px;border:1.5px solid #CBD5E1;background:#fff;color:var(--text);cursor:pointer}
+.chip.on{color:#fff}
+.prog{margin-left:auto;font-size:14px;color:var(--muted);white-space:nowrap}
+.prog b{color:var(--ink)}
+
+/* sections */
+section{margin-top:30px;border:2px solid;border-radius:16px;padding:18px 18px 20px}
+.sh{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.num{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;color:#fff;font-weight:700;font-size:17px;flex:none;align-self:center}
+.sh h2{margin:0;font-size:24px;color:var(--ink)}
+.sh .focus{font-size:15px;color:var(--muted)}
+.sh .stagetag{margin-left:auto;font-size:12.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:4px 10px;border-radius:999px;border:1.5px solid}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.card{background:var(--card);border:1.5px solid;border-left-width:6px;border-radius:12px;padding:13px 15px 12px;display:flex;flex-direction:column;gap:7px}
+.ct{display:flex;align-items:center;gap:8px}
+.ct h3{margin:0;font-size:17.5px;color:var(--ink);flex:1}
+.ct input{width:18px;height:18px;cursor:pointer;accent-color:#16A34A}
+.what{font-size:14.5px;line-height:1.45;color:var(--text);margin:0}
+.ex{font-size:13.5px;line-height:1.45;margin:0;padding:7px 10px;border-radius:8px;background:#F8FAFC;border:1px solid var(--line)}
+.ex b{color:var(--ink)}
+.ex code{font-family:Consolas,"Cascadia Mono",monospace;font-size:12.8px;color:#0F172A}
+.tip{font-size:13px;line-height:1.4;color:#9A3412;margin:0}
+.tip::before{content:"⚠ ";}
+.card.done{opacity:.55}
+.card.done h3{text-decoration:line-through}
+.hide{display:none!important}
+
+/* pairs */
+.pairs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pair{border:1.5px solid #CBD5E1;border-radius:12px;overflow:hidden;background:#fff}
+.pair .ph{background:#F1F5F9;padding:9px 14px;font-weight:700;color:var(--ink);font-size:16px}
+.pair .pb{display:grid;grid-template-columns:1fr 1fr}
+.pair .pb div{padding:10px 14px;font-size:14px;line-height:1.45}
+.pair .pb div+div{border-left:1px solid var(--line)}
+.pair .pb b{display:block;color:var(--ink);margin-bottom:2px}
+.pair .key{padding:8px 14px;border-top:1px solid var(--line);font-size:13.5px;color:#1E40AF;background:#F8FBFF}
+
+footer{margin-top:28px;font-size:13px;color:var(--muted);text-align:center}
+
+/* PNG / poster mode */
+body.poster .bar, body.poster .road, body.poster header, body.poster footer, body.poster .ct input{display:none}
+body.poster .wrap{max-width:none;width:1600px;padding:26px 26px 26px}
+body.poster section{margin-top:0}
+body.poster .card.done{opacity:1}
+body.poster .card.done h3{text-decoration:none}
+.posterhead{display:none}
+body.poster .posterhead{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 14px}
+.posterhead .t{font-size:15px;color:var(--muted);font-weight:600}
+
+@media (max-width:1100px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pairs{grid-template-columns:1fr}}
+@media (max-width:700px){.grid{grid-template-columns:1fr}.wrap{padding:18px 16px 40px}h1{font-size:26px}.pair .pb{grid-template-columns:1fr}.pair .pb div+div{border-left:0;border-top:1px solid var(--line)}}
+@media print{.bar,.road{display:none}section{break-inside:auto}.card{break-inside:avoid}.ct input{display:none}.card.done{opacity:1}.card.done h3{text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><a href="../../00_Index.html" style="font-size:14px;color:#2563EB;text-decoration:none;font-weight:600">🏠 Interview Prep · NITHIN P</a>
+    <h1>Design Patterns — Java &amp; Microservices Interview Roadmap</h1>
+    <p class="sub">Core Java (GoF) → Spring Boot → Microservices → Distributed Systems · what each pattern does, when to use it, and where you have already seen it</p>
+  </header>
+  <div class="road" id="road"></div>
+  <div class="bar">
+    <input id="q" type="search" placeholder="Search patterns, examples, frameworks… (e.g. Kafka, @Transactional, undo)">
+    <div id="chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    <div class="prog" id="prog"></div>
+  </div>
+  <div id="posterhead" class="posterhead"><div class="t">Design Patterns — Java &amp; Microservices Interview Roadmap</div><div class="t" id="pagetag"></div></div>
+  <main id="main"></main>
+  <footer>Tick a pattern once you can explain it with an example. Progress is saved in this browser only.</footer>
+</div>
+
+<script>
+const C = {
+  blue:   {bg:'#EEF5FF', bd:'#3B82F6', dk:'#1D4ED8', lt:'#BFDBFE'},
+  purple: {bg:'#F7F0FF', bd:'#9333EA', dk:'#7E22CE', lt:'#E9D5FF'},
+  orange: {bg:'#FFF6EC', bd:'#F97316', dk:'#C2410C', lt:'#FED7AA'},
+  green:  {bg:'#EFFCF3', bd:'#22C55E', dk:'#15803D', lt:'#BBF7D0'},
+  teal:   {bg:'#ECFEFF', bd:'#06B6D4', dk:'#0E7490', lt:'#A5F3FC'},
+  red:    {bg:'#FFF1F1', bd:'#EF4444', dk:'#B91C1C', lt:'#FECACA'},
+  pink:   {bg:'#FDF2F8', bd:'#EC4899', dk:'#BE185D', lt:'#FBCFE8'},
+  gray:   {bg:'#F8FAFC', bd:'#64748B', dk:'#334155', lt:'#CBD5E1'}
+};
+const STAGES = [
+  {name:'Core Java (GoF)', sec:'1 – 3', col:'blue'},
+  {name:'Spring Boot / Enterprise', sec:'4', col:'green'},
+  {name:'Microservices', sec:'5 – 6', col:'teal'},
+  {name:'Distributed Systems', sec:'7', col:'pink'}
+];
+// [name, what/when, example (may contain <code>), tip (optional)]
+const DATA = [
+ {id:'creational', title:'Creational Design Patterns', focus:'How objects are created', stage:'Core Java', col:'blue', items:[
+  ['Singleton','Ensures only one instance exists per scope; useful for shared services or configuration.','<code>Runtime.getRuntime()</code> · Spring beans are singleton-scoped by default (one per container).','Make it thread-safe — prefer an <code>enum</code> or the holder idiom; avoid mutable shared state.'],
+  ['Factory Method','Lets subclasses decide which type of object to create.','<code>Calendar.getInstance()</code>, <code>List.of()</code>, Spring <code>FactoryBean</code>.'],
+  ['Abstract Factory','Creates families of related objects without specifying concrete classes.','<code>DocumentBuilderFactory</code> (XML parsers), UI theme kits, cloud-provider client families.'],
+  ['Builder','Constructs complex objects step by step, especially with many optional fields.','<code>StringBuilder</code>, <code>HttpRequest.newBuilder()</code>, Lombok <code>@Builder</code>.'],
+  ['Prototype','Creates new objects by copying existing ones.','<code>Object.clone()</code>, copy constructors, copying a template test suite.','Spring “prototype” scope means a new bean per lookup — it does not clone.']
+ ]},
+ {id:'structural', title:'Structural Design Patterns', focus:'How classes and objects are combined', stage:'Core Java', col:'purple', items:[
+  ['Adapter','Converts one interface into another, allowing incompatible components to work together.','<code>InputStreamReader</code> (bytes → chars), <code>Arrays.asList()</code>, Spring MVC <code>HandlerAdapter</code>.'],
+  ['Decorator','Adds functionality to an object without modifying its original class.','<code>new BufferedInputStream(in)</code>, <code>Collections.unmodifiableList()</code>.'],
+  ['Proxy','Controls access to another object; used in Spring AOP, transactions, and security.','Spring proxies behind <code>@Transactional</code>, <code>@Cacheable</code>, <code>@Async</code>; Hibernate lazy-loading proxies.','Self-invocation (calling <code>this.method()</code>) bypasses the proxy, so the annotation is ignored.'],
+  ['Facade','Provides a simple interface over a complex subsystem.','<code>JdbcTemplate</code> over raw JDBC, SLF4J over logging back-ends.'],
+  ['Composite','Treats individual objects and groups of objects uniformly, such as file trees.','File/folder trees, Jackson <code>JsonNode</code>, a suite containing scripts and sub-suites.'],
+  ['Bridge','Separates an abstraction from its implementation so both can evolve independently.','JDBC API (abstraction) ↔ vendor drivers (implementation).'],
+  ['Flyweight','Reduces memory usage by sharing common object state.','<code>Integer.valueOf()</code> cache (−128…127), String pool, <code>Boolean.TRUE</code>.']
+ ]},
+ {id:'behavioral', title:'Behavioral Design Patterns', focus:'How objects communicate and responsibilities are assigned', stage:'Core Java', col:'orange', items:[
+  ['Strategy','Switches between algorithms or business rules at runtime.','<code>Comparator</code> passed to <code>sort()</code>; Spring injecting <code>Map&lt;String, PaymentStrategy&gt;</code>.'],
+  ['Observer','Notifies subscribers automatically when an event occurs.','Spring <code>ApplicationEventPublisher</code> + <code>@EventListener</code>; at system scale → Kafka.'],
+  ['Template Method','Defines a fixed algorithm structure while allowing subclasses to customize steps.','<code>HttpServlet.service()</code> → <code>doGet()/doPost()</code>, <code>AbstractList</code>.'],
+  ['Chain of Responsibility','Passes a request through multiple handlers until processed.','Servlet <code>FilterChain</code>, Spring Security filter chain, <code>HandlerInterceptor</code>s.'],
+  ['Command','Encapsulates an operation as an object for queuing, logging, or undo.','<code>Runnable</code>/<code>Callable</code> submitted to an <code>ExecutorService</code>; undo/redo stacks.'],
+  ['State','Changes an object\'s behavior depending on its current state.','Order / test-run lifecycle (QUEUED → RUNNING → PASSED/FAILED); enums with behaviour; Spring Statemachine.'],
+  ['Iterator','Traverses collections without exposing their internal structure.','<code>Iterator</code>, for-each loop, <code>Spliterator</code> behind streams.'],
+  ['Mediator','Centralizes communication between multiple components.','Chat room / UI dialog coordinating widgets; an orchestrating service instead of services calling each other.'],
+  ['Memento','Saves and restores an object\'s previous state.','Editor undo history, snapshot before a risky update, saved drafts.'],
+  ['Visitor','Adds operations to object structures without changing their classes.','<code>Files.walkFileTree(FileVisitor)</code>, compiler AST visitors (<code>ElementVisitor</code>).'],
+  ['Interpreter','Defines and evaluates rules or expressions in a small language.','<code>java.util.regex.Pattern</code>, Spring Expression Language (SpEL), rule engines.']
+ ]},
+ {id:'spring', title:'Spring Boot / Enterprise Application Patterns', focus:'Application architecture, dependency management, and persistence', stage:'Spring Boot', col:'green', items:[
+  ['Dependency Injection (DI)','Supplies dependencies externally instead of constructing them inside classes.','Constructor injection in <code>@Service</code> classes — easy to mock in unit tests.','Prefer constructor injection over field <code>@Autowired</code>.'],
+  ['IoC','Gives the framework control over object creation and lifecycle.','<code>ApplicationContext</code> creates beans and calls <code>@PostConstruct</code> / <code>@PreDestroy</code>.'],
+  ['Repository','Encapsulates database access and persistence logic.','Spring Data <code>MongoRepository</code> / <code>JpaRepository</code>, derived query methods.'],
+  ['DTO','Transfers data between layers or services without exposing internal entities.','Request/response <code>record</code>s, MapStruct mappers, Kafka event payloads.'],
+  ['Service Layer','Centralizes business logic between controllers and repositories.','<code>@Service</code> classes owning <code>@Transactional</code> boundaries.'],
+  ['MVC','Separates application model, presentation, and request handling.','<code>@Controller</code> + Model + view; <code>@RestController</code> returns JSON instead of a view.'],
+  ['Front Controller','Uses one entry point to route incoming requests, e.g., Spring\'s DispatcherServlet.','<code>DispatcherServlet</code> → handler mapping → controller → view / message converter.'],
+  ['Specification','Combines reusable business predicates or database query conditions.','Spring Data JPA <code>Specification&lt;T&gt;</code>, Mongo <code>Criteria</code> for dynamic filters.'],
+  ['Unit of Work','Tracks changes and coordinates persistence within a transaction.','JPA persistence context: dirty checking, flushed once on commit.']
+ ]},
+ {id:'msarch', title:'Microservices Architecture Patterns', focus:'How services are structured, discovered, and communicate', stage:'Microservices', col:'teal', items:[
+  ['API Gateway','Provides a single entry point for routing, authentication, and cross-cutting concerns.','Spring Cloud Gateway, Kong, NGINX — JWT check, rate limits, routing.'],
+  ['Service Discovery','Allows services to locate each other dynamically.','Eureka, Consul, Kubernetes Services/DNS.'],
+  ['Database per Service','Gives each microservice ownership of its own data.','Separate schema/DB per service; others get data via APIs or events.','No shared tables — joins move to API Composition or CQRS views.'],
+  ['Strangler Fig','Gradually replaces a monolith with microservices.','Gateway routes migrated endpoints to new services; the monolith shrinks over time.'],
+  ['Aggregator','Combines responses from multiple services into one result.','A dashboard endpoint that calls several services and merges their results.'],
+  ['API Composition','Builds a response by querying data owned by different services.','Order details = order + customer + payment, joined in memory by a composer.'],
+  ['Backend for Frontend (BFF)','Provides separate backend APIs optimized for web, mobile, or other clients.','Web BFF returns rich pages; mobile BFF returns lean payloads.'],
+  ['CQRS','Separates write operations from read operations when they need different models.','Writes to MongoDB/SQL; reads from an Elasticsearch view updated by events.'],
+  ['Event-Driven Architecture','Services communicate by publishing and consuming events.','Kafka topics with Spring Kafka producers / <code>@KafkaListener</code> consumers.'],
+  ['Event Sourcing','Stores changes as a sequence of events instead of only the latest state.','Append-only event store; current state rebuilt by replay (e.g. Axon).','Needs snapshots and event versioning; usually paired with CQRS.']
+ ]},
+ {id:'resilience', title:'Microservices Resilience Patterns', focus:'Handling failures in distributed systems', stage:'Microservices', col:'red', items:[
+  ['Circuit Breaker','Temporarily stops requests to a failing dependency to prevent cascading failures.','Resilience4j <code>@CircuitBreaker</code>: CLOSED → OPEN → HALF_OPEN.'],
+  ['Retry','Reattempts transient failures, ideally with backoff and jitter.','Resilience4j <code>@Retry</code>, Spring Retry, Kafka consumer retry topics.','Only retry idempotent operations.'],
+  ['Fallback','Returns an alternative response when a dependency fails.','<code>fallbackMethod</code> returning cached / default data.'],
+  ['Timeout','Limits how long a service waits for a dependency.','Connect/read timeouts on Feign / <code>RestClient</code>; Resilience4j TimeLimiter.'],
+  ['Bulkhead','Isolates resources so one failing dependency cannot exhaust everything.','Separate thread pools / semaphores per dependency (Resilience4j Bulkhead).'],
+  ['Rate Limiting','Restricts request frequency to protect services.','Gateway limits per user/API key; Resilience4j RateLimiter; HTTP 429.'],
+  ['Load Balancing','Distributes requests across healthy service instances.','Spring Cloud LoadBalancer, Kubernetes Service, NGINX / cloud LB.'],
+  ['Health Check','Exposes service health for monitoring and traffic routing.','Spring Boot Actuator <code>/actuator/health</code>; Kubernetes liveness & readiness probes.']
+ ]},
+ {id:'distributed', title:'Distributed Transactions & Messaging Patterns', focus:'Kafka, database consistency, and reliable communication', stage:'Distributed Systems', col:'pink', items:[
+  ['Saga','Coordinates distributed transactions using local transactions and compensating actions.','Order → Payment → Inventory; on failure: refund payment, cancel order.'],
+  ['Transactional Outbox','Saves business data and an outgoing event in one DB transaction for reliable publication.','Write <code>outbox</code> row in the same transaction → Debezium CDC or a poller → Kafka.'],
+  ['Inbox Pattern','Tracks received messages to avoid duplicate processing effects.','Store processed message IDs; skip a message if its ID is already there.'],
+  ['Idempotency','Ensures repeated requests or messages don\'t cause repeated business effects.','<code>Idempotency-Key</code> header, upserts, Kafka <code>enable.idempotence=true</code>.'],
+  ['Competing Consumers','Multiple consumers process messages from a shared workload in parallel.','Kafka consumer group — each partition goes to one consumer; RabbitMQ work queue.','Kafka parallelism is capped by the number of partitions.'],
+  ['Dead Letter Queue (DLQ)','Isolates messages that cannot be processed successfully.','Spring Kafka <code>DeadLetterPublishingRecoverer</code> / <code>@RetryableTopic</code> → dead-letter topic.'],
+  ['Choreography','Services coordinate workflows by reacting to events without a central coordinator.','Order placed → payment listens → inventory listens; no one “owns” the flow.'],
+  ['Orchestration','A central coordinator directs the steps of a distributed workflow.','Saga orchestrator service, Temporal, Camunda.'],
+  ['Request-Reply','Uses messaging to send a request and correlate its asynchronous response.','Spring Kafka <code>ReplyingKafkaTemplate</code>; reply topic + correlation ID.']
+ ]}
+];
+const PAIRS = [
+ ['Decorator vs Proxy','Decorator','adds behaviour; client usually builds the wrapper chain itself','Proxy','controls access (lazy load, security, transactions); client often doesn\'t know it\'s there','Same shape (wrapper), different intent: enhance vs control.'],
+ ['Adapter vs Facade','Adapter','makes one existing interface fit another expected interface','Facade','gives a new, simpler interface over many classes','Adapter converts, Facade simplifies.'],
+ ['Strategy vs State','Strategy','client picks the algorithm; strategies don\'t know each other','State','object switches its own state; states trigger transitions','Who chooses? Client → Strategy, object itself → State.'],
+ ['Factory Method vs Abstract Factory','Factory Method','one method creates one product; subclasses decide the type','Abstract Factory','an object creates a family of related products','One product vs a matching family.'],
+ ['Aggregator vs API Composition','Aggregator','a service that calls others and merges results, may add its own logic','API Composition','a query technique: fetch from owners and join in memory','Composition is how you query across Database-per-Service.'],
+ ['Choreography vs Orchestration','Choreography','services react to events; loose coupling, flow is implicit','Orchestration','a coordinator sends commands; flow is explicit and traceable','Few steps → choreography; complex flows → orchestration.'],
+ ['Outbox vs Inbox','Outbox','sender side: never lose an event (DB write + event in one transaction)','Inbox','receiver side: never apply an event twice (dedupe by message ID)','Together they give effectively-once processing.'],
+ ['CQRS vs Event Sourcing','CQRS','separate write and read models','Event Sourcing','store events as the source of truth','Independent ideas — often used together, neither requires the other.']
+];
+
+// ---------- render ----------
+const params = new URLSearchParams(location.search);
+const posterId = params.get('png');
+const store = {get(){try{return JSON.parse(localStorage.getItem('dp-done')||'{}')}catch(e){return {}}},
+               set(v){try{localStorage.setItem('dp-done',JSON.stringify(v))}catch(e){}}};
+let done = store.get();
+const esc = s => s.replace(/&(?!lt;|gt;|amp;)/g,'&amp;');
+const main = document.getElementById('main');
+
+document.getElementById('road').innerHTML = STAGES.map((s,i)=>{
+  const c=C[s.col];
+  return (i?'<div class="arrow">→</div>':'')+`<div class="stage" style="background:${c.bg};border-color:${c.bd}"><b>${s.name}</b><span>Sections ${s.sec}</span></div>`;
+}).join('');
+
+function sectionHTML(sec, idx){
+  const c=C[sec.col];
+  const cards = sec.items.map(([n,w,ex,tip])=>{
+    const key=sec.id+':'+n;
+    return `<article class="card${done[key]?' done':''}" data-key="${key}" data-text="${(n+' '+w+' '+ex+' '+(tip||'')).replace(/<[^>]+>/g,'').toLowerCase().replace(/"/g,'')}" style="border-color:${c.lt};border-left-color:${c.bd}">
+      <div class="ct"><h3>${n}</h3><input type="checkbox" title="I can explain this" ${done[key]?'checked':''}></div>
+      <p class="what">${esc(w)}</p>
+      <p class="ex"><b>In practice:</b> ${ex}</p>
+      ${tip?`<p class="tip">${tip}</p>`:''}
+    </article>`;}).join('');
+  return `<section id="${sec.id}" style="background:${c.bg};border-color:${c.bd}">
+    <div class="sh"><span class="num" style="background:${c.bd}">${idx+1}</span><h2>${sec.title}</h2><span class="focus">Focus: ${sec.focus}</span>
+    <span class="stagetag" style="color:${c.dk};border-color:${c.bd};background:#fff">${sec.stage} · ${sec.items.length} patterns</span></div>
+    <div class="grid">${cards}</div></section>`;
+}
+function pairsHTML(){
+  const c=C.gray;
+  return `<section id="pairs" style="background:${c.bg};border-color:${c.bd}">
+    <div class="sh"><span class="num" style="background:${c.bd}">?</span><h2>Often Confused — Interview Favourites</h2><span class="focus">How to tell similar patterns apart</span></div>
+    <div class="pairs">${PAIRS.map(p=>`<div class="pair" data-text="${p.join(' ').toLowerCase().replace(/"/g,'')}"><div class="ph">${p[0]}</div>
+      <div class="pb"><div><b>${p[1]}</b>${p[2]}</div><div><b>${p[3]}</b>${p[4]}</div></div><div class="key">Key: ${p[5]}</div></div>`).join('')}</div></section>`;
+}
+
+if(posterId){
+  document.body.classList.add('poster');
+  const i = DATA.findIndex(d=>d.id===posterId);
+  const total = DATA.length+1;
+  document.getElementById('pagetag').textContent = (i>=0? (i+1) : total) + ' / ' + total;
+  main.innerHTML = i>=0 ? sectionHTML(DATA[i],i) : pairsHTML();
+  if(i<0) document.querySelector('.posterhead .t').textContent += '';
+} else {
+  main.innerHTML = DATA.map(sectionHTML).join('') + pairsHTML();
+  // chips
+  const chips=document.getElementById('chips'); let active=null;
+  const mk=(label,id,col)=>{const b=document.createElement('button');b.className='chip';b.textContent=label;b.dataset.id=id||'';
+    b.onclick=()=>{active=(active===id?null:id);[...chips.children].forEach(x=>{const on=x.dataset.id===(active||'') && active!==null;x.classList.toggle('on',on);x.style.background=on?C[x.dataset.col].bd:'#fff';x.style.borderColor=on?C[x.dataset.col].bd:'#CBD5E1';});apply();};
+    b.dataset.col=col;chips.appendChild(b);};
+  DATA.forEach((d,i)=>mk((i+1)+'. '+d.title.replace(' Design Patterns','').replace(' Patterns',''),d.id,d.col));
+  mk('Often confused','pairs','gray');
+  const q=document.getElementById('q');
+  function apply(){
+    const t=q.value.trim().toLowerCase();
+    document.querySelectorAll('section').forEach(s=>{
+      const secOk=!active||s.id===active;
+      let any=false;
+      s.querySelectorAll('.card,.pair').forEach(c=>{const ok=secOk&&(!t||c.dataset.text.includes(t));c.classList.toggle('hide',!ok);if(ok)any=true;});
+      s.classList.toggle('hide',!any);
+    });
+  }
+  q.addEventListener('input',apply);
+  // progress
+  const prog=document.getElementById('prog'); const totalCards=DATA.reduce((a,d)=>a+d.items.length,0);
+  const upd=()=>{const n=Object.values(done).filter(Boolean).length;prog.innerHTML=`<b>${n}</b> / ${totalCards} learned`;};
+  main.addEventListener('change',e=>{if(e.target.type!=='checkbox')return;const card=e.target.closest('.card');done[card.dataset.key]=e.target.checked;card.classList.toggle('done',e.target.checked);store.set(done);upd();});
+  upd();
+}
+// expose size for the PNG export
+document.documentElement.setAttribute('data-h', Math.ceil(document.querySelector('.wrap').getBoundingClientRect().height));
+</script>
+</body></html>

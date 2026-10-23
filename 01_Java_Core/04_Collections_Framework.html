@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Collections Framework · Interview Prep</title>
+<link rel="stylesheet" href="../_shared/design-tokens.css">
+<link rel="stylesheet" href="../_shared/deck.css">
+<style>
+/* 1.1 hierarchy */
+.tree{display:flex;flex-direction:column;gap:calc(8px*var(--k))}
+.trow{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.tn{font:inherit;font-family:var(--font-mono);font-size:13px;font-weight:700;border:2px solid var(--c);background:#fff;color:var(--ink);border-radius:9px;padding:calc(4px*var(--k)) 11px;cursor:pointer}
+.tn.base{background:var(--c);color:#fff}
+.tn.on{box-shadow:0 0 0 3px #FDE68A;border-color:var(--warning)}
+.tgrp{border:2px dashed var(--c);border-radius:12px;padding:calc(6px*var(--k)) 8px;display:flex;flex-direction:column;gap:calc(5px*var(--k));background:#fff;align-items:stretch}
+.tgrp>small{font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--c)}
+.tgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+/* bars */
+.bars{display:flex;flex-direction:column;gap:calc(6px*var(--k))}
+.bar{display:grid;grid-template-columns:96px 1fr 120px;gap:8px;align-items:center;font-size:13px}
+.bar .tr{background:#fff;border:1.5px solid var(--line);border-radius:7px;height:20px;overflow:hidden}
+.bar .fl{height:100%;border-radius:5px;transition:width .35s}
+.bar .v{font-family:var(--font-mono);font-size:12.5px;font-weight:700}
+/* chips of elements */
+.els{display:flex;flex-wrap:wrap;gap:5px;min-height:26px;align-items:center}
+.el{font-family:var(--font-mono);font-size:12.5px;font-weight:700;background:#fff;border:1.5px solid var(--line-strong);border-radius:7px;padding:2px 8px;animation:pop .25s}
+.el.hot{border-color:var(--warning);background:var(--warning-bg)}
+.el.nul{color:var(--muted);border-style:dashed}
+.setc{background:#fff;border:1.5px solid var(--lt);border-radius:11px;padding:calc(6px*var(--k)) 9px}
+.setc h4{margin:0 0 4px;font-size:13.5px;font-family:var(--font-mono);color:var(--ink)}
+.setc small{color:var(--muted);font-size:12px}
+.pick{display:flex;flex-wrap:wrap;gap:5px}
+.pick button{font:inherit;font-family:var(--font-mono);font-size:12.5px;font-weight:700;border:1.5px solid var(--line-strong);border-radius:7px;background:#fff;padding:2px 9px;cursor:pointer}
+.pick button:disabled{opacity:.4;cursor:default}
+table.t td.b{font-weight:800}
+.st{font-size:12px;font-weight:800}
+</style>
+</head>
+<body data-topic="java:Collections Framework">
+<header class="topbar">
+ <a class="tbrand" href="../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="00_Java_Core.html" title="All Java Core topics" style="color:#1D4ED8"><svg class="lg" data-logo="openjdk"></svg>Java Core</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<!-- ===================================================== 0. CONTENTS -->
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2><svg class="lg" data-logo="openjdk"></svg>Collections Framework</h2><span class="sub">pick the right collection, sort it, and don't break it while iterating</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="toc" id="toc"></div>
+ <div class="howuse"><span><b>← →</b> keys move between slides</span><span><b>▶ Try it</b> boxes are interactive</span><span>Examples are <b>simplified from FireFlink</b> suites and runs</span><span>HashMap internals have their own page (05)</span></div>
+</div>
+</section>
+
+<!-- ===================================================== 1. THE MAP -->
+<section class="cat" data-name="1. The map" data-col="b">
+<h1 class="cat-title">1. The map</h1>
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.1</span><h2>The family tree</h2><span class="sub">click any interface or class</span></div>
+ <div class="cols wide-l">
+  <div class="tree" id="ht">
+   <div class="trow"><button class="tn base" data-x="Collection" style="--c:var(--slate)">Collection&lt;E&gt;</button><button class="tn base" data-x="Map" style="--c:var(--orange)">Map&lt;K,V&gt; <span style="font-weight:400">(not a Collection)</span></button></div>
+   <div class="tgrid">
+    <div class="tgrp" style="--c:var(--blue)"><small>ordered, index</small><button class="tn base" data-x="List">List</button><button class="tn" data-x="ArrayList">ArrayList</button><button class="tn" data-x="LinkedList">LinkedList</button><button class="tn" data-x="CopyOnWriteArrayList">CopyOnWriteArrayList</button></div>
+    <div class="tgrp" style="--c:var(--green)"><small>unique</small><button class="tn base" data-x="Set">Set</button><button class="tn" data-x="HashSet">HashSet</button><button class="tn" data-x="LinkedHashSet">LinkedHashSet</button><button class="tn" data-x="TreeSet">TreeSet</button></div>
+    <div class="tgrp" style="--c:var(--purple)"><small>process in order</small><button class="tn base" data-x="Queue">Queue / Deque</button><button class="tn" data-x="ArrayDeque">ArrayDeque</button><button class="tn" data-x="PriorityQueue">PriorityQueue</button></div>
+    <div class="tgrp" style="--c:var(--orange)"><small>key → value</small><button class="tn" data-x="HashMap">HashMap</button><button class="tn" data-x="LinkedHashMap">LinkedHashMap</button><button class="tn" data-x="TreeMap">TreeMap</button></div>
+   </div>
+  </div>
+  <div class="stack">
+   <div class="msg" id="ht-msg"></div>
+   <p class="take"><b>Remember:</b> choose by the question you'll ask most — <b>by index?</b> List · <b>contains / unique?</b> Set · <b>next one to process?</b> Queue · <b>lookup by key?</b> Map. Default picks: <code>ArrayList</code>, <code>HashSet</code>, <code>ArrayDeque</code>, <code>HashMap</code>.</p>
+   <div class="gtk"><b>Good to know</b> Java 21 added <code>SequencedCollection</code>: <code>getFirst()</code>, <code>getLast()</code>, <code>reversed()</code> on List, Deque, LinkedHashSet and LinkedHashMap.</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.2</span><h2>ArrayList vs LinkedList</h2><span class="sub">pick an operation, drag the size</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="seg" id="al-op"><button class="on" data-o="get">get(n/2)</button><button data-o="end">add(e) at end</button><button data-o="front">add(0, e)</button><button data-o="mid">insert middle</button></div>
+   <div class="ctrl" style="font-size:13px;font-weight:700">size n = <span id="al-nv" style="font-family:var(--font-mono)"></span><input type="range" id="al-n" min="1" max="6" value="3" style="flex:1"></div>
+   <div class="bars" id="al-bars"></div>
+   <div class="msg" id="al-msg"></div>
+  </div>
+  <div class="stack">
+   <table class="t">
+    <tr><th></th><th>ArrayList</th><th>LinkedList</th></tr>
+    <tr><td>get(i)</td><td class="b" style="color:var(--success)">O(1)</td><td>O(n) — walks nodes</td></tr>
+    <tr><td>add at end</td><td>O(1) amortized</td><td>O(1)</td></tr>
+    <tr><td>add/remove at front</td><td>O(n) shift (fast <code>arraycopy</code>)</td><td class="b" style="color:var(--success)">O(1)</td></tr>
+    <tr><td>insert in middle</td><td>O(n) shift</td><td>O(n) to find + O(1) link</td></tr>
+    <tr><td>memory / element</td><td>~4–8 B (a reference)</td><td>~24–40 B (node + 2 links)</td></tr>
+   </table>
+   <p class="take"><b>Remember:</b> <code>ArrayList</code> wins almost every real case — elements sit next to each other, so the CPU cache loves it. Need fast add/remove at <b>both ends</b>? Use <code>ArrayDeque</code>, not LinkedList.</p>
+   <div class="gtk"><b>Good to know</b> ArrayList grows by <b>1.5×</b> when full. If you know the size (e.g. 500 test results), use <code>new ArrayList&lt;&gt;(500)</code>.</div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 2. SETS & QUEUES -->
+<section class="cat" data-name="2. Sets &amp; queues" data-col="g">
+<h1 class="cat-title">2. Sets &amp; queues</h1>
+<div class="slide c-g">
+ <div class="sh"><span class="sn">2.1</span><h2>Which order do I get back?</h2><span class="sub">add suite names and watch three Sets iterate</span></div>
+ <div class="stack">
+  <div class="ctrl"><div class="pick" id="so-pick"></div><button class="btn" id="so-dup">add "Login" again</button><button class="btn" id="so-reset">↺ Reset</button></div>
+  <div class="cols three">
+   <div class="setc"><h4>HashSet</h4><div class="els" id="so-h"></div><small>order of the hash buckets — looks random, can change after a resize</small></div>
+   <div class="setc"><h4>LinkedHashSet</h4><div class="els" id="so-l"></div><small>insertion order (a linked list runs through the entries)</small></div>
+   <div class="setc"><h4>TreeSet</h4><div class="els" id="so-t"></div><small>sorted (red-black tree) — O(log n), no <code>null</code></small></div>
+  </div>
+  <div class="msg" id="so-msg"></div>
+  <div class="cols even">
+   <p class="take"><b>Remember:</b> <code>HashSet</code> = fastest, <b>no order</b>. <code>LinkedHashSet</code> = insertion order (great for de-duplicating tags while keeping the user's order). <code>TreeSet</code> = sorted, plus <code>first()</code>, <code>ceiling()</code>, <code>headSet()</code>.</p>
+   <div class="gtk"><b>Good to know</b> Sets use <code>equals/hashCode</code> (Hash*) or <code>compareTo/compare</code> (Tree*) to decide "duplicate". A broken <code>equals</code> → duplicates slip in (page 01, 3.1).</div>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-g">
+ <div class="sh"><span class="sn">2.2</span><h2>Queue, stack, priority</h2><span class="sub">queue some FireFlink runs, then take them out</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="seg" id="q-mode"><button class="on" data-m="fifo">ArrayDeque as queue</button><button data-m="lifo">ArrayDeque as stack</button><button data-m="pq">PriorityQueue</button></div>
+   <div class="ctrl"><button class="btn p" id="q-add"></button><button class="btn" id="q-take"></button><button class="btn" id="q-reset">↺ Reset</button></div>
+   <div class="setc"><h4 id="q-lbl">inside</h4><div class="els" id="q-in"></div><small id="q-note"></small></div>
+   <div class="console" id="q-out" style="min-height:calc(54px*var(--k))"></div>
+  </div>
+  <div class="stack">
+   <div class="code" id="q-code"></div>
+   <p class="take"><b>Remember:</b> use <code>ArrayDeque</code> for both queues and stacks (the old <code>Stack</code> class is synchronized and legacy). <code>PriorityQueue</code> is a <b>min-heap</b>: <code>poll()</code> gives the smallest — but printing or iterating it is <b>not sorted</b>.</p>
+   <div class="gtk"><b>Good to know</b> <code>offer/poll/peek</code> return false/<code>null</code> when they can't act; <code>add/remove/element</code> throw. For producer–consumer between threads use a <code>BlockingQueue</code> (page 09).</div>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 3. SORT & SAFETY -->
+<section class="cat" data-name="3. Sorting &amp; safety" data-col="p">
+<h1 class="cat-title">3. Sorting &amp; safety</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">3.1</span><h2>Comparable vs Comparator</h2><span class="sub">build a sort for the run-history table</span></div>
+ <div class="cols even">
+  <div class="stack">
+   <div class="ctrl"><span class="st">sort by</span><div class="seg" id="cp-by"><button class="on" data-k="priority">priority</button><button data-k="durationSec">duration</button><button data-k="suite">suite</button></div></div>
+   <div class="ctrl"><span class="st">then by</span><div class="seg" id="cp-then"><button class="on" data-k="">—</button><button data-k="durationSec">duration</button><button data-k="suite">suite</button></div><label class="chk" id="cp-rev"><input type="checkbox"> .reversed()</label><label class="chk" id="cp-nl"><input type="checkbox"> nullsLast</label></div>
+   <div class="code" id="cp-code"></div>
+   <table class="t" id="cp-tab"></table>
+  </div>
+  <div class="stack">
+   <table class="t">
+    <tr><th></th><th>Comparable</th><th>Comparator</th></tr>
+    <tr><td>where</td><td>inside the class: <code>compareTo(o)</code></td><td>outside: <code>compare(a, b)</code></td></tr>
+    <tr><td>how many</td><td>one "natural" order</td><td>as many as you like</td></tr>
+    <tr><td>used by</td><td><code>Collections.sort(list)</code>, TreeSet</td><td><code>list.sort(cmp)</code>, <code>new TreeSet&lt;&gt;(cmp)</code></td></tr>
+    <tr><td>example</td><td>String, Integer, LocalDate</td><td>"by priority, then duration"</td></tr>
+   </table>
+   <div class="msg" id="cp-msg"></div>
+   <p class="take"><b>Remember:</b> build comparators with <code>Comparator.comparing(...)</code> + <code>thenComparing</code>. <b>Never</b> write <code>return a - b;</code> — it overflows for large ints; use <code>Integer.compare(a, b)</code>.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">3.2</span><h2>Removing while iterating</h2><span class="sub">remove every "flaky" test — try each approach</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="seg" id="ff-way" style="flex-wrap:wrap"><button class="on" data-w="each">for-each + remove</button><button data-w="idx">index loop</button><button data-w="it">iterator.remove()</button><button data-w="rif">removeIf</button></div>
+   <div class="code" id="ff-code"></div>
+   <div class="ctrl"><button class="btn p" id="ff-run">▶ Run</button><span class="chip no" id="ff-res">not run</span></div>
+   <div class="console" id="ff-out" style="min-height:calc(46px*var(--k))"></div>
+  </div>
+  <div class="stack">
+   <div class="msg" id="ff-msg"></div>
+   <div class="box"><h4>Why "fail-fast"?</h4>Every ArrayList/HashMap keeps a <code>modCount</code>. The iterator remembers it; if the list changes behind its back, the next <code>next()</code> throws <code>ConcurrentModificationException</code>. It happens in <b>one thread</b> too — it's a bug detector, not a thread-safety feature.</div>
+   <p class="take"><b>Remember:</b> remove with <code>removeIf(...)</code> or <code>iterator.remove()</code>. For lists many threads read while a few write (e.g. listeners), <code>CopyOnWriteArrayList</code> iterates a snapshot and never throws.</p>
+  </div>
+ </div>
+</div>
+
+<div class="slide c-p">
+ <div class="sh"><span class="sn">3.3</span><h2>Immutable, unmodifiable, or fixed-size?</h2><span class="sub">pick how the list was made, then try to change things</span></div>
+ <div class="cols">
+  <div class="stack">
+   <div class="seg" id="im-kind" style="flex-wrap:wrap"><button class="on" data-k="of">List.of(…)</button><button data-k="copy">List.copyOf(src)</button><button data-k="unmod">unmodifiableList(src)</button><button data-k="asl">Arrays.asList(arr)</button></div>
+   <div class="ctrl" id="im-act"><button class="btn" data-a="add">list.add("smoke")</button><button class="btn" data-a="set">list.set(0, "api")</button><button class="btn" data-a="src">change the source</button><button class="btn" id="im-reset">↺</button></div>
+   <div class="setc"><h4>source</h4><div class="els" id="im-src"></div></div>
+   <div class="setc"><h4>list</h4><div class="els" id="im-list"></div></div>
+   <div class="console" id="im-out" style="min-height:calc(40px*var(--k))"></div>
+  </div>
+  <div class="stack">
+   <table class="t">
+    <tr><th></th><th>add</th><th>set</th><th>sees source changes?</th><th>null?</th></tr>
+    <tr><td><code>List.of / copyOf</code></td><td>❌</td><td>❌</td><td>no — own copy</td><td>❌ NPE</td></tr>
+    <tr><td><code>unmodifiableList</code></td><td>❌</td><td>❌</td><td><b>yes — it's a view</b></td><td>✅</td></tr>
+    <tr><td><code>Arrays.asList</code></td><td>❌</td><td>✅ writes to array</td><td>yes — backed by array</td><td>✅</td></tr>
+    <tr><td><code>new ArrayList&lt;&gt;(src)</code></td><td>✅</td><td>✅</td><td>no</td><td>✅</td></tr>
+   </table>
+   <p class="take"><b>Remember:</b> "unmodifiable" ≠ "immutable". To hand out a safe copy, use <code>List.copyOf(src)</code>. Need to modify? Wrap in <code>new ArrayList&lt;&gt;(…)</code>.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 4. ALL IN ACTION -->
+<section class="cat" data-name="4. All in action" data-col="k">
+<h1 class="cat-title">4. All in action</h1>
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.1</span><h2>Pick the collection</h2><span class="sub">FireFlink scenarios</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="pqs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="pq" data-opts="HashSet|LinkedHashSet|TreeSet" data-ans="LinkedHashSet"><pre>Suite tags typed by the user:
+remove duplicates, keep their order</pre><div class="why">Unique + insertion order. <a class="go" data-go="2.1">2.1</a></div></div>
+  <div class="pq" data-opts="ArrayDeque|PriorityQueue|ArrayList" data-ans="PriorityQueue"><pre>Pending runs: P1 runs before P3,
+whatever order they arrived</pre><div class="why">A min-heap ordered by a <code>Comparator</code> on priority. <a class="go" data-go="2.2">2.2</a></div></div>
+  <div class="pq" data-opts="Stack|ArrayDeque|LinkedList" data-ans="ArrayDeque"><pre>Undo stack in the
+test-step editor</pre><div class="why"><code>push/pop</code> on ArrayDeque — faster than legacy <code>Stack</code> and LinkedList.</div></div>
+  <div class="pq" data-opts="ArrayList|LinkedList|TreeSet" data-ans="ArrayList"><pre>500 step results: append,
+then read by index for the report</pre><div class="why">Append + index reads = ArrayList (pre-size it). <a class="go" data-go="1.2">1.2</a></div></div>
+  <div class="pq" data-opts="HashMap|TreeMap|LinkedHashMap" data-ans="TreeMap"><pre>Quota per date; need "latest
+entry on or before 2026-10-21"</pre><div class="why"><code>floorEntry(date)</code> — navigation methods only exist on sorted maps/sets.</div></div>
+  <div class="pq" data-opts="ArrayList|CopyOnWriteArrayList|Vector" data-ans="CopyOnWriteArrayList"><pre>Run-event listeners: read on every
+event by many threads, added rarely</pre><div class="why">Read-mostly and shared → copy-on-write; iteration never throws CME.</div></div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.2</span><h2>Predict the output</h2><span class="sub">classic collection traps</span><span class="score"></span><button class="btn" data-pq-reset>↺ Again</button></div>
+ <div class="pqs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="pq" data-opts="[10, 30]|[20, 30]" data-ans="[10, 30]"><pre>List&lt;Integer&gt; l =
+    new ArrayList&lt;&gt;(List.of(10, 20, 30));
+l.remove(1);
+System.out.println(l);</pre><div class="why"><code>remove(int index)</code> wins over <code>remove(Object)</code>. To remove the value: <code>l.remove(Integer.valueOf(1))</code>.</div></div>
+  <div class="pq" data-opts="[a, null]|NullPointerException" data-ans="NullPointerException"><pre>List&lt;String&gt; l = List.of("a", null);
+System.out.println(l);</pre><div class="why"><code>List.of</code>, <code>Set.of</code>, <code>Map.of</code> reject nulls. <a class="go" data-go="3.3">3.3</a></div></div>
+  <div class="pq" data-opts="1|3" data-ans="1"><pre>int[] a = {1, 2, 3};
+System.out.println(
+    Arrays.asList(a).size());</pre><div class="why">Generics can't hold <code>int</code>, so it's a <code>List&lt;int[]&gt;</code> with one element. Use <code>Integer[]</code> or <code>IntStream</code>.</div></div>
+  <div class="pq" data-opts="1|2" data-ans="1"><pre>Set&lt;String&gt; s = new TreeSet&lt;&gt;(
+    Comparator.comparing(String::length));
+s.add("smoke"); s.add("login");
+System.out.println(s.size());</pre><div class="why">TreeSet treats <code>compare == 0</code> as duplicate — both have length 5. Keep comparators consistent with <code>equals</code>.</div></div>
+  <div class="pq" data-opts="[1, 2, 3]|[1, 3, 2]" data-ans="[1, 3, 2]"><pre>var pq = new PriorityQueue&lt;Integer&gt;();
+pq.add(3); pq.add(1); pq.add(2);
+System.out.println(pq);</pre><div class="why">toString shows the internal heap array — not sorted. Only <code>poll()</code> gives 1, 2, 3. <a class="go" data-go="2.2">2.2</a></div></div>
+  <div class="pq" data-opts="ConcurrentModificationException|[a, c]" data-ans="[a, c]"><pre>List&lt;String&gt; l = new ArrayList&lt;&gt;(
+    List.of("a", "b", "c"));
+for (String s : l)
+    if (s.equals("b")) l.remove(s);
+System.out.println(l);</pre><div class="why">Removing the <b>second-to-last</b> element makes <code>hasNext()</code> return false — the loop ends before the check. A bug that hides in tests. <a class="go" data-go="3.2">3.2</a></div></div>
+ </div>
+</div>
+
+<div class="slide c-k">
+ <div class="sh"><span class="sn">4.3</span><h2>Production bug: "scheduled runs fail, manual runs work"</h2><span class="sub">pick who triggers the run, then apply the fix</span></div>
+ <div class="cols wide-l">
+  <div class="stack">
+   <div class="ctrl"><div class="seg" id="pb-src"><button class="on" data-s="ui">UI run (sends tags)</button><button data-s="cron">Scheduler (no tags)</button></div><label class="chk" id="pb-fix"><input type="checkbox"> fix: copy into a new ArrayList</label></div>
+   <div class="code" id="pb-code"></div>
+  </div>
+  <div class="stack">
+   <div class="console" id="pb-log" style="min-height:calc(90px*var(--k))"></div>
+   <div class="msg" id="pb-msg"></div>
+   <p class="take"><b>Lesson:</b> never <code>add</code> to a list you didn't create — it may be <code>List.of</code>, <code>emptyList()</code> or <code>Arrays.asList</code>. Copy it first. Tests passed because QA always sent tags.</p>
+  </div>
+ </div>
+</div>
+</section>
+
+<!-- ===================================================== 5. INTERVIEW Q&A -->
+<section class="cat" data-name="5. Interview Q&amp;A" data-col="i">
+<h1 class="cat-title">5. Interview Q&amp;A</h1>
+<div class="slide c-i">
+ <div class="sh"><span class="sn">5.1</span><h2>Interview questions</h2><span class="sub">click a question to reveal the answer · pill = slide that explains it</span></div>
+ <div class="qbar"><input id="qa-find" type="search" placeholder="Filter questions… (e.g. TreeSet, fail-fast, immutable)"><span class="chip ok" id="qa-count"></span><button class="btn" id="qa-random">🎲 Random question</button><label class="donebox" style="margin-left:auto"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="acc" id="qa-list"></div>
+</div>
+</section>
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <span class="kbd">← → keys</span>
+</footer>
+
+<script src="../_shared/deck.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const chips=(arr,hot)=>arr.length?arr.map((x,i)=>`<span class="el${x===null?' nul':''}${hot&&hot(x,i)?' hot':''}">${x===null?'null':ESC(String(x))}</span>`).join(''):'<span style="color:var(--faint);font-size:12.5px">empty</span>';
+const segOn=(seg,b)=>seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+
+// ===================================================== 1.1 hierarchy
+(function(){
+ const I={
+  Collection:['root interface','A group of elements: <code>add</code>, <code>remove</code>, <code>contains</code>, <code>size</code>, <code>stream()</code>.','Methods take/return <code>Collection</code> when order doesn\'t matter.'],
+  Map:['separate interface','Key → value pairs. Not a Collection — but gives views: <code>keySet()</code>, <code>values()</code>, <code>entrySet()</code>.','Internals on page 05.'],
+  List:['interface','Ordered, index-based, duplicates allowed.','Results of a run, in step order.'],
+  ArrayList:['default List','Backed by a resizable array. O(1) <code>get(i)</code>, amortized O(1) append.','Almost always the right List.'],
+  LinkedList:['rarely','Doubly-linked nodes. O(1) at the ends but O(n) to reach the middle, and cache-unfriendly.','Prefer ArrayList or ArrayDeque.'],
+  CopyOnWriteArrayList:['thread-safe','Every write copies the array; readers never lock and never see CME.','Listener lists: many reads, rare writes.'],
+  Set:['interface','No duplicates (decided by equals/hashCode or a comparator).','Unique tags, visited ids.'],
+  HashSet:['default Set','Backed by a HashMap. O(1) add/contains. No order.','Fast "have we seen this testcase id?"'],
+  LinkedHashSet:['ordered Set','HashSet + linked list → insertion order.','De-duplicate while keeping the user\'s order.'],
+  TreeSet:['sorted Set','Red-black tree. O(log n). <code>first()</code>, <code>ceiling()</code>, <code>headSet()</code>.','Sorted env names, range lookups.'],
+  Queue:['interface','FIFO processing: <code>offer</code>, <code>poll</code>, <code>peek</code>. <code>Deque</code> adds both ends (stack too).','Work waiting to be processed.'],
+  ArrayDeque:['default Queue/Stack','Circular array. Fast at both ends, no nulls.','Queue of steps, undo stack.'],
+  PriorityQueue:['heap','Binary min-heap. <code>poll()</code> = smallest (by natural order or comparator), O(log n).','Run the P1 suites first.'],
+  HashMap:['default Map','Hash table, O(1) average. One null key allowed.','See page 05 for internals.'],
+  LinkedHashMap:['ordered Map','Insertion order, or access order → simple LRU cache with <code>removeEldestEntry</code>.','Small in-memory LRU of recent runs.'],
+  TreeMap:['sorted Map','Red-black tree by key. <code>floorKey</code>, <code>ceilingEntry</code>, <code>subMap</code>.','"Latest config on or before this date".']};
+ const pick=x=>{$('ht').querySelectorAll('.tn').forEach(b=>b.classList.toggle('on',b.dataset.x===x));const i=I[x];
+  $('ht-msg').innerHTML=`<b style="font-family:var(--font-mono)">${x}</b> <span class="chip ${/default/.test(i[0])?'ok':/rarely/.test(i[0])?'bad':'no'}">${i[0]}</span><br>${i[1]}<br><b>Use for:</b> ${i[2]}`;};
+ $('ht').onclick=e=>{const b=e.target.closest('[data-x]');if(b)pick(b.dataset.x);};pick('ArrayList');
+})();
+
+// ===================================================== 1.2 ArrayList vs LinkedList
+(function(){
+ const NS=[10,100,1000,10000,100000,1000000];
+ const OPS={get:['ArrayList jumps straight to slot n/2 — one address calculation.','LinkedList walks node by node from the nearer end.',n=>1,n=>n/2],
+  end:['Both are O(1). ArrayList occasionally copies into a 1.5× bigger array — amortized it\'s still O(1).','Allocates a node every time (more GC).',n=>1,n=>1],
+  front:['ArrayList shifts every element right by one (System.arraycopy — fast, but O(n)).','LinkedList only relinks the head. Its one real win — but ArrayDeque does this too, faster.',n=>n,n=>1],
+  mid:['ArrayList shifts n/2 elements.','LinkedList must first walk n/2 nodes to find the spot — and walking is slower than copying.',n=>n/2,n=>n/2]};
+ let op='get';
+ function draw(){const n=NS[$('al-n').value-1];$('al-nv').textContent=n.toLocaleString();const o=OPS[op],a=o[2](n),l=o[3](n);
+  const w=v=>Math.max(2,Math.log10(v+1)/Math.log10(1e6+1)*100);
+  const row=(name,v,col)=>`<div class="bar"><b>${name}</b><div class="tr"><div class="fl" style="width:${w(v)}%;background:${col}"></div></div><span class="v">${Math.round(v).toLocaleString()} step${v===1?'':'s'}</span></div>`;
+  $('al-bars').innerHTML=row('ArrayList',a,'var(--blue)')+row('LinkedList',l,'var(--orange)')+'<small style="color:var(--muted);font-size:12px">log scale</small>';
+  $('al-msg').innerHTML=`<b>ArrayList:</b> ${o[0]}<br><b>LinkedList:</b> ${o[1]}`;}
+ $('al-op').onclick=e=>{const b=e.target.closest('[data-o]');if(!b)return;op=b.dataset.o;segOn($('al-op'),b);draw();};
+ $('al-n').oninput=draw;draw();
+})();
+
+// ===================================================== 2.1 set ordering (real String.hashCode + HashMap bucket order)
+(function(){
+ const NAMES=['Login','Checkout','Search','Payments','Signup','Cart','Profile','Smoke','API','Reports'];
+ const jh=s=>{let h=0;for(const c of s)h=(Math.imul(31,h)+c.charCodeAt(0))|0;return h;};
+ let added=[];
+ function hashOrder(items){let cap=16;while(items.length>cap*0.75)cap*=2;
+  const b=items.map((s,i)=>{const h=jh(s);return {s,i,k:((h^(h>>>16))&(cap-1))};});
+  return [b.sort((x,y)=>x.k-y.k||x.i-y.i).map(x=>x.s),cap];}
+ function draw(note){const [h,cap]=hashOrder(added);const last=added[added.length-1],hot=x=>x===last;
+  $('so-h').innerHTML=chips(h,hot);$('so-l').innerHTML=chips(added,hot);$('so-t').innerHTML=chips([...added].sort((a,b)=>a<b?-1:a>b?1:0),hot);
+  $('so-pick').innerHTML=NAMES.map(n=>`<button data-n="${n}" ${added.includes(n)?'disabled':''}>+ ${n}</button>`).join('');
+  $('so-msg').innerHTML=note||(added.length?`${added.length} element${added.length>1?'s':''} · HashSet table capacity <b>${cap}</b>${cap>16?' — it <b>resized</b>, so the HashSet order may have shuffled':''}. Bucket = <code>(hash ^ hash&gt;&gt;&gt;16) &amp; (capacity-1)</code> using the real <code>String.hashCode()</code>.`:'Click the suite names in any order.');}
+ $('so-pick').onclick=e=>{const b=e.target.closest('[data-n]');if(!b)return;added.push(b.dataset.n);draw();};
+ $('so-dup').onclick=()=>{if(added.includes('Login'))draw('<code>add("Login")</code> returned <b>false</b> — all three Sets already contain it, nothing changed.');else{added.push('Login');draw('<code>add("Login")</code> → <b>true</b>. Click again to see the duplicate rejected.');}};
+ $('so-reset').onclick=()=>{added=[];draw();};
+ added=['Smoke','Login','Checkout','API'];draw();
+})();
+
+// ===================================================== 2.2 queue / stack / priority queue
+(function(){
+ const RUNS=[['nightly',3],['smoke',1],['regression',2],['api',1],['visual',3],['mobile',2]];
+ let mode='fifo',arr=[],next=0,out=[];
+ const lab=r=>r[0]+':P'+r[1];
+ function heapAdd(x){arr.push(x);let i=arr.length-1;while(i>0){const p=(i-1)>>1;if(arr[p][1]<=arr[i][1])break;[arr[p],arr[i]]=[arr[i],arr[p]];i=p;}}
+ function heapPoll(){const top=arr[0],last=arr.pop();if(arr.length){arr[0]=last;let i=0;for(;;){const l=2*i+1,r=l+1;let m=i;if(l<arr.length&&arr[l][1]<arr[m][1])m=l;if(r<arr.length&&arr[r][1]<arr[m][1])m=r;if(m===i)break;[arr[m],arr[i]]=[arr[i],arr[m]];i=m;}}return top;}
+ const M={fifo:['offer','poll','runs.offer(run);    // add at the tail','runs.poll();        // take from the head — FIFO','inside (head → tail)','first in, first out'],
+  lifo:['push','pop','undo.push(step);    // add at the head','undo.pop();         // take from the head — LIFO','inside (top → bottom)','last in, first out'],
+  pq:['offer','poll','runs.offer(run);    // sift up the heap','runs.poll();        // smallest priority first','internal heap array (what toString prints)','<b>not sorted</b> — only the head is guaranteed to be the smallest']};
+ function draw(){const m=M[mode];$('q-add').disabled=next>=RUNS.length;$('q-take').disabled=!arr.length;
+  $('q-add').textContent=`${m[0]}(${next<RUNS.length?lab(RUNS[next]):'—'})`;$('q-take').textContent=`${m[1]}()`;
+  $('q-lbl').textContent=m[4];$('q-note').innerHTML=m[5];
+  $('q-in').innerHTML=chips(arr.map(lab),(x,i)=>i===0);
+  $('q-out').innerHTML=out.length?out.slice(-4).join('\n'):'<span class="dim">add a few runs, then take them out</span>';
+  $('q-code').innerHTML=macHTML('RunQueue.java',(mode==='pq'?`Queue<Run> runs = new PriorityQueue<>(
+        Comparator.comparingInt(Run::priority));`:mode==='lifo'?`Deque<Step> undo = new ArrayDeque<>();`:`Queue<Run> runs = new ArrayDeque<>();`)+`
+${m[2]}
+${m[3]}`,'java');}
+ $('q-add').onclick=()=>{const r=RUNS[next++];if(mode==='pq')heapAdd(r);else if(mode==='lifo')arr.unshift(r);else arr.push(r);out.push(`<span class="dim">${M[mode][0]}</span> ${lab(r)}`);draw();};
+ $('q-take').onclick=()=>{const r=mode==='pq'?heapPoll():arr.shift();out.push(`<span class="okc">${M[mode][1]}() → ${lab(r)}</span>`);draw();};
+ const reset=()=>{arr=[];next=0;out=[];draw();};
+ $('q-reset').onclick=reset;
+ $('q-mode').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;mode=b.dataset.m;segOn($('q-mode'),b);reset();};
+ reset();
+})();
+
+// ===================================================== 3.1 comparator builder
+(function(){
+ const ROWS=[{suite:'Checkout',priority:2,durationSec:340},{suite:'Login',priority:1,durationSec:95},{suite:'Search',priority:null,durationSec:120},{suite:'API',priority:1,durationSec:60},{suite:'Reports',priority:2,durationSec:340}];
+ let by='priority',then='';
+ const nl=()=>$('cp-nl').querySelector('input').checked,rv=()=>$('cp-rev').querySelector('input').checked;
+ const ref=k=>`Run::${k}`;
+ function cmpKey(k,a,b){const x=a[k],y=b[k];if(x===null||y===null){if(x===y)return 0;if(!nl())throw 'npe';return x===null?1:-1;}return x<y?-1:x>y?1:0;}
+ function draw(){['cp-rev','cp-nl'].forEach(id=>$(id).classList.toggle('on',$(id).querySelector('input').checked));
+  const first=by==='priority'?`comparing(${ref(by)}${nl()?',\n                   nullsLast(naturalOrder())':''})`:`comparing(${ref(by)})`;
+  $('cp-code').innerHTML=macHTML('RunHistory.java',`runs.sort(Comparator.${first}${then?`\n        .thenComparing(${ref(then)})`:''}${rv()?'\n        .reversed()':''});`,'java');
+  let rows=[...ROWS],err=false;
+  try{rows.sort((a,b)=>{let c=cmpKey(by,a,b);if(!c&&then)c=cmpKey(then,a,b);return rv()?-c:c;});}catch(e){err=true;}
+  $('cp-tab').innerHTML='<tr><th>suite</th><th>priority</th><th>duration</th></tr>'+(err?'<tr><td colspan="3" style="color:var(--danger);font-weight:800;font-family:var(--font-mono)">💥 NullPointerException — Search has no priority</td></tr>':rows.map(r=>`<tr><td>${r.suite}</td><td>${r.priority===null?'<i style="color:var(--faint)">null</i>':'P'+r.priority}</td><td>${r.durationSec}s</td></tr>`).join(''));
+  $('cp-msg').innerHTML=err?'❌ <code>comparing()</code> calls <code>compareTo</code> on the key — a <code>null</code> key throws. Tick <b>nullsLast</b>.':by==='priority'&&!then?'Ties (P1, P2) keep their original order — <code>List.sort</code> is <b>stable</b>. Add a <b>then by</b> to make it deterministic.':rv()?'<code>.reversed()</code> flips the <b>whole chain</b> built so far, not just the last key. For one key: <code>thenComparing(Run::durationSec, reverseOrder())</code>.':'✅ Sorted. Each extra <code>thenComparing</code> only breaks ties.';}
+ const seg=(id,set)=>$(id).onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;set(b.dataset.k);segOn($(id),b);draw();};
+ seg('cp-by',k=>by=k);seg('cp-then',k=>then=k);
+ ['cp-rev','cp-nl'].forEach(id=>$(id).querySelector('input').onchange=draw);draw();
+})();
+
+// ===================================================== 3.2 fail-fast
+(function(){
+ const START=['smoke','flaky','flaky','login'];
+ const W={
+  each:[`for (String t : tests)
+    if (t.equals("flaky"))
+        tests.remove(t);     // ❌ list changes under the iterator`,()=>({err:'java.util.ConcurrentModificationException\n    at ArrayList$Itr.checkForComodification',res:['smoke','flaky','login'],ok:false}),'❌ First remove works, then the iterator\'s next <code>next()</code> sees <code>modCount</code> changed → <b>CME</b>. (If the removed item is second-to-last, it silently stops instead — predict card 4.2.)'],
+  idx:[`for (int i = 0; i < tests.size(); i++)
+    if (tests.get(i).equals("flaky"))
+        tests.remove(i);     // ❌ next element shifts into i`,()=>({res:['smoke','flaky','login'],ok:false}),'❌ No exception — but after removing index 1, the second "flaky" shifts into index 1 and <code>i++</code> skips it. <b>Silent bug.</b> (Looping backwards would work.)'],
+  it:[`Iterator<String> it = tests.iterator();
+while (it.hasNext())
+    if (it.next().equals("flaky"))
+        it.remove();         // ✅ iterator updates its own count`,()=>({res:['smoke','login'],ok:true}),'✅ <code>iterator.remove()</code> keeps the iterator in sync.'],
+  rif:[`tests.removeIf(t -> t.equals("flaky")); // ✅ one line`,()=>({res:['smoke','login'],ok:true}),'✅ Cleanest. ArrayList\'s <code>removeIf</code> also does it in one pass (O(n)) instead of shifting for each removal.']};
+ let w='each';
+ function load(){$('ff-code').innerHTML=macHTML('Cleanup.java',`List<String> tests = new ArrayList<>(
+        List.of("smoke", "flaky", "flaky", "login"));
+`+W[w][0],'java');$('ff-res').className='chip no';$('ff-res').textContent='not run';$('ff-out').innerHTML='<span class="dim">press ▶ Run</span>';$('ff-msg').innerHTML='Guess first: exception, wrong result, or correct?';}
+ $('ff-run').onclick=()=>{const r=W[w][1]();$('ff-out').innerHTML=(r.err?`<span class="err">${r.err}</span>\n`:'')+`tests = [${r.res.join(', ')}]`;
+  $('ff-res').className='chip '+(r.ok?'ok':'bad');$('ff-res').textContent=r.ok?'correct':r.err?'exception':'wrong result';$('ff-msg').innerHTML=W[w][2];};
+ $('ff-way').onclick=e=>{const b=e.target.closest('[data-w]');if(!b)return;w=b.dataset.w;segOn($('ff-way'),b);load();};load();
+})();
+
+// ===================================================== 3.3 immutable vs unmodifiable
+(function(){
+ let kind='of',src,list,log;
+ const view=()=>kind==='unmod'||kind==='asl';
+ function reset(){src=['ui','db'];list=kind==='of'?['ui','db']:view()?src:[...src];log=[];draw();}
+ function draw(){$('im-src').innerHTML=kind==='of'?'<span style="color:var(--faint);font-size:12.5px">none — List.of("ui", "db") made its own</span>':chips(src);
+  $('im-list').innerHTML=chips(list);$('im-out').innerHTML=log.length?log.slice(-3).join('\n'):'<span class="dim">try the buttons</span>';}
+ const UOE='<span class="err">UnsupportedOperationException</span>';
+ $('im-act').onclick=e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;
+  if(a==='add')log.push(`list.add("smoke") → ${UOE}${kind==='asl'?' <span class="dim">(fixed-size)</span>':''}`);
+  if(a==='set'){if(kind==='asl'){list[0]='api';log.push('<span class="okc">list.set(0, "api") ✓</span> <span class="nar">— and the array changed too!</span>');}else log.push(`list.set(0, "api") → ${UOE}`);}
+  if(a==='src'){if(kind==='of')log.push('<span class="dim">there is no source to change</span>');
+   else if(kind==='asl'){src[1]='mobile';log.push('array[1] = "mobile" → <span class="nar">the list shows it too (backed by the array)</span>');}
+   else{src.push('mobile');log.push(kind==='unmod'?'source.add("mobile") → <span class="nar">the list shows it too (it\'s a view)</span>':'source.add("mobile") → <span class="okc">list unchanged (own copy)</span>');}}
+  draw();};
+ $('im-reset').onclick=reset;
+ $('im-kind').onclick=e=>{const b=e.target.closest('[data-k]');if(!b)return;kind=b.dataset.k;segOn($('im-kind'),b);reset();};reset();
+})();
+
+// ===================================================== 4.3 production bug
+(function(){
+ let s='ui';const fx=()=>$('pb-fix').querySelector('input').checked;
+ function draw(){$('pb-fix').classList.toggle('on',fx());const f=fx();
+  $('pb-code').innerHTML=macHTML('RunTagService.java',`List<String> tags(RunRequest req) {
+    List<String> tags = req.getTags() != null
+            ? ${f?'new ArrayList<>(req.getTags())':'req.getTags()'}
+            : ${f?'new ArrayList<>()':'Collections.emptyList()'};${f?'  // ✅ always ours':'   // ❌ immutable'}
+    tags.add("run:" + req.runId());
+    tags.add("env:" + req.env());
+    return tags;
+}`,'java');
+  const boom=!f&&s==='cron';markLines($('pb-code').querySelector('.mac'),boom?[5]:[],boom);
+  $('pb-log').innerHTML=s==='ui'?`<span class="dim">10:41:07 INFO  [http-8]</span> POST /runs suite=Checkout tags=[regression]\n<span class="okc">run 7c1e started · tags=[regression, run:7c1e, env:qa]</span>`:
+   boom?`<span class="dim">02:00:00 INFO  [scheduler-1]</span> nightly suite=Checkout tags=null\n<span class="err">java.lang.UnsupportedOperationException\n    at AbstractList.add(AbstractList.java:155)\n    at RunTagService.tags(RunTagService.java:5)</span>\n<span class="nar">nightly run NOT started</span>`:
+   `<span class="dim">02:00:00 INFO  [scheduler-1]</span> nightly suite=Checkout tags=null\n<span class="okc">run 9a40 started · tags=[run:9a40, env:prod]</span>`;
+  $('pb-msg').innerHTML=s==='ui'?'Works: Jackson gives us a mutable <code>ArrayList</code>. Now switch to the <b>Scheduler</b>.':boom?'❌ No tags → <code>Collections.emptyList()</code> is immutable → <code>add</code> throws. Every nightly run failed for a week.':f?'✅ Copying fixes both paths — and we no longer mutate the caller\'s list either.':'';}
+ $('pb-src').onclick=e=>{const b=e.target.closest('[data-s]');if(!b)return;s=b.dataset.s;segOn($('pb-src'),b);draw();};
+ $('pb-fix').querySelector('input').onchange=draw;draw();
+})();
+
+// ===================================================== 5.1 interview Q&A
+DECK.qa([
+ ['What are the main interfaces of the Collections Framework?','<code>Collection</code> → <code>List</code>, <code>Set</code>, <code>Queue</code>/<code>Deque</code>; <code>Map</code> is separate. Since Java 21, <code>SequencedCollection</code>/<code>SequencedMap</code> add first/last/reversed.',['1.1']],
+ ['ArrayList vs LinkedList — when would you use LinkedList?','Almost never. ArrayList has O(1) get and is cache-friendly; LinkedList only wins at the ends, where ArrayDeque is better anyway.',['1.2']],
+ ['How does ArrayList grow?','When full it allocates a new array 1.5× larger and copies — amortized O(1) add. Pre-size it when you know the count.',['1.2']],
+ ['HashSet vs LinkedHashSet vs TreeSet?','HashSet: O(1), no order. LinkedHashSet: insertion order. TreeSet: sorted, O(log n), navigation methods, no null.',['2.1']],
+ ['How does a HashSet detect duplicates?','It is backed by a HashMap: <code>hashCode</code> finds the bucket, <code>equals</code> confirms the match. TreeSet uses <code>compare</code> instead.',['2.1']],
+ ['Why ArrayDeque instead of Stack or LinkedList?','<code>Stack</code> extends the synchronized <code>Vector</code> (legacy); ArrayDeque is a fast circular array that works as both stack and queue.',['2.2']],
+ ['Is PriorityQueue iteration sorted?','No. It\'s a binary heap: only the head is the smallest. Use repeated <code>poll()</code> for sorted order.',['2.2','4.2']],
+ ['offer/poll/peek vs add/remove/element?','The first set returns false/null on failure; the second throws an exception.',['2.2']],
+ ['Comparable vs Comparator?','Comparable = one natural order inside the class (<code>compareTo</code>). Comparator = any number of external orders, composed with <code>comparing</code>/<code>thenComparing</code>.',['3.1']],
+ ['Why not <code>return a - b</code> in a comparator?','Integer overflow can flip the sign for large values. Use <code>Integer.compare</code> or <code>Comparator.comparingInt</code>.',['3.1']],
+ ['How do you sort with null values?','Wrap the key comparator: <code>comparing(Run::priority, nullsLast(naturalOrder()))</code>; otherwise you get an NPE.',['3.1']],
+ ['What is a fail-fast iterator?','It checks the collection\'s <code>modCount</code>; any structural change not made through the iterator throws ConcurrentModificationException on the next call. Best-effort, even in one thread.',['3.2']],
+ ['Fail-fast vs fail-safe iterators?','Fail-safe (CopyOnWriteArrayList, ConcurrentHashMap) iterate a snapshot or weakly-consistent view and don\'t throw CME.',['3.2']],
+ ['How do you safely remove elements while iterating?','<code>removeIf(...)</code>, <code>iterator.remove()</code>, or iterate backwards by index.',['3.2']],
+ ['Unmodifiable vs immutable collection?','<code>Collections.unmodifiableList</code> is a read-only <b>view</b> — changes to the source show through. <code>List.of</code>/<code>List.copyOf</code> are truly immutable copies (and reject null).',['3.3']],
+ ['What\'s special about Arrays.asList?','Fixed-size and backed by the array: <code>set</code> writes through, <code>add/remove</code> throw. <code>Arrays.asList(intArray)</code> gives a one-element list.',['3.3','4.2']],
+ ['Which collection for a sorted lookup like "latest config before a date"?','TreeMap (or TreeSet) — <code>floorEntry</code>, <code>ceilingKey</code>, <code>headMap</code> are O(log n).',['4.1']]
+]);
+</script>
+</body></html>
