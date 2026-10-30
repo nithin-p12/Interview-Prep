@@ -77,10 +77,11 @@
       return g;
     }
     // A component of the architecture: icon disc, name, one-line role. Remembered by id for wires and packets.
-    node(id, { x, y, w = 170, h = 58, label, sub, icon, color = '#4f7bd9', soft = '#eef3fd' }) {
+    // ext: a system we don't own (payment provider, email service), drawn with a dashed outline.
+    node(id, { x, y, w = 170, h = 58, label, sub, icon, color = '#4f7bd9', soft = '#eef3fd', ext = false }) {
       const g = this.g(x, y, this.root, { class: 'sd-node', 'data-id': id });
       Object.assign(g, { id, w, h, color, soft, label0: label, sub0: sub });
-      g.rect = el('rect', { x: -w / 2, y: -h / 2, width: w, height: h, rx: 10, fill: '#fff', stroke: color, 'stroke-width': 1.6 }, g);
+      g.rect = el('rect', { x: -w / 2, y: -h / 2, width: w, height: h, rx: 10, fill: '#fff', stroke: color, 'stroke-width': 1.6, 'stroke-dasharray': ext ? '6 4' : null }, g);
       el('circle', { cx: -w / 2 + 24, cy: 0, r: 16, fill: soft }, g);
       this.text(g, -w / 2 + 24, 1, icon ?? '•', { 'font-size': 16 });
       g.label = this.text(g, -w / 2 + 48, sub ? -9 : 0, label, { 'text-anchor': 'start', 'font-size': 14, 'font-weight': 650, fill: '#203347' });

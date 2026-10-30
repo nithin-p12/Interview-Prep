@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>File Upload & Storage · System Design</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// File Upload & Storage (Google Drive attachments / Dropbox style). Everything specific to this design lives here;
+// engine/app.js renders it.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+
+// File record status colours (the metadata DB is the truth about what may be downloaded).
+const ST = {
+  PENDING: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  READY: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
+  INFECTED: { fill: '#fff4f4', stroke: RED, color: RED },
+  EXPIRED: { fill: '#f0f1f2', stroke: '#c3c9ce', color: GREY },
+};
+const fmt = (id, name, status) => `${id} ${name.padEnd(10)} ${status}`;
+
+// State shown next to the components: the signed URL the API holds, the files collection, the S3 objects, the queue.
+function setup(s, v, { files = [], objects = [], queue = 0, sign = 'no URL issued' } = {}) {
+  v.sign = s.chip(445, 62, sign, { mono: true, color: GREY });
+  v.files = s.store(605, 170, 170, 'FILES · metadata', { color: AMBER });
+  v.objs = s.store(605, 428, 170, 'S3 · uploads/', { color: AMBER });
+  v.queue = s.chip(995, 428, `queue depth ${queue}`, { mono: true, color: PURPLE });
+  v.q = queue;
+  v.rows = {};
+  // With now: true the row is drawn immediately (s.row still returns a promise), so read it back from the store.
+  files.forEach(([id, name, status], k) => {
+    s.row(v.files, fmt(id, name, status), { ...ST[status], now: true });
+    v.rows[id] = v.files.rows[k];
+    v.rows[id].meta = [id, name, status];
+  });
+  for (const o of objects) s.row(v.objs, o, { now: true });
+  return v;
+}
+async function addFile(s, v, id, name, status) {
+  v.rows[id] = await s.row(v.files, fmt(id, name, status), ST[status]);
+  v.rows[id].meta = [id, name, status];
+}
+async function setStatus(s, v, id, status) {
+  const r = v.rows[id], [, name] = r.meta;
+  r.meta = [id, name, status];
+  r.label.textContent = fmt(id, name, status);
+  s.paintRow(r, ST[status]);
+  await s.pulse(r, 1, 1.05);
+}
+function setQueue(s, v, n) { v.q = n; s.setChip(v.queue, `queue depth ${n}`); }
+const objRow = (v, prefix) => v.objs.rows.find(r => r.label.textContent.startsWith(prefix));
+
+window.DESIGN = {
+  id: 'files', n: 6, title: 'File Upload & Storage', tagline: 'Drive / Dropbox style: direct-to-S3 uploads, scan before serve',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'Clients & edge', x0: 0, x1: 340, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'Where uploads start. The client talks to us only for **small JSON calls** (permission, URLs, status); the gateway authenticates and rate-limits them.',
+      detail: 'The client is also the one moving the bytes, straight to S3. That is the whole trick of this design: the edge never carries file content.' },
+    { id: 'app', title: 'Control plane', x0: 340, x1: 552, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: 'Decides **who may upload or download what**, records it, and signs short-lived URLs. It never touches file bytes.',
+      detail: 'Because the API only signs and records, a couple of small stateless pods handle millions of uploads a day.' },
+    { id: 'data', title: 'Storage', x0: 552, x1: 828, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: 'Two stores with different jobs: **S3 holds the bytes** (cheap, durable, huge), the **metadata DB holds the truth** about each file (owner, status, sharing).',
+      detail: 'Neither replaces the other: S3 cannot answer "is this file clean and may B read it?", and a database is a terrible place for gigabytes of blobs.' },
+    { id: 'async', title: 'Async processing', x0: 828, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'Work that happens **after** the upload, driven by S3 events: virus scanning, and housekeeping for uploads that never finished.',
+      detail: 'Events come from S3 itself, not from the client, so a crashed or lying client cannot skip the scan.' },
+  ],
+  layersIntro: {
+    title: 'Control path and data path are separate',
+    text: 'Small JSON requests go **Client → Gateway → Upload API → Metadata DB**. File bytes go **Client → S3** directly. S3 then drives the **async** side (events → scanner), which flips the file record to READY. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    client: { x: 80, y: 245, w: 140, label: 'Client', sub: 'browser / app', icon: '👤', layer: 'entry' },
+    gateway: { x: 245, y: 110, w: 150, label: 'API Gateway', sub: 'auth · rate limits', icon: '🛡️', layer: 'entry' },
+    api: { x: 445, y: 110, label: 'Upload API', sub: 'presign · metadata', icon: '✍️', layer: 'app' },
+    meta: { x: 690, y: 110, label: 'Metadata DB', sub: 'files · status', icon: '🍃', layer: 'data' },
+    s3: { x: 690, y: 375, label: 'S3 bucket', sub: 'private · versioned', icon: '🪣', layer: 'data' },
+    events: { x: 995, y: 375, w: 160, label: 'S3 events', sub: 'SQS queue', icon: '📨', layer: 'async' },
+    scanner: { x: 995, y: 250, w: 160, label: 'Virus scanner', sub: 'scan workers', icon: '🔬', layer: 'async' },
+    cleanup: { x: 995, y: 110, w: 160, label: 'Cleanup job', sub: 'stale PENDING', icon: '🧹', layer: 'async' },
+  },
+  wires: [['client', 'gateway'], ['gateway', 'api'], ['api', 'meta'], ['api', 's3'], ['client', 's3'], ['s3', 'events'], ['events', 'scanner'], ['scanner', 's3'], ['scanner', 'meta'], ['cleanup', 'meta']],
+
+  components: {
+    client: {
+      what: 'Browser or mobile app. Asks the API for permission and a URL, then sends the **bytes straight to S3**, with progress and retries.',
+      why: 'It is the only party that has the file, so letting it upload directly removes our servers from the byte path entirely.',
+      without: 'Not optional, but the alternative design (client → our API → S3) makes every byte cross our servers: bandwidth, memory and timeouts become our problem.',
+      tech: '`fetch` / XHR with progress events; multipart upload for big files', scale: 'Each client brings its own bandwidth.', fails: 'Network drops are normal: retry only the failed part and resume with the stored `uploadId`.',
+    },
+    gateway: {
+      name: 'API Gateway',
+      what: 'Entry point for the **small JSON calls**: authenticate (JWT), rate-limit per user, route to the Upload API.',
+      why: 'Auth and abuse protection in one place, before any URL is signed. Uploads cost storage money, so limits matter.',
+      without: 'Every service re-implements auth; nothing stops one user from requesting millions of upload URLs.',
+      tech: 'Spring Cloud Gateway / AWS ALB / API Gateway', scale: 'Light: no file bytes pass through it.', fails: 'Redundant instances behind DNS / LB; health checks drop bad ones.',
+    },
+    api: {
+      name: 'Upload API (control plane)',
+      what: 'Checks type, size and quota, inserts a **PENDING** record, and **signs** a presigned URL for exactly one key, method and content type. Also authorises downloads.',
+      why: 'It is the place that decides **who may write which key** and **who may read which file**. The URL it signs is the permission slip.',
+      without: 'Clients would need AWS credentials, or the bucket would be writable by anyone. Neither is acceptable.',
+      tech: 'Spring Boot + AWS SDK v2 `S3Presigner` (signing is local SigV4, no call to S3)', scale: 'Stateless pods; ~25 uploads/s is tiny.', fails: 'A crash after signing is harmless: the PENDING record is expired later by the cleanup job.',
+    },
+    meta: {
+      name: 'Metadata DB (source of truth)',
+      what: 'One document per file: `{ _id, owner, name, key, size, contentType, status, etag, versionId, sharedWith }`. Status: PENDING → READY / INFECTED / EXPIRED.',
+      why: 'S3 knows bytes, not business rules. Downloads are decided by the **record** (READY + shared with you), not by whether an object exists.',
+      without: 'You would serve whatever is in the bucket, including unscanned or infected files, and could not list or share files efficiently.',
+      tech: 'MongoDB (or PostgreSQL); index `{ owner: 1, createdAt: -1 }` and `{ status: 1, createdAt: 1 }`', scale: '~1 KB per file, ~2 GB/day: easy. Shard by owner if needed.', fails: 'Down → no new upload URLs (503); uploads already in flight still land in S3 and the scanner retries its update later.',
+    },
+    s3: {
+      name: 'S3 bucket (bytes)',
+      what: 'Private bucket (Block Public Access on), versioning on, SSE-KMS encryption. Keys are **generated by us** (`uploads/{owner}/{fileId}.ext`), never user file names.',
+      why: 'Cheap, practically unlimited, 11-nines-durable storage that accepts uploads directly from clients using signed URLs.',
+      without: 'Blobs in the database: huge backups, slow replication, and app servers proxying every byte.',
+      tech: 'Amazon S3 (or GCS / Azure Blob); multipart up to 5 TiB per object; lifecycle rules for tiers and cleanup', scale: 'Practically unlimited; spread keys across prefixes for very high request rates.', fails: 'Very rare; event notifications are at-least-once and can arrive late or out of order.',
+    },
+    events: {
+      name: 'S3 events → SQS',
+      what: 'S3 publishes an **ObjectCreated** event for every new object into a queue the scanner reads.',
+      why: 'S3 knows when an object **really** exists. Driving the scan from S3 means a client that crashes, or lies, cannot skip it.',
+      without: 'You depend on the client calling "upload finished"; some never will, and a malicious one could claim a file is done before it is.',
+      tech: 'S3 Event Notifications → SQS (or EventBridge), with a DLQ', scale: 'Buffers bursts; scanners scale on queue depth.', fails: 'Duplicates happen (at-least-once) → idempotent handler; poison messages go to the DLQ after N receives.',
+    },
+    scanner: {
+      name: 'Virus scanner',
+      what: 'Takes an event, checks the real size/type with **HeadObject**, streams the object through the scanner, then conditionally sets the record to READY or INFECTED (and moves infected files to `quarantine/`).',
+      why: 'User uploads are untrusted. Scan-before-serve stops one user from distributing malware to everyone they share with.',
+      without: 'Infected files are served to other users straight from your domain.',
+      tech: 'ClamAV workers or a vendor scanning API', scale: 'Scale workers on queue depth; big files need a longer visibility timeout.', fails: 'Crash mid-scan → the message reappears after the visibility timeout and another worker scans again.',
+    },
+    cleanup: {
+      name: 'Cleanup job',
+      what: 'Expires **PENDING** records nobody finished uploading. An S3 lifecycle rule (`AbortIncompleteMultipartUpload`) removes orphan multipart parts.',
+      why: 'Abandoned uploads are normal (tab closed, app killed). Without housekeeping, records and billed parts pile up forever.',
+      without: 'Ghost "uploading…" files in users\' lists and a growing storage bill for invisible multipart parts.',
+      tech: 'Scheduled job (hourly) + S3 lifecycle rule', scale: 'One indexed query per run.', fails: 'If it stops, nothing breaks; only storage cost and clutter grow.',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Ask for a URL, upload to S3, scan, then share.',
+    points: [
+      { t: 'Ask & sign', color: BLUE, d: 'Client sends only metadata. The API records **PENDING** and signs a URL for one key, valid 15 min.' },
+      { t: 'Upload direct', color: BLUE, d: 'Client PUTs the bytes **straight to S3**. Our servers never see them.' },
+      { t: 'Scan', color: TEAL, d: 'S3 emits **ObjectCreated** → queue → scanner, which flips the record to **READY** (or INFECTED).' },
+      { t: 'Download', color: PURPLE, d: 'API checks READY + sharing, then **302** to a 5-minute presigned GET.' },
+    ],
+    stats: [['2 M', 'uploads / day'], ['≤ 5 GB', 'per file'], ['~4 TB', 'new data / day'], ['0 bytes', 'through our servers']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v); v.ready = true; }
+    for (const r of [...v.files.rows]) await s.unrow(v.files, r);
+    for (const r of [...v.objs.rows]) await s.unrow(v.objs, r);
+    s.setChip(v.sign, 'no URL issued', { color: GREY });
+    setQueue(s, v, 0);
+
+    ui.say(0); ui.cap('**Ask** · the client sends only metadata: `POST /files { name, size, type }`');
+    await s.send(['client', 'gateway', 'api'], 'POST /files', BLUE, { ms: 460 });
+    ui.cap('The API records the file as **PENDING** and signs a URL for one key, valid 15 minutes');
+    await s.send(['api', 'meta'], 'insert PENDING', BLUE, { ms: 440 });
+    await addFile(s, v, 'f-1', 'report.pdf', 'PENDING');
+    s.setChip(v.sign, 'PUT A/f-1.pdf · 15 min', { color: BLUE }); await s.pulse(v.sign);
+    await s.send(['api', 'gateway', 'client'], '201 uploadUrl', GREEN, { ms: 440 });
+
+    ui.say(1); ui.cap('**Upload** · the bytes go **straight to S3**, gateway and API are skipped');
+    await s.send(['client', 's3'], 'PUT 2 MB', BLUE, { ms: 900 });
+    await s.row(v.objs, 'A/f-1.pdf    2 MB');
+
+    ui.say(2); ui.cap('**Scan** · S3 emits **ObjectCreated**; a scanner checks and scans the object');
+    await s.send(['s3', 'events'], 'ObjectCreated', TEAL, { ms: 440 });
+    setQueue(s, v, 1);
+    await s.send(['events', 'scanner'], 'f-1', TEAL, { ms: 400 });
+    setQueue(s, v, 0);
+    await s.send(['scanner', 's3'], 'GET stream', TEAL, { ms: 440 });
+    await s.flash(995, 205, 'clean ✓', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 350);
+    ui.cap('Conditional update: **PENDING → READY**, so a duplicate event changes nothing');
+    await s.send(['scanner', 'meta'], 'PENDING → READY', TEAL, { ms: 460 });
+    await setStatus(s, v, 'f-1', 'READY');
+
+    ui.say(3); ui.cap('**Download** · B asks the API; it checks READY + sharing and redirects to a 5-minute GET');
+    await s.send(['client', 'gateway', 'api'], 'B: download', PURPLE, { ms: 440 });
+    await s.send(['api', 'meta'], 'READY? shared?', PURPLE, { ms: 400 });
+    await s.send(['api', 'gateway', 'client'], '302 GET · 5 min', PURPLE, { ms: 440 });
+    await s.send(['client', 's3'], 'GET', PURPLE, { ms: 600 });
+    await s.send(['s3', 'client'], '2 MB', PURPLE, { ms: 800 });
+    await s.wait(1800);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'happy', title: 'Upload, scan, download', sub: 'presigned PUT · direct to S3', color: BLUE,
+      build: (s, v) => setup(s, v),
+      takeaway: 'Bytes go **client → S3**; our servers only **sign, record and decide**. Files become downloadable only after the scanner flips them to **READY**.',
+      steps: [
+        {
+          title: 'A asks for an upload URL',
+          text: 'User A picks `report.pdf` (2 MB). The client sends only **metadata**: `POST /files { name, size, contentType }`. No file bytes go to our servers, ever.',
+          observe: 'A small JSON request reaches the Upload API through the gateway.',
+          say: 'The client first asks our API for permission and a URL; the bytes never go through us.',
+          focus: v => [v.n.api],
+          async run(s) { await s.send(['client', 'gateway', 'api'], 'POST /files', BLUE); },
+        },
+        {
+          title: 'Validate, record PENDING, sign locally',
+          text: 'The API checks type, size and quota, inserts `f-1` as **PENDING**, and signs a presigned PUT for **one key** (`uploads/A/f-1.pdf`), **one method**, **one content type**, valid **15 minutes**. Signing is local SigV4 with our credentials: no call to S3.',
+          observe: 'A PENDING row appears and the API holds a signed URL; nothing goes to S3.',
+          say: 'The API writes a PENDING record and signs a URL scoped to one key for 15 minutes.',
+          focus: v => [v.files, v.sign],
+          async run(s, v) {
+            await s.send(['api', 'meta'], 'insert PENDING', BLUE);
+            await addFile(s, v, 'f-1', 'report.pdf', 'PENDING');
+            s.setChip(v.sign, 'PUT A/f-1.pdf · 15 min', { color: BLUE, stroke: BLUE }); await s.pulse(v.sign);
+            await s.flash(445, 190, 'signed locally · no S3 call', { color: TEAL, stroke: TEAL }, 600);
+          },
+        },
+        {
+          title: 'Return the upload URL',
+          text: 'The API answers **201** with `{ fileId: "f-1", uploadUrl }`. The URL is a bearer token, so it is short-lived and scoped to exactly what A asked for.',
+          observe: 'The signed URL travels back to the client.',
+          focus: v => [v.n.client],
+          async run(s) { await s.send(['api', 'gateway', 'client'], '201 uploadUrl', GREEN); },
+        },
+        {
+          title: 'Upload straight to S3',
+          text: 'The client PUTs the 2 MB **directly to S3** with the signed URL. S3 checks the signature, key, content type and expiry, stores the object and returns an **ETag**. Gateway and API carry none of these bytes, so upload bandwidth never limits our servers.',
+          observe: 'The big packet goes from the client straight to S3, skipping gateway and API.',
+          say: 'Bytes go client to S3 directly, so our servers do not scale with upload bandwidth.',
+          focus: v => [v.n.s3, v.objs],
+          async run(s, v) {
+            await s.send(['client', 's3'], 'PUT 2 MB', BLUE, { ms: 1100 });
+            await s.row(v.objs, 'A/f-1.pdf    2 MB');
+            await s.flash(80, 195, 'ETag "9b2c…"', { mono: true, color: BLUE, stroke: BLUE }, 600);
+          },
+        },
+        {
+          title: 'S3 announces the new object',
+          text: 'S3 publishes an **ObjectCreated** event to an SQS queue. We do not trust the client to say "upload finished": S3 knows when the object really exists. Delivery is **at-least-once**, so every handler must be idempotent.',
+          observe: 'An event lands in the queue.',
+          focus: v => [v.n.events, v.queue],
+          async run(s, v) {
+            await s.send(['s3', 'events'], 'ObjectCreated', TEAL);
+            setQueue(s, v, 1); await s.pulse(v.queue);
+          },
+        },
+        {
+          title: 'The scanner checks and scans',
+          text: 'A scanner worker takes the message, calls **HeadObject** to compare the real size and type with the record, then streams the object through the virus scanner (ClamAV or a vendor API).',
+          observe: 'The scanner reads the object from S3 and finds it clean.',
+          say: 'S3 events drive a scanner, so a file is checked before anyone can download it.',
+          focus: v => [v.n.scanner],
+          async run(s, v) {
+            await s.send(['events', 'scanner'], 'f-1 event', TEAL);
+            setQueue(s, v, 0);
+            await s.send(['scanner', 's3'], 'HEAD + GET', TEAL);
+            await s.send(['s3', 'scanner'], 'stream', TEAL);
+            await s.flash(995, 205, 'size ✓ · clean ✓', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 600);
+          },
+        },
+        {
+          title: 'Mark READY, only if still PENDING',
+          text: '`updateOne({ _id: "f-1", status: "PENDING", etag }, { $set: { status: "READY" } })`. The condition makes the update **idempotent**: a duplicate event or a retry matches nothing and changes nothing.',
+          observe: 'The f-1 row turns green: READY.',
+          say: 'The scanner updates conditionally from PENDING, so duplicate events are harmless.',
+          focus: v => [v.rows['f-1']],
+          async run(s, v) {
+            await s.send(['scanner', 'meta'], 'PENDING → READY', TEAL);
+            await setStatus(s, v, 'f-1', 'READY');
+          },
+        },
+        {
+          title: 'B asks to download',
+          text: 'User B, whom A shared the file with, asks for it. The API checks the **record**, not just the object: status must be **READY** and B must be the owner or in `sharedWith`.',
+          observe: 'The API looks up f-1 before handing out anything.',
+          focus: v => [v.n.api, v.rows['f-1']],
+          async run(s) {
+            await s.send(['client', 'gateway', 'api'], 'B: GET /download', PURPLE);
+            await s.send(['api', 'meta'], 'READY? shared?', PURPLE);
+            await s.flash(690, 158, '✓ READY · shared with B', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 500);
+          },
+        },
+        {
+          title: 'A short-lived GET straight from S3',
+          text: 'The API answers **302** to a presigned GET valid **5 minutes**, with `Content-Disposition: attachment`. B downloads straight from S3 (or from a CDN with signed URLs for popular files).',
+          observe: 'The download also bypasses our servers.',
+          say: 'Downloads are authorised by the API and served by S3 through a five-minute URL.',
+          focus: v => [v.n.client, v.n.s3],
+          async run(s) {
+            await s.send(['api', 'gateway', 'client'], '302 GET · 5 min', PURPLE);
+            await s.send(['client', 's3'], 'GET', PURPLE, { ms: 700 });
+            await s.send(['s3', 'client'], '2 MB', PURPLE, { ms: 1000 });
+          },
+        },
+      ],
+    },
+    {
+      id: 'multipart', title: 'Large file: multipart', sub: '10 MB parts · retry one part', color: TEAL,
+      build: (s, v) => setup(s, v, { files: [['f-1', 'report.pdf', 'READY']], objects: ['A/f-1.pdf    2 MB'] }),
+      takeaway: 'Multipart turns one fragile 1.2 GB transfer into **120 small ones**: parallel, individually retried, resumable with the stored `uploadId`, and assembled by S3.',
+      steps: [
+        {
+          title: 'A starts a 1.2 GB upload',
+          text: 'A picks `video.mp4` (1.2 GB) on a mobile connection. One PUT of 1.2 GB would restart from zero on every network drop, so above ~100 MB the client uses **multipart upload**.',
+          observe: 'The request asks for a multipart upload.',
+          focus: v => [v.n.api],
+          async run(s) { await s.send(['client', 'gateway', 'api'], 'POST /files 1.2 GB', TEAL); },
+        },
+        {
+          title: 'The API opens a multipart upload',
+          text: 'The API records `f-2` as PENDING, calls **CreateMultipartUpload** to get an `uploadId`, and presigns one URL **per part** (10 MB each → 120 parts). Parts must be at least 5 MiB (except the last); up to 10,000 parts and 5 TiB per object.',
+          observe: 'S3 returns an uploadId and the client receives 120 part URLs.',
+          say: 'For large files the API opens a multipart upload and signs one URL per part.',
+          focus: v => [v.sign, v.objs],
+          async run(s, v) {
+            await s.send(['api', 'meta'], 'insert PENDING', TEAL, { ms: 460 });
+            await addFile(s, v, 'f-2', 'video.mp4', 'PENDING');
+            await s.send(['api', 's3'], 'CreateMultipartUpload', TEAL);
+            await s.send(['s3', 'api'], 'uploadId u-77', TEAL);
+            await s.row(v.objs, 'A/f-2.mp4 parts 0/120', ST.PENDING);
+            s.setChip(v.sign, 'u-77 · 120 part URLs', { color: TEAL, stroke: TEAL }); await s.pulse(v.sign);
+            await s.send(['api', 'gateway', 'client'], '120 part URLs', GREEN);
+          },
+        },
+        {
+          title: 'Parts upload in parallel',
+          text: 'The client uploads several parts at once, each with its own signed URL, and keeps the **ETag** S3 returns for every part. Parallel parts also use the bandwidth much better than one long stream.',
+          observe: 'Parts stream into S3 and the counter climbs.',
+          focus: v => [objRow(v, 'A/f-2')],
+          async run(s, v) {
+            const r = objRow(v, 'A/f-2');
+            await Promise.all([1, 2, 3].map(k => s.wait((k - 1) * 220).then(() => s.send(['client', 's3'], `part ${k}`, TEAL, { ms: 650, pulse: false }))));
+            r.label.textContent = 'A/f-2.mp4 parts 3/120';
+            await s.clock.tween(900, t => { r.label.textContent = `A/f-2.mp4 parts ${Math.round(3 + t * 54)}/120`; });
+            await s.flash(80, 195, 'ETags kept per part', { color: TEAL, stroke: TEAL }, 500);
+          },
+        },
+        {
+          title: 'One part fails',
+          text: 'The train enters a tunnel and **part 58** fails halfway. Without multipart, A would lose everything uploaded so far.',
+          observe: 'Part 58 bounces; the 57 parts already in S3 stay there.',
+          focus: v => [v.n.client],
+          async run(s) {
+            await s.bounce('client', 's3', 'part 58', TEAL);
+            await s.flash(80, 195, 'network drop', { color: RED, stroke: RED, fill: '#fff4f4' }, 600);
+          },
+        },
+        {
+          title: 'Retry only that part',
+          text: 'Only part 58 (10 MB) is sent again, not 1.2 GB. If the app is killed, it resumes later with the stored `uploadId` and **ListParts** to see which parts S3 already has.',
+          observe: 'Only one small part is re-sent, then the rest complete.',
+          say: 'A failed part is retried on its own, and uploads resume with the stored uploadId.',
+          focus: v => [objRow(v, 'A/f-2')],
+          async run(s, v) {
+            const r = objRow(v, 'A/f-2');
+            await s.send(['client', 's3'], 'part 58 retry', TEAL);
+            await s.clock.tween(900, t => { r.label.textContent = `A/f-2.mp4 parts ${Math.round(58 + t * 62)}/120`; });
+          },
+        },
+        {
+          title: 'Complete: S3 assembles the object',
+          text: 'The client calls `POST /files/f-2/complete` with the list of `[partNumber, ETag]`. The API calls **CompleteMultipartUpload**; S3 assembles the parts into one object and only now emits **ObjectCreated**, so scanning starts exactly as for a small file.',
+          observe: 'The parts become one 1.2 GB object and an event enters the queue.',
+          focus: v => [objRow(v, 'A/f-2'), v.queue],
+          async run(s, v) {
+            await s.send(['client', 'gateway', 'api'], 'complete [n, ETag]', TEAL);
+            await s.send(['api', 's3'], 'CompleteMultipartUpload', TEAL);
+            const r = objRow(v, 'A/f-2');
+            r.label.textContent = 'A/f-2.mp4    1.2 GB';
+            s.paintRow(r, { fill: '#f6f7fb', stroke: '#e3e6ee', color: '#203347' });
+            await s.pulse(r, 1, 1.05);
+            await s.send(['s3', 'events'], 'ObjectCreated', TEAL);
+            setQueue(s, v, 1); await s.pulse(v.queue);
+          },
+        },
+      ],
+    },
+    {
+      id: 'scan', title: 'Virus scan result', sub: 'scan before serve · quarantine', color: AMBER,
+      build: (s, v) => setup(s, v, { files: [['f-3', 'setup.exe', 'PENDING']], objects: ['A/f-3.exe    4 MB'], queue: 1, sign: 'PUT A/f-3.exe · 15 min' }),
+      takeaway: 'A file is invisible until the scanner says **READY**. Infected files are **quarantined** and every download is refused; crashed scans are simply retried from the queue.',
+      steps: [
+        {
+          title: 'Not downloadable while PENDING',
+          text: 'A shared `setup.exe` with B, and B clicks download straight away. The API checks the record: status is still **PENDING**, so it answers **409 "still scanning"**. The object exists in S3, but existence is not permission.',
+          observe: 'B is refused because the record is not READY yet.',
+          say: 'Downloads depend on the record status, so nothing is served before the scan finishes.',
+          focus: v => [v.rows['f-3']],
+          async run(s) {
+            await s.send(['client', 'gateway', 'api'], 'B: GET /download', PURPLE);
+            await s.send(['api', 'meta'], 'status?', PURPLE, { ms: 460 });
+            await s.send(['meta', 'api'], 'PENDING', AMBER, { ms: 460 });
+            await s.send(['api', 'gateway', 'client'], '409 scanning', AMBER);
+          },
+        },
+        {
+          title: 'The scanner finds malware',
+          text: 'A scanner worker takes the event, streams `setup.exe` from S3 and the engine reports a known trojan signature.',
+          observe: 'The scanner turns red with a detection.',
+          focus: v => [v.n.scanner],
+          async run(s, v) {
+            await s.send(['events', 'scanner'], 'f-3 event', TEAL);
+            setQueue(s, v, 0);
+            await s.send(['scanner', 's3'], 'GET stream', TEAL);
+            await s.send(['s3', 'scanner'], 'stream', TEAL);
+            s.tone(v.n.scanner, 'fail'); s.setSub(v.n.scanner, 'Win.Trojan found', RED);
+            await s.shake(v.n.scanner);
+          },
+        },
+        {
+          title: 'Quarantine and mark INFECTED',
+          text: 'The scanner copies the object to a locked-down `quarantine/` prefix (only security can read it), deletes the original, and sets the record **PENDING → INFECTED** with the same conditional update.',
+          observe: 'The object moves to quarantine and the row turns red.',
+          say: 'Infected files are moved to quarantine and the record is marked INFECTED.',
+          focus: v => [v.rows['f-3'], objRow(v, 'quar')],
+          async run(s, v) {
+            await s.send(['scanner', 's3'], 'move → quarantine/', RED);
+            const r = objRow(v, 'A/f-3');
+            r.label.textContent = 'quar/A/f-3.exe   4 MB';
+            s.paintRow(r, ST.INFECTED); await s.pulse(r, 1, 1.05);
+            await s.send(['scanner', 'meta'], 'PENDING → INFECTED', RED);
+            await setStatus(s, v, 'f-3', 'INFECTED');
+            s.tone(v.n.scanner, null); s.setSub(v.n.scanner, 'scan workers');
+          },
+        },
+        {
+          title: 'Every download is refused',
+          text: 'B tries again: the API sees **INFECTED** and answers **403**. A gets a notification that the file was blocked. No presigned GET is ever signed for an infected file.',
+          observe: 'B gets 403 and no URL.',
+          focus: v => [v.n.client],
+          async run(s) {
+            await s.send(['client', 'gateway', 'api'], 'B: GET /download', PURPLE);
+            await s.send(['api', 'meta'], 'status?', PURPLE, { ms: 460 });
+            await s.send(['api', 'gateway', 'client'], '403 infected', RED);
+          },
+        },
+        {
+          title: 'A scanner crashes mid-scan',
+          text: 'A new upload `notes.txt` arrives and the worker scanning it crashes. It never deleted the SQS message, so after the **visibility timeout** the message reappears and another worker scans it. After N failed receives it goes to a **DLQ** with an alert; the file stays PENDING meanwhile.',
+          observe: 'The same event is delivered a second time and the file ends READY.',
+          say: 'If a scanner crashes, the queue redelivers the event after the visibility timeout.',
+          focus: v => [v.n.events, v.rows['f-4']],
+          async run(s, v) {
+            await addFile(s, v, 'f-4', 'notes.txt', 'PENDING');
+            await s.row(v.objs, 'A/f-4.txt    1 KB');
+            await s.send(['s3', 'events'], 'ObjectCreated', TEAL, { ms: 460 });
+            setQueue(s, v, 1);
+            await s.send(['events', 'scanner'], 'f-4 (receive 1)', TEAL, { ms: 460 });
+            s.tone(v.n.scanner, 'fail'); s.setSub(v.n.scanner, 'worker crashed ✕', RED);
+            await s.shake(v.n.scanner);
+            await s.flash(995, 205, 'visibility timeout…', { color: AMBER, stroke: AMBER }, 500);
+            s.tone(v.n.scanner, null); s.setSub(v.n.scanner, 'scan workers');
+            await s.send(['events', 'scanner'], 'f-4 (receive 2)', TEAL, { ms: 460 });
+            setQueue(s, v, 0);
+            await s.send(['scanner', 'meta'], 'PENDING → READY', TEAL);
+            await setStatus(s, v, 'f-4', 'READY');
+          },
+        },
+      ],
+    },
+    {
+      id: 'leak', title: 'Leaked upload URL', sub: 'broad vs scoped presign', color: RED,
+      build: (s, v) => setup(s, v, { files: [['f-1', 'report.pdf', 'READY']], objects: ['A/f-1.pdf v1 2 MB'], sign: 'PUT A/f-1.pdf · 15 min' }),
+      takeaway: 'Presigned URLs are **bearer tokens**: keep them **short-lived** and scoped to **one key, one method, one content type**, never log them, and serve only the **scanned version**.',
+      steps: [
+        {
+          title: "A's upload URL leaks",
+          text: 'Presigned URLs are **bearer tokens**: whoever holds one can use it. A\'s URL ends up in a proxy log that attacker C can read. What can C do with it?',
+          observe: 'C now holds a URL that S3 will accept.',
+          focus: v => [v.sign],
+          async run(s, v) {
+            await s.flash(80, 195, '🔓 URL in a log', { color: RED, stroke: RED, fill: '#fff4f4' }, 700);
+            await s.pulse(v.sign);
+          },
+        },
+        {
+          title: '❌ With a broad, long-lived URL',
+          text: 'Suppose we had signed for a whole prefix, any content type, valid for a week. C could upload **anything** under our bucket, as often as they like, and our domain would host it.',
+          observe: 'C uploads a file A never asked for.',
+          focus: v => [v.objs],
+          async run(s, v) {
+            s.setChip(v.sign, 'PUT uploads/* · 7 days', { color: RED, stroke: RED, fill: '#fff4f4' }); await s.shake(v.sign);
+            await s.send(['client', 's3'], 'C: PUT malware.exe', RED);
+            v.bad = await s.row(v.objs, 'A/malware.exe   ??', ST.INFECTED);
+            await s.shake(v.objs);
+          },
+        },
+        {
+          title: '✅ Scoped: one key, one method, one type',
+          text: 'Our real URL covers only `PUT uploads/A/f-1.pdf` with `Content-Type: application/pdf`. Any other key, method or type changes the signature, so S3 answers **403 SignatureDoesNotMatch**.',
+          observe: 'Both of C\'s attempts bounce with 403.',
+          say: 'Each URL is scoped to one key, one method and one content type, so a leak cannot be reused for anything else.',
+          focus: v => [v.sign, v.n.s3],
+          async run(s, v) {
+            if (v.bad) await s.unrow(v.objs, v.bad);
+            s.setChip(v.sign, 'PUT A/f-1.pdf · pdf · 15 min', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }); await s.pulse(v.sign);
+            await s.bounce('client', 's3', 'C: PUT A/x.exe', RED);
+            await s.bounce('client', 's3', 'C: GET A/f-1.pdf', RED);
+            await s.flash(690, 320, '403 SignatureDoesNotMatch', { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, 600);
+          },
+        },
+        {
+          title: 'Within 15 minutes: overwrite the same key',
+          text: 'The one thing C can still do is PUT that **exact** key before it expires. With **versioning** on, that creates a new version; the record stores the `versionId` the scanner approved, and downloads always serve **that version**, so the unscanned v2 is never served.',
+          observe: 'A v2 appears in S3 but stays unserved.',
+          focus: v => [objRow(v, 'A/f-1.pdf v2')],
+          async run(s, v) {
+            await s.send(['client', 's3'], 'C: PUT A/f-1.pdf', AMBER);
+            await s.row(v.objs, 'A/f-1.pdf v2 unscanned', ST.PENDING);
+            await s.flash(690, 158, 'serve versionId = v1', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 600);
+          },
+        },
+        {
+          title: 'After 15 minutes the URL is dead',
+          text: 'Past the expiry S3 answers **403 Request has expired**. Also: strip query strings from access logs and analytics, and never send upload URLs to third parties.',
+          observe: 'C\'s next attempt is rejected as expired.',
+          say: 'URLs expire in minutes and are never logged, so a leak has a tiny blast radius.',
+          focus: v => [v.sign],
+          async run(s, v) {
+            s.setChip(v.sign, 'expired', { color: GREY, stroke: '#d5d9dc', fill: '#fff' }); await s.pulse(v.sign);
+            await s.bounce('client', 's3', 'C: PUT A/f-1.pdf', RED);
+            await s.flash(690, 320, '403 Request has expired', { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, 700);
+          },
+        },
+      ],
+    },
+    {
+      id: 'edge', title: 'Duplicate event & abandoned upload', sub: 'idempotent · cleanup · lifecycle', color: GREY,
+      build: (s, v) => setup(s, v, {
+        files: [['f-1', 'report.pdf', 'PENDING'], ['f-8', 'big.zip', 'PENDING']],
+        objects: ['A/f-1.pdf    2 MB', 'A/f-8.zip parts 3/40'],
+      }),
+      takeaway: 'Make every event handler **idempotent** (conditional update on PENDING), and clean up what clients abandon: a **cleanup job** for PENDING records and an S3 **lifecycle rule** for incomplete multipart uploads.',
+      steps: [
+        {
+          title: 'S3 delivers the same event twice',
+          text: 'S3 event notifications are **at-least-once**. The ObjectCreated event for `f-1` arrives twice, and two scanner workers may pick them up.',
+          observe: 'Two copies of one event sit in the queue.',
+          focus: v => [v.queue],
+          async run(s, v) {
+            await s.send(['s3', 'events'], 'ObjectCreated f-1', TEAL);
+            setQueue(s, v, 1);
+            await s.send(['s3', 'events'], 'ObjectCreated f-1', TEAL);
+            setQueue(s, v, 2); await s.pulse(v.queue);
+          },
+        },
+        {
+          title: 'The first delivery marks READY',
+          text: 'The first worker scans the file and runs `updateOne({ _id: "f-1", status: "PENDING" }, { $set: { status: "READY" } })`: matched 1, modified 1.',
+          observe: 'f-1 turns READY.',
+          focus: v => [v.rows['f-1']],
+          async run(s, v) {
+            await s.send(['events', 'scanner'], 'f-1 (copy 1)', TEAL);
+            setQueue(s, v, 1);
+            await s.send(['scanner', 'meta'], 'if PENDING → READY', TEAL);
+            await setStatus(s, v, 'f-1', 'READY');
+          },
+        },
+        {
+          title: 'The second delivery is a no-op',
+          text: 'The second worker runs the **same conditional update**. The record is no longer PENDING, so it matches nothing; the worker deletes the message and moves on. No double processing, no flip back to an older state.',
+          observe: 'The second update matches 0 documents and nothing changes.',
+          say: 'Duplicate events are expected, so the status update is conditional and idempotent.',
+          focus: v => [v.rows['f-1']],
+          async run(s, v) {
+            await s.send(['events', 'scanner'], 'f-1 (copy 2)', TEAL);
+            setQueue(s, v, 0);
+            await s.send(['scanner', 'meta'], 'if PENDING → READY', GREY);
+            await s.flash(690, 158, 'matched 0 · no-op', { mono: true, color: GREY, stroke: '#c3c9ce' }, 700);
+          },
+        },
+        {
+          title: 'An upload that never finishes',
+          text: 'Yesterday A started uploading `big.zip` in 40 parts, sent 3 and closed the laptop. The record is stuck at **PENDING**, and the 3 parts are **billed** even though no object exists yet.',
+          observe: 'An old PENDING record and orphan parts with nobody coming back.',
+          focus: v => [v.rows['f-8'], objRow(v, 'A/f-8')],
+          async run(s, v) {
+            const r = v.rows['f-8'];
+            r.label.textContent = 'f-8 big.zip  PENDING 26h';
+            await s.pulse(r, 1, 1.05);
+            await s.pulse(objRow(v, 'A/f-8'), 1, 1.05);
+          },
+        },
+        {
+          title: 'Cleanup job and lifecycle rule',
+          text: 'The hourly **cleanup job** marks PENDING records older than 24 h as **EXPIRED** (index `{ status: 1, createdAt: 1 }`). An S3 **lifecycle rule** `AbortIncompleteMultipartUpload` after 7 days deletes the orphan parts. Neither touches finished files.',
+          observe: 'f-8 turns EXPIRED and its orphan parts disappear.',
+          say: 'A cleanup job expires stale PENDING records and a lifecycle rule aborts incomplete multipart uploads.',
+          focus: v => [v.rows['f-8'], v.n.cleanup],
+          async run(s, v) {
+            await s.send(['cleanup', 'meta'], 'expire PENDING > 24h', GREY);
+            v.rows['f-8'].meta = ['f-8', 'big.zip', 'PENDING'];
+            await setStatus(s, v, 'f-8', 'EXPIRED');
+            await s.flash(690, 320, 'lifecycle: abort parts > 7d', { mono: true, color: AMBER, stroke: AMBER }, 500);
+            await s.unrow(v.objs, objRow(v, 'A/f-8'));
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Pin down sizes, access rules, scanning and volume.',
+      lines: [
+        ['I', 'Design file upload and storage for our app: think Google Drive attachments.'],
+        ['C', 'What file sizes: documents only, or large videos too?'],
+        ['I', 'Up to 5 GB. Mostly documents, some videos.'],
+        ['C', 'Who can download: the owner only, people it is shared with, or public links?'],
+        ['I', 'The owner and the people it is shared with.'],
+        ['C', 'Do we need virus scanning, previews or thumbnails?'],
+        ['I', 'Virus scanning is required. Thumbnails can come later.'],
+        ['C', 'And the volume?'],
+        ['I', 'About 2 million uploads a day.'],
+        ['P', 'Write: ≤ 5 GB · private + shared · must scan · 2 M uploads/day.'],
+      ],
+      avoid: 'Starting with "I will put an S3 bucket" before you know the file sizes and who may read them.',
+    },
+    {
+      t: 'Estimate the scale', min: 4, goal: 'Show why bytes must not go through our servers.',
+      lines: [
+        ['C', 'Uploads: 2 M per day ÷ 86,400 s ≈ **25 uploads/s**, peaks maybe 250/s.'],
+        ['C', 'Assume ~2 MB average: **~4 TB of new data per day**, ~1.5 PB per year. That is object-storage territory, with lifecycle tiers for old files.'],
+        ['C', 'Bandwidth: 4 TB/day ≈ **~50 MB/s average**, several hundred MB/s at peak. Proxying that through app servers would dominate their cost, so **uploads go direct to S3**.'],
+        ['C', 'Metadata: ~1 KB per file ≈ 2 GB/day: a normal database handles it easily.'],
+        ['P', 'Say what each number decides: bandwidth → direct-to-S3; PB/year → object storage + lifecycle; small metadata → plain DB.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 5, goal: 'Agree on the contract before drawing.',
+      lines: [
+        ['C', '`POST /files { name, size, contentType }` → **201** `{ fileId, uploadUrl }`, or for big files `{ fileId, uploadId, partUrls }`.'],
+        ['C', '`POST /files/{id}/complete { parts: [[n, ETag]] }` for multipart → **202** "scanning".'],
+        ['C', '`GET /files/{id}/download` → **302** to a 5-minute presigned GET, **403** if not READY or not shared, **409** while scanning.'],
+        ['C', 'Data: `files { _id, owner, name, key, size, contentType, status, etag, versionId, sharedWith, createdAt }`. Status: PENDING → READY / INFECTED / EXPIRED.'],
+        ['I', 'Why generate the S3 key yourself?'],
+        ['C', 'User file names collide, contain odd characters and can be used for path tricks. A key like `uploads/A/f-1.pdf` is unique and safe; the original name is just metadata.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Draw the control path and the data path separately.',
+      lines: [
+        ['P', 'Draw two lanes: Client → Gateway → Upload API → Metadata DB (control), and Client → S3 → events → Scanner → Metadata DB (data).'],
+        ['C', 'The client asks the Upload API for a presigned URL. The API checks quota, inserts a **PENDING** record and signs a URL for one key, valid 15 minutes. Signing is local: no call to S3.'],
+        ['C', 'The client uploads **directly to S3**. Big files use multipart: 10 MB parts, each with its own URL, retried individually.'],
+        ['C', 'S3 emits **ObjectCreated** to a queue; the scanner checks size and type, scans, and sets the record to READY or INFECTED.'],
+        ['C', 'Downloads go through the API for the access and status check, which redirects to a short presigned GET.'],
+        ['P', 'Walk one real file (report.pdf, f-1) through both lanes. Interviewers love concrete keys and statuses.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Let the interviewer probe; name the trade-offs.',
+      lines: [
+        ['I', 'The upload URL leaks.'],
+        ['C', 'It only works for that one key, method and content type, and expires in 15 minutes. I never log full URLs, and with versioning I only serve the version that was scanned.'],
+        ['I', 'S3 sends the event twice.'],
+        ['C', 'The scanner\'s update is conditional on status PENDING and the ETag, so the second run matches nothing.'],
+        ['I', 'A 5 GB upload over a bad connection?'],
+        ['C', 'Multipart with 10–100 MB parts, parallel, retry per part, and resume with the stored uploadId and ListParts.'],
+        ['I', 'How do you limit size with a presigned PUT?'],
+        ['C', 'A presigned PUT cannot enforce a size range. I either use a presigned **POST** with `content-length-range`, or reject the file when HeadObject\'s size does not match the record.'],
+        ['I', 'The user never finishes the upload.'],
+        ['C', 'A cleanup job expires PENDING records, and a lifecycle rule aborts incomplete multipart uploads so we do not pay for orphan parts.'],
+      ],
+      avoid: 'Proxying uploads through the API "for simplicity" without discussing the bandwidth cost.',
+    },
+    {
+      t: 'Wrap up', min: 6, goal: 'Summarise, name bottlenecks, next steps.',
+      lines: [
+        ['C', 'Summary: direct-to-S3 uploads with scoped, short-lived presigned URLs; multipart for big files; scan-before-serve driven by S3 events; the metadata DB as the source of truth for access; cleanup and lifecycle rules for abandoned uploads.'],
+        ['C', 'Bottlenecks: scanner throughput decides how fast files become READY, so it scales on queue depth.'],
+        ['C', 'Next: thumbnails and previews from the same events, a CDN with signed URLs for popular downloads, per-user quotas, and content-hash dedupe.'],
+        ['P', 'Finish with the security story: private bucket, scoped URLs, scan before serve, encrypted at rest.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    summary: 'Clients **never send file bytes through our servers**. The client asks the Upload API for a URL; the API checks type, size and quota, inserts a **PENDING** record and signs, locally, a **presigned PUT for exactly one key and content type, valid 15 minutes**. The client uploads **straight to S3**; large files use **multipart** with 10 MB parts that are retried individually and assembled with CompleteMultipartUpload. S3 sends an **ObjectCreated** event to a queue; the scanner checks the size, scans the stream and **conditionally** updates the record from PENDING to READY or INFECTED, which also makes duplicate events harmless. Downloads go through the API for the access and status check and **redirect to a 5-minute presigned GET**. Presigned URLs are bearer tokens, so they are short and scoped; a cleanup job expires abandoned PENDING records and a lifecycle rule aborts incomplete multipart uploads.',
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> upload (with progress and resume for big files), scan, share, download, delete.</li>
+        <li><b>Non-functional:</b> no file bytes through app servers, resumable uploads, scoped short-lived URLs, durable + encrypted storage, nothing served before it is scanned.</li>
+        <li><b>Out of scope (say so):</b> thumbnails/previews, editing, full-text search.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Uploads</td><td class="m">2 M/day ≈ 25/s</td><td>peak ~250/s</td></tr>
+        <tr><td>New data</td><td class="m">2 MB × 2 M</td><td>≈ 4 TB/day → object storage</td></tr>
+        <tr><td>Bandwidth</td><td class="m">≈ 50 MB/s avg</td><td>→ direct to S3</td></tr>
+        <tr><td>Metadata</td><td class="m">1 KB × 2 M</td><td>≈ 2 GB/day → plain DB</td></tr></table>` },
+      { h: '3 · API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">POST /files</td><td>{ name, size, contentType } → 201 { fileId, uploadUrl | uploadId + partUrls }</td></tr>
+        <tr><td class="m">POST /files/{id}/complete</td><td>multipart: { parts } → 202 scanning</td></tr>
+        <tr><td class="m">GET /files/{id}/download</td><td>302 presigned GET (5 min) · 403 · 409 scanning</td></tr>
+        <tr><td class="m">DELETE /files/{id}</td><td>owner only → object + record</td></tr></table>` },
+      { h: '4 · Data model & bucket', color: '#8f4fc4', html: `<pre>// files (metadata DB)
+{ _id: "f-1", owner: "A", name: "report.pdf",
+  key: "uploads/A/f-1.pdf", size: 2097152,
+  contentType: "application/pdf", status: "READY",
+  etag: "9b2c…", versionId: "v1", sharedWith: ["B"] }
+// index { status: 1, createdAt: 1 } for cleanup</pre>
+        <p>Bucket: Block Public Access, versioning, SSE-KMS, keys generated by us, <code>quarantine/</code> prefix, lifecycle rule for incomplete multipart uploads.</p>` },
+      { h: '5 · Request paths', color: '#2f6fe0', html: `<ol>
+        <li><b>Upload:</b> Gateway → API (quota, PENDING, presign) → client PUT straight to S3 (multipart for big files).</li>
+        <li><b>Scan:</b> S3 ObjectCreated → SQS → scanner (HeadObject + scan) → <code>PENDING → READY | INFECTED</code>.</li>
+        <li><b>Download:</b> API checks READY + sharing → 302 to presigned GET → client reads from S3 / CDN.</li></ol>` },
+      { h: '6 · Security & reliability', color: '#ce3434', html: `<ul>
+        <li>URLs scoped to one key + method + content type, 15 min; never logged.</li>
+        <li>Scan before serve; serve only the scanned <code>versionId</code>; quarantine infected files.</li>
+        <li>Idempotent, conditional status updates (events are at-least-once); DLQ for poison messages.</li>
+        <li>Cleanup job for stale PENDING; lifecycle rule aborts incomplete multipart uploads.</li></ul>` },
+    ],
+    decisions: [
+      ['Presigned URLs, direct to S3', 'App servers never carry bytes; upload bandwidth scales with S3, not with us.', 'Validation moves to after the upload (size, type, scan).'],
+      ['Short, scoped URLs', 'A leaked URL can only write one key, one type, for minutes.', 'Slow single uploads may outlive the URL → multipart gives each part its own URL.'],
+      ['Multipart for big files', 'Parallel parts, per-part retry, resume with uploadId.', 'More requests and client complexity; orphan parts need a lifecycle rule.'],
+      ['S3 events drive the scan', 'S3 knows when an object really exists; a client cannot skip the scan.', 'Asynchronous: the UI shows "scanning" for a while.'],
+      ['Metadata DB is the source of truth', 'Downloads check status + sharing, not just "object exists".', 'Two systems to keep consistent (record + object).'],
+      ['Conditional status updates', 'Duplicate or retried events are harmless.', 'Scanning twice still costs CPU.'],
+      ['Cleanup + lifecycle', 'Abandoned uploads do not pile up or cost money.', 'Users returning after the window must re-upload.'],
+    ],
+    code: [
+      { t: 'Presign a PUT for one key (AWS SDK v2)', code: 'PutObjectRequest put = PutObjectRequest.builder()\n    .bucket("files-prod")\n    .key("uploads/" + owner + "/" + fileId + ".pdf")   // our key, not the user\'s name\n    .contentType("application/pdf")\n    .build();\nPresignedPutObjectRequest url = presigner.presignPutObject(r -> r\n    .signatureDuration(Duration.ofMinutes(15))\n    .putObjectRequest(put));\nreturn new UploadUrl(fileId, url.url());   // signed locally, no call to S3' },
+      { t: 'Multipart: open, sign parts, complete', code: 'String uploadId = s3.createMultipartUpload(b -> b\n    .bucket(BUCKET).key(key)).uploadId();\n\nList<URL> partUrls = IntStream.rangeClosed(1, parts)\n    .mapToObj(n -> presigner.presignUploadPart(r -> r\n        .signatureDuration(Duration.ofMinutes(30))\n        .uploadPartRequest(p -> p.bucket(BUCKET).key(key)\n            .uploadId(uploadId).partNumber(n))).url())\n    .toList();\n\n// later, POST /files/{id}/complete with [n, ETag] from the client\ns3.completeMultipartUpload(b -> b.bucket(BUCKET).key(key)\n    .uploadId(uploadId).multipartUpload(m -> m.parts(completed)));' },
+      { t: 'Scanner: idempotent status update', code: 'void onObjectCreated(S3Event e) {\n  HeadObjectResponse head = s3.headObject(b -> b.bucket(BUCKET).key(e.key()));\n  FileRecord f = files.findByKey(e.key());\n  if (head.contentLength() != f.size()) { reject(f); return; }\n\n  boolean clean = scanner.scan(s3.getObject(b -> b.bucket(BUCKET).key(e.key())));\n  if (!clean) quarantine(e.key());\n\n  files.updateOne(\n      and(eq("_id", f.id()), eq("status", "PENDING"), eq("etag", head.eTag())),\n      combine(set("status", clean ? "READY" : "INFECTED"),\n              set("versionId", head.versionId())));   // 0 matched on duplicates\n}' },
+      { t: 'Download: check, then 302 to a short GET', code: '@GetMapping("/files/{id}/download")\nResponseEntity<Void> download(@PathVariable String id, Principal user) {\n  FileRecord f = files.findById(id).orElseThrow(NotFound::new);\n  if (!f.canRead(user.getName())) throw new Forbidden();\n  if (f.status() != Status.READY) throw new Conflict("scanning or blocked");\n\n  URL url = presigner.presignGetObject(r -> r\n      .signatureDuration(Duration.ofMinutes(5))\n      .getObjectRequest(g -> g.bucket(BUCKET).key(f.key())\n          .versionId(f.versionId())\n          .responseContentDisposition("attachment"))).url();\n  return ResponseEntity.status(302).location(URI.create(url.toString())).build();\n}' },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    cc: { name: 'Concurrency', color: '#c47d1e' },
+    db: { name: 'Database', color: '#13968a' },
+    ca: { name: 'Caching & CDN', color: '#ce3434' },
+    mq: { name: 'Messaging', color: '#8f4fc4' },
+    sc: { name: 'Scale', color: '#2f6fe0' },
+    sec: { name: 'Security', color: '#c2417a' },
+    tc: { name: 'Tech choices', color: '#65727a' },
+  },
+  followups: [
+    { g: 'cc', q: 'S3 delivers the same ObjectCreated event twice. What happens?', what: 'The scanner may run twice for one upload.', why: 'S3 event notifications are at-least-once.', how: 'The status update is **conditional** on `status: "PENDING"` (and the ETag), so the second run matches nothing. Optionally skip early if the record is already final.', trade: 'Scanning twice still costs CPU.', flow: 'edge' },
+    { g: 'cc', q: 'The user overwrites a file while it is being scanned.', what: 'The scanner could mark the new bytes READY based on the old scan.', why: 'Same key, new content.', how: 'Turn on **versioning**, store the scanned `versionId`/ETag on the record and only ever serve that version. Never presign the same key twice for the owner.', trade: 'Versions cost storage; expire old ones with lifecycle rules.', flow: 'leak' },
+    { g: 'db', q: 'The metadata DB is down. What happens to uploads?', what: 'No new upload URLs can be issued; uploads already in flight still land in S3.', why: 'The PENDING record must exist before we sign.', how: 'Return **503** for new uploads; the scanner keeps the message in the queue and retries its status update until the DB is back.', trade: 'A short outage for new uploads.' },
+    { g: 'db', q: 'Why not store files in MongoDB (GridFS) or the SQL database?', what: 'Possible, but the database becomes a huge blob store.', why: 'Backups, replication and memory suffer, and app servers must proxy every byte.', how: '**Object storage for bytes, database for metadata.**', trade: 'Two systems to keep consistent (record status + object).' },
+    { g: 'ca', q: 'Can a CDN serve popular downloads?', what: 'Yes: CloudFront in front of the private bucket.', why: 'Edge caching cuts latency and S3 egress cost.', how: 'Origin Access Control so only the CDN can read the bucket, and **CloudFront signed URLs/cookies** issued after the API\'s access check.', trade: 'Revoking access is slower once content is cached at the edge.' },
+    { g: 'mq', q: 'The scanner crashes halfway through a file.', what: 'The SQS message becomes visible again after the visibility timeout.', why: 'The worker never deleted it.', how: 'Another worker scans again; after N receives the message goes to a **DLQ** with an alert; the file stays PENDING (not downloadable) meanwhile.', trade: 'Big files need a longer visibility timeout, or a heartbeat that extends it while scanning.', flow: 'scan' },
+    { g: 'mq', q: 'Why use S3 events instead of the client calling "upload finished"?', what: 'Clients can lie, crash, or never call.', why: 'S3 knows when the object really exists.', how: 'S3 event → queue → scanner. For multipart, the client still calls complete (S3 needs the part list), but the scan is triggered by the resulting event.', trade: 'Asynchronous: the UI shows "scanning" for a few seconds.', flow: 'happy' },
+    { g: 'sc', q: 'How do you handle a 5 GB upload over a bad connection?', what: 'A single PUT restarts from zero on every failure.', why: 'Long transfers fail often on mobile networks.', how: '**Multipart upload**: 10–100 MB parts, several in parallel, retry per part, resume with the stored `uploadId` + ListParts.', trade: 'More requests and client complexity.', flow: 'multipart' },
+    { g: 'sc', q: 'Do our servers scale with upload bandwidth?', what: 'No: bytes go directly to S3.', why: 'The API only signs URLs and writes small records.', how: 'Presigned URLs for the data path; scanners scale with queue depth.', trade: 'Scanner capacity becomes the bottleneck for time-to-READY.' },
+    { g: 'sc', q: 'How do you make uploads faster for users far away?', what: 'Long round trips to a single region.', why: 'TCP and TLS costs grow with latency.', how: 'S3 **Transfer Acceleration** or regional buckets, plus parallel multipart parts.', trade: 'Extra cost; multi-region adds replication and residency questions.' },
+    { g: 'sec', q: 'A presigned URL leaks. What is the damage?', what: 'Anyone holding it can use it until it expires.', why: 'Presigned URLs are bearer tokens.', how: 'Short expiry, **one key + method + content type**, never log full URLs, versioning, and serve only scanned versions.', trade: 'Very short expiry breaks slow uploads; multipart parts get their own URLs.', flow: 'leak' },
+    { g: 'sec', q: 'How do you limit file size with presigned URLs?', what: 'A presigned PUT does not enforce a size range.', why: 'The client sends the body; Content-Length is not part of the PUT policy.', how: 'Use a **presigned POST** with a `content-length-range` condition, or compare HeadObject size with the record before READY and reject mismatches.', trade: 'POST forms are clumsier for big files; a post-check wastes the upload.' },
+    { g: 'sec', q: 'A user starts uploads and never finishes them.', what: 'PENDING records and orphan parts pile up.', why: 'Incomplete multipart uploads are billed until aborted.', how: 'Cleanup job expires stale PENDING records; lifecycle rule **AbortIncompleteMultipartUpload** after N days.', trade: 'Users returning after the window must re-upload.', flow: 'edge' },
+    { g: 'sec', q: 'Could a "PDF" actually be an executable?', what: 'The client chooses the content type it claims.', why: 'Extensions and headers are user input.', how: 'The scanner sniffs the real type (magic bytes) and rejects mismatches; downloads use `Content-Disposition: attachment` and a separate download domain.', trade: 'Strict type checks reject some legitimate oddly-named files.', flow: 'scan' },
+    { g: 'tc', q: 'Presigned URLs, or upload through our API?', what: 'Proxying through the API is simpler to secure but expensive.', why: 'App servers must hold connections and bandwidth for every byte.', how: 'Presigned URLs for anything beyond small files; proxy only tiny uploads that need inline processing.', trade: 'With presigning, validation happens after the upload.' },
+    { g: 'tc', q: 'How would you dedupe identical files?', what: 'Many users upload the same large files.', why: 'Storing identical bytes twice wastes storage.', how: 'Compute a content hash (client-side or in the scanner), keep one object per hash with a reference count, and point records at it.', trade: 'Hashing cost, careful deletes (refcounts), and privacy: hash checks can reveal that a file exists.' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>

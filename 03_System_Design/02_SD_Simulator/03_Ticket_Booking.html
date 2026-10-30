@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticket Booking · System Design</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// Ticket Booking (BookMyShow / Ticketmaster). Everything specific to this design lives here; engine/app.js renders it.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f', PINK = '#c2417a';
+
+// Seat rows are coloured by status, like the seat map a user sees.
+const SEAT_LOOK = {
+  AVAILABLE: { fill: '#f6f7fb', stroke: '#e3e6ee', color: '#203347' },
+  LOCKED: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  BOOKED: { fill: '#f1f9ee', stroke: GREEN, color: '#24522f' },
+  BAD: { fill: '#fff4f4', stroke: RED, color: RED },
+  OK: { fill: '#f1f9ee', stroke: GREEN, color: '#24522f' },
+};
+const seatTo = (s, r, text, look) => { r.label.textContent = text; s.paintRow(r, SEAT_LOOK[look]); };
+
+// State shown next to the components: the clock, the cached seat map, the seats, bookings and outbox in MongoDB.
+function setup(s, v, { clock = '19:00:00', cache = 'AVAILABLE', a12 = ['A12  AVAILABLE · v7', 'AVAILABLE'], extra = [], books = [] } = {}) {
+  v.clock = s.chip(80, 58, `🕒 ${clock}`, { mono: true });
+  v.cache = s.chip(622, 108, `seatmap:42 A12 = ${cache}`, { anchor: 'start', mono: true, color: AMBER });
+  v.seats = s.store(568, 312, 196, 'SEATS · show 42', { color: AMBER });
+  v.books = s.store(568, 400, 196, 'BOOKINGS · OUTBOX', { color: AMBER });
+  s.row(v.seats, a12[0], { ...SEAT_LOOK[a12[1]], now: true });
+  v.a12 = v.seats.rows[0];
+  for (const [t, look] of extra) s.row(v.seats, t, { ...SEAT_LOOK[look], now: true });
+  for (const [t, look] of books) s.row(v.books, t, { ...SEAT_LOOK[look], now: true });
+  return v;
+}
+const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
+const cacheTo = (s, v, st, color = AMBER) => s.setChip(v.cache, `seatmap:42 A12 = ${st}`, { color });
+const rowOf = (st, prefix) => st.rows.find(r => r.label.textContent.startsWith(prefix));
+
+window.DESIGN = {
+  id: 'ticket', n: 3, title: 'Ticket Booking', tagline: 'BookMyShow / Ticketmaster: hold a seat, pay, never sell it twice',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'Entry', x0: 0, x1: 335, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'One front door: authenticates users, **rate-limits** on-sale spikes and routes seat calls and payment calls to the right service.',
+      detail: 'During a hot on-sale this is also where a **virtual waiting room** admits users in batches, so the services behind it see a steady load.' },
+    { id: 'app', title: 'Services', x0: 335, x1: 545, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: 'Stateless business logic: **Booking** owns seats and holds, **Payment** owns money, the **Sweeper** releases expired holds. The provider sits beside them as an external system.',
+      detail: 'No JVM locks anywhere: correctness comes from **conditional updates in MongoDB**, so any pod can serve any request and pods can crash safely.' },
+    { id: 'data', title: 'State', x0: 545, x1: 790, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: 'MongoDB is the **only** place that decides who gets a seat. Redis is a fast but possibly stale **view** of the seat map.',
+      detail: 'One document per seat per show keeps contention low: two users only conflict when they want the very same seat.' },
+    { id: 'async', title: 'Events', x0: 790, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'Work the user must not wait for: the confirmed booking is turned into an event (**outbox → Kafka**) and the ticket is emailed asynchronously.',
+      detail: 'Kafka keeps a replayable log, so notification, analytics or loyalty services can each consume the same booking events independently.' },
+  ],
+  layersIntro: {
+    title: 'Four layers, one rule: MongoDB decides',
+    text: 'Requests **enter** through the gateway, **stateless services** apply the rules, **state** lives in MongoDB (with Redis as a read cache), and **events** carry the result to the outside world. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    client: { x: 80, y: 250, w: 140, label: 'Client', sub: 'web / app', icon: '👤', layer: 'entry' },
+    gateway: { x: 250, y: 250, w: 150, label: 'API Gateway', sub: 'auth · rate limit', icon: '🛡️', layer: 'entry' },
+    sweeper: { x: 440, y: 58, label: 'Expiry Sweeper', sub: 'every 30 s', icon: '🧹', layer: 'app' },
+    booking: { x: 440, y: 190, label: 'Booking Service', sub: 'seats · holds', icon: '🎟️', layer: 'app' },
+    payment: { x: 440, y: 330, label: 'Payment Service', sub: 'charges · webhooks', icon: '💳', layer: 'app' },
+    provider: { x: 440, y: 460, label: 'Payment provider', sub: 'Stripe / Razorpay', icon: '🏦', layer: 'app', ext: true },
+    redis: { x: 668, y: 58, label: 'Redis', sub: 'seat-map cache', icon: '⚡', layer: 'data' },
+    mongo: { x: 668, y: 250, label: 'MongoDB', sub: 'source of truth', icon: '🍃', layer: 'data' },
+    relay: { x: 945, y: 58, w: 160, label: 'Outbox Relay', sub: 'change stream', icon: '🔁', layer: 'async' },
+    kafka: { x: 945, y: 196, w: 160, label: 'Kafka', sub: 'booking-events', icon: '📨', layer: 'async' },
+    notif: { x: 945, y: 334, w: 160, label: 'Notification', sub: 'consumer group', icon: '🔔', layer: 'async' },
+    email: { x: 945, y: 466, w: 160, label: 'Email', sub: 'SES / SMTP', icon: '✉️', layer: 'async', ext: true },
+  },
+  wires: [['client', 'gateway'], ['gateway', 'booking'], ['gateway', 'payment'], ['booking', 'redis'], ['booking', 'mongo'], ['payment', 'booking'], ['payment', 'mongo'], ['payment', 'provider'],
+    ['sweeper', 'mongo'], ['sweeper', 'redis'], ['mongo', 'relay'], ['relay', 'kafka'], ['kafka', 'notif'], ['notif', 'email'], ['notif', 'mongo']],
+
+  components: {
+    client: {
+      what: 'Web or mobile app: shows the seat map, holds seats, opens the payment page and polls the hold status.',
+      why: 'Every booking starts here, and the client must behave well under retries: it sends an **Idempotency-Key** with each payment and can poll `GET /holds/{id}` after a reload.',
+      without: 'Not optional, but a careless client (no idempotency key, retry storms) turns a double-click into a double charge.',
+      tech: 'Web / Android / iOS, JWT from the identity provider', scale: 'Waiting-room token for hot on-sales.', fails: 'Retries with the same Idempotency-Key; reloads recover the hold by id.',
+    },
+    gateway: {
+      name: 'API Gateway',
+      what: 'Validates the JWT, rate-limits per user and IP, terminates TLS and routes seat calls to Booking and payment calls to Payment.',
+      why: 'Protects the services from **on-sale spikes** (200k users in minutes) and keeps auth in one place.',
+      without: 'Every service re-implements auth; a bot or a stampede of users hits the booking path directly and overloads MongoDB.',
+      tech: 'Spring Cloud Gateway / Kong / NGINX, plus a virtual waiting room for hot shows', scale: 'Stateless, horizontal behind a load balancer.', fails: 'Health checks remove bad pods; rate limits shed load.',
+    },
+    sweeper: {
+      name: 'Expiry Sweeper',
+      what: 'Every 30 s resets LOCKED seats whose `lockExpiresAt` has passed back to AVAILABLE, and refreshes the cache.',
+      why: 'Keeps the **seat map honest**: without it, abandoned holds would look taken until someone tries to lock them.',
+      without: 'Correctness is fine (the lock query also accepts expired holds), but users see grey seats that are really free and leave.',
+      tech: '`@Scheduled` + ShedLock (one runner) or a Kubernetes CronJob', scale: 'One `updateMany` per run on index `{ status: 1, lockExpiresAt: 1 }`.', fails: 'If it stops, only the seat map looks stale.',
+    },
+    booking: {
+      name: 'Booking Service',
+      what: 'Serves the seat map, **locks** seats with a conditional update, and **confirms** bookings in a transaction after payment.',
+      why: 'One owner for the seat rules. Its writes are all compare-and-set, so concurrency is decided by the database, not by luck.',
+      without: 'Seat logic spreads across services, and read-then-write code sells the same seat twice under load.',
+      tech: 'Spring Boot, MongoDB driver (transactions), Redis client', scale: 'Stateless pods; no in-memory locks.', fails: 'A crash mid-request is safe: every write is conditional and idempotent, so retries are allowed.',
+    },
+    payment: {
+      name: 'Payment Service',
+      what: 'Creates payments with an **idempotency key**, verifies the provider\'s **signed webhooks**, and triggers confirm or refund.',
+      why: 'Money needs its own audit trail and rules: no double charges, every webhook verified, every failure reconciled.',
+      without: 'A double-click charges twice, a forged webhook books a seat for free, and a lost webhook leaves the user paid but not booked.',
+      tech: 'Provider SDK, webhook signature checks, `payments` collection with a unique idempotency key, reconciliation job', scale: 'Stateless; webhooks are retried by the provider.', fails: 'Lost webhook → reconciliation polls the provider. Late success on an expired hold → refund.',
+    },
+    provider: {
+      name: 'Payment provider (external)',
+      what: 'Charges the card or UPI, sends webhooks, processes refunds.',
+      why: 'We never touch card data (PCI scope). The provider moves the money and tells us the result.',
+      without: 'You would need PCI compliance and bank integrations yourself.',
+      tech: 'Stripe / Razorpay REST API + webhooks, idempotency keys on create calls', scale: 'Not ours; respect its rate limits.', fails: 'Webhooks can be **late, duplicated or out of order**: design for all three.',
+    },
+    redis: {
+      name: 'Redis (seat-map cache)',
+      what: 'Hash `seatmap:{showId}` → seat status, for fast seat-map reads.',
+      why: 'Seat-map reads are far more frequent than locks, especially during an on-sale. Redis serves them in ~1 ms and shields MongoDB.',
+      without: 'Every refresh of the seat map hits MongoDB at the worst possible moment.',
+      tech: 'Redis hash + short TTL as a safety net', scale: 'Replicas for read throughput.', fails: 'Stale or missing entries only cause a 409 at lock time; reads fall back to MongoDB.',
+    },
+    mongo: {
+      name: 'MongoDB (source of truth)',
+      what: 'One document per seat per show, plus `bookings`, `payments` and `outbox`. Replica set with `w: "majority"`.',
+      why: 'The **atomic single-document conditional update** is what guarantees one seat, one winner. Transactions keep seat + booking + outbox consistent.',
+      without: 'There is no authority: the cache or the services would have to decide, and both can be wrong.',
+      tech: 'MongoDB replica set (transactions need one), shard key `showId`', scale: 'Shard by show so one show\'s seats live together.', fails: 'Primary failover takes seconds; retryable writes + idempotent requests cover it.',
+    },
+    relay: {
+      name: 'Outbox Relay',
+      what: 'Watches the `outbox` collection (change stream) and publishes each event to Kafka, then marks it published.',
+      why: 'Solves the **dual write**: the event is committed with the booking, so it can never be lost between the database and Kafka.',
+      without: 'A crash after the commit but before `kafka.send()` leaves a booking that nobody is ever told about.',
+      tech: 'Change stream (or polling) + Kafka idempotent producer, `acks=all`', scale: 'One active relay per outbox shard.', fails: 'Crash before marking → republish → consumers dedupe by eventId.',
+    },
+    kafka: {
+      name: 'Kafka (booking-events)',
+      what: 'Durable, replayable event log; key = `showId` keeps a show\'s events ordered within a partition.',
+      why: 'Lets several consumers (notification, analytics, loyalty) react to bookings independently and at their own pace.',
+      without: 'Booking would call every downstream service itself, and each outage would ripple back into the booking path.',
+      tech: 'Kafka, replication factor 3, `min.insync.replicas=2`', scale: 'Partitions + consumers per group.', fails: 'Redelivers from the last committed offset, so duplicates are possible.',
+    },
+    notif: {
+      name: 'Notification Service',
+      what: 'Consumes BookingConfirmed / RefundInitiated and sends the ticket email (and push).',
+      why: 'Keeps slow, flaky email sending off the booking path and makes it retryable.',
+      without: 'The user waits for an SMTP call before seeing "booked", and an email outage blocks bookings.',
+      tech: 'Spring Kafka listener, manual offset commit after processing, `notification_log` keyed by eventId', scale: 'One consumer per partition per group.', fails: 'Crash before the offset commit → redelivery → the dedupe log skips it.',
+    },
+    email: {
+      name: 'Email provider (external)',
+      what: 'Delivers the ticket email.',
+      why: 'Deliverability (SPF, DKIM, reputation) is a specialist job; we hand it off.',
+      without: 'You would run your own mail servers and fight spam filters.',
+      tech: 'Amazon SES / SMTP', scale: 'Sending quotas per second.', fails: 'No send idempotency key: calling twice sends two emails.',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Hold with a conditional update, pay, confirm in one transaction.',
+    points: [
+      { t: 'Hold', color: BLUE, d: 'Lock A12 **only if AVAILABLE**: one atomic update, so of two users exactly one wins (200), the other gets 409.' },
+      { t: 'Pay', color: TEAL, d: 'Payment with an **idempotency key**; the provider answers later by a signed **webhook**.' },
+      { t: 'Confirm', color: GREEN, d: 'One transaction: re-check the hold, seat → BOOKED, insert booking + **outbox** event.' },
+      { t: 'Notify', color: PURPLE, d: 'Relay → Kafka → Notification → email. At-least-once, deduped by eventId.' },
+    ],
+    stats: [['50 k', 'shows / day'], ['~50/s', 'bookings (avg)'], ['200 k', 'users on a hot on-sale'], ['10 min', 'seat hold']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v); v.ready = true; }
+    for (const r of [...v.books.rows]) await s.unrow(v.books, r);
+    seatTo(s, v.a12, 'A12  AVAILABLE · v7', 'AVAILABLE'); cacheTo(s, v, 'AVAILABLE');
+    tick(s, v, '19:00:00');
+    for (const id of ['email', 'notif', 'kafka', 'provider']) s.setSub(v.n[id], D0.nodes[id].sub);
+
+    ui.say(0); ui.cap('**Hold** · A and B both tap seat **A12**');
+    const b = (async () => {
+      await s.wait(250);
+      await s.send(['client', 'gateway', 'booking'], 'B: hold A12', PINK, { ms: 420 });
+      await s.wait(500);
+      await s.bounce('booking', 'mongo', 'B: if AVAILABLE', PINK);
+      await s.send(['booking', 'gateway', 'client'], 'B: 409 taken', RED, { ms: 420 });
+    })();
+    await s.send(['client', 'gateway', 'booking'], 'A: hold A12', BLUE, { ms: 420 });
+    ui.cap('`updateOne({ status: "AVAILABLE" })`: only **one** of them can match');
+    await s.send(['booking', 'mongo'], 'A: if AVAILABLE', BLUE, { ms: 420 });
+    seatTo(s, v.a12, 'A12  LOCKED · A · H-901', 'LOCKED'); await s.pulse(v.a12, 1, 1.05);
+    await s.send(['booking', 'redis'], 'HSET LOCKED', BLUE, { ms: 360 });
+    cacheTo(s, v, 'LOCKED');
+    await s.send(['booking', 'gateway', 'client'], 'A: 200 H-901', GREEN, { ms: 420 });
+    await b;
+
+    ui.say(1); ui.cap('**Pay** · idempotency key = the hold id, so a double-click cannot charge twice');
+    await s.send(['client', 'gateway', 'payment'], 'POST /payments', TEAL, { ms: 420 });
+    await s.send(['payment', 'provider'], 'charge · key H-901', TEAL, { ms: 420 });
+    s.setSub(v.n.provider, 'processing…', AMBER);
+    tick(s, v, '19:02:40');
+    await s.send(['provider', 'payment'], 'webhook ✓ signed', TEAL, { ms: 420 });
+    s.setSub(v.n.provider, 'succeeded', GREEN);
+
+    ui.say(2); ui.cap('**Confirm** · one transaction: hold still valid? seat BOOKED + booking + outbox event');
+    await s.send(['payment', 'booking'], 'confirm H-901', GREEN, { ms: 420 });
+    await s.send(['booking', 'mongo'], 'txn', GREEN, { ms: 420 });
+    seatTo(s, v.a12, 'A12  BOOKED · B-5001', 'BOOKED');
+    await s.row(v.books, 'B-5001 · A12 · user A', SEAT_LOOK.BOOKED);
+    await s.row(v.books, 'evt-9001 · pending', SEAT_LOOK.LOCKED);
+    cacheTo(s, v, 'BOOKED', GREEN);
+
+    ui.say(3); ui.cap('**Notify** · relay → Kafka → Notification → email, deduped by eventId');
+    await s.send(['mongo', 'relay'], 'evt-9001', PURPLE, { ms: 420 });
+    await s.send(['relay', 'kafka'], 'BookingConfirmed', PURPLE, { ms: 420 });
+    seatTo(s, v.books.rows[1], 'evt-9001 · published', 'BOOKED');
+    await s.send(['kafka', 'notif', 'email'], 'ticket 🎟', PURPLE, { ms: 420 });
+    s.setSub(v.n.email, 'sent to A ✓', GREEN);
+    await s.send(['notif', 'mongo'], 'log evt-9001', PURPLE, { ms: 420 });
+    await s.wait(2200);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'happy', title: 'Book a seat', sub: 'hold → pay → confirm → ticket', color: BLUE,
+      build: (s, v) => setup(s, v),
+      takeaway: 'Hold = one **conditional update**; pay with an **idempotency key**; confirm = one **transaction** that re-checks the hold and writes the outbox; the ticket goes out **asynchronously**.',
+      steps: [
+        {
+          title: 'Load the seat map from Redis',
+          text: 'User A opens show 42. Booking Service reads the hash `seatmap:42` from Redis (~1 ms) instead of scanning hundreds of seat documents. The map may be a few seconds stale: that is fine, because it never decides who gets a seat.',
+          observe: 'The seat map comes from Redis, not MongoDB.',
+          say: 'Seat-map reads come from a Redis cache; it is a view, never the source of truth.',
+          focus: v => [v.n.redis, v.cache],
+          async run(s) {
+            await s.send(['client', 'gateway', 'booking'], 'GET /shows/42/seats', BLUE);
+            await s.send(['booking', 'redis'], 'HGETALL seatmap:42', BLUE);
+            await s.send(['redis', 'booking'], 'A12 AVAILABLE …', BLUE);
+            await s.send(['booking', 'gateway', 'client'], 'seat map', BLUE);
+          },
+        },
+        {
+          title: 'Tap A12 → one conditional update',
+          text: 'Booking Service runs `updateOne({ _id: "42:A12", status: "AVAILABLE" }, { $set: { status: "LOCKED", lockedBy: "A", holdId: "H-901", lockExpiresAt: now + 10 min } })`. MongoDB applies it **atomically**: the filter and the write happen as one step.',
+          observe: 'A12 turns LOCKED for A with hold H-901.',
+          say: 'Locking is a compare-and-set: update only if the seat is still AVAILABLE.',
+          focus: v => [v.n.mongo, v.a12],
+          async run(s, v) {
+            await s.send(['client', 'gateway', 'booking'], 'POST /holds A12', BLUE);
+            await s.send(['booking', 'mongo'], 'updateOne if AVAILABLE', BLUE);
+            seatTo(s, v.a12, 'A12  LOCKED · A · H-901', 'LOCKED'); await s.pulse(v.a12, 1, 1.05);
+            await s.send(['mongo', 'booking'], 'modifiedCount 1', BLUE);
+          },
+        },
+        {
+          title: 'Hold granted: 200 + holdId',
+          text: '`modifiedCount` is 1, so A owns the seat for 10 minutes. The service updates the Redis seat map **after** the database (best effort) and answers **200** with hold H-901. The client shows a countdown.',
+          observe: 'Redis now shows A12 LOCKED and A gets the hold id.',
+          focus: v => [v.cache, v.hold],
+          async run(s, v) {
+            await s.send(['booking', 'redis'], 'HSET A12 LOCKED', BLUE);
+            cacheTo(s, v, 'LOCKED');
+            await s.send(['booking', 'gateway', 'client'], '200 hold H-901', GREEN);
+            v.hold = s.chip(80, 198, 'hold H-901 · until 19:10', { color: AMBER, stroke: AMBER, fill: '#fdf6ea' });
+            await s.pop(v.hold, 250);
+          },
+        },
+        {
+          title: 'Pay with an idempotency key',
+          text: 'A clicks Pay. The client sends `POST /payments` with **Idempotency-Key: H-901**. Payment Service stores the payment under a unique index on that key, then calls the provider with the same key, so retries and double-clicks can never create a second charge.',
+          observe: 'One charge request goes to the provider, tagged with the hold id.',
+          say: 'Every payment carries an idempotency key tied to the hold, so retries are safe.',
+          focus: v => [v.n.payment, v.n.provider],
+          async run(s, v) {
+            await s.send(['client', 'gateway', 'payment'], 'POST /payments', TEAL);
+            await s.send(['payment', 'mongo'], 'insert key H-901', TEAL);
+            await s.send(['payment', 'provider'], 'charge · key H-901', TEAL);
+            s.setSub(v.n.provider, 'processing…', AMBER);
+          },
+        },
+        {
+          title: 'The provider confirms by webhook',
+          text: 'Seconds (sometimes minutes) later, the provider calls our webhook: **payment succeeded**. Payment Service verifies the signature (never trust an unsigned webhook) and asks Booking Service to confirm hold H-901.',
+          observe: 'A signed webhook arrives and turns into a confirm call.',
+          focus: v => [v.n.payment, v.n.booking],
+          async run(s, v) {
+            tick(s, v, '19:02:40');
+            await s.send(['provider', 'payment'], 'webhook ✓ signed', TEAL);
+            s.setSub(v.n.provider, 'succeeded', GREEN);
+            await s.send(['payment', 'booking'], 'confirm H-901', GREEN);
+          },
+        },
+        {
+          title: 'Confirm in ONE transaction',
+          text: 'Inside one MongoDB transaction: update the seat **only if** it is still LOCKED by hold H-901 and `lockExpiresAt > now`, set it BOOKED, insert booking B-5001, and insert an **outbox** event. All three commit together or none does.',
+          observe: 'Seat BOOKED, a booking row and a pending outbox event appear together.',
+          say: 'Confirm re-checks the hold and writes the seat, the booking and an outbox event in one transaction.',
+          focus: v => [v.a12, v.books],
+          async run(s, v) {
+            await s.send(['booking', 'mongo'], 'txn: seat+booking+outbox', GREEN);
+            seatTo(s, v.a12, 'A12  BOOKED · B-5001', 'BOOKED'); await s.pulse(v.a12, 1, 1.05);
+            await s.row(v.books, 'B-5001 · A12 · user A', SEAT_LOOK.BOOKED);
+            await s.row(v.books, 'evt-9001 · pending', SEAT_LOOK.LOCKED);
+            await s.send(['booking', 'redis'], 'HSET A12 BOOKED', GREEN);
+            cacheTo(s, v, 'BOOKED', GREEN);
+            if (v.hold) s.setChip(v.hold, 'booked ✓ B-5001', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' });
+          },
+        },
+        {
+          title: 'Outbox → Kafka → ticket email',
+          text: 'The relay sees the new outbox row on a change stream and publishes **BookingConfirmed** to Kafka (key = showId), then marks it published. The Notification consumer emails the ticket, writes `evt-9001` to its dedupe log, and only then commits its offset.',
+          observe: 'The event travels to Kafka and the email is sent.',
+          say: 'The outbox makes the event as durable as the booking; delivery is at-least-once with dedupe.',
+          focus: v => [v.n.relay, v.n.kafka, v.n.notif],
+          async run(s, v) {
+            await s.send(['mongo', 'relay'], 'evt-9001', PURPLE);
+            await s.send(['relay', 'kafka'], 'BookingConfirmed', PURPLE);
+            seatTo(s, v.books.rows[1], 'evt-9001 · published', 'BOOKED');
+            await s.send(['kafka', 'notif'], 'evt-9001', PURPLE);
+            await s.send(['notif', 'email'], 'ticket 🎟', PURPLE);
+            s.setSub(v.n.email, 'sent to A ✓', GREEN);
+            await s.send(['notif', 'mongo'], 'log evt-9001', PURPLE);
+            s.setSub(v.n.notif, 'offset committed');
+          },
+        },
+      ],
+    },
+    {
+      id: 'race', title: 'Two users, one seat', sub: 'read-then-write vs compare-and-set', color: PINK,
+      build: (s, v) => setup(s, v),
+      takeaway: 'Never **read, decide, then write**. Put the condition in the update (`status: "AVAILABLE"`) and let MongoDB\'s atomic single-document update pick exactly one winner.',
+      steps: [
+        {
+          title: 'A and B tap A12 in the same instant',
+          text: 'Seat A12 is the last good seat. A and B tap it within the same millisecond; the gateway sends both requests to two different Booking pods.',
+          observe: 'Two lock requests for A12 race to the Booking Service.',
+          focus: v => [v.n.booking],
+          async run(s) {
+            await Promise.all([
+              s.send(['client', 'gateway', 'booking'], 'A: hold A12', BLUE),
+              s.wait(220).then(() => s.send(['client', 'gateway', 'booking'], 'B: hold A12', PINK)),
+            ]);
+          },
+        },
+        {
+          title: '❌ The wrong way: read, then write',
+          text: 'Naive code does `findOne()` → "status is AVAILABLE" → `save(LOCKED)`. Both pods read **before** either writes, both see AVAILABLE, both save. The last write wins and **both users get 200**: the seat is sold twice.',
+          observe: 'Both reads say AVAILABLE, both writes succeed: a double booking.',
+          focus: v => [v.a12],
+          async run(s, v) {
+            await Promise.all([
+              s.send(['booking', 'mongo'], 'A: findOne', BLUE, { ms: 460 }),
+              s.wait(160).then(() => s.send(['booking', 'mongo'], 'B: findOne', PINK, { ms: 460 })),
+            ]);
+            await s.flash(668, 205, 'both read AVAILABLE', { color: AMBER, stroke: AMBER }, 450);
+            await Promise.all([
+              s.send(['booking', 'mongo'], 'A: save', BLUE, { ms: 420, pulse: false }),
+              s.wait(160).then(() => s.send(['booking', 'mongo'], 'B: save', PINK, { ms: 420, pulse: false })),
+            ]);
+            seatTo(s, v.a12, 'A12  LOCKED · B (A lost it!)', 'BAD');
+            await s.shake(v.seats);
+            await Promise.all([
+              s.send(['booking', 'gateway', 'client'], 'A: 200', RED, { ms: 420 }),
+              s.wait(160).then(() => s.send(['booking', 'gateway', 'client'], 'B: 200', RED, { ms: 420 })),
+            ]);
+          },
+        },
+        {
+          title: '✅ The right way: compare-and-set',
+          text: 'Both pods instead run `updateOne({ _id: "42:A12", status: "AVAILABLE" }, { $set: { status: "LOCKED", … } })`. MongoDB evaluates the filter and applies the write **atomically per document**: A\'s update matches, B\'s finds the seat already LOCKED and matches nothing (`modifiedCount 0`).',
+          observe: 'A\'s update lands; B\'s bounces with modifiedCount 0.',
+          say: 'Both run the same conditional update; the database guarantees exactly one matches.',
+          focus: v => [v.a12],
+          async run(s, v) {
+            seatTo(s, v.a12, 'A12  AVAILABLE · v7', 'AVAILABLE');
+            await s.wait(300);
+            await Promise.all([
+              s.send(['booking', 'mongo'], 'A: if AVAILABLE', BLUE).then(() => { seatTo(s, v.a12, 'A12  LOCKED · A · H-901', 'LOCKED'); return s.pulse(v.a12, 1, 1.05); }),
+              s.wait(260).then(() => s.bounce('booking', 'mongo', 'B: if AVAILABLE', PINK)),
+            ]);
+            await s.flash(668, 205, 'B: modifiedCount 0', { color: RED, stroke: RED, fill: '#fff4f4', mono: true }, 600);
+          },
+        },
+        {
+          title: 'A gets 200, B gets 409',
+          text: 'The winner gets **200** with its hold id; the loser gets **409 Conflict** plus a refreshed seat map, ideally with nearby seats suggested. Spring Data\'s `@Version` (optimistic locking) achieves the same thing for whole-document saves.',
+          observe: 'A: 200 with a hold. B: 409.',
+          focus: v => [v.n.client],
+          async run(s) {
+            await Promise.all([
+              s.send(['booking', 'gateway', 'client'], 'A: 200 H-901', GREEN),
+              s.wait(300).then(() => s.send(['booking', 'gateway', 'client'], 'B: 409 taken', RED)),
+            ]);
+          },
+        },
+      ],
+    },
+    {
+      id: 'expiry', title: 'Hold expires, late payment', sub: 'reclaim · refund · sweeper', color: AMBER,
+      build: (s, v) => setup(s, v, { clock: '19:09:50', cache: 'LOCKED', a12: ['A12  LOCKED · A · until 19:10', 'LOCKED'], extra: [['A14  LOCKED · D · until 19:05', 'LOCKED']] }),
+      takeaway: 'A hold is a **timestamp**, not a delete. Expired holds can be reclaimed by the next lock, every confirm **re-checks** the hold, and a late payment is **refunded**.',
+      steps: [
+        {
+          title: 'A\'s hold runs out while the bank is slow',
+          text: 'A is still on the bank\'s OTP page at 19:10:00 when the hold expires. Nothing is deleted: the seat document keeps `lockExpiresAt = 19:10`, and every query compares it with now. (A TTL index would **delete** the seat document, which is why it is not used here.)',
+          observe: 'The clock passes 19:10 and A\'s hold shows as expired.',
+          focus: v => [v.a12, v.clock],
+          async run(s, v) {
+            for (const t of ['19:09:55', '19:10:00', '19:10:05']) { tick(s, v, t); await s.wait(380); }
+            seatTo(s, v.a12, 'A12  LOCKED · A · EXPIRED', 'BAD');
+            await s.pulse(v.a12, 1, 1.05);
+          },
+        },
+        {
+          title: 'C takes the expired seat',
+          text: 'User C taps A12. The lock query accepts a seat that is AVAILABLE **or** LOCKED with `lockExpiresAt < now`: `{ $or: [{ status: "AVAILABLE" }, { status: "LOCKED", lockExpiresAt: { $lt: now } }] }`. It matches, so C now holds A12 with H-902.',
+          observe: 'The seat moves from A\'s expired hold to C\'s new hold.',
+          say: 'An expired hold counts as free in the lock query, so nobody waits for a cleanup job.',
+          focus: v => [v.a12],
+          async run(s, v) {
+            await s.send(['client', 'gateway', 'booking'], 'C: hold A12', PINK);
+            await s.send(['booking', 'mongo'], 'C: free or expired?', PINK);
+            seatTo(s, v.a12, 'A12  LOCKED · C · H-902', 'LOCKED'); await s.pulse(v.a12, 1, 1.05);
+            await s.send(['booking', 'gateway', 'client'], 'C: 200 H-902', GREEN);
+          },
+        },
+        {
+          title: 'A\'s payment succeeds… too late',
+          text: 'At 19:11 the provider sends A\'s success webhook. Confirm runs its transaction with the filter `{ holdId: "H-901", lockExpiresAt: { $gt: now } }`. The seat now belongs to C, so it matches nothing and the transaction **aborts**. Payment success alone never means the seat is yours.',
+          observe: 'The confirm for H-901 bounces: modifiedCount 0, transaction aborted.',
+          say: 'Confirm re-validates the hold; a successful payment on an expired hold gets refunded.',
+          focus: v => [v.a12, v.n.booking],
+          async run(s, v) {
+            tick(s, v, '19:11:02');
+            await s.send(['provider', 'payment'], 'webhook ✓ (A)', TEAL);
+            await s.send(['payment', 'booking'], 'confirm H-901', TEAL);
+            await s.bounce('booking', 'mongo', 'txn H-901', BLUE);
+            await s.flash(668, 205, 'matched 0 → abort', { color: RED, stroke: RED, fill: '#fff4f4', mono: true }, 600);
+          },
+        },
+        {
+          title: 'Refund A, and tell them',
+          text: 'Booking reports the failure; Payment marks the payment **REFUND_REQUIRED** and calls the provider\'s refund API with its own idempotency key (so a retry cannot refund twice). A RefundInitiated outbox event makes sure A is told.',
+          observe: 'A refund goes to the provider and a RefundInitiated event is recorded.',
+          focus: v => [v.n.provider, v.books],
+          async run(s, v) {
+            await s.send(['booking', 'payment'], 'hold expired', RED);
+            await s.send(['payment', 'provider'], 'refund · key R-901', AMBER);
+            s.setSub(v.n.provider, 'refund issued', AMBER);
+            await s.row(v.books, 'evt-9002 RefundInitiated', SEAT_LOOK.LOCKED);
+          },
+        },
+        {
+          title: 'The sweeper keeps the seat map honest',
+          text: 'Seat A14 was held by D, who simply left at 19:05. Nobody has tried to lock it, so it still says LOCKED. Every 30 s the sweeper runs one `updateMany({ status: "LOCKED", lockExpiresAt: { $lt: now } }, → AVAILABLE)` and refreshes Redis, so other users see it as free again.',
+          observe: 'A14 goes back to AVAILABLE in MongoDB and in the cache.',
+          say: 'A sweeper only fixes how the seat map looks; correctness never depends on it.',
+          focus: v => [v.n.sweeper, rowOf(v.seats, 'A14')],
+          async run(s, v) {
+            await s.send(['sweeper', 'mongo'], 'updateMany expired', GREY);
+            seatTo(s, rowOf(v.seats, 'A14'), 'A14  AVAILABLE · v4', 'OK'); await s.pulse(rowOf(v.seats, 'A14'), 1, 1.05);
+            await s.send(['sweeper', 'redis'], 'HSET A14 AVAILABLE', GREY);
+          },
+        },
+      ],
+    },
+    {
+      id: 'idem', title: 'Duplicate requests', sub: 'double-click · webhook replay', color: TEAL,
+      build: (s, v) => setup(s, v, { cache: 'LOCKED', a12: ['A12  LOCKED · A · H-901', 'LOCKED'] }),
+      takeaway: 'Every step that can be retried is **idempotent**: a unique idempotency key for payments, and a confirm that returns the existing booking when it has already run.',
+      steps: [
+        {
+          title: 'A double-clicks Pay',
+          text: 'The button fires twice, both with **Idempotency-Key: H-901**. Payment Service inserts into `payments` with a unique index on that key: the first insert wins; the second gets a duplicate-key error and simply **returns the first payment**.',
+          observe: 'Two requests in, one payment record; the second returns the first one\'s result.',
+          say: 'The idempotency key is unique in the payments collection, so a duplicate request returns the original result.',
+          focus: v => [v.n.payment],
+          async run(s) {
+            await Promise.all([
+              s.send(['client', 'gateway', 'payment'], 'Pay · key H-901', TEAL),
+              s.wait(240).then(() => s.send(['client', 'gateway', 'payment'], 'Pay · key H-901', TEAL)),
+            ]);
+            await s.send(['payment', 'mongo'], 'insert key H-901', TEAL);
+            await s.bounce('payment', 'mongo', 'insert key H-901', TEAL);
+            await s.flash(668, 205, 'E11000 → reuse payment', { color: AMBER, stroke: AMBER, mono: true }, 500);
+          },
+        },
+        {
+          title: 'The provider sees one charge',
+          text: 'Only one call reaches the provider, and it carries the same key. Even if our service retried that call after a timeout, a provider like Stripe returns the original result for a repeated Idempotency-Key instead of charging again.',
+          observe: 'Exactly one charge request reaches the provider.',
+          focus: v => [v.n.provider],
+          async run(s, v) {
+            await s.send(['payment', 'provider'], 'charge · key H-901', TEAL);
+            s.setSub(v.n.provider, '1 charge', GREEN);
+          },
+        },
+        {
+          title: 'The webhook arrives twice',
+          text: 'Providers retry webhooks until they get a 2xx, so duplicates are normal. The first confirm books the seat. The second finds A12 already **BOOKED by hold H-901**, so confirm treats it as done and returns the **same booking** (no second booking, no second event).',
+          observe: 'The second confirm changes nothing and returns B-5001 again.',
+          say: 'Confirm is idempotent: if the seat is already booked by this hold, it returns the existing booking.',
+          focus: v => [v.a12, v.books],
+          async run(s, v) {
+            await s.send(['provider', 'payment'], 'webhook #1', TEAL);
+            await s.send(['payment', 'booking'], 'confirm H-901', GREEN);
+            await s.send(['booking', 'mongo'], 'txn', GREEN);
+            seatTo(s, v.a12, 'A12  BOOKED · B-5001', 'BOOKED');
+            await s.row(v.books, 'B-5001 · A12 · user A', SEAT_LOOK.BOOKED);
+            await s.send(['provider', 'payment'], 'webhook #2', TEAL);
+            await s.send(['payment', 'booking'], 'confirm H-901', GREEN);
+            await s.flash(440, 136, 'already BOOKED by H-901 → 200 B-5001', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 900);
+          },
+        },
+      ],
+    },
+    {
+      id: 'outbox', title: 'Outbox & redelivery', sub: 'dual write · at-least-once', color: PURPLE,
+      build: (s, v) => setup(s, v, { cache: 'LOCKED', a12: ['A12  LOCKED · A · H-901', 'LOCKED'] }),
+      takeaway: 'Write the event **in the same transaction** as the booking (outbox), publish it with retries, and **dedupe** on the consumer by eventId. At-least-once, made harmless.',
+      steps: [
+        {
+          title: '❌ Commit, then send to Kafka directly',
+          text: 'Naive confirm: commit the booking, then call `kafka.send()`. If the pod **crashes between the two**, the booking exists but no event is ever sent: A paid, has a seat, and never gets a ticket. This is the **dual-write problem**: MongoDB and Kafka cannot commit together.',
+          observe: 'The booking commits, the pod dies, and no event reaches Kafka.',
+          focus: v => [v.n.booking, v.n.kafka],
+          async run(s, v) {
+            await s.send(['booking', 'mongo'], 'commit booking', GREEN);
+            seatTo(s, v.a12, 'A12  BOOKED · B-5001', 'BOOKED');
+            s.tone(v.n.booking, 'fail'); s.setSub(v.n.booking, 'crashed before send ✕', RED);
+            await s.shake(v.n.booking);
+            await s.flash(945, 150, 'no event · no ticket', { color: RED, stroke: RED, fill: '#fff4f4' }, 900);
+          },
+        },
+        {
+          title: '✅ The event is committed with the booking',
+          text: 'With an outbox, the confirm transaction also inserts `{ _id: "evt-9001", type: "BookingConfirmed" }` into the `outbox` collection. The booking and its event now commit **atomically**: if one exists, so does the other.',
+          observe: 'The booking and its outbox event appear together.',
+          say: 'The transactional outbox makes the event exactly as durable as the booking.',
+          focus: v => [v.books],
+          async run(s, v) {
+            s.tone(v.n.booking, null); s.setSub(v.n.booking, 'seats · holds');
+            await s.send(['booking', 'mongo'], 'txn + outbox', GREEN);
+            await s.row(v.books, 'B-5001 · A12 · user A', SEAT_LOOK.BOOKED);
+            await s.row(v.books, 'evt-9001 · pending', SEAT_LOOK.LOCKED);
+          },
+        },
+        {
+          title: 'The relay retries until Kafka acknowledges',
+          text: 'The relay reads the outbox through a change stream. Kafka is briefly unavailable, so the first publish fails; the relay **keeps the row pending** and retries with backoff. Once Kafka acks (`acks=all`), the row is marked published.',
+          observe: 'The first publish bounces, the retry succeeds, the row becomes published.',
+          focus: v => [v.n.relay, v.books],
+          async run(s, v) {
+            await s.send(['mongo', 'relay'], 'evt-9001', PURPLE);
+            s.tone(v.n.kafka, 'fail'); s.setSub(v.n.kafka, 'unavailable', RED);
+            await s.bounce('relay', 'kafka', 'publish', PURPLE);
+            await s.wait(400);
+            s.tone(v.n.kafka, null); s.setSub(v.n.kafka, 'booking-events');
+            await s.send(['relay', 'kafka'], 'publish (retry)', PURPLE);
+            seatTo(s, v.books.rows[1], 'evt-9001 · published', 'BOOKED');
+          },
+        },
+        {
+          title: 'Consumer crash → redelivery → dedupe',
+          text: 'Notification sends the email and writes `evt-9001` to its `notification_log`, then crashes **before committing its offset**. Kafka redelivers the event. The consumer checks the log first: already handled → skip. (A crash between sending and logging can still duplicate an email: rare, not zero.)',
+          observe: 'The event is delivered twice; the second time it is skipped.',
+          say: 'Delivery is at-least-once, so the consumer dedupes by eventId.',
+          focus: v => [v.n.notif],
+          async run(s, v) {
+            await s.send(['kafka', 'notif'], 'evt-9001', PURPLE);
+            await s.send(['notif', 'email'], 'ticket 🎟', PURPLE);
+            s.setSub(v.n.email, 'sent ✓', GREEN);
+            await s.send(['notif', 'mongo'], 'log evt-9001', PURPLE);
+            s.tone(v.n.notif, 'fail'); s.setSub(v.n.notif, 'crashed · offset not committed', RED);
+            await s.shake(v.n.notif);
+            await s.wait(300);
+            s.tone(v.n.notif, null); s.setSub(v.n.notif, 'restarted');
+            await s.send(['kafka', 'notif'], 'evt-9001 (again)', PURPLE);
+            await s.send(['notif', 'mongo'], 'seen evt-9001?', PURPLE);
+            await s.flash(945, 280, 'already sent → skip', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 800);
+          },
+        },
+      ],
+    },
+    {
+      id: 'stale', title: 'Stale seat-map cache', sub: 'Redis ≠ source of truth', color: RED,
+      build: (s, v) => setup(s, v, { cache: 'AVAILABLE', a12: ['A12  BOOKED · B-5001', 'BOOKED'] }),
+      takeaway: 'A stale cache costs a **409**, never a double booking, because every lock goes to MongoDB. Repair the cache on conflict and keep TTLs short.',
+      steps: [
+        {
+          title: 'Redis still says A12 is free',
+          text: 'A booked A12 a moment ago, but the best-effort Redis update after the commit failed. MongoDB says **BOOKED**; the cached seat map still says **AVAILABLE**. B loads the map and sees a free seat.',
+          observe: 'The cache and the database disagree; B is shown the stale map.',
+          focus: v => [v.cache, v.a12],
+          async run(s, v) {
+            s.setChip(v.cache, 'seatmap:42 A12 = AVAILABLE (stale)', { color: RED, stroke: RED, fill: '#fff4f4' });
+            await s.pulse(v.cache);
+            await s.send(['client', 'gateway', 'booking'], 'B: GET seats', PINK);
+            await s.send(['booking', 'redis'], 'HGETALL', PINK);
+            await s.send(['redis', 'booking'], 'A12 AVAILABLE', RED);
+            await s.send(['booking', 'gateway', 'client'], 'map: A12 free', RED);
+          },
+        },
+        {
+          title: 'B tries to lock: MongoDB says no',
+          text: 'B taps A12. The lock is the usual conditional update **in MongoDB**, never in Redis. The seat is BOOKED, so the filter `status: "AVAILABLE"` matches nothing and B gets **409**. No double booking: just a slightly annoying moment for B.',
+          observe: 'The lock bounces off MongoDB and B gets 409.',
+          say: 'Redis can be stale; it only costs a 409 because decisions are made in MongoDB.',
+          focus: v => [v.a12, v.n.client],
+          async run(s) {
+            await s.send(['client', 'gateway', 'booking'], 'B: hold A12', PINK);
+            await s.bounce('booking', 'mongo', 'B: if AVAILABLE', PINK);
+            await s.send(['booking', 'gateway', 'client'], 'B: 409 taken', RED);
+          },
+        },
+        {
+          title: 'Repair the cache on conflict',
+          text: 'When a lock fails, the service writes the real status back to Redis (`HSET A12 BOOKED`) and returns a fresh map. Short TTLs on seat-map keys, or updating Redis from the MongoDB change stream, keep such windows small.',
+          observe: 'The cache is corrected to BOOKED.',
+          focus: v => [v.cache],
+          async run(s, v) {
+            await s.send(['booking', 'redis'], 'HSET A12 BOOKED', GREEN);
+            s.setChip(v.cache, 'seatmap:42 A12 = BOOKED', { color: GREEN, stroke: '#d5d9dc', fill: '#fff' });
+            await s.pulse(v.cache);
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Scope it to seat selection → payment → ticket, and get the numbers.',
+      lines: [
+        ['I', 'Let\'s design a ticket booking system, like BookMyShow or Ticketmaster.'],
+        ['C', 'Are users picking **specific seats** on a seat map, or is it general admission?'],
+        ['I', 'Specific seats. Movies and concerts.'],
+        ['C', 'What scale: a normal day, and the worst on-sale moment?'],
+        ['I', 'About 50,000 shows a day and a few thousand bookings a minute. A big concert can bring 200,000 users in the first five minutes.'],
+        ['C', 'How long should a seat stay held while the user pays, and is payment through an external provider?'],
+        ['I', 'Ten minutes. Yes, Stripe or Razorpay.'],
+        ['C', 'Shall I focus on select → hold → pay → confirm → ticket, and leave search and pricing out?'],
+        ['I', 'Yes.'],
+        ['P', 'Write it down: 50k shows/day · ~50 bookings/s · 200k users on one hot show · 10-minute hold.'],
+      ],
+      avoid: 'Starting with microservices boxes before you have said the one hard requirement: a seat must never be sold twice.',
+    },
+    {
+      t: 'Requirements & estimates', min: 5, goal: 'Name the hard requirement and where the load concentrates.',
+      lines: [
+        ['C', 'Functional: seat map, hold for 10 minutes, pay, confirm, release expired holds, send the ticket.'],
+        ['C', 'The non-negotiable one: **no double booking**. On the booking path I choose consistency over availability.'],
+        ['C', 'Seat-map reads under ~200 ms p99; lock and confirm under ~500 ms excluding the payment page; payments auditable.'],
+        ['C', 'Average load is small, ~50 bookings/s. The problem is **concentration**: 200k users on one show means thousands of lock attempts per second on a few hundred seat documents.'],
+        ['P', 'Say the conclusion of each number: low average → simple services; hot show → waiting room + per-seat documents.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 6, goal: 'Agree on the seat document and its state machine.',
+      lines: [
+        ['C', '`GET /shows/{id}/seats` (seat map) · `POST /holds { showId, seatIds }` → 200 holdId or 409 · `POST /payments` with Idempotency-Key · `POST /webhooks/payments` from the provider · `GET /bookings/{id}`.'],
+        ['C', 'One document **per seat per show**: `{ _id: "42:A12", status, lockedBy, holdId, lockExpiresAt, bookingId, version }`.'],
+        ['C', 'States: AVAILABLE → LOCKED (hold) → BOOKED (confirm). LOCKED → AVAILABLE when the hold expires.'],
+        ['I', 'Why one document per seat and not one per show?'],
+        ['C', 'Contention. With one document per show, every lock for that show fights over it. Per-seat documents mean two users only conflict when they want the same seat.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 9, goal: 'Draw the boxes and walk one booking with real values.',
+      lines: [
+        ['P', 'Draw left to right: Client → Gateway → Booking / Payment → MongoDB (+ Redis above) → Outbox Relay → Kafka → Notification → Email.'],
+        ['C', 'The gateway does auth and rate limiting. Booking owns seats and holds; MongoDB is the source of truth; Redis only caches the seat map.'],
+        ['C', 'A taps A12: one conditional update, `status: "AVAILABLE"` in the filter, sets LOCKED with holdId H-901 and an expiry. modifiedCount 1 → 200.'],
+        ['C', 'A pays with Idempotency-Key H-901. The provider\'s signed webhook triggers confirm: one transaction re-checks the hold, marks BOOKED, inserts the booking and an outbox event.'],
+        ['C', 'The relay publishes the outbox to Kafka; Notification emails the ticket and dedupes by eventId.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Concurrency, expiry, idempotency, the dual write: show trade-offs.',
+      lines: [
+        ['I', 'Two users tap the same seat at the same moment.'],
+        ['C', 'Both run the same conditional update. MongoDB applies single-document updates atomically, so only one matches: 200 for the winner, 409 for the other. Never read-then-write.'],
+        ['I', 'The hold expires while the user is still paying.'],
+        ['C', 'Holds are timestamps, not TTL deletes, since seat documents are permanent. After expiry another user can reclaim the seat. If A\'s payment succeeds later, confirm matches nothing and I **refund**.'],
+        ['I', 'The webhook arrives twice. Or the user double-clicks Pay.'],
+        ['C', 'Payments have a unique idempotency key; confirm returns the existing booking if the seat is already booked by that hold. Both are safe to repeat.'],
+        ['I', 'What if you crash after committing but before publishing the event?'],
+        ['C', 'That is why I use a transactional outbox: the event commits with the booking, and the relay retries until Kafka acks. Delivery is at-least-once, so the consumer dedupes.'],
+        ['I', '200k users hit one concert.'],
+        ['C', 'A virtual waiting room admits users in batches; the seat map comes from Redis; per-user rate limits at the gateway; shard seats by showId.'],
+      ],
+      avoid: 'Saying "I\'ll use a distributed lock in Redis" for seats. The database\'s conditional update is simpler and is the actual source of truth.',
+    },
+    {
+      t: 'Wrap up', min: 5, goal: 'Summarise the guarantees and what you would add next.',
+      lines: [
+        ['C', 'MongoDB with per-seat documents and conditional updates guarantees no double booking. Holds expire by timestamp, confirm re-validates, late payments are refunded.'],
+        ['C', 'Reliability: idempotency keys, an idempotent confirm, and the outbox with at-least-once delivery plus dedupe.'],
+        ['C', 'Next: waiting room for hot shows, WebSocket push of seat changes, a reconciliation job against the provider, and metrics on lock-conflict rate, hold → booking conversion and late-payment refunds.'],
+        ['P', 'End on the trade-off you chose deliberately: consistency over availability on the booking path.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    summary: 'Users go through a gateway to a **Booking Service**; **MongoDB** is the source of truth with **one document per seat**. To hold a seat I run a **conditional update**, only if status is AVAILABLE, so with two concurrent users exactly one gets modifiedCount 1 and a 200, the other a **409**. The hold has a `lockExpiresAt` timestamp: expired holds are reclaimed by the next lock query and tidied by a sweeper (no TTL index, because seat documents are permanent). Payment uses an **idempotency key**. On the signed webhook, **one transaction** re-checks the hold, marks the seat BOOKED, and inserts the booking and an **outbox** event; if the hold expired, I **refund**. A relay publishes the outbox to **Kafka** and the notification consumer **dedupes by eventId**, so delivery is at-least-once. Redis only caches the seat map. For hot shows I add a **waiting room** and shard by showId.',
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> seat map, hold seats (10 min), pay, confirm, release expired holds, send the ticket.</li>
+        <li><b>Non-functional:</b> <b>no double booking</b> (consistency over availability on this path), seat map &lt; 200 ms p99, lock/confirm &lt; 500 ms, 99.95% availability, auditable payments.</li>
+        <li><b>Out of scope:</b> search, pricing, recommendations.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Shows</td><td class="m">50 k / day</td><td>~300 seats each</td></tr>
+        <tr><td>Bookings</td><td class="m">~50 / s avg</td><td>easy on average</td></tr>
+        <tr><td>Hot on-sale</td><td class="m">200 k users / 5 min</td><td>thousands of locks/s on one show → waiting room</td></tr>
+        <tr><td>Seat-map reads</td><td class="m">≫ locks</td><td>→ Redis cache</td></tr></table>` },
+      { h: '3 · API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">GET /shows/{id}/seats</td><td>seat map (cached)</td></tr>
+        <tr><td class="m">POST /holds</td><td>{ showId, seatIds } → 200 { holdId, expiresAt } · 409 taken</td></tr>
+        <tr><td class="m">POST /payments</td><td>Idempotency-Key: holdId → 201 { paymentId, redirectUrl }</td></tr>
+        <tr><td class="m">POST /webhooks/payments</td><td>signed by provider → confirm or refund</td></tr>
+        <tr><td class="m">GET /bookings/{id}</td><td>status + ticket</td></tr></table>` },
+      { h: '4 · Data model', color: '#8f4fc4', html: `<pre>// seats: one document per seat per show
+{ _id: "42:A12", showId: 42, status: "LOCKED",
+  lockedBy: "A", holdId: "H-901",
+  lockExpiresAt: ISODate("19:10"), bookingId: null, version: 8 }
+// index { status: 1, lockExpiresAt: 1 } for the sweeper
+
+// bookings  { _id: "B-5001", holdId, userId, seats, paymentId }
+// payments  { _id, idempotencyKey (unique), status }
+// outbox    { _id: "evt-9001", type, payload, published: false }</pre>` },
+      { h: '5 · Seat state machine', color: '#2f6fe0', html: `<ol>
+        <li><b>AVAILABLE → LOCKED:</b> conditional update (status AVAILABLE, or LOCKED and expired).</li>
+        <li><b>LOCKED → BOOKED:</b> confirm transaction, only if holdId matches and not expired.</li>
+        <li><b>LOCKED → AVAILABLE:</b> sweeper for expired holds (cosmetic; lock already treats them as free).</li>
+        <li><b>BOOKED → AVAILABLE:</b> cancellation transaction + refund event.</li></ol>` },
+      { h: '6 · Scaling & reliability', color: '#ce3434', html: `<ul>
+        <li>Virtual waiting room + gateway rate limits for hot shows.</li>
+        <li>Shard seats by <code>showId</code> so a show's seat map is on one shard.</li>
+        <li>Retryable writes, <code>w: "majority"</code>; every write conditional and idempotent.</li>
+        <li>Reconciliation job for lost webhooks; refunds for late payments.</li>
+        <li>Outbox relay retries; consumer dedupe; alert on oldest unpublished event.</li></ul>` },
+    ],
+    decisions: [
+      ['Per-seat documents', 'Users conflict only on the same seat; a single-document update is atomic.', 'More documents to read for a seat map (hence the cache).'],
+      ['Conditional update to hold', 'Compare-and-set in one step: exactly one winner, no locks to manage.', 'The loser learns only after clicking; needs a good 409 UX.'],
+      ['Expiry timestamp, not TTL index', 'Seat documents are permanent; expiry is exact and checked in queries.', 'Needs a sweeper and an index for a tidy seat map.'],
+      ['Confirm in a transaction', 'Seat, booking and outbox change together or not at all.', 'Transactions cost latency and can abort on conflicts (retry).'],
+      ['Idempotency keys', 'Double-clicks, retries and webhook replays are harmless.', 'Keys must be stored for a retention window.'],
+      ['Transactional outbox + Kafka', 'No lost events between DB and Kafka; many consumers.', 'At-least-once: consumers must dedupe; one more component.'],
+      ['Redis only as a read cache', 'Fast seat maps without risking correctness.', 'Stale views cause occasional 409s.'],
+    ],
+    code: [
+      { t: 'Hold a seat (compare-and-set)', code: 'UpdateResult r = seats.updateOne(\n    and(eq("_id", "42:A12"),\n        or(eq("status", "AVAILABLE"),\n           and(eq("status", "LOCKED"), lt("lockExpiresAt", now)))),\n    combine(set("status", "LOCKED"), set("lockedBy", userId),\n            set("holdId", holdId), set("lockExpiresAt", now.plus(TEN_MIN)),\n            inc("version", 1)));\nif (r.getModifiedCount() == 0) throw new SeatTakenException();  // 409\nseatCache.markLocked("42", "A12");                               // best effort' },
+      { t: 'Confirm in one transaction (with outbox)', code: 'try (ClientSession session = client.startSession()) {\n  session.withTransaction(() -> {\n    UpdateResult r = seats.updateOne(session,\n        and(eq("_id", seatId), eq("status", "LOCKED"),\n            eq("holdId", holdId), gt("lockExpiresAt", now)),\n        combine(set("status", "BOOKED"), set("bookingId", bookingId)));\n    if (r.getModifiedCount() != 1) throw new HoldExpiredException(); // → refund\n    bookings.insertOne(session, new Booking(bookingId, holdId, userId));\n    outbox.insertOne(session, OutboxEvent.bookingConfirmed(bookingId));\n    return bookingId;\n  });\n}' },
+      { t: 'Payment with an idempotency key', code: 'Payment create(String idempotencyKey, Hold hold) {\n  try {\n    payments.insertOne(new Payment(idempotencyKey, hold.id(), PENDING));\n  } catch (DuplicateKeyException e) {\n    return payments.find(eq("idempotencyKey", idempotencyKey)).first();\n  }\n  return provider.createPayment(hold.amount(), idempotencyKey);\n}' },
+      { t: 'Consumer: dedupe by eventId', code: '@KafkaListener(topics = "booking-events", groupId = "notification-svc")\nvoid onEvent(BookingEvent e, Acknowledgment ack) {\n  if (!log.exists(e.eventId())) {          // already handled?\n    email.sendTicket(e);\n    log.insert(e.eventId());                // remember it\n  }\n  ack.acknowledge();                        // commit offset last\n}' },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    cc: { name: 'Concurrency', color: '#c2417a' },
+    db: { name: 'Database', color: '#13968a' },
+    ca: { name: 'Cache', color: '#ce3434' },
+    mq: { name: 'Messaging', color: '#8f4fc4' },
+    pay: { name: 'Payments', color: '#c47d1e' },
+    sc: { name: 'Scale & UX', color: '#2f6fe0' },
+    tc: { name: 'Tech choices', color: '#65727a' },
+  },
+  followups: [
+    { g: 'cc', q: 'Two users lock the same seat in the same millisecond. Who wins?', what: 'Both run `updateOne({ _id, status: "AVAILABLE" }, …)`; exactly one gets modifiedCount 1, the other 0 → 409.', why: 'MongoDB applies a single-document update atomically, and the filter is evaluated against the current document.', how: 'A **conditional update** (compare-and-set) on the seat document. Never read-then-write.', trade: 'The loser learns only after clicking: keep the seat map fresh and suggest nearby seats.', flow: 'race' },
+    { g: 'cc', q: 'Why is findOne() then save() wrong, and how does @Version help?', what: 'Both requests read AVAILABLE and both save: last write wins, both get 200.', why: 'Check and write are two operations; another request slips in between.', how: 'Conditional update, or Spring Data `@Version`: `save()` adds the version to the filter and throws `OptimisticLockingFailureException` on mismatch.', trade: 'Optimistic locking needs a retry or 409 path; under heavy contention most retries fail.', flow: 'race' },
+    { g: 'cc', q: 'How do you hold 4 seats atomically?', what: 'Locking one by one can leave a partial hold when seat 3 is already taken.', why: 'Each single-document update is atomic, but several documents are not all-or-nothing without a transaction.', how: 'In a transaction: `updateMany({ _id: { $in: [...] }, status: "AVAILABLE" }, …)` and abort unless modifiedCount == 4. Or lock in sorted order and release on failure.', trade: 'Transactions add latency and abort on conflicts; compensation briefly shows partial holds.' },
+    { g: 'cc', q: 'Can clock skew between pods break the expiry check?', what: 'One pod may think a hold expired while another thinks it is valid.', why: '`lockExpiresAt` is compared with "now", and every server has its own clock.', how: 'Use one time source: database time (`$$NOW` in an `$expr` filter), or NTP-synced servers plus a small grace period on confirm.', trade: 'A grace period slightly lengthens holds.' },
+    { g: 'db', q: 'Why not a MongoDB TTL index to expire holds?', what: 'A TTL index **deletes** the whole document when it expires.', why: 'Seat documents are permanent: deleting one loses the seat. The TTL monitor also runs only about every 60 s.', how: 'Keep `lockExpiresAt` as a field: lock queries treat expired LOCKED as free and a sweeper resets them. (TTL is fine on a separate, disposable holds collection.)', trade: 'You run a sweeper and need an index on `{ status, lockExpiresAt }`.', flow: 'expiry' },
+    { g: 'db', q: 'The Mongo primary fails during a lock request. What happens?', what: 'The write may time out while a new primary is elected (usually seconds).', why: 'Replica-set failover; `w: "majority"` writes survive, unacknowledged ones may roll back.', how: 'Retryable writes in the driver; the client retries with the same idempotency key; the conditional update makes the retry safe.', trade: 'A few seconds of write unavailability; majority writes add latency.' },
+    { g: 'db', q: 'The confirm transaction aborts with a write conflict. Then what?', what: 'MongoDB aborts one of two transactions that touch the same seat.', why: 'Concurrent transactions on one document conflict (TransientTransactionError).', how: '`withTransaction` retries automatically; because the filter re-checks holdId and expiry, a retry either succeeds once or correctly fails.', trade: 'Keep transactions short, with no HTTP calls inside.' },
+    { g: 'ca', q: 'Redis shows a seat AVAILABLE but it is BOOKED. Can we double book?', what: 'No: the user sees a stale seat, tries to lock, and gets 409.', why: 'The cache update after the commit failed; Redis is a view, not the source of truth.', how: 'All decisions in MongoDB; repair the cache on conflict; short TTLs; optionally refresh from the change stream.', trade: 'Occasional bad UX: a 409 after choosing a seat.', flow: 'stale' },
+    { g: 'ca', q: 'Redis is completely down. Is booking down?', what: 'Seat-map reads lose their cache; locking still works.', why: 'Locks never read Redis; reads fall through to MongoDB, which can be overloaded at peak.', how: 'Serve the seat map from MongoDB (projection, secondaries are fine) behind a rate limit; circuit-break the cache client.', trade: 'Higher DB load and latency until Redis recovers.' },
+    { g: 'mq', q: 'The service crashes after the commit but before kafka.send(). Is the event lost?', what: 'With a direct send, yes: the booking exists but nobody is notified.', why: 'MongoDB and Kafka cannot commit atomically together (the dual-write problem).', how: '**Transactional outbox**: insert the event in the same transaction; a relay publishes it and marks it published.', trade: 'Extra collection and relay; delivery becomes at-least-once.', flow: 'outbox' },
+    { g: 'mq', q: 'Kafka redelivers the same event. Two emails?', what: 'Without dedupe, yes: crash after sending, before the offset commit → redelivery.', why: 'Consumers are at-least-once, and email sending has no idempotency key.', how: 'Dedupe log keyed by eventId: check before sending, record after sending, commit the offset last.', trade: 'A crash between send and log write can still duplicate: rare, not zero.', flow: 'outbox' },
+    { g: 'mq', q: 'Kafka is down for 10 minutes. Do bookings fail?', what: 'No: bookings commit; outbox rows pile up.', why: 'Kafka is not on the critical booking path.', how: 'The relay retries with backoff and resumes from the stored resume token / unpublished rows.', trade: 'Tickets arrive late: alert on the age of the oldest unpublished event.', flow: 'outbox' },
+    { g: 'pay', q: 'Payment succeeded but the hold already expired. What do you do?', what: 'Confirm finds a holdId / expiry mismatch → modifiedCount 0.', why: 'Payment success alone does not prove the seat is still reserved for this user.', how: 'Abort, mark the payment REFUND_REQUIRED, refund with an idempotency key, notify the user; optionally offer another seat.', trade: 'Unhappy user and a refund that takes days; shorten the checkout session below the hold where possible.', flow: 'expiry' },
+    { g: 'pay', q: 'The user double-clicks Pay or the app retries. Charged twice?', what: 'Two `POST /payments` for the same hold.', why: 'Retries and impatient clicks are normal.', how: 'Idempotency-Key per hold, stored under a unique index; the provider call reuses the same key.', trade: 'Keys are stored for a retention window and must be per intent, not per click.', flow: 'idem' },
+    { g: 'pay', q: 'The webhook never arrives. Is the user stuck?', what: 'The provider says succeeded; our payment stays PROCESSING.', why: 'Webhooks can be delayed or stop after the provider\'s retries run out.', how: 'A reconciliation job queries the provider for payments PROCESSING longer than N minutes and replays the idempotent confirm; the client polls `GET /holds/{id}`.', trade: 'Extra provider API calls; a late reconcile may hit an expired hold → refund.' },
+    { g: 'sc', q: '200,000 users open the same concert at 10:00. What breaks first?', what: 'Thousands of lock attempts per second on a few hundred seat documents, plus a seat-map read storm.', why: 'All load lands on one show, i.e. on one shard\'s hot documents.', how: 'Virtual waiting room that admits users in batches; seat map from Redis; per-user rate limits at the gateway.', trade: 'Users wait in a queue: fairness and queue UX matter.' },
+    { g: 'sc', q: 'How do other users see a seat turn grey in real time?', what: 'Polling the seat map every few seconds wastes capacity at scale.', why: 'Seat changes are small and frequent during an on-sale.', how: 'Publish seat changes (change stream or Kafka) to a WebSocket/SSE gateway; clients patch their map.', trade: 'Many open connections; the 409 path is still needed because pushes can lag.' },
+    { g: 'tc', q: 'Why MongoDB and not PostgreSQL?', what: 'Both work.', why: 'Postgres: `UPDATE seats SET status=\'LOCKED\' WHERE id=? AND status=\'AVAILABLE\'` with natural multi-row transactions. Mongo: per-seat documents + conditional updates; transactions need a replica set.', how: 'Pick by stack and team; the compare-and-set idea is identical in both.', trade: 'Mongo transactions cost more than single updates; scaling Postgres writes needs partitioning.' },
+    { g: 'tc', q: 'Can you guarantee exactly-once ticket emails?', what: 'No.', why: 'Kafka exactly-once covers read-process-write inside Kafka; an email is an external side effect without an idempotency key.', how: 'At-least-once + dedupe log by eventId: make duplicates rare and harmless.', trade: 'Very rare duplicates remain.', flow: 'outbox' },
+  ],
+};
+// The overview loop restores the original subtitles from here.
+const D0 = window.DESIGN;
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>
