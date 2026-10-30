@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>URL Shortener · System Design</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// URL Shortener (TinyURL / bit.ly). Everything specific to this design lives here; engine/app.js renders it.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+const LONG = 'shop.ex/sale';
+
+// State shown next to the components: the counter, the pod's ID block, the urls collection, the cache.
+function setup(s, v, { pod = 'block: empty', counter = 1000001, db = [], cache = [] } = {}) {
+  v.idc = s.chip(752, 62, `counter next = ${counter}`, { anchor: 'start', mono: true, color: AMBER });
+  v.pod = s.chip(445, 92, pod, { mono: true, color: TEAL });
+  v.db = s.store(752, 226, 150, 'URLS  (_id = code)', { color: AMBER });
+  v.cache = s.store(752, 432, 150, 'REDIS', { color: AMBER });
+  for (const r of db) s.row(v.db, r, { now: true });
+  for (const r of cache) s.row(v.cache, r, { now: true });
+  return v;
+}
+const SEED = { pod: 'next 1000003 / 1001000', counter: 1001001, db: [`4c93 → ${LONG}`, '4c94 → blog.ex/post'] };
+const rowOf = (st, prefix) => st.rows.find(r => r.label.textContent.startsWith(prefix));
+
+window.DESIGN = {
+  id: 'url', n: 1, title: 'URL Shortener', tagline: 'TinyURL / bit.ly: unique short codes, millisecond redirects',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'Entry', x0: 0, x1: 340, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'One front door. Spreads traffic over many identical pods, terminates TLS and sends **writes** and **reads** to different services.',
+      detail: 'Clients only ever know one hostname (`sho.rt`). Everything behind it can scale, fail and be redeployed without the client noticing.' },
+    { id: 'app', title: 'Services', x0: 340, x1: 552, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: 'Stateless business logic, split into a **write** service and a **read** service because their load differs ~100×.',
+      detail: 'Stateless means any pod can serve any request, so we add or kill pods freely. All state lives one layer to the right.' },
+    { id: 'data', title: 'Data & IDs', x0: 552, x1: 914, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: 'Where state lives: **unique ID allocation**, the **durable** code → URL mapping, and a **cache** for hot codes.',
+      detail: 'Each store has one job: the counter guarantees uniqueness, MongoDB guarantees durability, Redis guarantees speed.' },
+    { id: 'async', title: 'Async', x0: 914, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'Work the user must **not wait for**. Click events are queued and counted later, so analytics can never slow down or break a redirect.',
+      detail: 'A queue between the hot path and analytics absorbs bursts and lets each side fail independently.' },
+  ],
+  layersIntro: {
+    title: 'Four layers, each with one job',
+    text: 'Read the diagram left to right: requests **enter**, are handled by **stateless services**, which read and write **state**, and push slow work to the **async** side. Click a layer or a component to see why it exists and what breaks without it.',
+  },
+  nodes: {
+    client: { x: 80, y: 260, w: 140, label: 'Client', sub: 'browser / app', icon: '👤', layer: 'entry' },
+    lb: { x: 250, y: 260, w: 150, label: 'Load Balancer', sub: 'L7 · routes by path', icon: '⚖️', layer: 'entry' },
+    shortener: { x: 445, y: 140, label: 'Shortener API', sub: 'POST /urls · write', icon: '✏️', layer: 'app' },
+    redirect: { x: 445, y: 385, label: 'Redirect Service', sub: 'GET /{code} · read', icon: '↪️', layer: 'app' },
+    idgen: { x: 655, y: 62, label: 'ID Range Service', sub: 'hands out ID blocks', icon: '🔑', layer: 'data' },
+    mongo: { x: 655, y: 260, label: 'MongoDB', sub: 'urls · source of truth', icon: '🍃', layer: 'data' },
+    redis: { x: 655, y: 455, label: 'Redis cache', sub: 'hot codes · TTL', icon: '⚡', layer: 'data' },
+    analytics: { x: 1005, y: 150, w: 160, label: 'Analytics', sub: 'click counts', icon: '📊', layer: 'async' },
+    kafka: { x: 1005, y: 385, w: 160, label: 'Kafka', sub: 'click-events', icon: '📨', layer: 'async' },
+  },
+  wires: [['client', 'lb'], ['lb', 'shortener'], ['lb', 'redirect'], ['shortener', 'idgen'], ['shortener', 'mongo'], ['redirect', 'redis'], ['redirect', 'mongo'], ['redirect', 'kafka'], ['kafka', 'analytics']],
+
+  components: {
+    client: {
+      what: 'Browsers, mobile apps and API clients. A few users **create** links; far more **click** them (about 100 clicks per link).',
+      why: 'Both traffic patterns start here, and the client decides how often clicks reach us: a browser caches a **301** forever but re-asks on a **302**.',
+      without: 'Not optional, but a design detail matters: answer with 301 and repeat clicks never reach you, so you lose analytics and cannot expire the link.',
+      tech: 'Any HTTP client', scale: 'Not ours to scale; plan for reads ≈ 100× writes.', fails: 'Clients retry on timeouts, so a create should be safe to retry (idempotency key).',
+    },
+    lb: {
+      name: 'Load Balancer (L7)',
+      what: 'Single entry point for `sho.rt`. Terminates TLS, health-checks pods, and routes by path: `POST /urls` → Shortener, `GET /{code}` → Redirect.',
+      why: 'Spreads load over many **stateless** pods and lets the write path and the read path scale **independently**.',
+      without: 'Clients would need to know every pod, one pod would take all traffic, and a dead pod would keep receiving requests.',
+      tech: 'AWS ALB / NGINX / Envoy, often behind a CDN or edge network', scale: 'Managed or horizontal; redundant across availability zones.', fails: 'Health checks drop bad pods; DNS fails over between LBs.',
+    },
+    shortener: {
+      name: 'Shortener API (write path)',
+      what: 'Validates the long URL, takes the next ID from its **in-memory block**, Base62-encodes it and inserts `code → URL` into MongoDB.',
+      why: 'Keeps all write rules (validation, ID allocation, custom aliases, abuse checks, rate limits) in one place, away from the latency-critical read path.',
+      without: 'Reads and writes share one service: a burst of creates or a slow URL safety check would slow down every redirect.',
+      tech: 'Spring Boot, stateless pods', scale: '~40 writes/s on average: two or three pods. Add pods freely; each reserves its own ID block.', fails: 'A crash loses the unused part of its ID block, leaving harmless gaps in the ID sequence.',
+    },
+    redirect: {
+      name: 'Redirect Service (read path)',
+      what: 'Looks up the code (Redis first, MongoDB on a miss), answers **302** with `Location`, then emits a click event without waiting.',
+      why: 'Reads are ~100× writes and every millisecond is user-visible. A small dedicated service can be scaled and tuned (pools, timeouts) just for this.',
+      without: 'The busiest path would compete with writes for threads and DB connections, and you could not scale reads on their own.',
+      tech: 'Spring WebFlux / Netty / Go: anything fast and non-blocking', scale: 'Most pods live here; autoscale on requests per second.', fails: 'Redis down → read MongoDB (behind a circuit breaker). Kafka down → drop click events, never fail the redirect.',
+    },
+    idgen: {
+      name: 'ID Range Service',
+      what: 'Owns one counter. Hands out **blocks** of 1,000 IDs with one atomic increment (`next += 1000`).',
+      why: 'Makes every short code **unique by construction**: no collision check, and pods never coordinate per URL.',
+      without: 'You hash or randomise codes and must check the database on every create, retrying on clashes, which gets slower as the table fills.',
+      tech: 'MongoDB `findOneAndUpdate` + `$inc` (or a DB sequence, Redis `INCRBY`, ZooKeeper)', scale: 'Called once per 1,000 links per pod: almost no load. Give busy pods bigger blocks.', fails: 'Pods keep creating links from their current block; it runs on the replicated database.',
+    },
+    mongo: {
+      name: 'MongoDB (source of truth)',
+      what: 'One document per code: `{ _id: code, longUrl, owner, createdAt, expiresAt }`, plus a TTL index on `expiresAt`.',
+      why: 'Durable storage of every mapping. Using the code as `_id` gives a single primary-key lookup **and** uniqueness for free (aliases too).',
+      without: 'Links would live only in a cache and vanish on eviction or restart.',
+      tech: 'MongoDB replica set (DynamoDB / Cassandra fit equally: it is a key → value lookup)', scale: '~600 GB per year: shard by hashed `_id`. Redis absorbs most reads.', fails: 'Primary failover pauses writes for a few seconds; cached redirects keep working.',
+    },
+    redis: {
+      name: 'Redis cache',
+      what: 'Keeps `url:{code} → longUrl` for hot codes, with a TTL; LRU evicts cold codes.',
+      why: 'Turns the hot path into one in-memory lookup (~1 ms) and shields MongoDB. Clicks follow a power law, so a small cache serves most traffic.',
+      without: 'Every click hits the database: 4k–40k reads/s on MongoDB, higher latency and a much bigger database bill.',
+      tech: 'Redis cluster or primary + replicas, `maxmemory-policy allkeys-lru`', scale: 'Memory for the hot links only; add shards.', fails: 'Down → reads fall through to MongoDB. A viral key expiring → stampede, unless single-flight.',
+    },
+    kafka: {
+      name: 'Kafka (click-events)',
+      what: 'Durable buffer of click events `{code, ts, country, referrer}`, partitioned by code.',
+      why: 'Decouples analytics from redirects: the redirect returns at once, bursts are absorbed, and analytics processes at its own pace.',
+      without: 'Every click would wait for an analytics write, and an analytics outage would break redirects.',
+      tech: 'Kafka (or Kinesis / Pub/Sub)', scale: 'More partitions and consumers.', fails: 'Down → the redirect drops or briefly buffers events and counts a metric. Redelivery → counts are at-least-once.',
+    },
+    analytics: {
+      name: 'Analytics',
+      what: 'Consumes click events in **batches** and stores aggregates per code, day, country and referrer.',
+      why: 'Creators want click stats. Aggregating in batches turns thousands of tiny writes into a few big ones and keeps dashboards fast.',
+      without: 'No click stats, or expensive per-click writes on the hot path.',
+      tech: 'Kafka consumer → ClickHouse / Druid, or MongoDB / Redis counters', scale: 'Batch size and number of consumers.', fails: 'Lag only delays the dashboards; redirects are unaffected.',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Long URL in, short code out. Code in, 302 out.',
+    points: [
+      { t: 'Create', color: BLUE, d: 'Shortener takes a unique ID from its reserved block, Base62-encodes it (1000001 → `4c93`) and stores code → URL.' },
+      { t: 'First click', color: TEAL, d: 'Redirect Service checks Redis, misses, reads MongoDB, fills the cache and answers **302**.' },
+      { t: 'Every next click', color: GREEN, d: 'Served straight from Redis in ~1 ms. MongoDB is not touched.' },
+      { t: 'Analytics', color: PURPLE, d: 'After answering, each redirect drops a click event on Kafka; Analytics counts them in batches.' },
+    ],
+    stats: [['100 M', 'new links / month'], ['~4 k/s', 'redirects (avg)'], ['100 : 1', 'reads : writes'], ['7 chars', '≈ 3.5 trillion codes']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v); v.ready = true; v.clicks = 0; }
+    for (const r of [...v.db.rows]) await s.unrow(v.db, r);
+    for (const r of [...v.cache.rows]) await s.unrow(v.cache, r);
+    s.setChip(v.pod, 'block: empty');
+    s.setSub(v.n.analytics, 'click counts');
+    v.clicks = 0;
+
+    ui.say(0); ui.cap('**Create** · the client sends `POST /urls` with the long URL');
+    await s.send(['client', 'lb', 'shortener'], 'POST /urls', BLUE, { ms: 480 });
+    ui.cap('The pod has no IDs left, so it reserves a **block of 1,000** with one atomic `$inc`');
+    await s.send(['shortener', 'idgen'], '$inc +1000', BLUE, { ms: 480 });
+    s.setChip(v.idc, 'counter next = 1001001');
+    await s.send(['idgen', 'shortener'], '1000001–1001000', BLUE, { ms: 480 });
+    s.setChip(v.pod, 'next 1000001 / 1001000');
+    ui.cap('ID **1000001** → Base62 → **4c93**, stored with `_id = "4c93"`');
+    await s.flash(445, 205, '1000001 → base62 → 4c93', { mono: true, color: BLUE, stroke: BLUE }, 700);
+    s.setChip(v.pod, 'next 1000002 / 1001000');
+    await s.send(['shortener', 'mongo'], 'insert 4c93', BLUE, { ms: 480 });
+    await s.row(v.db, `4c93 → ${LONG}`);
+    await s.send(['shortener', 'lb', 'client'], '201 sho.rt/4c93', GREEN, { ms: 480 });
+
+    ui.say(1); ui.cap('**First click** · `GET /4c93` goes to the read path');
+    await s.send(['client', 'lb', 'redirect'], 'GET /4c93', TEAL, { ms: 480 });
+    ui.cap('Redis first: **miss**');
+    await s.send(['redirect', 'redis'], 'GET url:4c93', TEAL, { ms: 440 });
+    await s.flash(655, 410, 'miss', { color: RED, stroke: RED, fill: '#fff4f4' }, 350);
+    ui.cap('Read MongoDB by primary key, then fill Redis with a TTL');
+    await s.send(['redirect', 'mongo'], 'findById 4c93', TEAL, { ms: 440 });
+    await s.send(['mongo', 'redirect'], LONG, TEAL, { ms: 440 });
+    await s.send(['redirect', 'redis'], 'SET EX 86400', TEAL, { ms: 440 });
+    await s.row(v.cache, 'url:4c93 · TTL 24h');
+    ui.cap('Answer **302 Found** with `Location: https://shop.ex/sale`');
+    const click = async () => { await s.send(['redirect', 'kafka'], 'click 4c93', PURPLE, { ms: 420 }); v.clicks++; s.setSub(v.n.kafka, `${v.clicks} event${v.clicks > 1 ? 's' : ''} queued`); };
+    await s.send(['redirect', 'lb', 'client'], '302 Location', TEAL, { ms: 480 });
+    const firstClick = click();
+
+    ui.say(2); ui.cap('**Next clicks** · Redis **hit**, ~1 ms, MongoDB is not touched');
+    const hit = async delay => {
+      await s.wait(delay);
+      await s.send(['client', 'lb', 'redirect'], 'GET /4c93', GREEN, { ms: 420 });
+      await s.send(['redirect', 'redis'], 'GET', GREEN, { ms: 360 });
+      await s.send(['redis', 'redirect'], 'hit ✓', GREEN, { ms: 360 });
+      await s.send(['redirect', 'lb', 'client'], '302', GREEN, { ms: 420 });
+      await click();
+    };
+    await Promise.all([firstClick, hit(0), hit(900), hit(1800)]);
+
+    ui.say(3); ui.cap('**Analytics** · Kafka buffers click events; Analytics counts them in **batches**, off the hot path');
+    await s.send(['kafka', 'analytics'], `batch ×${v.clicks}`, PURPLE, { ms: 620 });
+    s.setSub(v.n.kafka, 'lag 0');
+    s.setSub(v.n.analytics, `4c93 · ${v.clicks} clicks`, GREEN);
+    await s.pulse(v.n.analytics);
+    await s.wait(2200);
+    ui.say(-1); ui.cap('');
+    await s.wait(500);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'create', title: 'Create a short URL', sub: 'ID block → Base62 → insert', color: BLUE,
+      build: (s, v) => setup(s, v),
+      takeaway: 'Unique IDs (reserved in blocks) + Base62 = short codes with **no collision checks**. A create costs one insert, plus one ID-block call per 1,000 links.',
+      steps: [
+        {
+          title: 'User submits a long URL',
+          text: 'User A pastes `https://shop.ex/sale?utm=…` and clicks Shorten. The client sends **POST /urls** with the long URL, and optionally a custom alias and an expiry date.',
+          observe: 'The request reaches the load balancer.',
+          say: 'Creating a link is one POST with the long URL; it returns the short URL.',
+          focus: v => [v.n.client, v.n.lb],
+          async run(s) { await s.send(['client', 'lb'], 'POST /urls', BLUE); },
+        },
+        {
+          title: 'The load balancer routes writes to the Shortener',
+          text: 'The L7 load balancer routes by path: **POST /urls** goes to the Shortener API (write path), **GET /{code}** goes to the Redirect Service (read path). Splitting them lets the read side grow ~100× bigger without dragging the write side along.',
+          observe: 'The request goes up to the write path, not down to the read path.',
+          say: 'I split the read and write paths because reads outnumber writes about 100 to 1.',
+          focus: v => [v.n.shortener],
+          async run(s) { await s.send(['lb', 'shortener'], 'POST /urls', BLUE); },
+        },
+        {
+          title: 'No IDs left in the pod → reserve a block',
+          text: 'Each Shortener pod keeps a **block of 1,000 IDs** in memory. This pod just started, so its block is empty. The ID Range Service does one atomic `$inc` of 1,000 on its counter and returns **1000001–1001000**. Two pods can never receive the same block.',
+          observe: 'The counter jumps by 1,000 and the pod now owns IDs 1000001 to 1001000.',
+          say: 'Unique IDs come from blocks reserved with one atomic increment, so pods never coordinate per URL.',
+          focus: v => [v.n.idgen, v.idc, v.pod],
+          async run(s, v) {
+            await s.send(['shortener', 'idgen'], '$inc +1000', BLUE);
+            s.setChip(v.idc, 'counter next = 1001001'); await s.pulse(v.idc);
+            await s.send(['idgen', 'shortener'], '1000001–1001000', BLUE);
+            s.setChip(v.pod, 'next 1000001 / 1001000'); await s.pulse(v.pod);
+          },
+        },
+        {
+          title: 'Take the next ID and Base62-encode it',
+          text: 'The pod takes **1000001** from memory (no network call) and writes it in base 62 with the alphabet `0-9 a-z A-Z`: 1000001 = 4·62³ + 12·62² + 9·62 + 3 → **"4c93"**. Seven Base62 characters give 62⁷ ≈ **3.5 trillion** codes: centuries at 100 M links a month.',
+          observe: 'The number 1000001 becomes the code 4c93.',
+          say: 'Base62 of a unique number gives a short code that needs no collision check.',
+          focus: v => [v.pod, v.enc],
+          async run(s, v) {
+            v.enc = s.chip(445, 205, '1000001 → base62 → 4c93', { mono: true, color: BLUE, stroke: BLUE });
+            await s.pop(v.enc, 300);
+            s.setChip(v.pod, 'next 1000002 / 1001000'); await s.pulse(v.pod);
+          },
+        },
+        {
+          title: 'Store code → long URL in MongoDB',
+          text: 'Insert `{ _id: "4c93", longUrl, owner, createdAt, expiresAt }`. The code **is the primary key**, so a redirect is a single index lookup, and the unique `_id` is a free safety net against duplicate codes.',
+          observe: 'A row for 4c93 appears in the urls collection.',
+          say: 'MongoDB stores code → URL with the code as _id, which also guarantees uniqueness.',
+          focus: v => [v.n.mongo, v.db],
+          async run(s, v) {
+            await s.send(['shortener', 'mongo'], 'insert 4c93', BLUE);
+            await s.row(v.db, `4c93 → ${LONG}`);
+          },
+        },
+        {
+          title: 'Return the short link',
+          text: 'The Shortener answers **201 Created** with `https://sho.rt/4c93`. Total cost: one insert, plus one call to the ID Range Service per 1,000 links.',
+          observe: 'The 201 travels back to the user.',
+          focus: v => [v.n.client],
+          async run(s, v) {
+            if (v.enc) await s.fade(v.enc, 0, 250);
+            await s.send(['shortener', 'lb', 'client'], '201 sho.rt/4c93', GREEN);
+            await s.flash(80, 210, '✓ sho.rt/4c93', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 700);
+          },
+        },
+        {
+          title: 'The next create skips the ID service',
+          text: 'User B shortens another URL. The pod already owns a block, so it takes **1000002 → "4c94"** straight from memory and inserts it. The ID Range Service is called only once per 1,000 links, so it is never a bottleneck.',
+          observe: 'No packet goes to the ID Range Service this time.',
+          say: 'The ID service is called once per thousand links, so it is not a bottleneck.',
+          focus: v => [v.pod, v.db],
+          async run(s, v) {
+            await s.send(['client', 'lb', 'shortener'], 'POST /urls', BLUE);
+            await s.flash(445, 205, '1000002 → base62 → 4c94', { mono: true, color: BLUE, stroke: BLUE }, 500);
+            s.setChip(v.pod, 'next 1000003 / 1001000'); await s.pulse(v.pod);
+            await s.send(['shortener', 'mongo'], 'insert 4c94', BLUE);
+            await s.row(v.db, '4c94 → blog.ex/post');
+            await s.send(['shortener', 'lb', 'client'], '201 sho.rt/4c94', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'redirect', title: 'Redirect: miss, then hit', sub: 'cache-aside · 302', color: TEAL,
+      build: (s, v) => setup(s, v, SEED),
+      takeaway: 'Cache-aside on Redis makes the hot path one in-memory lookup; MongoDB is read only on a miss. **302** keeps every click visible to us.',
+      steps: [
+        {
+          title: 'A user clicks sho.rt/4c93',
+          text: 'User B clicks the short link. The browser sends **GET /4c93** and the load balancer routes it to the Redirect Service. This is the hot path: ~4,000 requests/s on average, ten times that at peaks.',
+          observe: 'The GET goes down to the Redirect Service, not to the Shortener.',
+          say: 'Redirects are the hot path, so they get their own service with a cache in front of the database.',
+          focus: v => [v.n.redirect],
+          async run(s) { await s.send(['client', 'lb', 'redirect'], 'GET /4c93', TEAL); },
+        },
+        {
+          title: 'Ask Redis first: cache miss',
+          text: 'Cache-aside: the service asks Redis for `url:4c93`. Nobody has clicked this link yet, so the key is not there. **Cache miss.**',
+          observe: 'Redis answers nil: a miss.',
+          focus: v => [v.n.redis, v.cache],
+          async run(s) {
+            await s.send(['redirect', 'redis'], 'GET url:4c93', TEAL);
+            await s.flash(655, 410, 'miss', { color: RED, stroke: RED, fill: '#fff4f4' }, 400);
+            await s.send(['redis', 'redirect'], 'nil', GREY);
+          },
+        },
+        {
+          title: 'Fall back to MongoDB',
+          text: 'On a miss the service reads the source of truth: `findById("4c93")`, a primary-key lookup of a few milliseconds. It also checks `expiresAt`: an expired link would get **410 Gone**.',
+          observe: 'MongoDB returns the long URL for 4c93.',
+          focus: v => [v.n.mongo, v.db.rows[0]],
+          async run(s, v) {
+            await s.send(['redirect', 'mongo'], 'findById 4c93', TEAL);
+            s.paintRow(v.db.rows[0], { fill: '#e8f6f4', stroke: TEAL }); await s.pulse(v.db.rows[0], 1, 1.05);
+            await s.send(['mongo', 'redirect'], LONG, TEAL);
+          },
+        },
+        {
+          title: 'Fill the cache, with a TTL',
+          text: 'Before answering, the service writes the result to Redis: `SET url:4c93 <longUrl> EX 86400`. The TTL (plus a little random jitter) bounds memory and staleness, and LRU eviction drops cold links.',
+          observe: 'A url:4c93 entry appears in Redis.',
+          focus: v => [v.n.redis, v.cache],
+          async run(s, v) {
+            await s.send(['redirect', 'redis'], 'SET EX 86400', TEAL);
+            await s.row(v.cache, 'url:4c93 · TTL 24h');
+          },
+        },
+        {
+          title: 'Answer 302 with a Location header',
+          text: 'The service returns **302 Found** with `Location: https://shop.ex/sale…` and the browser follows it. Why not 301? A **301** is cached by the browser, so repeat clicks never reach us: no analytics, and we could never expire or change the link.',
+          observe: 'The 302 goes back and the browser jumps to the long URL.',
+          say: 'I return 302, not 301, so every click reaches us for analytics and expiry.',
+          focus: v => [v.n.client],
+          async run(s) {
+            await s.send(['redirect', 'lb', 'client'], '302 Location', TEAL);
+            await s.flash(80, 210, `→ ${LONG}`, { color: TEAL, stroke: TEAL }, 600);
+          },
+        },
+        {
+          title: 'Next click: cache hit',
+          text: 'User C clicks the same link a minute later. Redis has `url:4c93`, so the service answers in **~1 ms** without touching MongoDB. A few popular links get most clicks, so hit rates above 90% are normal.',
+          observe: 'Redis answers directly; nothing goes to MongoDB.',
+          say: 'With cache-aside, a hot link costs one Redis lookup per click.',
+          focus: v => [v.n.redis, v.n.redirect],
+          async run(s) {
+            await s.send(['client', 'lb', 'redirect'], 'GET /4c93', GREEN);
+            await s.send(['redirect', 'redis'], 'GET url:4c93', GREEN);
+            await s.flash(655, 410, 'hit ✓', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 350);
+            await s.send(['redis', 'redirect'], LONG, GREEN);
+            await s.send(['redirect', 'lb', 'client'], '302', GREEN);
+            await s.flash(80, 210, '~1 ms', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 700);
+          },
+        },
+      ],
+    },
+    {
+      id: 'analytics', title: 'Click analytics', sub: 'async via Kafka', color: PURPLE,
+      build: (s, v) => setup(s, v, { ...SEED, cache: ['url:4c93 · TTL 24h'] }),
+      takeaway: 'Analytics is **off the redirect path**: Kafka absorbs bursts, the consumer aggregates in batches, and a Kafka outage costs a few clicks, never a redirect.',
+      steps: [
+        {
+          title: 'Answer first, then emit the click',
+          text: 'The redirect is answered first. Then the service publishes a small event `{code, ts, country, referrer}` to the **click-events** topic, asynchronously. The user never waits for analytics.',
+          observe: 'The 302 reaches the user before the click event reaches Kafka.',
+          say: 'Analytics is fire-and-forget into Kafka, after the redirect is answered.',
+          focus: v => [v.n.kafka],
+          async run(s, v) {
+            await s.send(['client', 'lb', 'redirect'], 'GET /4c93', TEAL, { ms: 460 });
+            await s.send(['redirect', 'lb', 'client'], '302', TEAL, { ms: 460 });
+            await s.send(['redirect', 'kafka'], 'click 4c93', PURPLE);
+            s.setSub(v.n.kafka, '1 event queued', PURPLE);
+          },
+        },
+        {
+          title: 'Kafka absorbs the burst',
+          text: 'Clicks come in bursts (a link goes viral). Kafka stores them durably, **partitioned by code**, so the consumer can work at its own pace. Redirect latency is unaffected even if analytics falls behind.',
+          observe: 'More click events pile up in Kafka.',
+          focus: v => [v.n.kafka],
+          async run(s, v) {
+            for (let k = 2; k <= 5; k++) {
+              await s.send(['redirect', 'kafka'], 'click 4c93', PURPLE, { ms: 360, pulse: false });
+              s.setSub(v.n.kafka, `${k} events queued`, PURPLE);
+            }
+            await s.pulse(v.n.kafka);
+          },
+        },
+        {
+          title: 'Analytics consumes in batches',
+          text: 'The analytics consumer reads a **batch** of events, aggregates counts per code, day and country, and writes the totals in one go (ClickHouse, or MongoDB / Redis counters). Thousands of tiny writes become a few big ones.',
+          observe: 'One batch moves to Analytics and its counter updates.',
+          say: 'The consumer aggregates in batches, so analytics writes stay cheap.',
+          focus: v => [v.n.analytics],
+          async run(s, v) {
+            await s.send(['kafka', 'analytics'], 'batch ×5', PURPLE);
+            s.setSub(v.n.kafka, 'lag 0');
+            s.setSub(v.n.analytics, '4c93 · 5 clicks', GREEN);
+            await s.pulse(v.n.analytics);
+          },
+        },
+        {
+          title: 'Kafka down? Redirects still work',
+          text: 'If Kafka is unavailable, the publish fails, but the redirect was already answered. The service buffers briefly in memory, then **drops the event and counts a metric**. Losing a few clicks is acceptable; failing redirects is not.',
+          observe: 'The click event bounces, yet the user still gets the 302.',
+          say: 'Analytics is best-effort: a Kafka outage must never break redirects.',
+          focus: v => [v.n.kafka, v.n.client],
+          async run(s, v) {
+            s.tone(v.n.kafka, 'fail'); s.setSub(v.n.kafka, 'unavailable ✕', RED);
+            await s.shake(v.n.kafka);
+            await s.send(['client', 'lb', 'redirect'], 'GET /4c93', TEAL, { ms: 460 });
+            await s.send(['redirect', 'lb', 'client'], '302', GREEN, { ms: 460 });
+            await s.bounce('redirect', 'kafka', 'click 4c93', PURPLE);
+            await s.flash(800, 350, 'dropped · metric++', { color: RED, stroke: RED, fill: '#fff4f4' }, 800);
+          },
+        },
+      ],
+    },
+    {
+      id: 'alias', title: 'Custom alias race', sub: 'unique _id vs check-then-insert', color: AMBER,
+      build: (s, v) => setup(s, v, SEED),
+      takeaway: 'Let the database decide races: make the alias the **unique `_id`** and just insert. Never check-then-insert.',
+      steps: [
+        {
+          title: 'Two users ask for the same alias',
+          text: 'User A and User C both want `sho.rt/sale`. Their requests arrive at the same moment and land on two different Shortener pods.',
+          observe: 'Two POSTs with alias=sale race to the Shortener.',
+          focus: v => [v.n.shortener],
+          async run(s) {
+            await Promise.all([
+              s.send(['client', 'lb', 'shortener'], 'A: alias=sale', BLUE),
+              s.wait(260).then(() => s.send(['client', 'lb', 'shortener'], 'C: alias=sale', AMBER)),
+            ]);
+          },
+        },
+        {
+          title: '❌ The wrong way: check, then insert',
+          text: 'A naive service first runs `findOne({ alias: "sale" })`, sees nothing, then inserts. Both pods check **before** either inserts, both see "free", and both write. Now one alias has two owners: a check-then-act is never atomic.',
+          observe: 'Both checks say "free" and both rows get written: the race window.',
+          focus: v => [v.db],
+          async run(s, v) {
+            await Promise.all([
+              s.send(['shortener', 'mongo'], 'find sale?', BLUE, { ms: 460 }),
+              s.wait(200).then(() => s.send(['shortener', 'mongo'], 'find sale?', AMBER, { ms: 460 })),
+            ]);
+            await s.flash(830, 200, 'free · free', { color: AMBER, stroke: AMBER }, 400);
+            await Promise.all([
+              s.send(['shortener', 'mongo'], 'insert', BLUE, { ms: 420, pulse: false }),
+              s.wait(150).then(() => s.send(['shortener', 'mongo'], 'insert', AMBER, { ms: 420, pulse: false })),
+            ]);
+            const bad = { fill: '#fff4f4', stroke: RED, color: RED };
+            v.badA = await s.row(v.db, 'sale → owner A', bad);
+            v.badC = await s.row(v.db, 'sale → owner C', bad);
+            await s.shake(v.db);
+          },
+        },
+        {
+          title: '✅ The right way: the alias is the _id',
+          text: 'Make the alias the document `_id` (or give it a unique index) and **just insert**. MongoDB enforces uniqueness atomically: the first insert wins, the second fails with duplicate-key error **E11000**. No lock, no check.',
+          observe: 'One insert succeeds; the other bounces with E11000.',
+          say: 'The alias is the primary key, so the database decides the race atomically.',
+          focus: v => [v.db],
+          async run(s, v) {
+            await s.unrow(v.db, v.badC); await s.unrow(v.db, v.badA);
+            await Promise.all([
+              s.send(['shortener', 'mongo'], 'insert _id:sale', BLUE).then(() => s.row(v.db, 'sale → owner A', { fill: '#f1f9ee', stroke: GREEN })),
+              s.wait(240).then(() => s.bounce('shortener', 'mongo', 'insert _id:sale', AMBER)),
+            ]);
+            await s.flash(830, 330, 'E11000 duplicate key', { color: RED, stroke: RED, fill: '#fff4f4', mono: true }, 700);
+          },
+        },
+        {
+          title: 'Winner gets 201, loser gets 409',
+          text: 'The Shortener maps E11000 to **409 Conflict** ("alias taken"). Generated codes and aliases share one namespace, so reserve a format for aliases (for example a minimum length) that generated codes can never produce.',
+          observe: 'A gets 201, C gets 409.',
+          focus: v => [v.n.client],
+          async run(s) {
+            await Promise.all([
+              s.send(['shortener', 'lb', 'client'], '201 sho.rt/sale', GREEN),
+              s.wait(320).then(() => s.send(['shortener', 'lb', 'client'], '409 alias taken', RED)),
+            ]);
+          },
+        },
+      ],
+    },
+    {
+      id: 'stampede', title: 'Viral link stampede', sub: 'herd vs single-flight', color: RED,
+      build: (s, v) => setup(s, v, { ...SEED, cache: ['url:4c93 · TTL 3s'] }),
+      takeaway: 'Hot keys need protection: **single-flight** on a miss, **TTL jitter**, and **early refresh**. One database read per expiry instead of thousands.',
+      steps: [
+        {
+          title: "A viral link's cache entry expires",
+          text: 'Link 4c93 is on the front page: thousands of clicks per second, all served from Redis. Then its TTL reaches zero and the key disappears.',
+          observe: 'The url:4c93 entry vanishes from Redis.',
+          focus: v => [v.n.redis, v.cache],
+          async run(s, v) {
+            const r = v.cache.rows[0];
+            for (const t of [2, 1, 0]) { r.label.textContent = `url:4c93 · TTL ${t}s`; await s.wait(350); }
+            s.paintRow(r, { fill: '#fff4f4', stroke: RED, color: RED });
+            await s.unrow(v.cache, r);
+          },
+        },
+        {
+          title: '❌ Without protection: a thundering herd',
+          text: 'Every in-flight request misses at the same instant, and **all of them** query MongoDB for the same document. The database gets a spike of identical queries, latency explodes, and it can fall over. This is a **cache stampede**.',
+          observe: 'A stream of identical queries hits MongoDB, and it turns red.',
+          focus: v => [v.n.mongo],
+          async run(s, v) {
+            await Promise.all([0, 1, 2, 3, 4, 5, 6].map(k => s.wait(k * 110).then(() => s.send(['redirect', 'mongo'], 'find 4c93', RED, { ms: 420, pulse: false }))));
+            s.tone(v.n.mongo, 'fail'); s.setSub(v.n.mongo, 'CPU 100% · p99 2 s', RED);
+            await s.shake(v.n.mongo);
+          },
+        },
+        {
+          title: '✅ Fix 1: single-flight lock',
+          text: 'On a miss, a request first tries `SET lock:4c93 1 NX PX 3000`. Only **one** request gets the lock and reads MongoDB; the others wait a few milliseconds and re-read Redis. One database query instead of thousands.',
+          observe: 'Only one request goes to MongoDB; the others wait at the service, then hit the cache.',
+          say: 'I protect hot keys with a single-flight lock, so a miss causes one database read, not thousands.',
+          focus: v => [v.n.redirect, v.wait],
+          async run(s, v) {
+            s.tone(v.n.mongo, null); s.setSub(v.n.mongo, 'urls · source of truth');
+            v.wait = s.chip(445, 434, '6 requests waiting…', { color: AMBER, stroke: AMBER, fill: '#fdf6ea' });
+            await s.pop(v.wait, 250);
+            await s.send(['redirect', 'redis'], 'SET lock NX', TEAL);
+            await s.flash(655, 410, 'lock ✓', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 300);
+            await s.send(['redirect', 'mongo'], 'find 4c93', TEAL);
+            await s.send(['mongo', 'redirect'], LONG, TEAL);
+            await s.send(['redirect', 'redis'], 'SET url:4c93', TEAL);
+            await s.row(v.cache, 'url:4c93 · TTL 24h');
+            s.setChip(v.wait, '6 retried → cache hit ✓', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' });
+            await s.pulse(v.wait);
+          },
+        },
+        {
+          title: '✅ Fix 2: jitter and early refresh',
+          text: 'Add **random jitter** to TTLs so many keys do not expire together, and **refresh hot keys early** (in the background once the TTL drops below ~10%). For the very hottest links, a small in-process cache or a CDN absorbs traffic before it even reaches Redis.',
+          observe: 'The hot key gets a jittered TTL and is refreshed before it expires.',
+          focus: v => [v.cache],
+          async run(s, v) {
+            if (v.wait) await s.fade(v.wait, 0, 250);
+            const r = v.cache.rows[0];
+            r.label.textContent = 'url:4c93 · TTL 24h ±10%';
+            s.paintRow(r, { fill: '#f1f9ee', stroke: GREEN });
+            await s.pulse(r, 1, 1.05);
+            await s.flash(830, 492, 'refresh when TTL < 10%', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 800);
+          },
+        },
+      ],
+    },
+    {
+      id: 'failures', title: 'Crash gaps & expiry', sub: 'ID gaps · 410 Gone · TTL index', color: GREY,
+      build: (s, v) => setup(s, v, { ...SEED, db: [...SEED.db, 'old1 → expired 1d ago'] }),
+      takeaway: 'Lost ID blocks only leave **gaps** (codes must be unique, not contiguous). Expired links answer **410**, and a TTL index cleans them up.',
+      steps: [
+        {
+          title: 'A Shortener pod crashes',
+          text: 'The pod that owned block 1000001–1001000 crashes after using two IDs. The other **998 IDs are lost** with it: no one will ever hand them out again.',
+          observe: 'The pod goes red and its block is gone.',
+          focus: v => [v.n.shortener, v.pod],
+          async run(s, v) {
+            s.tone(v.n.shortener, 'fail'); s.setSub(v.n.shortener, 'pod crashed ✕', RED);
+            await s.shake(v.n.shortener);
+            s.setChip(v.pod, 'lost: 1000003…1001000', { color: RED, stroke: RED, fill: '#fff4f4' });
+            await s.pulse(v.pod);
+          },
+        },
+        {
+          title: 'The new pod reserves a new block',
+          text: 'Kubernetes starts a replacement pod. Its block is empty, so it reserves **1001001–1002000**. IDs 1000003–1001000 are simply skipped. That is fine: codes only need to be **unique**, not contiguous.',
+          observe: 'The counter moves on; the gap is never filled.',
+          say: 'Gaps from crashed pods are harmless; uniqueness is all we need.',
+          focus: v => [v.pod, v.idc],
+          async run(s, v) {
+            s.tone(v.n.shortener, null); s.setSub(v.n.shortener, 'new pod · POST /urls');
+            s.setChip(v.pod, 'block: empty', { color: TEAL, stroke: '#d5d9dc', fill: '#fff' });
+            await s.pulse(v.n.shortener);
+            await s.send(['shortener', 'idgen'], '$inc +1000', BLUE);
+            s.setChip(v.idc, 'counter next = 1002001'); await s.pulse(v.idc);
+            await s.send(['idgen', 'shortener'], '1001001–1002000', BLUE);
+            s.setChip(v.pod, 'next 1001001 / 1002000'); await s.pulse(v.pod);
+          },
+        },
+        {
+          title: 'Someone opens an expired link',
+          text: 'User B opens `sho.rt/old1`, whose `expiresAt` was yesterday. Redis misses (cache TTLs never outlive the link). MongoDB still has the document, because TTL cleanup runs in the background, so the service **checks `expiresAt` itself** and answers **410 Gone**.',
+          observe: 'The service returns 410 even though the document still exists.',
+          focus: v => [rowOf(v.db, 'old1'), v.n.client],
+          async run(s, v) {
+            await s.send(['client', 'lb', 'redirect'], 'GET /old1', TEAL);
+            await s.send(['redirect', 'redis'], 'GET url:old1', TEAL, { ms: 420 });
+            await s.flash(655, 410, 'miss', { color: RED, stroke: RED, fill: '#fff4f4' }, 300);
+            await s.send(['redirect', 'mongo'], 'findById old1', TEAL);
+            const r = rowOf(v.db, 'old1');
+            s.paintRow(r, { fill: '#fdf6ea', stroke: AMBER, color: AMBER }); await s.pulse(r, 1, 1.05);
+            await s.send(['mongo', 'redirect'], 'expired', AMBER);
+            await s.send(['redirect', 'lb', 'client'], '410 Gone', RED);
+          },
+        },
+        {
+          title: 'The TTL index deletes it',
+          text: 'A TTL index `{ expiresAt: 1 }, { expireAfterSeconds: 0 }` makes MongoDB delete expired documents by itself (its background task runs about every 60 s). No cron job to write or operate.',
+          observe: 'The old1 row disappears from MongoDB.',
+          focus: v => [v.db],
+          async run(s, v) {
+            await s.flash(830, 200, 'TTL monitor', { color: AMBER, stroke: AMBER }, 400);
+            await s.unrow(v.db, rowOf(v.db, 'old1'));
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Pin down features and scale before drawing anything.',
+      lines: [
+        ['I', 'Design a URL shortener like bit.ly.'],
+        ['C', 'Core features are creating a short link and redirecting. Do we also need **custom aliases**, **expiry** and **click analytics**?'],
+        ['I', 'Yes to all three. Analytics can lag a little.'],
+        ['C', 'What scale should I plan for: new links per month, and clicks per link?'],
+        ['I', 'About 100 million new links a month, and roughly 100 clicks per link.'],
+        ['C', 'How short must codes be, and is it a problem if they are guessable?'],
+        ['I', 'Seven characters or fewer. Guessable is not great.'],
+        ['C', 'I will assume a link\'s target never changes after creation, except expiry or deletion by the owner, and that redirect latency and availability matter most.'],
+        ['P', 'Write the answers on the board: they justify every decision later.'],
+      ],
+      avoid: 'Jumping straight to "I would use Base62 and Redis" before you know the scale or features.',
+    },
+    {
+      t: 'Estimate the scale', min: 4, goal: 'Turn the numbers into design decisions.',
+      lines: [
+        ['C', 'Writes: 100 M per month ÷ ~2.6 M seconds ≈ **40 creates/s**, peaks maybe 400.'],
+        ['C', 'Reads: 100× → about **4,000 redirects/s** on average and ~40,000 at peak. This is a **read-heavy** system, so caching is central.'],
+        ['C', 'Storage: ~500 bytes per link × 1.2 B links per year ≈ **600 GB/year**, so we will want sharding eventually.'],
+        ['C', 'Code length: 62⁶ ≈ 57 billion, 62⁷ ≈ 3.5 trillion, so **7 characters** last for centuries.'],
+        ['P', 'Round aggressively and say what each number decides: read-heavy → cache; 600 GB/yr → shard later; 62⁷ → 7 chars.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 5, goal: 'Agree on the contract before the boxes.',
+      lines: [
+        ['C', '`POST /urls { longUrl, alias?, expiresAt? }` → **201** `{ shortUrl }`, or **409** if the alias is taken.'],
+        ['C', '`GET /{code}` → **302** with `Location`, **404** if unknown, **410** if expired.'],
+        ['C', 'Data: a `urls` collection `{ _id: code, longUrl, owner, createdAt, expiresAt }`, plus one `counters` document for ID blocks.'],
+        ['I', 'Why make the code the `_id`?'],
+        ['C', 'We only ever look links up by code, so it is the natural primary key, and a unique `_id` makes duplicate codes or aliases impossible.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Draw the boxes and walk one request through each path.',
+      lines: [
+        ['P', 'Draw while talking: Client → LB → Shortener (write) + Redirect (read) → ID Range / MongoDB / Redis, and Redirect → Kafka → Analytics.'],
+        ['C', 'I split the **write path** and the **read path** because reads are 100× writes and much more latency-sensitive.'],
+        ['C', 'Create: the Shortener takes an ID from a block of 1,000 it reserved with one atomic increment, Base62-encodes it (1000001 → `4c93`) and inserts it with the code as `_id`.'],
+        ['C', 'Redirect: cache-aside on Redis, MongoDB on a miss, fill the cache with a TTL, answer **302**.'],
+        ['C', 'After answering, the Redirect Service publishes a click event to Kafka; Analytics aggregates in batches.'],
+        ['P', 'Use real values (an actual ID and code). It shows you understand the mechanics, not just the boxes.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Let the interviewer probe; show trade-offs, not just answers.',
+      lines: [
+        ['I', 'How do you guarantee codes are unique?'],
+        ['C', 'Every code comes from a unique number. Pods reserve **ID blocks** with an atomic `$inc`, so no two pods ever share an ID. Hashing the URL would need a collision check on every insert; random codes need retry-on-duplicate.'],
+        ['I', 'Two users ask for the same custom alias at once.'],
+        ['C', 'The alias is the `_id`, so both just insert: the database lets one win and the other gets E11000, which I map to **409**. No check-then-insert.'],
+        ['I', 'A link goes viral and its cache entry expires.'],
+        ['C', 'That is a stampede. I use a **single-flight lock** (`SET NX PX`) so one request rebuilds the entry, plus **TTL jitter** and early refresh of hot keys.'],
+        ['I', '301 or 302?'],
+        ['C', '**302**: a 301 is cached by browsers, so we would lose analytics and could not expire links. 301 only for permanent links without stats.'],
+        ['I', 'What if Kafka is down?'],
+        ['C', 'Redirects must not fail. The click publish is async: buffer briefly, then drop with a metric. Analytics is best-effort.'],
+      ],
+      avoid: 'Defending one option as perfect. Name the alternative and why you did not pick it.',
+    },
+    {
+      t: 'Wrap up', min: 6, goal: 'Summarise, name bottlenecks, and say what comes next.',
+      lines: [
+        ['C', 'Summary: ID blocks + Base62 give unique short codes without collision checks; MongoDB stores code → URL; Redis serves the hot read path; analytics is async through Kafka.'],
+        ['C', 'Bottlenecks: hot keys (single-flight, CDN for the hottest links) and database size (shard by hashed `_id`).'],
+        ['C', 'Next steps: shuffle IDs so codes are not guessable, scan URLs for phishing on create, rate-limit creates per user, and multi-region read replicas.'],
+        ['P', 'End with the trade-offs you chose consciously and what you would do with more time.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    summary: 'I split a **write path** and a **read path**, because reads are about 100× writes. On create, a Shortener pod takes the next ID from a **block of 1,000** it reserved with one atomic `$inc`, **Base62-encodes** it (1000001 becomes `4c93`) and inserts a document whose `_id` **is the code**, so codes are unique without any collision check; custom aliases are also the `_id`, so a duplicate gets E11000 and a 409. On redirect, the Redirect Service does **cache-aside**: Redis first, MongoDB on a miss, fill the cache with a TTL, and answer **302** so every click still reaches us. After answering, it publishes a click event to **Kafka**, and analytics aggregates in batches, off the hot path. For viral links I prevent cache stampedes with a **single-flight lock** and TTL jitter. Crashed pods only leave harmless ID gaps, and expired links answer **410** and are removed by a TTL index.',
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> create short URL (optional alias, expiry), redirect, click stats, delete.</li>
+        <li><b>Non-functional:</b> redirect p99 &lt; ~20 ms, very high availability for redirects, codes unique and ≤ 7 chars, analytics may lag.</li>
+        <li><b>Out of scope (say so):</b> accounts/billing, link editing UI.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Creates</td><td class="m">100 M/mo ≈ 40/s</td><td>peak ~400/s</td></tr>
+        <tr><td>Redirects</td><td class="m">100× ≈ 4 k/s</td><td>peak ~40 k/s → cache</td></tr>
+        <tr><td>Storage</td><td class="m">500 B × 1.2 B/yr</td><td>≈ 600 GB/yr → shard</td></tr>
+        <tr><td>Code space</td><td class="m">62⁷ ≈ 3.5 T</td><td>7 chars is plenty</td></tr></table>` },
+      { h: '3 · API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">POST /urls</td><td>{ longUrl, alias?, expiresAt? } → 201 { shortUrl } · 409 alias taken</td></tr>
+        <tr><td class="m">GET /{code}</td><td>302 Location · 404 unknown · 410 expired</td></tr>
+        <tr><td class="m">GET /urls/{code}/stats</td><td>click counts (from analytics)</td></tr>
+        <tr><td class="m">DELETE /urls/{code}</td><td>owner only</td></tr></table>` },
+      { h: '4 · Data model', color: '#8f4fc4', html: `<pre>// urls: _id is the short code (or the alias)
+{ _id: "4c93", longUrl: "https://shop.ex/sale?…",
+  owner: "A", createdAt: ISODate(…), expiresAt: ISODate(…) | null }
+// TTL index: { expiresAt: 1 }, { expireAfterSeconds: 0 }
+
+// counters: one document hands out ID blocks
+{ _id: "url", next: 1001001 }</pre>` },
+      { h: '5 · Request paths', color: '#2f6fe0', html: `<ol>
+        <li><b>Create:</b> LB → Shortener → next ID from the pod's block (refill: <code>$inc 1000</code>) → Base62 → insert → 201.</li>
+        <li><b>Redirect:</b> LB → Redirect → Redis <code>GET url:code</code> → on miss MongoDB <code>findById</code> → <code>SET … EX</code> → 302.</li>
+        <li><b>Analytics:</b> after the 302, publish to Kafka <code>click-events</code> → consumer aggregates in batches.</li></ol>` },
+      { h: '6 · Scaling & reliability', color: '#ce3434', html: `<ul>
+        <li>Stateless services → scale pods horizontally; reads scale separately from writes.</li>
+        <li>Redis cluster for hot codes; CDN / edge cache for the very hottest links.</li>
+        <li>MongoDB replica set, sharded by hashed <code>_id</code>.</li>
+        <li>Single-flight + TTL jitter against stampedes; circuit breaker if Redis is down.</li>
+        <li>Kafka down → drop click events with a metric; never fail the redirect.</li></ul>` },
+    ],
+    decisions: [
+      ['ID blocks + Base62', 'Unique by construction: no collision check; the ID service is called once per 1,000 links.', 'Sequential codes are guessable (shuffle them); crashed pods leave gaps.'],
+      ['Code is the `_id`', 'One primary-key lookup per redirect; the database enforces uniqueness, including aliases.', 'Aliases and generated codes share one namespace: reserve an alias format.'],
+      ['Separate read & write services', 'Reads are 100× writes; each side scales and fails independently.', 'Two services to deploy and monitor.'],
+      ['Redis cache-aside', '~1 ms redirects for hot links; shields MongoDB.', 'Possible stale entries after delete/expiry until the TTL runs out (or delete the key too).'],
+      ['302, not 301', 'Every click reaches us: analytics, expiry and deletion work.', 'More traffic to our servers than a browser-cached 301.'],
+      ['Kafka for click events', 'Analytics never slows down or breaks redirects; bursts are buffered.', 'Counts are approximate (at-least-once, events dropped when Kafka is down).'],
+      ['MongoDB as the store', 'Simple key → value access, TTL indexes, unique `_id`, fits the existing stack.', 'Cassandra / DynamoDB scale writes more easily; the design does not change.'],
+    ],
+    code: [
+      { t: 'Base62 encode', code: 'static final String ABC =\n  "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";\n\nString base62(long id) {\n  StringBuilder sb = new StringBuilder();\n  do { sb.append(ABC.charAt((int) (id % 62))); id /= 62; }\n  while (id > 0);\n  return sb.reverse().toString();   // 1000001 → "4c93"\n}' },
+      { t: 'Reserve an ID block (once per 1,000 links)', code: 'Document c = counters.findOneAndUpdate(\n    eq("_id", "url"),\n    inc("next", 1000),\n    new FindOneAndUpdateOptions()\n        .returnDocument(ReturnDocument.BEFORE));\nlong from = c.getLong("next");   // this pod owns [from, from + 999]' },
+      { t: 'Redirect with cache-aside', code: 'String url = redis.get("url:" + code);\nif (url == null) {\n  Url u = repo.findById(code).orElseThrow(NotFound::new);\n  if (u.expired()) throw new Gone();            // 410\n  url = u.longUrl();\n  redis.set("url:" + code, url, ttlWithJitter());\n}\nclicks.publishAsync(code, request);          // never blocks\nreturn ResponseEntity.status(302)\n    .location(URI.create(url)).build();' },
+      { t: 'Custom alias: let the unique _id decide', code: 'try {\n  urls.insertOne(new Url(alias, longUrl, owner));\n  return created("https://sho.rt/" + alias);   // 201\n} catch (DuplicateKeyException e) {             // E11000\n  return conflict("alias taken");               // 409\n}' },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    cc: { name: 'Concurrency', color: '#c47d1e' },
+    db: { name: 'Database', color: '#13968a' },
+    ca: { name: 'Cache', color: '#ce3434' },
+    mq: { name: 'Messaging', color: '#8f4fc4' },
+    sc: { name: 'Scale', color: '#2f6fe0' },
+    pr: { name: 'Product & security', color: '#c2417a' },
+    tc: { name: 'Tech choices', color: '#65727a' },
+  },
+  followups: [
+    { g: 'cc', q: 'Two users want the same custom alias at the same time. What happens?', what: 'Both inserts race.', why: 'A check-then-insert has a window between the check and the write, so both can see "free".', how: 'The alias is the `_id` (or has a unique index). Both just insert; the database lets one win and the other gets **E11000**, which becomes **409 Conflict**.', trade: 'Aliases and generated codes share one namespace, so reserve a format for aliases (e.g. minimum length).', flow: 'alias' },
+    { g: 'cc', q: 'How do you guarantee generated codes never collide?', what: 'Every code comes from a unique number.', why: 'Blocks are handed out with an atomic `$inc`, so no two pods ever own the same ID.', how: '**ID blocks + Base62**: unique by construction, no collision check. The unique `_id` is a final safety net.', trade: 'Sequential IDs are guessable; apply a reversible shuffle (e.g. a Feistel permutation) before encoding.', flow: 'create' },
+    { g: 'cc', q: 'Why not just hash the long URL (MD5) and take 7 characters?', what: 'Different URLs can produce the same 7-character prefix.', why: 'Truncating a hash throws away most of its bits, so collisions become likely as the table grows (birthday paradox).', how: 'Hashing works only with a **collision check + retry** on every insert. I prefer unique IDs because they need no check.', trade: 'Hashing gives the same code for the same URL for free (dedupe); IDs do not.' },
+    { g: 'db', q: 'The MongoDB primary fails. Do redirects stop?', what: 'Writes pause for a few seconds during the election; cached redirects keep working.', why: 'Most redirects are served from Redis.', how: 'Replica-set failover; for cache misses, read from secondaries if slight staleness is acceptable. Creates retry with backoff.', trade: 'A brand-new link may be briefly missing on a lagging secondary.' },
+    { g: 'db', q: 'How do expired links get cleaned up?', what: 'Expired documents would pile up forever.', why: 'Expired links are dead data and waste storage and cache.', how: 'A **TTL index** on `expiresAt` deletes them in the background (~every 60 s); the redirect also checks `expiresAt` and answers **410 Gone**.', trade: 'Deletion is not instant, so the explicit check in the redirect covers the gap.', flow: 'failures' },
+    { g: 'ca', q: "A viral link's cache entry expires. What happens?", what: 'Thousands of requests miss at once and all hit the database.', why: 'Cache stampede (thundering herd).', how: '**Single-flight lock** (`SET lock NX PX`) so one request rebuilds the entry, **TTL jitter**, **early refresh** of hot keys, a small in-process cache.', trade: 'Waiting requests add a few milliseconds of latency.', flow: 'stampede' },
+    { g: 'ca', q: 'Redis is down. What now?', what: 'Every redirect falls through to MongoDB.', why: 'Cache-aside always falls back to the source of truth.', how: 'Circuit breaker around Redis, a small in-process LRU for the hottest codes, and MongoDB sized for degraded mode.', trade: 'Higher latency and database load until Redis is back.' },
+    { g: 'ca', q: 'An owner deletes a link, but Redis still has it. How do you avoid serving it?', what: 'The cache keeps answering until its TTL expires.', why: 'Cache-aside caches are not updated automatically.', how: 'On delete, remove the database document **and** `DEL url:{code}`; keep TTLs modest so any missed invalidation heals itself.', trade: 'With a CDN in front, purging the edge takes longer.' },
+    { g: 'mq', q: 'Kafka is down. Do redirects fail?', what: 'Click events cannot be published.', why: 'Kafka is only used for analytics.', how: 'Never block the redirect: publish asynchronously, buffer briefly in memory, then drop with a metric.', trade: 'Some clicks are lost, so analytics is approximate.', flow: 'analytics' },
+    { g: 'mq', q: 'Are click counts exact?', what: 'A consumer may process a batch twice after a crash.', why: 'Kafka consumers are at-least-once by default.', how: 'Accept approximate counts, or give each event an id and dedupe within a time window (or use Kafka transactions / idempotent upserts).', trade: 'Exactness costs storage and complexity.' },
+    { g: 'sc', q: 'How do you scale to 100k redirects per second?', what: 'Redirect pods and Redis take the load.', why: 'Reads are 100× writes, and a few codes get most traffic.', how: 'More redirect pods, Redis cluster with replicas, **CDN / edge caching** for the hottest codes, and MongoDB sharded by hashed `_id`.', trade: 'Edge caching makes deletes and expiry take effect more slowly.' },
+    { g: 'sc', q: 'Is the ID Range Service a bottleneck or a single point of failure?', what: 'Pods call it once per 1,000 links.', why: 'Blocks make its load tiny.', how: 'Run it on the replicated database; pods keep working from their current block while it is down; give busy pods bigger blocks.', trade: 'Bigger blocks mean bigger gaps when a pod crashes.', flow: 'failures' },
+    { g: 'sc', q: 'How would you go multi-region?', what: 'Users far from the primary region see slow redirects.', why: 'Each redirect is a network round trip to the region that serves it.', how: 'Serve redirects from every region (local Redis + read replicas); keep creates in one home region, or give each region its own ID range so creates are local too.', trade: 'A just-created link may take a moment to replicate to other regions.' },
+    { g: 'pr', q: '301 or 302?', what: 'A 301 is cached by the browser; a 302 is not.', why: 'Browser caching trades analytics and control for speed.', how: '**302** (or 307) when you need click stats or may expire or change targets; 301 only for permanent links without stats.', trade: '302 means more traffic to your servers.', flow: 'redirect' },
+    { g: 'pr', q: 'The same long URL is shortened twice. Same code?', what: 'By default you get two different codes.', why: 'Each create takes a new ID.', how: 'Optionally index a hash of `(owner, longUrl)` and return the existing code.', trade: 'An extra lookup on every create, and "same code" must be per owner.' },
+    { g: 'pr', q: 'How do you stop abuse (phishing, spam)?', what: 'Short links hide where they lead.', why: 'Attackers use shorteners to slip past filters.', how: 'Check URLs against Safe-Browsing-style lists on create, re-scan asynchronously, rate-limit creates per user/IP, and allow takedowns (410).', trade: 'False positives block legitimate links.' },
+    { g: 'tc', q: 'Why MongoDB and not Cassandra or DynamoDB?', what: 'All of them handle key → value lookups well.', why: 'The access pattern is a simple get by key.', how: 'MongoDB fits the existing stack and gives TTL indexes and a unique `_id`; a wide-column/KV store scales writes more easily.', trade: 'Pick by team skills and scale: the design stays the same.' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>
