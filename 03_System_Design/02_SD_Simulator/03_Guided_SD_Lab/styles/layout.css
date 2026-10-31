@@ -1,0 +1,29 @@
+/* Three areas, sized for a laptop: stage list (left) · architecture canvas (centre, as big as possible) · mentor (right).
+   The page itself never scrolls; each panel scrolls inside. */
+.lab { --nav-w: 228px; --side-w: 372px; display: grid; grid-template-columns: var(--nav-w) minmax(0, 1fr) var(--side-w); height: 100vh; height: 100dvh; }
+body.nav-min .lab { --nav-w: 58px; }
+body.summary .lab { grid-template-columns: var(--nav-w) minmax(0, 1fr); }
+
+.nav { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.center { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.work { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.work[hidden], .doc[hidden] { display: none; }
+.side { background: var(--panel); border-left: 1px solid var(--line); min-height: 0; display: flex; flex-direction: column; }
+.mentor, .inspector { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.mentor[hidden], .inspector[hidden] { display: none; }
+
+/* summary stage: the right panel only appears as a drawer when a component is inspected */
+body.summary .side { display: none; }
+body.summary.inspecting .side { display: flex; position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 92vw); z-index: 20; box-shadow: -10px 0 30px #0003; animation: drawer .2s ease-out; }
+@keyframes drawer { from { transform: translateX(30px); opacity: 0; } }
+
+@media (max-width: 1440px) { .lab { --nav-w: 204px; --side-w: 344px; } }
+@media (max-width: 1240px) { .lab { --nav-w: 58px; --side-w: 330px; } }
+@media (max-width: 760px) {
+  body { overflow: auto; }
+  .lab, body.summary .lab { display: flex; flex-direction: column; height: auto; }
+  .nav { border: 0; border-bottom: 1px solid var(--line); }
+  .work { height: 72vh; flex: none; }
+  .side { border: 0; border-top: 1px solid var(--line); }
+  .doc { height: auto; }
+}

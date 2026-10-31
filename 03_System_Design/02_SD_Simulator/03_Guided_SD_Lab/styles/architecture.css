@@ -1,0 +1,107 @@
+/* Canvas, diagram, request flows and the flow bar. */
+/* row 1: stage title (shortens with …) · what was added · view tools; row 2: the stage's flows */
+.canvas-bar { flex: none; display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr) auto; align-items: center; gap: 6px 10px; padding: 7px 12px; background: var(--panel); border-bottom: 1px solid var(--line); min-height: 46px; }
+.stage-name { min-width: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stage-name .sn { display: inline-block; margin-right: 8px; vertical-align: 2px; font: 700 11px var(--mono); color: var(--primary); background: var(--primary-soft); border-radius: 5px; padding: 2px 6px; }
+.stage-delta { min-width: 0; font-size: 12px; font-weight: 650; color: var(--ok); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.flow-pick { grid-column: 1 / -1; grid-row: 2; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; padding: 1px 0; }
+.fp-label { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); flex: none; }
+.fp { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 15px; font-size: 12.5px; }
+.fp i { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); }
+.fp.on { background: var(--tone); border-color: var(--tone); color: #fff; }
+.fp.on i { background: #fff; }
+.view-tools { grid-column: 3; grid-row: 1; display: flex; align-items: center; gap: 4px; }
+.view-tools .seg { margin-right: 4px; }
+
+.canvas-wrap { position: relative; flex: 1; min-height: 0; background-color: var(--bg); background-image: radial-gradient(var(--grid) 1px, transparent 1px); background-size: 22px 22px; overflow: hidden; }
+#canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; user-select: none; }
+#canvas.panning { cursor: grabbing; }
+.legend { position: absolute; left: 10px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 4px 10px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 85%, transparent); border: 1px solid var(--line); font-size: 11px; color: var(--muted); pointer-events: none; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend .l-sync, .legend .l-async { width: 20px; height: 0; border-top: 2px solid var(--edge); }
+.legend .l-async { border-top: 2px dashed var(--c-messaging); }
+.legend .sw { width: 10px; height: 10px; border-radius: 3px; border: 2px solid var(--c); }
+
+/* ---- nodes ---- */
+.node { cursor: pointer; transition: opacity .3s; }
+.cat-service { --c: var(--c-service); --s: var(--s-service); }
+.cat-messaging { --c: var(--c-messaging); --s: var(--s-messaging); }
+.cat-cache { --c: var(--c-cache); --s: var(--s-cache); }
+.cat-storage { --c: var(--c-storage); --s: var(--s-storage); }
+.cat-infra { --c: var(--c-infra); --s: var(--s-infra); }
+.cat-client { --c: var(--c-client); --s: var(--s-client); }
+.cat-external { --c: var(--c-external); --s: var(--s-external); }
+.node .nb { fill: var(--panel); stroke: var(--c); stroke-width: 1.6; transition: stroke-width .15s, fill .25s, stroke .25s; filter: drop-shadow(0 2px 4px #1d273314); }
+.node .ic { fill: var(--s); }
+.node .ici { font-size: 15px; }
+.node .nl { font: 650 14px var(--font); fill: var(--ink); }
+.node .ns { font: 11px var(--font); fill: var(--muted); }
+.node:hover .nb { stroke-width: 2.4; }
+.node.selected .nb { stroke-width: 3.2; fill: var(--s); }
+.node.ghost .nb, .node.ext .nb { stroke-dasharray: 6 5; }
+.node.ghost .nb { fill: var(--panel-2); }
+.node.new .nb { stroke-width: 2.6; }
+.node .badge rect { fill: var(--ok); }
+.node .badge text { font: 700 9.5px var(--font); fill: #fff; letter-spacing: .05em; }
+.node.going { opacity: .6; }
+.node.going .nb { stroke: var(--fail); stroke-dasharray: 5 4; }
+.node.mark-ok .nb { stroke: var(--ok); fill: var(--ok-soft); stroke-width: 2.6; }
+.node.mark-fail .nb { stroke: var(--fail); fill: var(--fail-soft); stroke-width: 2.6; }
+.node.mark-warn .nb { stroke: var(--warn); fill: var(--warn-soft); stroke-width: 2.6; }
+.node.mark-active .nb { stroke-width: 3; fill: var(--s); }
+.node.mark-down { opacity: .55; }
+.node.mark-down .nb { stroke: var(--fail); fill: var(--fail-soft); stroke-dasharray: 5 4; stroke-width: 2.2; }
+
+/* ---- edges ---- */
+.edge .ep { fill: none; stroke: var(--edge); stroke-width: 1.7; transition: opacity .3s; }
+.edge.k-async .ep { stroke: var(--c-messaging); stroke-dasharray: 7 5; }
+.m-sync path { fill: var(--edge); }
+.m-async path { fill: var(--c-messaging); }
+.m-gone path { fill: var(--fail); }
+.edge.new .ep { stroke-width: 2.3; }
+.edge.going .ep, .gone-path { stroke: var(--fail); stroke-dasharray: 4 4; fill: none; stroke-width: 2; }
+.edge.live .ep { stroke: var(--tone); stroke-width: 2.8; stroke-dasharray: 9 6; animation: march .5s linear infinite; }
+@keyframes march { to { stroke-dashoffset: -15; } }
+.el rect { fill: var(--panel); stroke: var(--line-2); }
+.el text { font: 11px var(--font); fill: var(--muted); }
+.el.k-async text { fill: var(--c-messaging); }
+.el.new rect { stroke: var(--ok); }
+.el.going rect { stroke: var(--fail); stroke-dasharray: 3 3; }
+.el { transition: opacity .3s; }
+
+/* while a flow plays, everything outside its path steps back */
+#canvas.flowing .node:not(.lit) { opacity: .32; }
+#canvas.flowing .edge:not(.lit) .ep { opacity: .25; }
+#canvas.flowing .el:not(.lit) { opacity: .35; }
+
+.tone-req { --tone: var(--c-service); }
+.tone-res, .tone-ok { --tone: var(--ok); }
+.tone-async { --tone: var(--c-messaging); }
+.tone-cache { --tone: var(--c-cache); }
+.tone-fail { --tone: var(--fail); }
+.tone-warn { --tone: var(--warn); }
+.tone-info { --tone: var(--muted); }
+.pk rect { fill: var(--tone); filter: drop-shadow(0 2px 4px #0003); }
+.pk text { font: 650 11.5px var(--mono); fill: #fff; }
+.fchip rect { fill: var(--panel); stroke: var(--tone); stroke-width: 1.5; }
+.fchip text { font: 700 11.5px var(--font); fill: var(--tone); }
+
+/* ---- flow bar ---- */
+.flow-bar { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 12px; background: var(--panel); border-top: 1px solid var(--line); min-height: 64px; }
+.flow-bar.idle { display: flex; color: var(--muted); font-size: 13px; }
+.fb-ctl { display: flex; gap: 4px; }
+.fb-ctl button { width: 34px; height: 32px; padding: 0; font-size: 14px; }
+.fb-main { min-width: 0; display: grid; gap: 2px; position: relative; }
+.fb-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fb-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fb-dots { display: flex; gap: 5px; }
+.fb-dots button { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: 0; background: var(--line-2); }
+.fb-dots button.seen { background: color-mix(in srgb, var(--primary) 45%, transparent); }
+.fb-dots button.cur { background: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.fb-count { font-size: 11.5px; color: var(--muted); margin-left: auto; white-space: nowrap; }
+.fb-cap { font-size: 13.5px; line-height: 1.45; min-height: 2.9em; }
+.fb-hold { position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; background: transparent; }
+.fb-hold i { display: block; height: 100%; width: 0; background: var(--primary); opacity: .5; }
+.flow-bar:not(.hold) .fb-hold i { width: 0 !important; }
+.flow-bar.done .fb-cap::after { content: " ✓ End of flow"; color: var(--ok); font-weight: 650; }

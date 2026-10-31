@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guided System Design Lab</title>
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/layout.css">
+  <link rel="stylesheet" href="styles/architecture.css">
+  <link rel="stylesheet" href="styles/components.css">
+</head>
+<body>
+  <div class="lab">
+    <aside class="nav" id="nav" aria-label="Learning progression"></aside>
+
+    <main class="center">
+      <div class="work" id="work">
+        <div class="canvas-bar">
+          <h2 class="stage-name" id="stage-name"></h2>
+          <span class="stage-delta" id="stage-delta"></span>
+          <div class="flow-pick" id="flow-pick"></div>
+          <div class="view-tools">
+            <span class="seg" id="view-seg" title="Compare with the previous stage">
+              <button data-view="before">Before</button><button data-view="after">After</button>
+            </span>
+            <button class="icon-btn" id="replay-build" title="Replay how this stage changed the architecture" aria-label="Replay the architecture change">⟲</button>
+            <button class="icon-btn" id="zoom-out" title="Zoom out (or mouse wheel; drag to pan)" aria-label="Zoom out">−</button>
+            <button class="icon-btn" id="zoom-fit" title="Fit the diagram" aria-label="Fit the diagram">⤢</button>
+            <button class="icon-btn" id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+          </div>
+        </div>
+        <div class="canvas-wrap">
+          <svg id="canvas" role="img" aria-label="Architecture diagram" preserveAspectRatio="xMidYMid meet"></svg>
+          <div class="legend" aria-hidden="true">
+            <span><i class="l-sync"></i>sync request</span><span><i class="l-async"></i>async event</span>
+            <span><i class="sw cat-service"></i>service</span><span><i class="sw cat-messaging"></i>messaging</span>
+            <span><i class="sw cat-cache"></i>cache</span><span><i class="sw cat-storage"></i>storage / infra</span>
+          </div>
+        </div>
+        <div class="flow-bar idle" id="flow-bar"></div>
+      </div>
+      <div class="doc" id="doc" hidden></div>
+    </main>
+
+    <aside class="side" id="side" aria-label="Mentor and component inspector">
+      <div class="mentor" id="mentor"></div>
+      <div class="inspector" id="inspector" hidden></div>
+    </aside>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="core/lab.js"></script>
+  <script src="core/state.js"></script>
+  <script src="core/progression.js"></script>
+  <script src="components/architecture-canvas.js"></script>
+  <script src="components/flow-visualizer.js"></script>
+  <script src="components/mentor-panel.js"></script>
+  <script src="components/component-inspector.js"></script>
+  <script src="components/progress-tracker.js"></script>
+  <script src="components/interview-summary.js"></script>
+  <script src="systems/index.js"></script>
+  <script src="core/app.js"></script>
+</body>
+</html>

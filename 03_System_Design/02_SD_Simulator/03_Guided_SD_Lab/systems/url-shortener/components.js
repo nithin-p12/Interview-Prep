@@ -1,0 +1,233 @@
+// URL Shortener · component definitions. The inspector renders these fields for every component:
+// purpose, whyIntroduced, without, with, responsibilities[], internalFlow[], failures[], tradeoffs[].
+// category picks the colour: service | messaging | cache | storage | infra | client | external.
+LAB.define('url-shortener', 'components', {
+  client: {
+    name: 'Client', tech: 'browser · mobile app', icon: '👤', category: 'client',
+    purpose: 'The person creating a short link, or the much larger crowd clicking one.',
+    responsibilities: [
+      'Sends `POST /api/urls` with the long URL (and optional alias / expiry).',
+      'Requests `GET /{code}` when a short link is clicked, then follows the `302 Location` header.',
+    ],
+    internalFlow: [
+      'The user clicks `sho.rt/4c92`.',
+      'DNS resolves `sho.rt` to our public entry point.',
+      'The browser sends `GET /4c92`.',
+      'It receives `302 Found` with `Location: <original URL>` and loads that page.',
+    ],
+    failures: ['On 5xx or a timeout the browser shows an error page; clients retry `POST` only with an idempotency key, or they may create two codes.'],
+    tradeoffs: ['**301 vs 302**: a 301 is cached by the browser, so repeat clicks never reach us (cheaper, but invisible to analytics). We use **302** so every click is counted.'],
+  },
+  app: {
+    name: 'Spring Boot app', tech: 'REST API · code generator', icon: '🍃', category: 'service',
+    purpose: 'The only place with business logic: validates URLs, generates short codes, resolves codes and redirects.',
+    whyIntroduced: 'The requirements need logic between the user and the data: validation, unique code generation, expiry checks and the HTTP redirect itself.',
+    without: 'There is nothing to turn a click on a short code into a redirect.',
+    with: 'Two small endpoints cover every functional requirement; the service keeps no state of its own, so it can be copied later.',
+    responsibilities: [
+      '`POST /api/urls`: validate the URL, get the next id, encode it in **base62**, store the mapping, return the short URL.',
+      '`GET /{code}`: look up the code, check `expireAt`, answer `302` (or `404` unknown / `410` expired).',
+      'Publishes a click event per redirect (from stage 3), reads through the cache (from stage 4).',
+      'Keeps no session or local state: any instance can serve any request.',
+    ],
+    internalFlow: [
+      '**Create**: validate scheme + length → next numeric id → `base62(id)` → insert `{_id: code, url, expireAt}` → `201`.',
+      '**Redirect**: read code → (cache, from stage 4) → `findOne({_id: code})` → expired? `410` : `302 Location`.',
+      'Encoding: `base62(1,000,000) = "4c92"`. 7 characters cover 62⁷ ≈ 3.5 trillion codes.',
+    ],
+    failures: [
+      'One instance: a crash or deploy is a full outage (fixed by the load balancer + second instance in stages 5–6).',
+      'Slow downstream calls (DB, cache) tie up request threads; use timeouts on every call.',
+    ],
+    tradeoffs: [
+      '**Counter + base62** gives short, guaranteed-unique codes but they are guessable (sequential). A hash of the URL is not guessable but needs collision handling.',
+      'Statelessness is a design rule, not a feature: anything stored in instance memory breaks once there are two instances.',
+    ],
+  },
+  app2: {
+    extends: 'app', name: 'Service B', tech: 'Spring Boot · B',
+    purpose: 'A second, identical copy of the URL service. Same code, same config, no state of its own.',
+    whyIntroduced: 'One instance cannot serve the traffic reliably, and a single instance means every deploy or crash is an outage.',
+    without: 'All traffic depends on one process; capacity is capped by one machine.',
+    with: 'Traffic is split by the load balancer; if one instance dies the other keeps serving.',
+  },
+  mongo: {
+    name: 'MongoDB', tech: 'urls · counters · clicks', icon: '🗄️', category: 'storage',
+    purpose: 'The durable source of truth for code → URL mappings, the id counter and the click counts.',
+    whyIntroduced: 'Mappings must survive restarts and must be found by code in milliseconds.',
+    without: 'Mappings would live in memory and vanish on the first restart.',
+    with: 'Lookups by `_id` hit the primary-key index; writes are durable on a replica set.',
+    responsibilities: [
+      '`urls`: `{_id: code, url, ownerId, createdAt, expireAt}`; the code is the primary key, so lookups are one index probe.',
+      '`counters`: one document whose `seq` is atomically incremented to hand out ids (or blocks of ids from stage 6).',
+      '`clicks`: per-code counters, written by the analytics consumer (from stage 3).',
+      'A **TTL index** on `expireAt` deletes expired links in the background.',
+    ],
+    internalFlow: [
+      '`findOne({_id: "4c92"})` uses the `_id` index: O(log n), about 1–5 ms.',
+      '`findOneAndUpdate({_id: "url"}, {$inc: {seq: 1}})` is atomic, so two callers never get the same number.',
+      'The TTL monitor runs about every 60 s, so the app still checks `expireAt` itself.',
+    ],
+    failures: [
+      'Primary down: the replica set elects a new primary in about 10 s; writes fail during the election and clients retry.',
+      'Overload from cache misses (stampede, Redis outage) shows as slow queries; protect it with timeouts and a cache lock.',
+    ],
+    tradeoffs: [
+      'Simple key-value access suits a document store and shards easily on `_id` (hashed). A relational DB works too; there are no joins to need it.',
+      'Reads from secondaries scale reads but can be stale for a just-created link.',
+    ],
+  },
+  kafka: {
+    name: 'Kafka', tech: 'topic: url-clicks', icon: '📨', category: 'messaging',
+    purpose: 'A durable, replayable log of click events that decouples the redirect from analytics.',
+    whyIntroduced: 'Counting clicks inside the redirect adds a database write to the hottest path. Kafka lets the redirect hand off the event and return immediately.',
+    without: 'Every redirect waits for an analytics write; when analytics is slow or down, redirects get slow or fail.',
+    with: 'The producer appends the event to a buffer and returns; consumers process at their own pace and can replay.',
+    responsibilities: [
+      'Topic `url-clicks`, partitioned by **short code** so one link\'s events stay in order on one partition.',
+      'Keeps events for days (retention), so a broken consumer can be fixed and replayed.',
+      'Lets several consumer groups read the same events independently (analytics today, fraud detection tomorrow).',
+    ],
+    internalFlow: [
+      'Producer `send(record)` is asynchronous: it batches records in memory and returns at once.',
+      'Brokers append the batch to the partition log and replicate it (RF = 3).',
+      'Consumers in group `analytics` each own some partitions and poll batches.',
+      'After processing, a consumer commits its offset; on restart it resumes from the last committed offset.',
+    ],
+    failures: [
+      'Broker down: leadership moves to a replica; producers retry automatically.',
+      'Whole cluster unavailable: the producer buffer fills. Redirects must not block, so `max.block.ms` is small and events are dropped (and counted) once the buffer is full.',
+      'Consumer lag grows when consumers are slower than producers; counts become stale, redirects are unaffected.',
+    ],
+    tradeoffs: [
+      '**Eventual consistency**: click counts trail reality by seconds.',
+      '**At-least-once** delivery: a consumer crash before committing replays events, so processing must be idempotent.',
+      'A Kafka cluster is real operational cost; for a small service a Redis `INCR` or a log shipper may be enough.',
+    ],
+  },
+  analytics: {
+    name: 'Analytics', tech: 'Kafka consumer group', icon: '📊', category: 'service',
+    purpose: 'Reads click events from Kafka, aggregates them and updates click counts, away from the redirect path.',
+    whyIntroduced: 'Something has to turn the stream of click events into counts, without being on the redirect path.',
+    without: 'Events pile up in Kafka and nobody counts them.',
+    with: 'Counts are updated in batches (one bulk write per few hundred events) and can be rebuilt by replaying the topic.',
+    responsibilities: [
+      'Polls batches of `ClickEvent {eventId, code, ts, referrer, country}`.',
+      'Aggregates in memory (`code → +n`) and writes one bulk `$inc` per batch.',
+      'Records which offsets were applied so a redelivered batch is not counted twice.',
+      'Commits offsets only after the write succeeded.',
+    ],
+    internalFlow: [
+      'Poll up to 500 events from its partitions.',
+      'Group by code: `{4c92: +312, x9Qa: +7, …}`.',
+      'In one transaction: bulk `$inc` on `clicks` and save the last applied offset per partition.',
+      'Commit the Kafka offset. If it crashes before this, the batch comes again and the saved offset makes it a no-op.',
+    ],
+    failures: [
+      'Slow consumer: lag grows; add consumers up to the number of partitions.',
+      'Poison event (cannot be parsed): retry a few times, then send it to a dead-letter topic so the partition is not blocked.',
+    ],
+    tradeoffs: [
+      'Larger batches mean fewer DB writes but staler counts.',
+      'Exact-once counting costs a transaction per batch; approximate counts (allowing rare duplicates) are cheaper and often acceptable.',
+    ],
+  },
+  redis: {
+    name: 'Redis', tech: 'cache · code → URL', icon: '⚡', category: 'cache',
+    purpose: 'Reduce repeated database reads and improve redirect latency.',
+    whyIntroduced: 'High redirect traffic creates excessive database read pressure, and a small set of popular links gets most of the clicks.',
+    without: 'Every redirect needs to query MongoDB.',
+    with: 'Frequently accessed URL mappings are served from memory in under a millisecond; MongoDB only sees cache misses.',
+    responsibilities: [
+      'Holds `code → URL` for recently used links with a TTL (for example 24 h, never beyond the link\'s `expireAt`).',
+      'Evicts the least recently used keys when memory is full (`allkeys-lru`).',
+      'Shared by all service instances, so a link cached by one instance is a hit for every instance.',
+    ],
+    internalFlow: [
+      'Request arrives.',
+      'Redis lookup: `GET url:4c92`.',
+      'Cache hit → return the original URL.',
+      'Cache miss → query MongoDB.',
+      'Populate Redis: `SET url:4c92 <url> EX 86400`.',
+      'Return the response.',
+    ],
+    failures: [
+      'If Redis is unavailable, the service falls back to MongoDB, with a short timeout (about 50 ms) and a circuit breaker so it does not wait on a dead cache, and with overload protection on MongoDB.',
+      '**Cache stampede**: a popular key expires or a viral new link is not cached yet, and thousands of requests miss at once. Only one request (holding `SET lock:<code> NX EX 5`) loads from MongoDB; others wait briefly and re-read.',
+      'Hot key: one viral link concentrates load on one Redis shard; add a small in-process cache (a few seconds) in front of Redis for the hottest codes.',
+    ],
+    tradeoffs: [
+      'Memory cost.',
+      'Cache invalidation: deleting or editing a link must also `DEL` the key.',
+      'Stale data until the TTL expires or the key is deleted.',
+      'Cache stampede on popular misses.',
+    ],
+  },
+  lb: {
+    name: 'Load balancer', tech: 'L7 · TLS · health', icon: '⚖️', category: 'infra',
+    purpose: 'One stable entry point that spreads requests over healthy service instances.',
+    whyIntroduced: 'A single instance cannot take the traffic reliably, and clients must not need to know which instances exist.',
+    without: 'Clients talk to one machine; adding capacity or replacing that machine means changing DNS and waiting for caches.',
+    with: 'Instances can be added, removed and replaced behind one address; unhealthy ones stop receiving traffic.',
+    responsibilities: [
+      'Terminates TLS, so services speak plain HTTP inside the network.',
+      'Routes each request to a healthy instance (round robin or least connections).',
+      'Health-checks `/actuator/health` every few seconds; takes an instance out after repeated failures.',
+      'From stage 7: rate limiting per API key / IP at the edge.',
+    ],
+    internalFlow: [
+      'Accept the HTTPS connection and terminate TLS.',
+      'Pick an instance from the healthy pool (round robin / least connections).',
+      'Forward the request, with timeouts; on connection failure retry another instance for idempotent `GET`s.',
+      'In the background, probe every instance\'s health endpoint and update the pool.',
+    ],
+    failures: [
+      'The LB itself must not be a single point of failure: use a managed LB (several nodes across zones) or an active / passive pair with a floating IP.',
+      'If every instance is unhealthy it can only answer `503` quickly.',
+    ],
+    tradeoffs: [
+      'One more network hop (well under a millisecond inside a data centre).',
+      'Sticky sessions are avoided on purpose; they would tie users to instances and undo statelessness.',
+      'Health checks that are too strict flap instances in and out; too loose and users hit dead instances.',
+    ],
+  },
+  safety: {
+    name: 'URL safety API', tech: 'phishing / malware', icon: '🛡️', category: 'external', ext: true,
+    purpose: 'Tells us whether a long URL is known malware or phishing before we give it a trusted short link.',
+    whyIntroduced: 'Short links hide the destination, which makes them attractive for phishing. A shortener that redirects to malware gets its domain blocked by browsers and mail providers.',
+    without: 'Attackers use our domain to disguise malicious links, and our whole domain ends up on block lists.',
+    with: 'Known-bad URLs are rejected at creation, and links are re-checked in the background.',
+    responsibilities: [
+      'Checked on **create** only, never on redirect (keeps the hot path fast).',
+      'Background re-scan of recently created links; a link that turns bad is disabled (`410`).',
+    ],
+    internalFlow: [
+      'Service sends the URL (or its hash prefix) to the safety API with a short timeout.',
+      'Malicious → `400`, nothing stored. Clean → continue the create flow.',
+      'API timeout → accept, but mark the link for priority re-scan.',
+    ],
+    failures: ['If the external API is down, creates should not fail; accept and queue the link for re-scan.'],
+    tradeoffs: ['Adds 20–100 ms to creates (rare, so acceptable), and false positives block legitimate links.'],
+  },
+  monitor: {
+    name: 'Metrics & alerts', tech: 'Prometheus · Grafana', icon: '📈', category: 'infra',
+    purpose: 'Shows whether the system is healthy and wakes someone up when it is not.',
+    whyIntroduced: 'With caches, queues and several instances, failures become partial and quiet: a falling cache hit ratio or growing consumer lag will not show as an error page.',
+    without: 'Users notice problems before we do.',
+    with: 'Dashboards and alerts on the few numbers that matter.',
+    responsibilities: [
+      'Redirect latency p50 / p99 and error rate (the user-facing SLO).',
+      'Cache hit ratio, Redis memory and evictions.',
+      'Kafka consumer lag, dropped-event count.',
+      'MongoDB query latency, connection-pool usage, replication lag.',
+      'Alerts on SLO burn rate, not on every blip.',
+    ],
+    internalFlow: [
+      'Every service exposes `/actuator/prometheus`.',
+      'Prometheus scrapes every 15 s and stores time series.',
+      'Alert rules (for example p99 > 100 ms for 5 min) page the on-call engineer.',
+    ],
+    failures: ['Monitoring must run separately from what it watches, or an outage also hides itself.'],
+    tradeoffs: ['High-cardinality labels (per short code) explode storage; aggregate per endpoint, not per link.'],
+  },
+});
