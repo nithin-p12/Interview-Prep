@@ -46,8 +46,8 @@
           <p class="cap" id="cap" hidden></p>
           <div class="stage-hint" id="comp-hint" hidden>💡 <span><b>Hover</b> a component or a layer title to see why it's needed · <b>click</b> to pin it</span><button id="tour-btn">▶ Tour all</button></div>
           <div class="view-tools">
-            <button id="loop-btn" class="tool" hidden>⏸ Pause</button
-            ><button id="full-btn" class="tool" title="Full screen (F)">⛶ Full screen</button>
+            <button id="loop-btn" class="tool icon" title="Pause the animation (Space)" aria-label="Pause the animation" hidden>⏸</button
+            ><button id="full-btn" class="tool icon" title="Full screen (F)" aria-label="Full screen">⛶</button>
           </div>
           <div id="guide" class="guide-card" hidden aria-live="polite">
             <span class="gc-read" aria-hidden="true"><span id="gc-read-bar"></span></span>
@@ -178,7 +178,9 @@
     })();
   }
   function renderLoopBtn() {
-    $('loop-btn').textContent = loopPaused ? '▶ Play' : '⏸ Pause';
+    $('loop-btn').textContent = loopPaused ? '▶' : '⏸';
+    $('loop-btn').title = loopPaused ? 'Play the animation (Space)' : 'Pause the animation (Space)';
+    $('loop-btn').setAttribute('aria-label', loopPaused ? 'Play the animation' : 'Pause the animation');
     $('loop-btn').classList.toggle('selected', loopPaused);
   }
   function toggleLoop() {
@@ -563,7 +565,7 @@
       </div>
       <div class="timebar">${E.map((st, k) => `<button data-k="${k}" class="${k === explainAt ? 'on' : ''}" style="flex:${st.min}"><b>${k + 1}. ${esc(st.t)}</b><span>${st.min} min</span></button>`).join('')}</div></div>
       <div class="explain">
-        <ol class="ex-steps">${E.map((st, k) => `<li><button data-k="${k}" class="${k === explainAt ? 'on' : ''}"><span class="sn">${k + 1}</span><span><b>${esc(st.t)}</b><small>${esc(st.goal)}</small></span></button></li>`).join('')}</ol>
+        <ol class="ex-steps">${E.map((st, k) => `<li><button data-k="${k}" class="${k === explainAt ? 'on' : ''}"><span class="sn">${k + 1}</span><span><b>${esc(st.t)} <em>${st.min} min</em></b><small>${esc(st.goal)}</small></span></button></li>`).join('')}</ol>
         <div class="chat-card">
           <div class="chat-head"><span class="eyebrow">Stage ${explainAt + 1} of ${E.length} · ~${s.min} min</span><h3>${esc(s.t)}</h3><p class="muted">${rich(s.goal)}</p></div>
           <div class="chat ${practice ? 'practice' : ''}">${s.lines.map(([w, t]) => `<div class="msg ${who[w][1]}"><span class="who">${who[w][0]}</span><p>${rich(t)}</p></div>`).join('')}</div>
@@ -651,7 +653,9 @@
   document.addEventListener('fullscreenchange', () => {
     const on = !!document.fullscreenElement;
     document.body.classList.toggle('focus', on);
-    $('full-btn').textContent = on ? '✕ Exit full screen' : '⛶ Full screen';
+    $('full-btn').textContent = on ? '✕' : '⛶';
+    $('full-btn').title = on ? 'Exit full screen (F)' : 'Full screen (F)';
+    $('full-btn').setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen');
   });
   addEventListener('keydown', e => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, select')) return;

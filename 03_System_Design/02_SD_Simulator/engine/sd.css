@@ -73,7 +73,10 @@ button:disabled { opacity: .45; cursor: default; }
 #ghost { visibility: hidden; pointer-events: none; }
 #stage text { user-select: none; }
 .stage-wrap:has(#stage.paused)::after { content: "Paused"; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 650; color: var(--muted); background: #f0f1f2; padding: 2px 10px; border-radius: 10px; }
-.view-tools { position: absolute; top: 8px; right: 10px; display: flex; gap: 6px; z-index: 2; }
+.view-tools { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
+/* the diagram leaves a gutter on the right for the icon buttons, so they never cover a component */
+.stage-wrap > #stage, .stage-wrap > #ghost { right: 44px; width: auto; }
+.tool.icon { width: 30px; height: 30px; padding: 0; display: grid; place-items: center; font-size: 14px; border-radius: 8px; }
 .tool { padding: 4px 10px; font-size: 12px; background: #ffffffd9; color: var(--muted); }
 .tool.selected { background: var(--guide-soft); border-color: #d8b7e9; color: #614373; }
 .cap { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); max-width: calc(100% - 40px); padding: 6px 16px; border-radius: 18px; background: #203347e8; color: #fff; font-size: 13.5px; box-shadow: 0 6px 20px #20334733; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -205,10 +208,13 @@ button:disabled { opacity: .45; cursor: default; }
 /* ---------- document tabs ---------- */
 .doc { flex: 1; min-height: 0; overflow: auto; background: #fbfbfc; }
 .doc-pad { max-width: 1240px; margin: 0 auto; padding: 18px 24px 28px; display: grid; gap: 16px; }
-.doc-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.doc-head { display: flex; align-items: center; justify-content: space-between; gap: 6px 16px; flex-wrap: wrap; }
+/* eyebrow and title share one line, the description sits right under them */
+.doc-head > div { flex: 1 1 520px; min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; align-items: baseline; }
 .doc-head .eyebrow { color: var(--m); }
-.doc-head h2 { font-size: 22px; margin: 2px 0 4px; }
-.doc-head p { max-width: 760px; }
+.doc-head h2 { font-size: 20px; margin: 0; }
+.doc-head p { grid-column: 1 / -1; margin: 2px 0 0; font-size: 13px; }
+.doc-head .switch { padding: 4px 11px; font-size: 13px; }
 .switch { display: flex; align-items: center; gap: 7px; padding: 6px 12px; border: 1px solid var(--m-line); border-radius: 18px; background: var(--m-soft); font-weight: 600; cursor: pointer; user-select: none; }
 .switch input { accent-color: var(--m); margin: 0; width: 15px; height: 15px; }
 
@@ -228,6 +234,10 @@ button:disabled { opacity: .45; cursor: default; }
 .ex-steps .sn { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: #eef0f2; color: var(--muted); }
 .ex-steps button.on .sn { background: var(--m); color: #fff; }
 .ex-steps b { display: block; font-size: 14px; }
+.ex-steps b em { font-style: normal; font-weight: 500; font-size: 11.5px; color: var(--muted); margin-left: 4px; }
+.ex-steps button.on b em { color: var(--m); }
+/* wide screens: the left stage list already shows every stage, so the top time bar would repeat it */
+@media (min-width: 1101px) { .timebar { display: none; } }
 .ex-steps small { display: block; font-size: 12px; color: var(--muted); line-height: 1.4; }
 .chat-card { background: #fff; border: 1px solid #e3e6ee; border-radius: 12px; padding: 16px 18px; display: grid; gap: 14px; animation: card-in .25s ease-out; }
 .chat-head h3 { font-size: 19px; margin: 2px 0; }
@@ -349,8 +359,8 @@ button:disabled { opacity: .45; cursor: default; }
 @media (prefers-reduced-motion: reduce) { #stage .sd-back > *, #stage .sd-wires > *, #stage > g > g { transition: none; } }
 
 /* ---------- frozen headers: each document tab keeps its title (and its filters / jump bar) in view ---------- */
-.doc-sticky { position: sticky; top: 0; z-index: 5; display: grid; gap: 12px; margin: -18px -24px 0; padding: 16px 24px 12px; background: #fbfbfcf2; backdrop-filter: blur(6px); border-bottom: 1px solid #eceef0; }
-.doc-sticky h2 { font-size: 20px; }
+.doc-sticky { position: sticky; top: 0; z-index: 5; display: grid; gap: 8px; margin: -18px -24px 0; padding: 10px 24px 8px; background: #fbfbfcf2; backdrop-filter: blur(6px); border-bottom: 1px solid #eceef0; }
+.doc-sticky h2 { font-size: 19px; }
 .jump { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .jump::-webkit-scrollbar { display: none; }
 .jump button { flex: none; padding: 4px 12px; border-radius: 15px; font-size: 12.5px; color: var(--ink); border-color: #e3e6ee; }
