@@ -10,7 +10,7 @@
       arch: {
         nodes: {
           client: { x: 80, y: 300 },
-          app: { x: 520, y: 300, label: 'URL Shortener', sub: 'black box · to design', ghost: true },
+          app: { x: 520, y: 300, label: 'URL Shortener', sub: 'black box', ghost: true },
         },
         edges: [{ from: 'client', to: 'app', label: 'shorten · redirect' }],
       },
@@ -35,7 +35,7 @@
       id: 'basic', nav: 'Basic architecture', title: 'Build the basic architecture',
       arch: {
         nodes: {
-          app: { x: 520, y: 300, label: 'Spring Boot app', sub: 'REST API · code generator', ghost: false },
+          app: { x: 520, y: 300, label: 'Spring Boot app', sub: 'REST API · codes', ghost: false },
           mongo: { x: 800, y: 300 },
         },
         edges: [
@@ -193,7 +193,7 @@
       arch: {
         nodes: {
           lb: { x: 300, y: 300 },
-          app: { x: 520, y: 300, label: 'Spring Boot app', sub: 'instance 1 · behind LB' },
+          app: { x: 520, y: 300, label: 'Spring Boot app', sub: 'instance 1' },
         },
         remove: ['client-app'],
         edges: [
@@ -300,10 +300,10 @@
         nodes: {
           safety: { x: 300, y: 110 },
           monitor: { x: 80, y: 560 },
-          lb: { x: 300, y: 300, sub: 'TLS · rate limit · health' },
+          lb: { x: 300, y: 300, sub: 'TLS · rate limits' },
           redis: { x: 800, y: 110, sub: 'primary + replica' },
           mongo: { x: 800, y: 300, sub: 'replica set × 3' },
-          kafka: { x: 800, y: 490, sub: 'RF 3 · dead-letter topic' },
+          kafka: { x: 800, y: 490, sub: 'RF 3 · DLQ topic' },
         },
         edges: [{ from: 'app', to: 'safety', label: 'check URL' }],
       },

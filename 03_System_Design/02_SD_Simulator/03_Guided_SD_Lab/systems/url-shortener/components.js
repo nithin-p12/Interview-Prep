@@ -19,7 +19,7 @@ LAB.define('url-shortener', 'components', {
     tradeoffs: ['**301 vs 302**: a 301 is cached by the browser, so repeat clicks never reach us (cheaper, but invisible to analytics). We use **302** so every click is counted.'],
   },
   app: {
-    name: 'Spring Boot app', tech: 'REST API · code generator', icon: '🍃', category: 'service',
+    name: 'Spring Boot app', tech: 'REST API · codes', icon: '🍃', category: 'service',
     purpose: 'The only place with business logic: validates URLs, generates short codes, resolves codes and redirects.',
     whyIntroduced: 'The requirements need logic between the user and the data: validation, unique code generation, expiry checks and the HTTP redirect itself.',
     without: 'There is nothing to turn a click on a short code into a redirect.',
@@ -52,7 +52,7 @@ LAB.define('url-shortener', 'components', {
     with: 'Traffic is split by the load balancer; if one instance dies the other keeps serving.',
   },
   mongo: {
-    name: 'MongoDB', tech: 'urls · counters · clicks', icon: '🗄️', category: 'storage',
+    name: 'MongoDB', tech: 'urls · counters', icon: '🗄️', category: 'storage',
     purpose: 'The durable source of truth for code → URL mappings, the id counter and the click counts.',
     whyIntroduced: 'Mappings must survive restarts and must be found by code in milliseconds.',
     without: 'Mappings would live in memory and vanish on the first restart.',
@@ -106,7 +106,7 @@ LAB.define('url-shortener', 'components', {
     ],
   },
   analytics: {
-    name: 'Analytics', tech: 'Kafka consumer group', icon: '📊', category: 'service',
+    name: 'Analytics', tech: 'Kafka consumer', icon: '📊', category: 'service',
     purpose: 'Reads click events from Kafka, aggregates them and updates click counts, away from the redirect path.',
     whyIntroduced: 'Something has to turn the stream of click events into counts, without being on the redirect path.',
     without: 'Events pile up in Kafka and nobody counts them.',
@@ -210,7 +210,7 @@ LAB.define('url-shortener', 'components', {
     tradeoffs: ['Adds 20–100 ms to creates (rare, so acceptable), and false positives block legitimate links.'],
   },
   monitor: {
-    name: 'Metrics & alerts', tech: 'Prometheus · Grafana', icon: '📈', category: 'infra',
+    name: 'Metrics & alerts', tech: 'Prometheus', icon: '📈', category: 'infra',
     purpose: 'Shows whether the system is healthy and wakes someone up when it is not.',
     whyIntroduced: 'With caches, queues and several instances, failures become partial and quiet: a falling cache hit ratio or growing consumer lag will not show as an error page.',
     without: 'Users notice problems before we do.',
