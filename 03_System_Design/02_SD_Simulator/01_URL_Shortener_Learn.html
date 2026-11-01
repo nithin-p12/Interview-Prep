@@ -82,6 +82,192 @@ function learnCache(s, v) {
   return v;
 }
 
+// Shared by the learn flows: a component that goes DOWN after being overloaded for a while and comes back after
+// being comfortably below capacity for a while. h = { over, calm, down }; returns 'down' / 'up' on a change.
+function health(h, load, dt) {
+  h.over = load >= 1 ? h.over + dt : 0;
+  h.calm = load < .75 ? h.calm + dt : 0;
+  if (!h.down && h.over > 1.2) { h.down = true; return 'down'; }
+  if (h.down && h.calm > 1.5) { h.down = false; return 'up'; }
+}
+const rps = r => (r * 1000).toLocaleString('en', { maximumFractionDigits: 0 });
+
+// ---- Why Kafka: analytics written synchronously on every redirect ----
+// The analytics store takes about 4,000 single click writes/s; batched writes cost a fraction of that.
+const ANA_CAP = 4;
+function learnKafka(s, v) {
+  for (const id of ['shortener', 'idgen']) v.n[id].style.opacity = .16;
+  v.n.redis.style.opacity = 0; v.n.kafka.style.opacity = 0;
+  for (const [k, w] of Object.entries(s.links)) {
+    if (/redis|kafka/.test(k)) w.style.opacity = 0;
+    else if (/shortener|idgen/.test(k)) w.style.opacity = .12;
+  }
+  const sync = s.wire('redirect', 'analytics');
+  s.setSub(v.n.analytics, 'click counts · sync');
+  const L = v.L = { rate: 0, async: false, load: 0, lat: 12, queue: 0, tick: 0, acc: 0, h: { over: 0, calm: 0, down: false } };
+  const meter = SD.meter(s, 1005, 202);
+  const traffic = s.chip(12, 205, '', { color: TEAL, anchor: 'start' });
+  const latency = s.chip(12, 172, '', { color: GREEN, anchor: 'start' });
+  const lag = s.chip(1005, 437, '', { color: PURPLE });
+  lag.style.display = 'none';
+  let downChip = null;
+  const look = on => {
+    sync.style.opacity = on ? 0 : '';
+    for (const k of ['redirect>kafka', 'kafka>analytics']) s.links[k].style.opacity = on ? '' : .25;
+    v.n.kafka.style.opacity = on ? '' : .35;
+    s.setSub(v.n.analytics, on ? 'click counts · batched' : 'click counts · sync');
+  };
+  L.addKafka = async () => {
+    L.async = true; look(true);
+    await s.pop(v.n.kafka, 400);
+    await s.draw(s.links['redirect>kafka'], 400);
+    await s.draw(s.links['kafka>analytics'], 400);
+  };
+  L.showSwitch = () => L.sw ??= SD.toggle(s, 1005, 485, 'Kafka (async)', () => L.async, on => { L.async = on; look(on); });
+
+  const reply = (color = GREEN) => SD.dot(s, ['redirect', 'lb', 'client'], color, { r: 4, ms: 380 });
+  const spawn = () => {
+    SD.dot(s, ['client', 'lb', 'redirect', 'mongo'], TEAL).then(ok => {
+      if (!ok) return;
+      return SD.dot(s, ['mongo', 'redirect'], TEAL, { r: 4, ms: 300 });
+    }).then(ok => {
+      if (!ok) return;
+      if (L.async) { // answer now, emit the click event; the consumer catches up on its own
+        reply();
+        SD.dot(s, ['redirect', 'kafka'], PURPLE, { r: 4, ms: 380 }).then(ok => { if (ok) L.queue++; });
+        return;
+      }
+      // synchronous: the redirect waits for the analytics write, which slows down as the store fills up
+      const slow = 1 + 3 * Math.max(0, L.load - .6);
+      SD.dot(s, ['redirect', 'analytics'], PURPLE, { r: 4, ms: 420 * slow, fail: L.h.down }).then(ok => {
+        if (ok === undefined) return;
+        if (!ok) { reply(RED); return; }
+        SD.dot(s, ['analytics', 'redirect'], PURPLE, { r: 3, ms: 300 * slow }).then(ok => { if (ok) reply(); });
+      });
+    });
+  };
+  SD.loop(s, dt => {
+    for (L.acc += dt * L.rate; L.acc >= 1; L.acc--) spawn();
+    // the consumer polls about once a second and writes the whole batch as a few aggregated rows
+    L.tick += dt;
+    if (L.tick >= 1) {
+      L.tick = 0;
+      if (L.queue && !L.h.down) {
+        const n = L.queue; L.queue = 0;
+        SD.dot(s, ['kafka', 'analytics'], PURPLE, { r: 7, ms: 500 });
+        s.flash(1005, 268, `batch ×${n}k`, { color: PURPLE }, 600).catch(() => {});
+      }
+    }
+    const target = L.async ? .15 + L.rate * .015 : L.rate / ANA_CAP;
+    L.load += (target - L.load) * Math.min(1, dt * 1.4);
+    meter.set(L.load);
+    // redirect latency: a 12 ms lookup, plus the analytics write when it is synchronous
+    const goal = L.async ? 12 : 12 + 20 / (1 - Math.min(.95, L.load));
+    L.lat += (goal - L.lat) * Math.min(1, dt * 2);
+    const failing = !L.async && L.h.down;
+    s.setChip(traffic, `traffic ${rps(L.rate)} req/s${failing ? ' · errors!' : ''}`, { color: failing ? RED : TEAL, stroke: failing ? RED : '#d5d9dc' });
+    const lc = failing ? RED : L.lat < 100 ? GREEN : L.lat < 250 ? AMBER : RED;
+    s.setChip(latency, failing ? 'redirect latency: timeouts ✕' : `redirect latency ${Math.round(L.lat)} ms`, { color: lc, stroke: lc === GREEN ? '#d5d9dc' : lc });
+    lag.style.display = L.async ? '' : 'none';
+    if (L.async) s.setChip(lag, `consumer lag ${L.queue}k events`);
+    const change = health(L.h, L.load, dt);
+    if (change === 'down') {
+      s.tone(v.n.analytics, 'fail'); s.setSub(v.n.analytics, 'DOWN · write timeouts', RED);
+      downChip = s.chip(1005, 100, '✕ DOWN', { color: '#fff', fill: RED, stroke: RED });
+      s.shake(v.n.analytics).catch(() => {});
+    } else if (change === 'up') {
+      s.tone(v.n.analytics, 'ok'); s.setSub(v.n.analytics, 'healthy again', GREEN);
+      downChip?.remove(); downChip = null;
+    }
+  }, 50);
+  return v;
+}
+
+// ---- Why a load balancer + more instances: one Redirect Service instance runs out of CPU ----
+// One instance serves about 7,000 redirects/s. Redis is already in front of MongoDB.
+const INST_CAP = 7;
+const INST = ['redirect', 'redirect2', 'redirect3'];
+function learnScale(s, v) {
+  v.n.shortener.style.opacity = 0;
+  for (const id of ['idgen', 'kafka', 'analytics']) v.n[id].style.opacity = .16;
+  v.n.lb.style.opacity = 0;
+  for (const [k, w] of Object.entries(s.links)) {
+    if (/shortener|lb/.test(k)) w.style.opacity = 0;
+    else if (/idgen|kafka|analytics/.test(k)) w.style.opacity = .12;
+  }
+  const direct = s.wire('client', 'redirect');
+  const app = { color: '#13968a', soft: '#dcf1ee' };
+  v.n.redirect2 = s.node('redirect2', { x: 445, y: 265, label: 'Redirect Service', sub: 'instance 2', icon: '↪️', ...app });
+  v.n.redirect3 = s.node('redirect3', { x: 445, y: 145, label: 'Redirect Service', sub: 'instance 3', icon: '↪️', ...app });
+  const extra = [v.n.redirect2, v.n.redirect3];
+  for (const id of ['redirect2', 'redirect3']) for (const [a, b] of [['lb', id], [id, 'redis'], [id, 'mongo']]) extra.push(s.wire(a, b));
+  const lbWires = ['client>lb', 'lb>redirect'].map(k => s.links[k]);
+  const L = v.L = { rate: 0, lb: false, rr: 0, acc: 0, st: {} };
+  INST.forEach((id, i) => {
+    const n = v.n[id];
+    L.st[id] = { load: 0, over: 0, calm: 0, down: false, crashed: false, sub: i ? `instance ${i + 1}` : 'single instance', meter: SD.meter(s, n._x, n._y + 44) };
+  });
+  s.setSub(v.n.redirect, 'single instance');
+  const traffic = s.chip(12, 205, '', { color: TEAL, anchor: 'start' });
+  const revive = id => { Object.assign(L.st[id], { down: false, crashed: false, over: 0, calm: 0 }); s.tone(v.n[id], null); s.setSub(v.n[id], L.st[id].sub); };
+  const look = on => {
+    L.lb = on;
+    L.st.redirect.sub = on ? 'instance 1' : 'single instance';
+    INST.forEach(revive);
+    v.n.lb.style.opacity = on ? '' : 0;
+    for (const w of lbWires) w.style.opacity = on ? '' : 0;
+    direct.style.opacity = on ? 0 : '';
+    for (const e of extra) e.style.opacity = on ? '' : 0;
+    for (const id of ['redirect2', 'redirect3']) L.st[id].meter.g.style.display = on ? '' : 'none';
+  };
+  look(false);
+  L.addInstances = async () => {
+    look(true);
+    await s.pop(v.n.lb, 380);
+    await Promise.all([s.pop(v.n.redirect2, 380), s.pop(v.n.redirect3, 380)]);
+    await Promise.all([...lbWires, ...extra.slice(2)].map(w => s.draw(w, 450)));
+  };
+  L.crash = id => { const st = L.st[id]; st.crashed = st.down = true; s.tone(v.n[id], 'fail'); s.setSub(v.n[id], '✕ crashed · out of pool', RED); s.shake(v.n[id]).catch(() => {}); };
+  L.showSwitch = () => L.sw ??= SD.toggle(s, 250, 470, '3 instances + LB', () => L.lb, look);
+
+  // without a load balancer every client talks to the one instance; with it, round robin over the healthy ones
+  const pool = () => L.lb ? INST.filter(id => !L.st[id].down) : ['redirect'];
+  const spawn = () => {
+    const p = pool();
+    if (!p.length) return;
+    const id = p[L.rr++ % p.length];
+    const head = L.lb ? ['client', 'lb', id] : ['client', id];
+    SD.dot(s, head, TEAL, { fail: L.st[id].down }).then(ok => {
+      if (ok === undefined) return;
+      if (!ok) { SD.dot(s, L.lb ? ['lb', 'client'] : [id, 'client'], RED, { r: 4 }); return; }
+      const store = Math.random() < .9 ? 'redis' : 'mongo';
+      SD.dot(s, [id, store], store === 'redis' ? AMBER : TEAL, { r: 4, ms: 300 })
+        .then(ok => { if (ok) SD.dot(s, [store, ...head.slice().reverse()], GREEN, { r: 4, ms: 380 }); });
+    });
+  };
+  SD.loop(s, dt => {
+    for (L.acc += dt * L.rate; L.acc >= 1; L.acc--) spawn();
+    const p = pool();
+    let failing = false;
+    for (const id of INST) {
+      const st = L.st[id], n = v.n[id];
+      const inPool = p.includes(id) || (!L.lb && id === 'redirect');
+      const target = inPool ? L.rate / p.length / INST_CAP : 0;
+      st.load += (target - st.load) * Math.min(1, dt * 1.4);
+      st.meter.set(st.load);
+      if (!L.lb && id !== 'redirect') continue;
+      if (st.crashed) continue;
+      const change = health(st, st.load, dt);
+      if (change === 'down') { s.tone(n, 'fail'); s.setSub(n, '✕ DOWN · out of threads', RED); s.shake(n).catch(() => {}); }
+      else if (change === 'up') { s.tone(n, 'ok'); s.setSub(n, `${st.sub} · back`, GREEN); }
+      if (!L.lb && st.down) failing = true;
+    }
+    if (L.lb && !p.length) failing = true;
+    s.setChip(traffic, `traffic ${rps(L.rate)} req/s${failing ? ' · errors!' : ''}`, { color: failing ? RED : TEAL, stroke: failing ? RED : '#d5d9dc' });
+  }, 50);
+  return v;
+}
+
 window.DESIGN = {
   id: 'url', n: 1, title: 'URL Shortener', tagline: 'TinyURL / bit.ly: unique short codes, millisecond redirects',
   viewBox: [1100, 520],
@@ -256,6 +442,57 @@ window.DESIGN = {
   flows: [
     // ---------- learn: a problem appears in a live stream of traffic, then a component solves it ----------
     {
+      id: 'learn-kafka', title: '🎓 Why Kafka?', sub: 'learn: sync analytics → queue', color: PURPLE,
+      build: (s, v) => learnKafka(s, v),
+      takeaway: 'Anything the user does not need to wait for should be **off the request path**. Writing analytics synchronously ties redirect latency and uptime to the analytics store; publishing a click event to Kafka and consuming it in batches decouples them. Flip the switch any time to feel the difference.',
+      steps: [
+        {
+          title: 'A normal day: every redirect also writes the click',
+          text: 'There is no Kafka yet. The Redirect Service looks the code up in MongoDB, then **writes the click to Analytics and waits for it** before answering. Each dot is about **1,000 redirects/s**; the analytics store takes roughly **4,000 single writes/s**, and today we send 2,000.',
+          observe: 'Every request makes a purple round trip to Analytics before the green reply goes back. Latency is fine.',
+          focus: v => [v.n.redirect, v.n.analytics],
+          async run(s, v) { v.L.rate = 2; await s.wait(4000); },
+        },
+        {
+          title: 'Traffic grows, and every click is a write',
+          text: 'Redirect traffic climbs to **7,000/s**. Looking up the URL is as fast as ever, but every click is also a small write into the analytics store, and that store fills up first.',
+          observe: 'The Analytics meter climbs into red, and the redirect latency climbs with it.',
+          focus: v => [v.n.analytics, v.n.client],
+          async run(s, v) { await s.clock.tween(5000, t => { v.L.rate = 2 + 5 * t; }, true); await s.wait(3000); },
+        },
+        {
+          title: 'Analytics falls over and takes redirects with it',
+          text: 'The analytics store times out, so the redirects waiting on it time out too. **Users cannot open links because a dashboard is overloaded.** The URL was found in MongoDB; the request still fails.',
+          observe: 'Analytics goes DOWN and red dots flow back to the users.',
+          say: 'If analytics sits on the request path, an analytics outage is a redirect outage.',
+          focus: v => [v.n.analytics, v.n.client],
+          async run(s) { await s.wait(4500); },
+        },
+        {
+          title: 'Put Kafka between them',
+          text: 'Now the Redirect Service **answers first**, then publishes a tiny event `{code, ts, country}` to the **click-events** topic (fire-and-forget, about 1 ms). An analytics **consumer** reads the topic at its own pace and writes **aggregated batches**: thousands of clicks become a few rows.',
+          observe: 'Kafka appears; green replies leave immediately, purple events queue in Kafka, and big batch dots move to Analytics.',
+          focus: v => [v.n.kafka],
+          async run(s, v) { await v.L.addKafka(); await s.wait(4500); },
+        },
+        {
+          title: 'Fast redirects, and analytics catches up',
+          text: 'Same 7,000 redirects/s, but latency is back to the **~12 ms lookup** and Analytics recovers because batched writes are cheap. If Analytics goes down now, events simply wait in Kafka (consumer lag grows) and are processed when it returns.',
+          observe: 'Redirect latency drops to about 12 ms and the Analytics meter returns to green.',
+          say: 'Clicks go to Kafka asynchronously; the consumer writes batches, so analytics can never slow or break a redirect.',
+          focus: v => [v.n.kafka, v.n.analytics, v.n.client],
+          async run(s) { await s.wait(4500); },
+        },
+        {
+          title: 'Try it: switch Kafka off',
+          text: 'Use the **Kafka (async)** switch under Kafka. Off: clicks are written synchronously again, latency climbs and Analytics goes down with redirects failing. On: redirects are fast and Analytics recovers.',
+          observe: 'Turn the switch off and on and watch the redirect latency and the Analytics meter.',
+          focus: v => [v.n.kafka, v.n.analytics],
+          async run(s, v) { v.L.showSwitch(); await s.wait(3000); },
+        },
+      ],
+    },
+    {
       id: 'learn-cache', title: '🎓 Why a cache?', sub: 'learn: overload → Redis', color: AMBER,
       build: (s, v) => learnCache(s, v),
       takeaway: 'Without a cache, **every click is a database read**, so a viral link can take MongoDB down. Cache-aside on Redis serves the hot links from memory and MongoDB only sees the misses. Flip the switch any time to feel the difference.',
@@ -311,6 +548,65 @@ window.DESIGN = {
           observe: 'Turn the switch off and on and watch the MongoDB meter.',
           focus: v => [v.n.redis, v.n.mongo],
           async run(s) { await s.wait(3000); },
+        },
+      ],
+    },
+    {
+      id: 'learn-scale', title: '🎓 Why a load balancer?', sub: 'learn: one instance → many', color: BLUE,
+      build: (s, v) => learnScale(s, v),
+      takeaway: 'One instance is both a **capacity ceiling** and a **single point of failure**. Because the Redirect Service is stateless, we run identical copies behind a load balancer that spreads traffic and health-checks them, and size the pool so it survives losing one (N+1).',
+      steps: [
+        {
+          title: 'One server, one address',
+          text: 'Clients talk straight to **one Redirect Service** instance; Redis already sits in front of MongoDB. One instance handles about **7,000 redirects/s** before its CPU and threads run out. Today: 3,000.',
+          observe: 'All traffic goes to the single instance; its load meter is green.',
+          focus: v => [v.n.redirect],
+          async run(s, v) { v.L.rate = 3; await s.wait(4000); },
+        },
+        {
+          title: 'Traffic quadruples',
+          text: 'Growth plus a viral link: **12,000 redirects/s**. Redis and MongoDB are fine (the cache does its job), but every request still needs CPU and a thread on the **same single instance**.',
+          observe: 'The instance meter climbs through amber into red.',
+          focus: v => [v.n.redirect],
+          async run(s, v) { await s.clock.tween(5000, t => { v.L.rate = 3 + 9 * t; }, true); await s.wait(3000); },
+        },
+        {
+          title: 'The single instance falls over',
+          text: 'Requests queue, threads run out, health checks fail and the process stops answering. **Everything is down**, even though the cache and database are healthy. A deploy or a crash would do the same at any traffic level: it is a **single point of failure**.',
+          observe: 'The instance goes DOWN and only red dots come back.',
+          say: 'One instance is both a capacity ceiling and a single point of failure.',
+          focus: v => [v.n.redirect, v.n.client],
+          async run(s) { await s.wait(4500); },
+        },
+        {
+          title: 'Add instances behind a load balancer',
+          text: 'The Redirect Service keeps **no state** (it lives in Redis and MongoDB), so we can run identical copies. A **load balancer** gives clients one address, spreads requests (round robin / least connections) and **health-checks** each instance, taking unhealthy ones out of the pool.',
+          observe: 'The load balancer and two more instances appear, and the stream splits three ways.',
+          focus: v => [v.n.lb, v.n.redirect2, v.n.redirect3],
+          async run(s, v) { await v.L.addInstances(); await s.wait(4500); },
+        },
+        {
+          title: 'Same traffic, split three ways',
+          text: 'Still 12,000 redirects/s, now **~4,000 per instance**, comfortably below the limit. Need more? Add instances (autoscale on CPU); no code changes.',
+          observe: 'All three meters sit around 57%, green.',
+          say: 'Stateless services scale horizontally: add instances behind the load balancer.',
+          focus: v => [v.n.redirect, v.n.redirect2, v.n.redirect3],
+          async run(s) { await s.wait(4500); },
+        },
+        {
+          title: 'An instance crashes, and nobody notices',
+          text: 'Instance 3 dies. The load balancer\'s health check fails, it is **removed from the pool**, and the other two take ~6,000/s each: busy, but up. That is why we size for **N+1**: the pool must survive losing one.',
+          observe: 'Instance 3 turns red; the stream reroutes to instances 1 and 2, whose meters rise to amber. No red dots reach users.',
+          say: 'Health checks route around failures; size the pool for N+1.',
+          focus: v => [v.n.redirect3, v.n.lb],
+          async run(s, v) { v.L.crash('redirect3'); await s.wait(4500); },
+        },
+        {
+          title: 'Try it: 1 instance vs 3',
+          text: 'Use the **3 instances + LB** switch. Off: back to one instance, which overloads and goes down. On: three healthy instances behind the load balancer share the traffic.',
+          observe: 'Turn the switch off and on and watch the instance meters.',
+          focus: v => [v.n.lb, v.n.redirect],
+          async run(s, v) { v.L.showSwitch(); await s.wait(3000); },
         },
       ],
     },
