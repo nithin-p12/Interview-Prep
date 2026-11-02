@@ -27,8 +27,6 @@
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 16px; background: var(--m-soft); border: 1px solid var(--m-line); color: #3d4a55; }
 .pill b { color: var(--m); }
 .how-sep { color: #b5bcc1; }
-.how-keys { margin-left: auto; color: var(--muted); font-size: 12px; }
-kbd { font: 11px Consolas, monospace; padding: 1px 5px; border: 1px solid #d5d9dc; border-bottom-width: 2px; border-radius: 4px; background: #fafbfc; color: var(--ink); }
 .level { padding: 16px 18px 18px; border-radius: 14px; background: #eef3fd; border: 1px solid #cfdcf6; }
 .level header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .lv-chip { padding: 2px 10px; border-radius: 12px; background: #4f7bd9; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
@@ -59,7 +57,7 @@ a.dcard:hover { border-color: #4f7bd9; box-shadow: 0 6px 18px #20334714; transfo
 .must-side { display: grid; align-content: center; gap: 6px; padding: 10px 14px; border: 1px dashed #cfdcf6; border-radius: 10px; background: #ffffffa0; font-size: 12.5px; color: var(--muted); max-width: 260px; }
 .must-side a { color: var(--primary); font-weight: 650; text-decoration: none; }
 @media (max-width: 700px) { .must { grid-template-columns: 1fr; } .must-side { max-width: none; } }
-@media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .how-keys { display: none; } }
+@media (max-width: 900px) { .hero { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .bar, .map { padding-left: 16px; padding-right: 16px; } .hero h1 { font-size: 21px; } .how-sep { display: none; } }
 </style>
 </head>
@@ -83,7 +81,6 @@ a.dcard:hover { border-color: #4f7bd9; box-shadow: 0 6px 18px #20334714; transfo
     <span class="pill t-explain"><b>4 How to explain</b></span><span class="how-sep">›</span>
     <span class="pill t-answer"><b>5 Interview answer</b></span><span class="how-sep">›</span>
     <span class="pill t-followups"><b>6 Follow-ups</b></span>
-    <span class="how-keys"><kbd>1</kbd>–<kbd>6</kbd> sections <kbd>Space</kbd> pause <kbd>←→</kbd> steps <kbd>F</kbd> full screen</span>
   </div>
   <section class="level">
     <header><span class="lv-chip">12 designs</span><h2>Classic interview problems</h2><p>In study order. Kafka, caching and load balancing are taught once in #1; later designs only teach what is new to them.</p><span class="count" id="count"></span></header>
