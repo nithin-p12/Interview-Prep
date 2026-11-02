@@ -75,7 +75,7 @@ button:disabled { opacity: .45; cursor: default; }
 .stage-wrap:has(#stage.paused)::after { content: "Paused"; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 650; color: var(--muted); background: #f0f1f2; padding: 2px 10px; border-radius: 10px; }
 .view-tools { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
 /* the diagram leaves a gutter on the right for the icon buttons, so they never cover a component */
-.stage-wrap > #stage, .stage-wrap > #ghost { right: 44px; width: auto; }
+.stage-wrap > #stage, .stage-wrap > #ghost { right: 44px; width: calc(100% - 44px); }
 .tool.icon { width: 30px; height: 30px; padding: 0; display: grid; place-items: center; font-size: 14px; border-radius: 8px; }
 .tool { padding: 4px 10px; font-size: 12px; background: #ffffffd9; color: var(--muted); }
 .tool.selected { background: var(--guide-soft); border-color: #d8b7e9; color: #614373; }
@@ -323,7 +323,7 @@ button:disabled { opacity: .45; cursor: default; }
   .sd { height: auto; min-height: 100dvh; padding: 12px 16px 20px; }
   .card { flex: none; }
   .stage-wrap { flex: none; min-height: 0; display: flex; flex-direction: column; }
-  #stage { position: static; height: auto; aspect-ratio: 1100 / 520; }
+  #stage, .stage-wrap > #stage { position: static; width: 100%; height: auto; aspect-ratio: 1100 / 520; }
   #ghost { display: none; }
   .view-tools { display: none; }
   .guide-card, .pop, .stage-hint { position: static; width: auto !important; max-width: none; max-height: none; margin: 0 12px 10px; transition: none; }
