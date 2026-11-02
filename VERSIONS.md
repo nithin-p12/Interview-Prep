@@ -33,10 +33,11 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | Java Core | `java-interview-line` | Java Backend Interview Line | archived v1 | `_archive/01_Java_Core/Java_Backend_Interview_Line.html` |
 | Design Patterns | `patterns-roadmap` | Design Patterns Roadmap | archived v1 | `_archive/02_Design_Patterns/01_Design_Patterns_Roadmap_v1.html` |
 | Design Patterns | `patterns-interview` | Design Patterns Interview Guide | archived v2 | `_archive/02_Design_Patterns/02_Design_Patterns_Interview_v2.html` |
+| System Design | `core-components` | Core Components (watch first) | v1.0 | `03_System_Design/02_SD_Simulator/00_Core_Components.html` |
 | System Design | `fireflink-sd` | FireFlink System Design | v1.0 | `03_System_Design/FireFlink_System_Design.html` |
 | System Design | `fireflink-platform` | FireFlink Platform Architecture | archived v1 | `_archive/03_System_Design/01_FireFlink_Platform_Architecture_v1.html` |
-| System Design | `sd-simulator` | SD Interview Simulator (home) | v3.2 | `03_System_Design/02_SD_Interview_Simulator.html` |
-| System Design | `sd-url-shortener` | URL Shortener (TinyURL) | v5.2 | `03_System_Design/02_SD_Simulator/01_URL_Shortener_Learn.html` |
+| System Design | `sd-simulator` | SD Interview Simulator (home) | v3.3 | `03_System_Design/02_SD_Interview_Simulator.html` |
+| System Design | `sd-url-shortener` | URL Shortener (TinyURL) | v2.2 | `03_System_Design/02_SD_Simulator/01_URL_Shortener.html` |
 | System Design | `sd-ticket-booking` | Ticket Booking | v2.2 | `03_System_Design/02_SD_Simulator/03_Ticket_Booking.html` |
 | System Design | `sd-file-upload` | File Upload & Storage | v2.2 | `03_System_Design/02_SD_Simulator/06_File_Upload.html` |
 | System Design | `sd-rate-limiter` | Rate Limiter | archived v1 | `_archive/03_System_Design/02_SD_Interview_Simulator_v1.html#rate/1` |
@@ -197,6 +198,12 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 ### System Design
 
+**Core Components (watch first)** · `core-components`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-02 | Load balancer, Cache (Redis), Queue (Kafka): What · Without vs With (live traffic + switch) · How it works (variants) · Pros & cons · When to choose (+ alternatives) · Interview lines + Q&A; When to use what: cheat sheet + 7-question quiz. | current file · tag `core-components/v1.0` |
+
 **FireFlink System Design** · `fireflink-sd`
 
 | Version | Date | What it has | Where |
@@ -213,7 +220,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v3.2 | 2026-11-02 | Keyboard-shortcut hint row removed. | current file · tag `sd-simulator/v3.2` |
+| v3.3 | 2026-11-02 | 0 · Core Components as the full-width "★ Watch first" card; URL Shortener card opens the classic page. | current file · tag `sd-simulator/v3.3` |
+| v3.2 | 2026-11-02 | Keyboard-shortcut hint row removed. | git tag `sd-simulator/v3.2` |
 | v3.1 | 2026-11-02 | URL Shortener as full-width "★ Must read first" card with its 🎓 lessons + classic link. | git tag `sd-simulator/v3.1` |
 | v3.0 | 2026-10-30 | Hub of one-page-per-design cards; rebuilt designs open, others link the v2 file. | git tag `sd-simulator/v3.0` |
 | v2.0 | 2026-10-23 | All 12 designs in one file. | `_archive/03_System_Design/02_SD_Interview_Simulator_v1.html` · tag `sd-simulator/v2.0` |
@@ -223,12 +231,12 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v5.2 | 2026-11-02 | LATEST: full-screen fix (all four layers in view). Must read first; Kafka/cache/LB are taught only here. | current file · tag `sd-url-shortener/v5.2` |
+| v5.2 | 2026-11-02 | Learn page: full-screen fix (removed 2026-11-02; its lessons moved to Core Components v1.0). | git tag `sd-url-shortener/v5.2` |
 | v5.1 | 2026-11-01 | + 🎓 Why Kafka? and 🎓 Why a load balancer? (instances, crash, N+1). | git tag `sd-url-shortener/v5.1` |
 | v5.0 | 2026-11-01 | v2 + "learn" flows with live traffic: 🎓 Why a cache? (MongoDB DOWN → Redis, ON/OFF switch). | git tag `sd-url-shortener/v5.0` |
 | v4.0 | 2026-11-01 | Guided page in the existing look: stages as tabs, mentor card, evolve animation, compare (removed 2026-11-02). | git tag `sd-url-shortener/v4.0` |
 | v3.0 | 2026-10-31 | Guided SD Lab: separate dark-themed app, 8 mentor-led stages (removed 2026-11-02). | git tag `sd-url-shortener/v3.0` |
-| v2.2 | 2026-11-02 | CLASSIC (kept as a file): v2 + full-screen fix. | `03_System_Design/02_SD_Simulator/01_URL_Shortener.html` · tag `sd-url-shortener/v2.2` |
+| v2.2 | 2026-11-02 | CURRENT: the classic page (v2 + full-screen fix). Building blocks are taught in Core Components. | current file · tag `sd-url-shortener/v2.2` |
 | v2.1 | 2026-10-31 | Icon-only stage controls, no duplicate stage bar, compact doc headers. | git tag `sd-url-shortener/v2.1` |
 | v2.0 | 2026-10-30 | Own page, 6 tabs: Overview, Components, Flows, How to explain, Interview answer, Follow-ups. | git tag `sd-url-shortener/v2.0` |
 | v1 | 2026-10-23 | Section of the all-in-one simulator. | `_archive/03_System_Design/02_SD_Interview_Simulator_v1.html#url/1` · tag `sd-url-shortener/v1` |

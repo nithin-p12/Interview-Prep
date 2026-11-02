@@ -1,0 +1,79 @@
+/* Core Components page: additions on top of sd.css (same palette, white stage card). */
+.cc-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.cc-pills button { display: inline-flex; align-items: center; gap: 7px; padding: 4px 13px 4px 5px; border-radius: 18px; color: var(--ink); font-weight: 600; border-color: color-mix(in srgb, var(--c) 35%, #fff); }
+.cc-pills .ci { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 14%, #fff); font-size: 13px; }
+.cc-pills button:hover { border-color: var(--c); background: color-mix(in srgb, var(--c) 7%, #fff); }
+.cc-pills button.selected { background: var(--c); border-color: var(--c); color: #fff; }
+.cc-pills button.selected .ci { background: #ffffff33; }
+
+.cc .card { border-top-color: var(--m, var(--primary)); }
+.cc-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-bottom: 1px solid #eef0f3; }
+.cc-slides { display: flex; flex-wrap: wrap; gap: 4px; }
+.cc-slides button { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px 3px 4px; border-radius: 15px; color: var(--ink); font-size: 13px; border-color: #e3e6ee; }
+.cc-slides .tn { width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--m) 12%, #fff); color: var(--m); font-size: 11px; font-weight: 700; }
+.cc-slides button:hover { border-color: var(--m); }
+.cc-slides button.selected { background: var(--m); border-color: var(--m); color: #fff; }
+.cc-slides button.selected .tn { background: #ffffff33; color: #fff; }
+.cc-nav { display: flex; gap: 6px; }
+.cc-nav button { width: 30px; height: 30px; padding: 0 0 2px; border-radius: 50%; font-size: 19px; line-height: 1; }
+
+.cc-note { flex: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 9px 16px 4px; }
+.cc-text { min-width: 0; max-width: 900px; }
+.cc-text .eyebrow { color: var(--m); }
+.cc-text h2 { font-size: 17px; font-weight: 650; margin: 1px 0 2px; }
+.cc-text p { font-size: 13.5px; color: #3d4a55; line-height: 1.5; }
+.cc-text .cc-opt { margin-top: 5px; padding: 4px 10px; border-left: 3px solid var(--m); background: color-mix(in srgb, var(--m) 6%, #fff); border-radius: 0 6px 6px 0; }
+.cc-ctl { flex: none; display: grid; justify-items: end; gap: 5px; padding-top: 4px; }
+.cc-ctl small { color: var(--muted); font-size: 12px; max-width: 290px; text-align: right; line-height: 1.4; }
+.cc-seg button { padding: 6px 13px; font-weight: 600; color: var(--ink); }
+.cc-seg button.selected { background: var(--m); border-color: var(--m); color: #fff; }
+.cc-seg.ww button:first-child.selected { background: var(--failure); border-color: var(--failure); }
+.cc-seg.ww button:last-child.selected { background: var(--success); border-color: var(--success); }
+
+.cc-doc { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px 16px; display: grid; gap: 12px; align-content: start; }
+.cc-grid { display: grid; gap: 12px; align-items: start; }
+.cc-grid.two { grid-template-columns: 1fr 1fr; }
+.cc-grid.say { grid-template-columns: 1.1fr 1fr; }
+.cc-box { border: 1px solid #e3e6ee; border-radius: 10px; padding: 10px 14px 12px; background: #fbfbfc; min-width: 0; }
+.cc-box h3 { font-size: 14px; font-weight: 650; margin: 0 0 6px; }
+.cc-box ul, .cc-box ol { margin: 0; padding-left: 18px; display: grid; gap: 5px; font-size: 13.5px; line-height: 1.5; }
+.cc-box.good { background: #f3faf0; border-color: #cfe6c6; }
+.cc-box.good h3 { color: var(--success); }
+.cc-box.bad { background: #fff7f2; border-color: #f3d6c6; }
+.cc-box.bad h3 { color: #b4541d; }
+.cc-bottom { padding: 8px 12px; border-radius: 8px; background: color-mix(in srgb, var(--m) 7%, #fff); border: 1px solid color-mix(in srgb, var(--m) 25%, #fff); font-size: 13.5px; }
+.cc-bottom b { color: var(--m); margin-right: 4px; }
+.cc-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cc-tbl th, .cc-tbl td { border-bottom: 1px solid #eceef0; padding: 5px 8px; text-align: left; vertical-align: top; }
+.cc-tbl th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.cc-tbl tr.me td { background: color-mix(in srgb, var(--m) 7%, #fff); }
+.cc-tbl tr.me td:first-child { font-weight: 700; color: var(--m); }
+.cc-qa details { border-top: 1px solid #eceef0; }
+.cc-qa summary { cursor: pointer; padding: 6px 0; font-weight: 600; font-size: 13.5px; }
+.cc-qa details p { padding: 0 0 8px; font-size: 13.5px; color: #3d4a55; }
+.cc-used { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; }
+.cc-used b { margin-right: 2px; }
+.cc-used a, .cc-used span { padding: 2px 10px; border-radius: 99px; border: 1px solid #e3e6ee; background: #fff; text-decoration: none; color: var(--muted); }
+.cc-used a { color: var(--primary); }
+.cc-go, .q-opts button { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: 14px; color: var(--ink); font-weight: 600; font-size: 12.5px; border-color: color-mix(in srgb, var(--c) 40%, #fff); background: color-mix(in srgb, var(--c) 7%, #fff); }
+.cc-go:hover, .q-opts button:hover { border-color: var(--c); }
+
+.cc-quiz { display: grid; gap: 10px; max-width: 860px; }
+.q-head { display: flex; justify-content: space-between; }
+.q-score { font-size: 12px; font-weight: 700; color: var(--muted); }
+.q-text { font-size: 16px !important; line-height: 1.45; }
+.q-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.q-opts button { padding: 7px 15px; font-size: 13.5px; }
+.q-opts button:disabled { opacity: .5; }
+.q-opts button.right { opacity: 1; background: #eef7e8; border-color: var(--success); }
+.q-opts button.wrong { opacity: 1; background: #fff4f4; border-color: var(--failure); }
+.q-why { font-size: 13.5px; line-height: 1.5; padding: 8px 12px; border-radius: 8px; background: #f6f7fb; }
+.q-why button { margin-left: 8px; padding: 3px 12px; }
+
+@media (max-width: 900px) {
+  .cc-grid.two, .cc-grid.say { grid-template-columns: 1fr; }
+  .cc-note { flex-direction: column; gap: 8px; }
+  .cc-ctl { justify-items: start; }
+  .cc-ctl small { text-align: left; }
+  .cc-doc { overflow: visible; }
+}

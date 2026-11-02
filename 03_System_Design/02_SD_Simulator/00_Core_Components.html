@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="core-components">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Core Components · System Design · v1.0</title>
+<link rel="stylesheet" href="engine/sd.css">
+<link rel="stylesheet" href="engine/components.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/stream.js"></script>
+<script>
+// Core Components: every building block taught ONCE, here. Design pages link to these pills instead of re-teaching.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', AMBER = '#c47d1e', PURPLE = '#8f4fc4', RED = '#ce3434', GREY = '#7b878f';
+const LAYER = { entry: ['#4f7bd9', '#e3ebfb'], app: ['#13968a', '#dcf1ee'], data: ['#c47d1e', '#f8e8cc'], async: ['#8f4fc4', '#efe2f8'] };
+const N = (s, id, x, y, label, sub, icon, layer, o = {}) => s.node(id, { x, y, label, sub, icon, color: LAYER[layer][0], soft: LAYER[layer][1], ...o });
+const vis = (on, ...els) => els.forEach(e => { if (e) e.style.opacity = on ? '' : 0; });
+const num = n => Math.round(n).toLocaleString('en');
+// overloaded for a while → DOWN; comfortably below capacity for a while → back up. h = { over, calm, down }
+function health(h, load, dt) {
+  h.over = load >= 1 ? h.over + dt : 0;
+  h.calm = load < .75 ? h.calm + dt : 0;
+  if (!h.down && h.over > 1.2) { h.down = true; return 'down'; }
+  if (h.down && h.calm > 1.5) { h.down = false; return 'up'; }
+}
+// A looping script of packets (How it works slides). set(i) switches the scenario immediately.
+function scripted(s, scenarios, pause = 1300) {
+  let mode = 0;
+  const run = async () => {
+    try { for (;;) { await scenarios[mode](); await s.wait(pause); } }
+    catch (e) { if (!(e instanceof SD.Cancelled)) throw e; }
+  };
+  return {
+    set(i) {
+      mode = i;
+      s.clock.cancel(); s.top.replaceChildren();
+      for (const w of Object.values(s.links)) { w.classList.remove('flow', 'rev'); w.style.removeProperty('--c'); }
+      scenarios.reset?.(i);
+      run();
+    },
+  };
+}
+const down = (s, n, sub) => { s.tone(n, 'fail'); s.setSub(n, sub, RED); s.shake(n).catch(() => {}); };
+const up = (s, n, sub) => { s.tone(n, 'ok'); s.setSub(n, sub, GREEN); };
+
+// ================= Load balancer =================
+const LB = {
+  id: 'lb', title: 'Load Balancer', short: 'Load balancer', icon: '⚖️', color: BLUE,
+  what: {
+    title: 'One address in front of many identical servers',
+    text: 'Clients talk to **one address**. The load balancer **spreads** each request to one of several identical app servers, **health-checks** them and stops sending to a dead one. Examples: **AWS ALB / NLB, Nginx, HAProxy, Envoy, Kubernetes Service / Ingress**.',
+    build(s) {
+      N(s, 'client', 90, 200, 'Users', 'browsers · apps', '👥', 'entry', { w: 150 });
+      N(s, 'lb', 345, 200, 'Load Balancer', 'one public address', '⚖️', 'entry');
+      const S = ['s1', 's2', 's3'];
+      S.forEach((id, i) => N(s, id, 650, 80 + 120 * i, `App server ${i + 1}`, 'stateless · identical', '🖥️', 'app'));
+      N(s, 'db', 950, 200, 'Database', 'shared state', '🗄️', 'data', { w: 150 });
+      s.wire('client', 'lb'); S.forEach(id => { s.wire('lb', id); s.wire(id, 'db'); });
+      s.chip(345, 252, 'TLS · routing · health checks', { color: GREY });
+      s.chip(950, 252, 'state lives here, not in servers', { color: GREY });
+      let acc = 0, k = 0;
+      SD.loop(s, dt => {
+        for (acc += dt * 3; acc >= 1; acc--) {
+          const id = S[k++ % 3];
+          SD.dot(s, ['client', 'lb', id], BLUE).then(ok => ok && SD.dot(s, [id, 'lb', 'client'], GREEN, { r: 4 }));
+        }
+      });
+    },
+  },
+  why: {
+    title: 'One server is a ceiling and a single point of failure',
+    text: '**Without:** every user hits the same server. One server handles about **7,000 req/s**; we send **12,000**, so its CPU and threads run out and it goes **DOWN**. **With:** three identical servers behind a load balancer share the traffic, about 4,000 each.',
+    without: 'Without · 1 server', with: 'With · LB + 3 servers',
+    hint: 'Start with **Without**, watch it go down, then switch.',
+    build(s) {
+      const CAP = 7, RATE = 12;
+      N(s, 'client', 90, 200, 'Users', '12,000 req/s', '👥', 'entry', { w: 150 });
+      const lb = N(s, 'lb', 340, 200, 'Load Balancer', 'round robin · health', '⚖️', 'entry');
+      const ids = ['s1', 's2', 's3'], Y = { s1: 85, s2: 200, s3: 315 };
+      for (const id of ids) N(s, id, 640, Y[id], id === 's2' ? 'App server' : `App server ${id[1]}`, 'stateless', '🖥️', 'app');
+      const direct = s.wire('client', 's2');
+      const lbWires = [s.wire('client', 'lb'), ...ids.map(id => s.wire('lb', id))];
+      const st = Object.fromEntries(ids.map(id => [id, { load: 0, over: 0, calm: 0, down: false, meter: SD.meter(s, 640, Y[id] + 44) }]));
+      const traffic = s.chip(15, 148, '', { color: TEAL, anchor: 'start' });
+      const L = { lb: false, acc: 0, rr: 0, rate: 0 };
+      const look = on => {
+        L.lb = on;
+        vis(on, lb, ...lbWires, s.nodes.s1, s.nodes.s3, st.s1.meter.g, st.s3.meter.g);
+        vis(!on, direct);
+        for (const id of ids) { Object.assign(st[id], { down: false, over: 0, calm: 0 }); s.tone(s.nodes[id], null); s.setSub(s.nodes[id], 'stateless'); }
+        s.setSub(s.nodes.s2, on ? 'stateless' : 'the only server');
+      };
+      const pool = () => L.lb ? ids.filter(id => !st[id].down) : ['s2'];
+      const spawn = () => {
+        const p = pool(); if (!p.length) return;
+        const id = p[L.rr++ % p.length], head = L.lb ? ['client', 'lb', id] : ['client', id];
+        SD.dot(s, head, TEAL, { fail: st[id].down }).then(ok => {
+          if (ok === undefined) return;
+          if (!ok) return SD.dot(s, L.lb ? ['lb', 'client'] : [id, 'client'], RED, { r: 4 });
+          SD.dot(s, [...head].reverse(), GREEN, { r: 4, ms: 380 });
+        });
+      };
+      SD.loop(s, dt => {
+        L.rate += (RATE - L.rate) * Math.min(1, dt * .8);
+        for (L.acc += dt * L.rate; L.acc >= 1; L.acc--) spawn();
+        const p = pool();
+        let failing = !p.length;
+        for (const id of ids) {
+          const h = st[id], inPool = p.includes(id);
+          h.load += ((inPool ? L.rate / p.length / CAP : 0) - h.load) * Math.min(1, dt * 1.4);
+          h.meter.set(h.load);
+          if (!L.lb && id !== 's2') continue;
+          const ch = health(h, h.load, dt);
+          if (ch === 'down') down(s, s.nodes[id], '✕ DOWN · out of threads');
+          else if (ch === 'up') up(s, s.nodes[id], 'back up');
+          if (!L.lb && h.down) failing = true;
+        }
+        s.setChip(traffic, `traffic ${num(L.rate * 1000)} req/s${failing ? ' · errors!' : ''}`, { color: failing ? RED : TEAL, stroke: failing ? RED : '#d5d9dc' });
+      });
+      return { set: look };
+    },
+  },
+  how: {
+    title: 'How does it pick a server?',
+    text: 'Each dot is a request, coloured by user **A B C D**. Server 1 is **slow** (a long GC pause), so its requests take 4× longer. Watch the **active** count next to each server.',
+    options: ['Round robin', 'Least connections', 'IP hash · sticky'],
+    explain: [
+      '**Round robin:** next server in turn. Simple and even, but blind: the slow server keeps getting its share and its queue grows.',
+      '**Least connections:** send to the server with the fewest requests in flight. The slow server naturally gets fewer. Good default for uneven request costs.',
+      '**Hash / sticky:** `hash(user) → server`, so a user always lands on the same server (sessions, local caches). Spread can be uneven and a dead server moves its users. Better: keep servers stateless, sessions in Redis.',
+    ],
+    build(s) {
+      const USERS = [['A', BLUE], ['B', PURPLE], ['C', AMBER], ['D', TEAL]];
+      N(s, 'client', 90, 200, 'Users', 'A · B · C · D', '👥', 'entry', { w: 150 });
+      const lb = N(s, 'lb', 345, 200, 'Load Balancer', 'round robin', '⚖️', 'entry');
+      const ids = ['s1', 's2', 's3'], st = {};
+      ids.forEach((id, i) => {
+        const n = N(s, id, 650, 80 + 120 * i, `App server ${i + 1}`, i ? 'normal speed' : 'slow · GC pause', '🖥️', 'app');
+        if (!i) s.tone(n, 'warn');
+        s.wire('lb', id);
+        st[id] = { active: 0, chip: s.chip(750, 80 + 120 * i, '0 active', { anchor: 'start' }), users: s.chip(650, 80 + 120 * i + 44, '', { color: GREY }) };
+        st[id].users.style.display = 'none';
+      });
+      s.wire('client', 'lb');
+      let mode = 0, rr = 0, u = 0, acc = 0;
+      const paint = id => s.setChip(st[id].chip, `${st[id].active} active`, { color: st[id].active > 4 ? RED : st[id].active > 2 ? AMBER : '#203347', stroke: st[id].active > 4 ? RED : '#d5d9dc' });
+      const pick = ui => mode === 0 ? ids[rr++ % 3] : mode === 1 ? ids.reduce((a, b) => st[b].active < st[a].active ? b : a) : ids[ui % 3];
+      const spawn = () => {
+        const ui = u++ % 4, [name, color] = USERS[ui], id = pick(ui);
+        SD.dot(s, ['client', 'lb', id], color, { r: 6 }).then(ok => {
+          if (!ok) return;
+          st[id].active++; paint(id);
+          s.wait(id === 's1' ? 2800 : 700).then(() => {
+            st[id].active--; paint(id);
+            SD.dot(s, [id, 'lb', 'client'], GREEN, { r: 4 });
+          }).catch(() => {});
+        });
+      };
+      SD.loop(s, dt => { for (acc += dt * 3.2; acc >= 1; acc--) spawn(); });
+      return {
+        set(i) {
+          mode = i;
+          s.setSub(lb, ['round robin', 'least connections', 'hash(user) → server'][i]);
+          ids.forEach((id, k) => {
+            st[id].users.style.display = i === 2 ? '' : 'none';
+            s.setChip(st[id].users, `users ${USERS.filter((_, ui) => ui % 3 === k).map(x => x[0]).join(' · ')}`);
+          });
+        },
+      };
+    },
+  },
+  pros: {
+    pros: [
+      ['Horizontal scale.', 'Add servers to add capacity; no code change.'],
+      ['High availability.', 'Health checks take a dead server out of the pool; users never notice.'],
+      ['Zero-downtime deploys.', 'Drain one server, update it, put it back (rolling / blue-green).'],
+      ['One public endpoint.', 'TLS termination, path routing (`/api` vs `/static`), rate limits in one place.'],
+    ],
+    cons: [
+      ['The LB itself must be redundant.', 'Use a managed LB or an active/passive pair, or it becomes the new single point of failure.'],
+      ['Servers must be stateless.', 'Sessions or in-memory data on one server break when the next request lands elsewhere.'],
+      ['Sticky sessions skew load.', 'One heavy user pins one server; failover drops their session.'],
+      ['An extra hop.', 'Adds about 1 ms and one more component to configure and monitor.'],
+    ],
+    bottom: 'As soon as a service runs more than one instance, put a load balancer in front and keep the instances stateless.',
+  },
+  when: {
+    choose: [
+      'A service needs **more than one instance** (capacity or availability).',
+      'You want **rolling deploys** and automatic failover.',
+      'Clients need **one stable address** (public API, web app).',
+      'Long-lived **WebSocket** connections need to be spread (L4 or L7 with sticky upgrade).',
+    ],
+    avoid: [
+      'A single-instance internal tool or batch job: nothing to balance.',
+      'Service-to-service calls inside a mesh: **client-side** load balancing (Spring Cloud LoadBalancer, gRPC, Istio) is often enough.',
+      'You are trying to fix a **database** bottleneck: an LB spreads app servers, not one DB.',
+    ],
+    alt: {
+      head: ['Option', 'Works at', 'Good for', 'Watch out'],
+      me: 'L7 load balancer',
+      rows: [
+        ['L7 load balancer', 'HTTP (path, header, cookie)', 'Web/API traffic, routing, TLS, rate limits', 'More CPU per request'],
+        ['L4 load balancer', 'TCP/UDP (IP + port)', 'Very high throughput, WebSockets, non-HTTP', 'Cannot route by URL'],
+        ['DNS round robin', 'DNS answers', 'Spreading across regions', 'Clients cache DNS; slow failover'],
+        ['Client-side LB', 'Inside the caller', 'Microservice-to-microservice', 'Every client needs the logic / registry'],
+      ],
+    },
+  },
+  say: {
+    lines: [
+      'The app tier is **stateless**, so I run several instances behind an **L7 load balancer**.',
+      'The LB does **TLS termination**, **health checks** and **least-connections** routing.',
+      'State lives in the database and Redis, so any instance can serve any request; **no sticky sessions**.',
+      'I size the pool for **N+1** (survive losing one) and autoscale on CPU or latency.',
+      'The LB itself is **managed and multi-AZ**, so it is not a single point of failure.',
+    ],
+    used: [['URL Shortener', '01_URL_Shortener.html'], ['Ticket Booking', '03_Ticket_Booking.html'], ['File Upload', '06_File_Upload.html'], ['Chat (sticky WebSockets)'], ['every design']],
+    qa: [
+      ['L4 vs L7?', '**L4** forwards TCP connections by IP/port: fast, protocol-agnostic. **L7** understands HTTP: routes by path/header/cookie, terminates TLS, can retry. Most web APIs use L7; use L4 for raw TCP, very high throughput or WebSockets.'],
+      ['How does it know a server is down?', 'Active **health checks** (e.g. `GET /health` every 5 s, unhealthy after 2–3 failures) plus passive checks (errors/timeouts on real traffic). Unhealthy servers leave the pool and rejoin when healthy.'],
+      ['What if the load balancer fails?', 'Run it redundantly: managed cloud LBs are multi-AZ; self-hosted use an active/passive pair with a floating IP (keepalived) or DNS failover.'],
+      ['Why not sticky sessions?', 'They pin users to servers, skew load and lose sessions on failure. Store sessions in **Redis** or use stateless **JWTs** so any server can answer.'],
+      ['Which algorithm would you pick?', '**Least connections** (or least response time) when request cost varies; round robin when requests are uniform; consistent hashing when you want cache affinity.'],
+    ],
+  },
+};
+
+// ================= Cache =================
+const CACHE = {
+  id: 'cache', title: 'Cache (Redis)', short: 'Cache · Redis', icon: '⚡', color: AMBER,
+  what: {
+    title: 'Keep hot data in memory, in front of the database',
+    text: 'A cache is a fast **in-memory key → value** store. The app checks it first: a **hit** answers in about **1 ms**; a **miss** reads the database (~10 ms) and stores the result with a **TTL**. Examples: **Redis**, Memcached, local caches like Caffeine.',
+    build(s) {
+      N(s, 'client', 90, 200, 'Users', 'read the same things', '👥', 'entry', { w: 160 });
+      N(s, 'app', 360, 200, 'App service', 'cache-aside', '🖥️', 'app');
+      N(s, 'redis', 680, 100, 'Redis cache', 'in memory · ~1 ms', '⚡', 'data');
+      N(s, 'db', 680, 300, 'Database', 'on disk · ~10 ms', '🗄️', 'data');
+      s.wire('client', 'app'); s.wire('app', 'redis'); s.wire('app', 'db');
+      s.chip(780, 100, 'HIT ≈ 90% of reads', { anchor: 'start', color: GREEN });
+      s.chip(780, 300, 'only the misses', { anchor: 'start', color: GREY });
+      let acc = 0;
+      SD.loop(s, dt => {
+        for (acc += dt * 3; acc >= 1; acc--) {
+          const hit = Math.random() < .85;
+          SD.dot(s, ['client', 'app', 'redis'], AMBER).then(ok => {
+            if (!ok) return;
+            if (hit) return SD.dot(s, ['redis', 'app', 'client'], GREEN, { r: 4 });
+            SD.dot(s, ['app', 'db'], TEAL, { ms: 500 }).then(ok => ok && SD.dot(s, ['db', 'app'], TEAL, { r: 4 })).then(ok => {
+              if (!ok) return;
+              SD.dot(s, ['app', 'redis'], AMBER, { r: 3, ms: 300 });
+              SD.dot(s, ['app', 'client'], GREEN, { r: 4 });
+            });
+          });
+        }
+      });
+    },
+  },
+  why: {
+    title: 'Without a cache, every read hits the database',
+    text: 'A product goes viral: **14,000 reads/s**, mostly for the **same few items**. The database serves about **8,000 reads/s**. **Without:** it overloads and goes **DOWN**. **With:** Redis answers ~92% of reads from memory; the database sees only ~1,100/s.',
+    without: 'Without cache', with: 'With Redis',
+    hint: 'Watch the **Database** meter, then switch.',
+    build(s) {
+      const CAP = 8, RATE = 14;
+      N(s, 'client', 90, 200, 'Users', '14,000 reads/s', '👥', 'entry', { w: 150 });
+      N(s, 'app', 360, 200, 'App service', 'GET /product/42', '🖥️', 'app');
+      const db = N(s, 'db', 680, 200, 'Database', 'serves ~8,000 reads/s', '🗄️', 'data');
+      const redis = N(s, 'redis', 680, 335, 'Redis cache', 'hot keys · TTL', '⚡', 'data');
+      s.wire('client', 'app'); s.wire('app', 'db');
+      const rw = s.wire('app', 'redis');
+      const meter = SD.meter(s, 680, 245);
+      const traffic = s.chip(15, 148, '', { color: TEAL, anchor: 'start' });
+      const hitChip = s.chip(780, 335, '', { anchor: 'start', color: AMBER });
+      let downChip = null;
+      const L = { cache: false, hit: 0, load: 0, rate: 0, acc: 0, h: { over: 0, calm: 0, down: false } };
+      const spawn = () => {
+        const toCache = L.cache && Math.random() < L.hit, fail = !toCache && L.h.down;
+        const path = ['client', 'app', toCache ? 'redis' : 'db'];
+        SD.dot(s, path, toCache ? AMBER : TEAL, { fail }).then(ok => {
+          if (ok === undefined) return;
+          if (!ok) return SD.dot(s, ['app', 'client'], RED, { r: 4 });
+          if (!toCache && L.cache) SD.dot(s, ['app', 'redis'], AMBER, { r: 3, ms: 300 });
+          SD.dot(s, [...path].reverse(), GREEN, { r: 4, ms: 380 });
+        });
+      };
+      SD.loop(s, dt => {
+        L.rate += (RATE - L.rate) * Math.min(1, dt * .8);
+        for (L.acc += dt * L.rate; L.acc >= 1; L.acc--) spawn();
+        L.hit = L.cache ? L.hit + (.92 - L.hit) * Math.min(1, dt * .7) : 0;
+        L.load += (L.rate * (1 - L.hit) / CAP - L.load) * Math.min(1, dt * 1.4);
+        meter.set(L.load);
+        s.setChip(traffic, `traffic ${num(L.rate * 1000)} reads/s${L.h.down ? ' · errors!' : ''}`, { color: L.h.down ? RED : TEAL, stroke: L.h.down ? RED : '#d5d9dc' });
+        hitChip.style.display = L.cache ? '' : 'none';
+        if (L.cache) s.setChip(hitChip, `hit ratio ${Math.round(L.hit * 100)}% · DB sees ${num(L.rate * (1 - L.hit) * 1000)}/s`);
+        const ch = health(L.h, L.load, dt);
+        if (ch === 'down') { down(s, db, '✕ DOWN · timeouts'); downChip = s.chip(680, 150, '✕ DOWN', { color: '#fff', fill: RED, stroke: RED }); }
+        else if (ch === 'up') { up(s, db, 'healthy again'); downChip?.remove(); downChip = null; }
+      });
+      return { set(on) { L.cache = on; L.hit = 0; vis(on, redis, rw); } };
+    },
+  },
+  how: {
+    title: 'Cache-aside: read, write and expiry',
+    text: 'The **app** owns the logic: Redis is just a fast map. Pick a case and follow the packets; the chip next to Redis shows what it holds.',
+    options: ['Read · hit', 'Read · miss → fill', 'Write → delete key', 'TTL expires'],
+    explain: [
+      '**Hit:** the key is in Redis, answer from memory in ~1 ms. The database is not touched.',
+      '**Miss:** not in Redis, so read the database once, then `SET` it with a TTL. Every later read is a hit until it expires or is deleted.',
+      '**Write:** update the **database first**, then **delete** the cache key (do not update it). The next read misses and loads fresh data, so the cache cannot keep an old value.',
+      '**TTL:** every key expires on its own (minutes to hours). It bounds how stale data can get, and memory is freed. When memory is full Redis **evicts** (LRU / LFU).',
+    ],
+    build(s) {
+      N(s, 'app', 240, 200, 'App service', 'cache-aside logic', '🖥️', 'app');
+      N(s, 'redis', 640, 100, 'Redis cache', 'key → value', '⚡', 'data');
+      N(s, 'db', 640, 300, 'Database', 'source of truth', '🗄️', 'data');
+      s.wire('app', 'redis'); s.wire('app', 'db');
+      const box = s.chip(740, 100, '', { anchor: 'start', mono: true });
+      const FULL = 'product:42 → {…}  TTL 3600s', EMPTY = '(empty)';
+      const hold = (str, c) => s.setChip(box, str, { color: c ?? '#203347' });
+      const fill = async () => {
+        await s.send(['app', 'db'], 'SELECT 42', TEAL);
+        await s.send(['db', 'app'], 'row', TEAL);
+        await s.send(['app', 'redis'], 'SET product:42 EX 3600', AMBER);
+        hold(FULL, GREEN);
+      };
+      const sc = [
+        async () => { hold(FULL); await s.send(['app', 'redis'], 'GET product:42', AMBER); await s.send(['redis', 'app'], 'HIT', GREEN); await s.flash(240, 140, '~1 ms', { color: GREEN, stroke: GREEN }); },
+        async () => { hold(EMPTY, GREY); await s.send(['app', 'redis'], 'GET product:42', AMBER); await s.send(['redis', 'app'], 'MISS', RED); await fill(); await s.flash(240, 140, '~12 ms, once', { color: AMBER, stroke: AMBER }); },
+        async () => {
+          hold(FULL);
+          await s.send(['app', 'db'], 'UPDATE price', TEAL); await s.send(['db', 'app'], 'ok', TEAL);
+          await s.send(['app', 'redis'], 'DEL product:42', RED); hold(EMPTY, GREY);
+          await s.flash(240, 140, 'next read refills fresh data', { color: GREY }, 1200);
+        },
+        async () => {
+          await s.clock.tween(3000, t => hold(`product:42 → {…}  TTL ${Math.max(0, Math.ceil(3 * (1 - t)))}s`, t > .66 ? RED : '#203347'), true);
+          hold('(expired)', RED);
+          await s.send(['app', 'redis'], 'GET product:42', AMBER); await s.send(['redis', 'app'], 'MISS', RED); await fill();
+        },
+      ];
+      return scripted(s, sc);
+    },
+  },
+  pros: {
+    pros: [
+      ['Huge read throughput.', 'Redis does 100k+ ops/s per node; most reads never reach the database.'],
+      ['Millisecond latency.', 'Memory instead of disk + query planning.'],
+      ['Protects the database.', 'Absorbs viral spikes; the DB only sees misses and writes.'],
+      ['More than a cache.', 'Counters, rate limits, sessions, leaderboards (sorted sets), distributed locks.'],
+    ],
+    cons: [
+      ['Stale data.', 'The cache can disagree with the DB until delete/TTL. Choose TTLs per data type.'],
+      ['Invalidation is hard.', 'Every write path must delete the right keys, or users see old values.'],
+      ['Cold start & stampede.', 'Empty cache or one hot key expiring sends a burst to the DB (use single-flight / locks, jittered TTLs).'],
+      ['Extra component + memory cost.', 'Needs monitoring, replicas for HA, and RAM is pricier than disk.'],
+    ],
+    bottom: 'Cache read-heavy, hot, slightly-stale-is-OK data with cache-aside + TTL; delete on write.',
+  },
+  when: {
+    choose: [
+      'Reads ≫ writes (10:1 or more) and the **same keys** are read again and again.',
+      'You need **~1 ms** responses or the DB is busy with repeated reads.',
+      'A few seconds of **staleness is acceptable** (product page, profile, short-URL lookup).',
+      'Shared fast state: **sessions, rate limit counters, leaderboards**.',
+    ],
+    avoid: [
+      'Write-heavy data or every read is **unique** (no reuse → no hits).',
+      'Must be **strictly up to date** (bank balance, seat count at checkout): read the DB.',
+      'The DB is fast enough already: a cache adds invalidation bugs for no gain.',
+    ],
+    alt: {
+      head: ['Option', 'Where', 'Good for', 'Watch out'],
+      me: 'Redis',
+      rows: [
+        ['Redis', 'Separate in-memory server', 'Shared cache across instances, rich data types, TTL', 'Network hop, HA setup'],
+        ['Memcached', 'Separate in-memory server', 'Simple key-value cache, multithreaded', 'No persistence / data types'],
+        ['Local cache (Caffeine)', 'Inside each app instance', 'Tiny hot sets, zero network', 'Each instance has its own copy (inconsistent)'],
+        ['CDN', 'Edge servers near users', 'Public static content, images, video', 'Not for per-user data'],
+      ],
+    },
+  },
+  say: {
+    lines: [
+      'Reads dominate, so I put **Redis in front of the database** with **cache-aside**.',
+      'On a miss I read the DB and `SET` with a **TTL**; on a write I update the DB, then **delete the key**.',
+      'I expect a **~90% hit ratio**, so the database only sees ~10% of reads.',
+      'For hot keys I prevent a **stampede** with single-flight / a short lock and jittered TTLs.',
+      'If Redis is down I **fall back to the DB** with a rate limit, so it is a performance layer, not the source of truth.',
+    ],
+    used: [['URL Shortener', '01_URL_Shortener.html'], ['Ticket Booking', '03_Ticket_Booking.html'], ['Rate Limiter'], ['News Feed'], ['Chat (presence)']],
+    qa: [
+      ['Cache-aside vs write-through vs write-behind?', '**Cache-aside:** app reads/writes the DB and manages the cache (most common). **Write-through:** write to cache and DB together (always warm, slower writes). **Write-behind:** write to cache, flush to DB later (fast, risk of loss).'],
+      ['Why delete the key instead of updating it?', 'Two concurrent writers can update the cache in the wrong order and leave an old value forever. Deleting makes the next read load the current DB value.'],
+      ['What is a cache stampede?', 'A hot key expires and thousands of requests miss at once and hit the DB. Fix: single-flight (one request refills, others wait), a short lock, early refresh, jittered TTLs.'],
+      ['What happens when Redis memory is full?', 'It evicts by policy: `allkeys-lru` / `allkeys-lfu` for caches. Size memory for the hot set and watch the eviction rate and hit ratio.'],
+      ['How do you make Redis highly available?', 'Primary + replicas with Sentinel or Redis Cluster (sharded by hash slot). Managed: ElastiCache / Memorystore.'],
+    ],
+  },
+};
+
+// ================= Kafka =================
+const KAFKA = {
+  id: 'kafka', title: 'Message Queue (Kafka)', short: 'Queue · Kafka', icon: '📨', color: PURPLE,
+  what: {
+    title: 'A durable log between who produces work and who does it',
+    text: 'A **producer** writes an event (e.g. `order-placed`) to a **topic** and moves on. **Consumers** read it at their own pace; each **consumer group** gets every event, so one event can feed many services. Events are **kept** (days) and can be **replayed**. Examples: **Kafka**, RabbitMQ, AWS SQS / SNS.',
+    build(s) {
+      N(s, 'order', 140, 200, 'Order Service', 'producer', '🛒', 'app');
+      N(s, 'kafka', 480, 200, 'Kafka', 'topic: order-placed', '📨', 'async', { w: 190 });
+      const C = [['email', 'Email Service'], ['analytics', 'Analytics'], ['stock', 'Inventory']];
+      C.forEach(([id, label], i) => { N(s, id, 860, 80 + 120 * i, label, 'own consumer group', '📥', 'async'); s.wire('kafka', id); });
+      s.wire('order', 'kafka');
+      s.chip(480, 252, 'durable · ordered per partition · replayable', { color: GREY });
+      s.chip(140, 252, 'publishes and returns', { color: GREY });
+      let acc = 0;
+      SD.loop(s, dt => {
+        for (acc += dt * 1.6; acc >= 1; acc--) {
+          SD.dot(s, ['order', 'kafka'], PURPLE, { r: 6 }).then(ok => { if (ok) C.forEach(([id]) => SD.dot(s, ['kafka', id], PURPLE, { r: 5, ms: 520 })); });
+        }
+      });
+    },
+  },
+  why: {
+    title: 'Slow work on the request path breaks the request',
+    text: 'Placing an order also sends a confirmation email. The email provider manages about **400 emails/s**. A sale spikes orders to **800/s**. **Without:** the Order Service waits for the email, latency climbs and orders **fail** when the email service falls over. **With:** the order is saved, an event goes to Kafka and the user gets an answer at once; emails catch up after the spike.',
+    without: 'Without · call directly', with: 'With Kafka',
+    hint: 'Traffic spikes every few seconds. Watch latency and the Email meter.',
+    build(s) {
+      const CAP = 4;
+      N(s, 'client', 90, 200, 'Users', 'place orders', '👥', 'entry', { w: 150 });
+      const order = N(s, 'order', 340, 200, 'Order Service', 'POST /orders', '🛒', 'app');
+      const email = N(s, 'email', 900, 200, 'Email Service', 'provider ~400/s', '✉️', 'async');
+      const kafka = N(s, 'kafka', 620, 330, 'Kafka', 'topic: order-placed', '📨', 'async');
+      s.wire('client', 'order');
+      const direct = s.wire('order', 'email');
+      const kw = [s.wire('order', 'kafka'), s.wire('kafka', 'email')];
+      const meter = SD.meter(s, 900, 245);
+      const traffic = s.chip(15, 148, '', { color: TEAL, anchor: 'start' });
+      const latency = s.chip(15, 118, '', { color: GREEN, anchor: 'start' });
+      const lag = s.chip(620, 376, '', { color: PURPLE });
+      let downChip = null;
+      const L = { async: false, t: 0, rate: 2, load: 0, lat: 40, queue: 0, acc: 0, drain: 0, h: { over: 0, calm: 0, down: false } };
+      const reply = c => SD.dot(s, ['order', 'client'], c, { r: 4, ms: 380 });
+      const spawn = () => SD.dot(s, ['client', 'order'], TEAL).then(ok => {
+        if (!ok) return;
+        if (L.async) { reply(GREEN); SD.dot(s, ['order', 'kafka'], PURPLE, { r: 4 }).then(ok => { if (ok) L.queue++; }); return; }
+        const slow = 1 + 3 * Math.max(0, L.load - .6);
+        SD.dot(s, ['order', 'email'], PURPLE, { r: 4, ms: 520 * slow, fail: L.h.down }).then(ok => {
+          if (ok === undefined) return;
+          if (!ok) return reply(RED);
+          SD.dot(s, ['email', 'order'], PURPLE, { r: 3, ms: 380 * slow }).then(ok => ok && reply(GREEN));
+        });
+      });
+      SD.loop(s, dt => {
+        // a sale every 16 s: 6 s of 800 orders/s, otherwise 200/s
+        L.t += dt;
+        const ph = L.t % 16, goal = ph > 5 && ph < 11 ? 8 : 2;
+        L.rate += (goal - L.rate) * Math.min(1, dt * 2);
+        for (L.acc += dt * L.rate; L.acc >= 1; L.acc--) spawn();
+        let served;
+        if (L.async && !L.h.down) {
+          // the email consumer works through the backlog at its own steady pace
+          L.drain += dt * CAP * .95;
+          const n = Math.min(L.queue, Math.floor(L.drain));
+          L.drain -= n; if (!L.queue) L.drain = Math.min(L.drain, 1);
+          for (let i = 0; i < n; i++) SD.dot(s, ['kafka', 'email'], PURPLE, { r: 4, ms: 520 });
+          L.queue -= n;
+          served = Math.min(.95, L.rate / CAP);
+        } else served = L.async ? 0 : L.rate / CAP;
+        L.load += (served - L.load) * Math.min(1, dt * 1.4);
+        meter.set(L.load);
+        const goalLat = L.async ? 40 : 40 + 60 / (1 - Math.min(.95, L.load));
+        L.lat += (goalLat - L.lat) * Math.min(1, dt * 2);
+        const failing = !L.async && L.h.down;
+        s.setChip(traffic, `orders ${num(L.rate * 100)}/s${goal > 2 ? ' · SALE' : ''}${failing ? ' · errors!' : ''}`, { color: failing ? RED : TEAL, stroke: failing ? RED : '#d5d9dc' });
+        const lc = failing ? RED : L.lat < 150 ? GREEN : L.lat < 400 ? AMBER : RED;
+        s.setChip(latency, failing ? 'order latency: timeouts ✕' : `order latency ${num(L.lat)} ms`, { color: lc, stroke: lc === GREEN ? '#d5d9dc' : lc });
+        lag.style.display = L.async ? '' : 'none';
+        if (L.async) s.setChip(lag, `waiting in Kafka: ${num(L.queue * 100)} emails`);
+        const ch = health(L.h, L.load, dt);
+        if (ch === 'down') { down(s, email, '✕ DOWN · provider timeouts'); downChip = s.chip(900, 150, '✕ DOWN', { color: '#fff', fill: RED, stroke: RED }); }
+        else if (ch === 'up') { up(s, email, 'healthy again'); downChip?.remove(); downChip = null; }
+      });
+      return {
+        set(on) {
+          L.async = on;
+          vis(on, kafka, ...kw); vis(!on, direct);
+          s.setSub(order, on ? 'save + publish event' : 'POST /orders · waits for email');
+        },
+      };
+    },
+  },
+  how: {
+    title: 'Partitions and consumer groups',
+    text: 'A topic is split into **partitions**; an event\'s **key** (here the user A–D) picks its partition, so events of one key stay **in order**. In a consumer group **each partition is read by exactly one consumer**. Add consumers to read in parallel.',
+    options: ['1 consumer', '2 consumers', '3 consumers', '4 consumers'],
+    explain: [
+      'One consumer reads **all 3 partitions**: simple, but it is the bottleneck.',
+      'Two consumers: one takes P0 + P1, the other P2. Kafka **rebalances** automatically when a consumer joins or leaves.',
+      'Three consumers, **one partition each**: maximum parallelism for this topic.',
+      'A 4th consumer sits **idle**: there are only 3 partitions. To scale further, create the topic with more partitions.',
+    ],
+    build(s) {
+      const KEYS = [['A', BLUE, 0], ['B', AMBER, 1], ['C', TEAL, 2], ['D', '#c2417a', 0]];
+      s.box(450, 200, 210, 350, '', { fill: '#faf6fd', stroke: '#e6d5f3', dash: '4 5', rx: 14 });
+      s.chip(450, 25, 'topic: orders', { color: PURPLE });
+      N(s, 'prod', 120, 200, 'Order Service', 'key = user A–D', '🛒', 'app');
+      const P = [0, 1, 2].map(i => N(s, `p${i}`, 450, 90 + 110 * i, `Partition ${i}`, i ? `key ${KEYS[i][0]}` : 'keys A, D', '🧱', 'async', { w: 170, h: 50 }));
+      const C = [0, 1, 2, 3].map(i => N(s, `c${i}`, 830, 62 + 92 * i, `Consumer ${i + 1}`, 'reads —', '📥', 'async', { w: 180, h: 50 }));
+      s.chip(830, 18, 'consumer group: email', { color: PURPLE });
+      P.forEach((_, i) => s.wire('prod', `p${i}`));
+      const W = P.map((_, i) => C.map((_, j) => s.wire(`p${i}`, `c${j}`)));
+      let owner = [0, 0, 0], acc = 0;
+      const set = k => {
+        const n = k + 1;
+        owner = n === 1 ? [0, 0, 0] : n === 2 ? [0, 0, 1] : [0, 1, 2];
+        C.forEach((c, j) => {
+          const mine = [0, 1, 2].filter(i => owner[i] === j);
+          vis(j < n, c);
+          s.tone(c, j < n && !mine.length ? 'warn' : null);
+          s.setSub(c, mine.length ? `reads ${mine.map(i => 'P' + i).join(' + ')}` : 'idle · no partition left', mine.length ? null : AMBER);
+        });
+        W.forEach((row, i) => row.forEach((w, j) => vis(owner[i] === j, w)));
+      };
+      SD.loop(s, dt => {
+        for (acc += dt * 3; acc >= 1; acc--) {
+          const [, color, p] = KEYS[Math.floor(Math.random() * 4)];
+          SD.dot(s, ['prod', `p${p}`], color, { r: 6 }).then(ok => ok && SD.dot(s, [`p${p}`, `c${owner[p]}`], color, { r: 6, ms: 520 }));
+        }
+      });
+      return { set };
+    },
+  },
+  pros: {
+    pros: [
+      ['Fast responses.', 'Slow work (email, analytics, thumbnails) leaves the request path; users never wait for it.'],
+      ['Absorbs spikes.', 'Events wait in the log; consumers catch up at a steady pace instead of falling over.'],
+      ['Failure isolation.', 'If a consumer is down, events wait; the producer keeps working.'],
+      ['Fan-out & replay.', 'Many consumer groups read the same event; replay from an offset to rebuild or fix data.'],
+    ],
+    cons: [
+      ['Eventual consistency.', 'The email is sent seconds later, not "now"; the UI must allow that.'],
+      ['Duplicates.', 'Delivery is at-least-once, so consumers must be **idempotent** (dedupe by event id).'],
+      ['Ordering only per partition.', 'No global order; choose the key carefully (orderId, userId).'],
+      ['Operational weight.', 'Brokers, partitions, retention, lag monitoring, DLQs; harder to debug async flows.'],
+    ],
+    bottom: 'Use a queue when the caller does not need the result right now; make consumers idempotent and watch lag.',
+  },
+  when: {
+    choose: [
+      'The user **does not need to wait** for the work (emails, notifications, analytics, thumbnails).',
+      'Traffic is **spiky** and the downstream has a fixed capacity.',
+      'Several services react to the **same event** (order placed → email, stock, analytics).',
+      'You need a **durable history** of events to replay (event sourcing, rebuilding a read model).',
+    ],
+    avoid: [
+      'The caller needs the answer **now** (price check, login, seat availability): call synchronously.',
+      'Low volume, one consumer, simple jobs: a plain DB table or **SQS / RabbitMQ** is easier than Kafka.',
+      'You need **strict global ordering** of everything.',
+    ],
+    alt: {
+      head: ['Option', 'Model', 'Good for', 'Watch out'],
+      me: 'Kafka',
+      rows: [
+        ['Kafka', 'Partitioned, retained log', 'High throughput, fan-out, replay, streams', 'Ops heavy; ordering per partition'],
+        ['RabbitMQ', 'Broker queues, routing keys', 'Task queues, flexible routing, per-message ack', 'Messages gone once consumed'],
+        ['AWS SQS (+SNS)', 'Managed queue (+ pub/sub)', 'Simple, serverless, no ops', 'Limited ordering (FIFO queues), no replay'],
+        ['Redis Streams', 'Log inside Redis', 'Light streams when Redis already exists', 'Memory-bound, smaller scale'],
+      ],
+    },
+  },
+  say: {
+    lines: [
+      'The user only waits for what they need; **email, analytics and notifications go async via Kafka**.',
+      'The service saves the order, publishes `order-placed` keyed by **orderId**, and returns immediately.',
+      'Each downstream is its own **consumer group**; partitions let me scale consumers in parallel.',
+      'Delivery is at-least-once, so consumers are **idempotent** and failures go to a **retry topic / DLQ**.',
+      'I alert on **consumer lag**; to avoid losing the event I use the **outbox pattern** (write order + event in one DB transaction).',
+    ],
+    used: [['URL Shortener (analytics)', '01_URL_Shortener.html'], ['Ticket Booking (outbox)', '03_Ticket_Booking.html'], ['File Upload (processing)', '06_File_Upload.html'], ['Notification System'], ['E-commerce saga']],
+    qa: [
+      ['How do you get exactly-once?', 'End-to-end it is "at-least-once + idempotent consumer": store processed event ids (or use upserts). Kafka transactions give exactly-once only inside Kafka (read-process-write).'],
+      ['How is ordering guaranteed?', 'Only within a partition. Use a key (orderId) so all events of one order go to the same partition, in order.'],
+      ['What is consumer lag and why watch it?', 'How far consumers are behind the latest offset. Growing lag = consumers too slow or stuck → scale consumers (up to partition count) or fix the consumer.'],
+      ['What happens on rebalance?', 'When consumers join/leave, partitions are reassigned; processing pauses briefly. Commit offsets after processing so nothing is lost (duplicates are possible).'],
+      ['What if publishing fails after the DB write?', 'Use the **transactional outbox**: write the event to an outbox table in the same transaction; a relay publishes it to Kafka.'],
+    ],
+  },
+};
+
+// ================= When to use what =================
+const PICK = {
+  id: 'pick', title: 'When to use what', short: 'When to use what', icon: '🧭', color: GREEN, sheet: true,
+  rows: [
+    ['One server cannot take the traffic, or a crash takes everything down', 'lb', 'Several stateless instances behind one address; health checks route around failures.'],
+    ['Rolling deploys without downtime', 'lb', 'Drain one instance at a time while the others serve.'],
+    ['The same data is read again and again; DB CPU is high on reads', 'cache', 'Serve hot reads from memory; the DB sees only misses.'],
+    ['Need ~1 ms reads, counters, sessions, rate limits, leaderboards', 'cache', 'Redis keeps shared fast state for all instances.'],
+    ['User should not wait for slow work (email, analytics, thumbnails)', 'kafka', 'Publish an event and return; consumers do it later.'],
+    ['Spiky traffic into a service with fixed capacity', 'kafka', 'The log buffers the spike; consumers drain it at a steady pace.'],
+    ['Several services must react to the same event', 'kafka', 'One topic, one consumer group per service (fan-out).'],
+  ],
+  rule: 'Scale **compute** with a load balancer, speed up **reads** with a cache, take **slow work off the request path** with a queue. More components (S3, CDN, sharding, search…) are coming next.',
+  choices: ['lb', 'cache', 'kafka'],
+  quiz: [
+    { q: 'Your product page reads the same 1,000 products ~20,000 times a second and the database CPU sits at 95%.', a: 'cache', why: 'Repeated reads of a small hot set: cache-aside on Redis takes ~90% of the reads off the DB.' },
+    { q: 'Sign-up must send a welcome email, but the email provider sometimes takes 3 seconds.', a: 'kafka', why: 'The user does not need the email to finish: publish `user-signed-up` and let an email consumer send it.' },
+    { q: 'Your API runs on one VM; a deploy or crash means downtime for everyone.', a: 'lb', why: 'Run 2+ stateless instances behind a load balancer: health checks remove a dead one, deploys roll one at a time.' },
+    { q: 'Order placed → email, inventory update and analytics must all happen.', a: 'kafka', why: 'Fan-out: one `order-placed` topic, a separate consumer group for each service.' },
+    { q: 'You must limit each user to 100 requests per minute across 10 app instances.', a: 'cache', why: 'Shared fast counters with TTL in Redis (`INCR` + `EXPIRE`, or a Lua script) are visible to every instance.' },
+    { q: 'Black Friday: orders spike to 10× for an hour, and the payment-receipt service can only do 500/s.', a: 'kafka', why: 'Buffer the spike in the log; the receipt consumer drains it at 500/s and catches up after the peak.' },
+    { q: 'CPU on your single app server is at 100% even though the cache hit ratio is 95%.', a: 'lb', why: 'The bottleneck is compute, not the DB: add instances behind a load balancer.' },
+  ],
+};
+
+window.CORE = {
+  title: 'Core Components', tagline: 'watch first · each building block once',
+  viewBox: [1100, 400],
+  components: [LB, CACHE, KAFKA, PICK],
+};
+</script>
+<script src="engine/components.js"></script>
+</body>
+</html>

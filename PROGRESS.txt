@@ -156,3 +156,5 @@ CHANGE LOG
 2026-11-01  URL Shortener Learn page: 🎓 Why Kafka? / Why a cache? / Why a load balancer? live-traffic lessons.
 2026-11-02  Guided SD Lab + guided page removed (kept as git tags); URL Shortener = classic v2.2 + Learn v5.2 (must read first).
 2026-11-02  Versioning for every page: VERSIONS.md, doc-version meta + title, git tags <id>/<version>.
+2026-11-02  00_Core_Components.html v1.0 (watch first): Load balancer, Cache, Kafka, When to use what. Learn page removed;
+            URL Shortener is the classic page again (v2.2).

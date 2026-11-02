@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="sd-simulator">
-<meta name="doc-version" content="v3.2">
+<meta name="doc-version" content="v3.3">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>System Design Interview Simulator · v3.2</title>
+<title>System Design Interview Simulator · v3.3</title>
 <link rel="stylesheet" href="02_SD_Simulator/engine/sd.css">
 <style>
 /* hub: the same "map" layout as the Kafka Learn home */
@@ -54,10 +54,8 @@ a.dcard:hover { border-color: #4f7bd9; box-shadow: 0 6px 18px #20334714; transfo
 .must .dcard { border: 2px solid #c47d1e; background: linear-gradient(135deg, #fffaf1, #fff); }
 .must .dcard .ic { background: #f8e8cc; }
 .must .dcard .badge { background: #c47d1e !important; }
-.must-lessons { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.must-lessons span { font-size: 12px; font-weight: 650; padding: 2px 10px; border-radius: 99px; background: #fdf3e2; border: 1px solid #f1dfbf; color: #8a5714; }
 .must-side { display: grid; align-content: center; gap: 6px; padding: 10px 14px; border: 1px dashed #cfdcf6; border-radius: 10px; background: #ffffffa0; font-size: 12.5px; color: var(--muted); max-width: 260px; }
-.must-side a { color: var(--primary); font-weight: 650; text-decoration: none; }
+.must-side span { font-size: 12px; }
 @media (max-width: 700px) { .must { grid-template-columns: 1fr; } .must-side { max-width: none; } }
 @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .bar, .map { padding-left: 16px; padding-right: 16px; } .hero h1 { font-size: 21px; } .how-sep { display: none; } }
@@ -85,7 +83,7 @@ a.dcard:hover { border-color: #4f7bd9; box-shadow: 0 6px 18px #20334714; transfo
     <span class="pill t-followups"><b>6 Follow-ups</b></span>
   </div>
   <section class="level">
-    <header><span class="lv-chip">12 designs</span><h2>Classic interview problems</h2><p>In study order. Kafka, caching and load balancing are taught once in #1; later designs only teach what is new to them.</p><span class="count" id="count"></span></header>
+    <header><span class="lv-chip">12 designs</span><h2>Classic interview problems</h2><p>In study order. Start with <b>0 · Core Components</b>: load balancer, cache, Kafka … are taught once there, not again in every design.</p><span class="count" id="count"></span></header>
     <ol class="cards" id="cards"></ol>
   </section>
 </main>
@@ -94,18 +92,18 @@ a.dcard:hover { border-color: #4f7bd9; box-shadow: 0 6px 18px #20334714; transfo
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const live = SD_CATALOG.filter(d => d.file);
 document.getElementById('count').textContent = `${live.length} rebuilt · ${SD_CATALOG.length - live.length} in the previous version`;
-document.getElementById('cards').innerHTML = SD_CATALOG.map(d => {
+// Core Components: the building blocks every design uses, taught once; watch it first.
+const C = window.SD_CORE;
+const coreCard = C ? `<li class="must"><a class="dcard live" href="02_SD_Simulator/${C.file}"><span class="ic">${C.icon}</span><strong><small>0</small>${esc(C.title)}</strong><span class="tag">${esc(C.desc)}</span>
+    <span class="row">${C.components.map(t => `<span class="t">${esc(t)}</span>`).join('')}<span class="badge">★ Watch first</span></span></a>
+  <div class="must-side">Every design page assumes these building blocks and does not re-teach them.<span>Coming next: ${esc(C.next)}</span></div></li>` : '';
+document.getElementById('cards').innerHTML = coreCard + SD_CATALOG.map(d => {
   const body = `<span class="ic">${d.icon}</span><strong><small>${d.n}</small>${esc(d.title)}</strong><span class="tag">${esc(d.desc)}</span>
     <span class="row">${d.tags.map(t => `<span class="t">${esc(t)}</span>`).join('')}<span class="badge">${d.file ? 'Open →' : `<a href="../${SD_LEGACY}#${d.id}/1">Previous version ↗</a>`}</span></span>`;
-  if (d.mustRead) {
-    const lessons = `<span class="must-lessons">${d.learn.map(l => `<span>🎓 ${esc(l)}</span>`).join('')}</span>`;
-    return `<li class="must"><a class="dcard live" href="02_SD_Simulator/${d.file}">${body.replace('Open →', '★ Must read first')}${lessons}</a>
-      <div class="must-side">The "Why X?" lessons here are the foundation every other design builds on.${d.classic ? `<a href="02_SD_Simulator/${d.classic}">Classic version (no lessons) →</a>` : ''}</div></li>`;
-  }
   return `<li>${d.file ? `<a class="dcard live" href="02_SD_Simulator/${d.file}">${body}</a>` : `<div class="dcard old">${body}</div>`}</li>`;
 }).join('');
 // Continue: the most recently opened rebuilt design, else the first one.
-let last = live[0];
+let last = C ? { n: 0, title: C.title, desc: C.desc, file: C.file } : live[0];
 try { const seen = live.filter(d => localStorage.getItem(`sd-visited-${d.id}`)); if (seen.length) last = seen.at(-1); } catch {}
 const c = document.getElementById('continue');
 c.href = `02_SD_Simulator/${last.file}`;

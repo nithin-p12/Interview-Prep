@@ -1,11 +1,9 @@
 // The 12 designs, in study order. `file` = rebuilt page in this folder; otherwise the old all-in-one simulator
 // (kept in _archive) is linked through `legacy`.
-// `learn` = the "Why X?" lessons (live traffic → problem → the component that fixes it) a design teaches.
-// Each building block is taught ONCE: Kafka, cache and load balancer live in URL Shortener (must read first);
-// later designs only add lessons for what is new to them (e.g. File Upload: Why S3?, Why a CDN?).
+// Building blocks (load balancer, cache, Kafka, S3, CDN …) are taught ONCE, in 00_Core_Components.html (watch first);
+// design pages link to it instead of re-teaching them. `SD_CORE.components` lists what it covers today.
 window.SD_CATALOG = [
-  { n: 1, id: 'url', title: 'URL Shortener', icon: '🔗', desc: 'TinyURL / bit.ly: ID generation, Base62, caching, async analytics.', tags: ['Base62', 'Redis', 'Kafka', 'Load balancer'], file: '01_URL_Shortener_Learn.html', classic: '01_URL_Shortener.html',
-    mustRead: true, learn: ['Why Kafka?', 'Why a cache?', 'Why a load balancer?'] },
+  { n: 1, id: 'url', title: 'URL Shortener', icon: '🔗', desc: 'TinyURL / bit.ly: ID generation, Base62, caching, async analytics.', tags: ['Base62', 'Redis', 'Kafka'], file: '01_URL_Shortener.html' },
   { n: 2, id: 'rate', title: 'Rate Limiter', icon: '⏱', desc: 'Redis, atomicity, concurrency, distributed coordination.', tags: ['Redis Lua', 'Atomic', 'Gateway'] },
   { n: 3, id: 'ticket', title: 'Ticket Booking', icon: '🎟', desc: 'Locking, race conditions, transactions, payment.', tags: ['MongoDB CAS', 'Payments', 'Outbox'], file: '03_Ticket_Booking.html' },
   { n: 4, id: 'notify', title: 'Notification System', icon: '🔔', desc: 'Kafka, retries, DLQ, asynchronous processing.', tags: ['Kafka', 'DLQ', 'SES / FCM'] },
@@ -18,4 +16,7 @@ window.SD_CATALOG = [
   { n: 11, id: 'video', title: 'Video Streaming (YouTube)', icon: '🎬', desc: 'CDN, transcoding, chunking, adaptive streaming.', tags: ['HLS', 'CDN', 'Transcode'] },
   { n: 12, id: 'cache', title: 'Distributed Cache', icon: '⚡', desc: 'Consistent hashing, eviction, replication, cache consistency.', tags: ['Hash ring', 'LRU', 'Versions'] },
 ];
+window.SD_CORE = { file: '00_Core_Components.html', title: 'Core Components', icon: '🧩',
+  desc: 'What, why, without vs with, how it works, pros & cons, when to choose: one place for every building block.',
+  components: ['⚖️ Load balancer', '⚡ Cache · Redis', '📨 Queue · Kafka', '🧭 When to use what'], next: 'S3 · CDN · DB scaling · API gateway · search' };
 window.SD_LEGACY = '_archive/03_System_Design/02_SD_Interview_Simulator_v1.html';

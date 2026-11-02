@@ -27,7 +27,9 @@
   // just before the last component.
   SD.dot = async (s, ids, color, { ms = 420, r = 5, fail = false } = {}) => {
     if (!live(s) || s.clock.instant) return;
-    const d = el('circle', { r, fill: color, class: 'sd-dot' }, s.top);
+    const A0 = s.nodes[ids[0]], B0 = s.nodes[ids[1]];
+    const [cx, cy] = A0 && B0 ? s.edgePoint(A0, B0._x, B0._y) : [-99, -99]; // start on the first wire, not at 0,0
+    const d = el('circle', { r, cx, cy, fill: color, class: 'sd-dot' }, s.top);
     try {
       for (let i = 0; i < ids.length - 1; i++) {
         const A = s.nodes[ids[i]], B = s.nodes[ids[i + 1]];

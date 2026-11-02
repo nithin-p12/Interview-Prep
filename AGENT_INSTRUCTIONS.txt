@@ -217,8 +217,10 @@ When the owner changes an instruction, update THIS file (and the change log at t
   that commit <id>/<version> (annotated) and push the tag. Old versions stay reachable by tag (git show <tag>:<path>)
   or as files in _archive/.
 - A change to a shared engine (_shared/*, 02_SD_Simulator/engine/*) bumps the MINOR version of every page it changes.
-- Each building block is taught once (System Design): Kafka, cache, load balancer live in URL Shortener (must
-  read first); other designs only add "🎓 Why X?" lessons for what is new to them (e.g. Why S3?, Why a CDN?).
+- Each building block is taught ONCE (System Design), in 03_System_Design/02_SD_Simulator/00_Core_Components.html
+  (watch first): one pill per component with What · Without vs With · How it works · Pros & cons · When to choose ·
+  In the interview, plus a "When to use what" cheat sheet + quiz. Design pages link there and never re-teach a
+  component; a new component (S3, CDN, WebSockets …) becomes a new pill there.
 
 ====================================================================
 CHANGE LOG
@@ -250,3 +252,4 @@ CHANGE LOG
 2026-10-23  Testing only on request: no headless tests/screenshots after generating unless the owner asks.
 2026-11-02  Versioning: VERSIONS.md registry, doc-id/doc-version meta + version in <title>, git tags <id>/<version>.
             Git commits/pushes allowed on request (branch only). System Design: each building block taught once.
+2026-11-02  Core Components page (LB, cache, Kafka + cheat sheet/quiz) replaces the URL Shortener Learn page.
