@@ -33,7 +33,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | Java Core | `java-interview-line` | Java Backend Interview Line | archived v1 | `_archive/01_Java_Core/Java_Backend_Interview_Line.html` |
 | Design Patterns | `patterns-roadmap` | Design Patterns Roadmap | archived v1 | `_archive/02_Design_Patterns/01_Design_Patterns_Roadmap_v1.html` |
 | Design Patterns | `patterns-interview` | Design Patterns Interview Guide | archived v2 | `_archive/02_Design_Patterns/02_Design_Patterns_Interview_v2.html` |
-| System Design | `core-components` | Core Components (watch first) | v1.0 | `03_System_Design/02_SD_Simulator/00_Core_Components.html` |
+| System Design | `core-components` | Core Components (watch first) | v1.1 | `03_System_Design/02_SD_Simulator/00_Core_Components.html` |
 | System Design | `fireflink-sd` | FireFlink System Design | v1.0 | `03_System_Design/FireFlink_System_Design.html` |
 | System Design | `fireflink-platform` | FireFlink Platform Architecture | archived v1 | `_archive/03_System_Design/01_FireFlink_Platform_Architecture_v1.html` |
 | System Design | `sd-simulator` | SD Interview Simulator (home) | v3.3 | `03_System_Design/02_SD_Interview_Simulator.html` |
@@ -202,7 +202,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v1.0 | 2026-11-02 | Load balancer, Cache (Redis), Queue (Kafka): What · Without vs With (live traffic + switch) · How it works (variants) · Pros & cons · When to choose (+ alternatives) · Interview lines + Q&A; When to use what: cheat sheet + 7-question quiz. | current file · tag `core-components/v1.0` |
+| v1.1 | 2026-11-02 | In the interview: one interview-ready answer per component (in one breath + What · Why · How · Where · Trade-offs · When / not), then follow-up Q&A. | current file · tag `core-components/v1.1` |
+| v1.0 | 2026-11-02 | Load balancer, Cache (Redis), Queue (Kafka): What · Without vs With (live traffic + switch) · How it works (variants) · Pros & cons · When to choose (+ alternatives) · Interview lines + Q&A; When to use what: cheat sheet + 7-question quiz. | git tag `core-components/v1.0` |
 
 **FireFlink System Design** · `fireflink-sd`
 

@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="core-components">
-<meta name="doc-version" content="v1.0">
+<meta name="doc-version" content="v1.1">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Core Components · System Design · v1.0</title>
+<title>Core Components · System Design · v1.1</title>
 <link rel="stylesheet" href="engine/sd.css">
 <link rel="stylesheet" href="engine/components.css">
 </head>
@@ -211,12 +211,14 @@ const LB = {
     },
   },
   say: {
-    lines: [
-      'The app tier is **stateless**, so I run several instances behind an **L7 load balancer**.',
-      'The LB does **TLS termination**, **health checks** and **least-connections** routing.',
-      'State lives in the database and Redis, so any instance can serve any request; **no sticky sessions**.',
-      'I size the pool for **N+1** (survive losing one) and autoscale on CPU or latency.',
-      'The LB itself is **managed and multi-AZ**, so it is not a single point of failure.',
+    short: 'I run the **stateless** app tier as several instances behind a **managed L7 load balancer** with **health checks** and **least-connections** routing, so we scale out and survive any server dying.',
+    answer: [
+      ['What', 'A load balancer is **one stable address** in front of a pool of **identical servers**; it forwards each request to a healthy one.'],
+      ['Why', 'One server is both a **capacity ceiling** (about 7,000 req/s here) and a **single point of failure**: a crash or a deploy takes the whole product down.'],
+      ['How', 'It **health-checks** every instance (`GET /health` every 5 s) and routes with **least connections**; an unhealthy instance leaves the pool. At L7 it also terminates **TLS** and routes by path.'],
+      ['Where', 'Between the clients and the app tier (and often between internal tiers). It is **managed and multi-AZ**, so it is not a new single point of failure.'],
+      ['Trade-offs', 'Servers must be **stateless** (sessions in Redis or JWTs), it adds a hop of ~1 ms, and **sticky sessions** would skew load, so I avoid them.'],
+      ['When / not', 'Any service with **more than one instance**. It does **not** fix a database bottleneck, and inside a service mesh **client-side** balancing may be enough.'],
     ],
     used: [['URL Shortener', '01_URL_Shortener.html'], ['Ticket Booking', '03_Ticket_Booking.html'], ['File Upload', '06_File_Upload.html'], ['Chat (sticky WebSockets)'], ['every design']],
     qa: [
@@ -385,12 +387,14 @@ const CACHE = {
     },
   },
   say: {
-    lines: [
-      'Reads dominate, so I put **Redis in front of the database** with **cache-aside**.',
-      'On a miss I read the DB and `SET` with a **TTL**; on a write I update the DB, then **delete the key**.',
-      'I expect a **~90% hit ratio**, so the database only sees ~10% of reads.',
-      'For hot keys I prevent a **stampede** with single-flight / a short lock and jittered TTLs.',
-      'If Redis is down I **fall back to the DB** with a rate limit, so it is a performance layer, not the source of truth.',
+    short: 'Reads dominate, so I put **Redis in front of the database** with **cache-aside and a TTL**; it serves ~90% of reads in about a millisecond and the database only sees misses.',
+    answer: [
+      ['What', 'An **in-memory key → value store** (Redis) that keeps hot data next to the app; a hit takes ~1 ms instead of ~10 ms.'],
+      ['Why', 'The **same items** are read thousands of times a second. Without a cache every read hits the database, which overloads at about **8,000 reads/s** and goes down.'],
+      ['How', '**Cache-aside**: read Redis first; on a miss read the DB and `SET` with a **TTL**; on a write update the DB, then **delete the key**. Hot keys get **single-flight** so one expiry cannot stampede the DB.'],
+      ['Where', 'Between the app tier and the database, **shared by all instances**. Redis runs with replicas (Sentinel / Cluster); if it is down we fall back to the DB with a rate limit.'],
+      ['Trade-offs', 'Data can be **stale** until the TTL or delete, **invalidation** must be right on every write path, and it costs RAM plus one more system to run.'],
+      ['When / not', '**Read-heavy, hot, slightly-stale-is-OK** data: product pages, URL lookups, sessions, counters. **Not** for write-heavy data, unique reads, or values that must be exact (balances, seat counts).'],
     ],
     used: [['URL Shortener', '01_URL_Shortener.html'], ['Ticket Booking', '03_Ticket_Booking.html'], ['Rate Limiter'], ['News Feed'], ['Chat (presence)']],
     qa: [
@@ -575,12 +579,14 @@ const KAFKA = {
     },
   },
   say: {
-    lines: [
-      'The user only waits for what they need; **email, analytics and notifications go async via Kafka**.',
-      'The service saves the order, publishes `order-placed` keyed by **orderId**, and returns immediately.',
-      'Each downstream is its own **consumer group**; partitions let me scale consumers in parallel.',
-      'Delivery is at-least-once, so consumers are **idempotent** and failures go to a **retry topic / DLQ**.',
-      'I alert on **consumer lag**; to avoid losing the event I use the **outbox pattern** (write order + event in one DB transaction).',
+    short: 'Anything the user does not need to wait for goes **async**: the service saves the order, **publishes an event to Kafka** and returns; consumers send emails and update analytics at their own pace.',
+    answer: [
+      ['What', 'Kafka is a **durable, partitioned log**: producers append events to a topic; each **consumer group** reads them independently and can **replay** them.'],
+      ['Why', 'Calling slow services (email, analytics) **inline** makes users wait and **fails the request** when they fall over; a spike hits their fixed capacity.'],
+      ['How', 'Events are **keyed** (orderId) so one key stays **in order** in one partition; a group scales up to **one consumer per partition**; offsets are committed after processing.'],
+      ['Where', 'Between the services that produce events and the workers that react to them. I write events with the **outbox pattern** so a DB commit never loses its event.'],
+      ['Trade-offs', '**Eventual consistency**, **at-least-once** delivery (idempotent consumers + DLQ), ordering only **per partition**, and real ops work (lag monitoring, retention).'],
+      ['When / not', '**Slow or fan-out work, spiky traffic, event history / replay.** Not when the caller needs the answer **now**, or for tiny workloads where **SQS / RabbitMQ** is simpler.'],
     ],
     used: [['URL Shortener (analytics)', '01_URL_Shortener.html'], ['Ticket Booking (outbox)', '03_Ticket_Booking.html'], ['File Upload (processing)', '06_File_Upload.html'], ['Notification System'], ['E-commerce saga']],
     qa: [
