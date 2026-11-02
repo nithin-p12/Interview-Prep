@@ -33,10 +33,10 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | Java Core | `java-interview-line` | Java Backend Interview Line | archived v1 | `_archive/01_Java_Core/Java_Backend_Interview_Line.html` |
 | Design Patterns | `patterns-roadmap` | Design Patterns Roadmap | archived v1 | `_archive/02_Design_Patterns/01_Design_Patterns_Roadmap_v1.html` |
 | Design Patterns | `patterns-interview` | Design Patterns Interview Guide | archived v2 | `_archive/02_Design_Patterns/02_Design_Patterns_Interview_v2.html` |
-| System Design | `core-components` | Core Components (watch first) | v1.1 | `03_System_Design/02_SD_Simulator/00_Core_Components.html` |
+| System Design | `core-components` | Core Components (watch first) | v2.0 | `03_System_Design/02_SD_Simulator/00_Core_Components.html` |
 | System Design | `fireflink-sd` | FireFlink System Design | v1.0 | `03_System_Design/FireFlink_System_Design.html` |
 | System Design | `fireflink-platform` | FireFlink Platform Architecture | archived v1 | `_archive/03_System_Design/01_FireFlink_Platform_Architecture_v1.html` |
-| System Design | `sd-simulator` | SD Interview Simulator (home) | v3.3 | `03_System_Design/02_SD_Interview_Simulator.html` |
+| System Design | `sd-simulator` | SD Interview Simulator (home) | v3.4 | `03_System_Design/02_SD_Interview_Simulator.html` |
 | System Design | `sd-url-shortener` | URL Shortener (TinyURL) | v2.2 | `03_System_Design/02_SD_Simulator/01_URL_Shortener.html` |
 | System Design | `sd-ticket-booking` | Ticket Booking | v2.2 | `03_System_Design/02_SD_Simulator/03_Ticket_Booking.html` |
 | System Design | `sd-file-upload` | File Upload & Storage | v2.2 | `03_System_Design/02_SD_Simulator/06_File_Upload.html` |
@@ -202,7 +202,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v1.1 | 2026-11-02 | In the interview: one interview-ready answer per component (in one breath + What · Why · How · Where · Trade-offs · When / not), then follow-up Q&A. | current file · tag `core-components/v1.1` |
+| v2.0 | 2026-11-02 | + Object Storage (S3): local disks → 404s and full disks vs one shared bucket; presigned upload, multipart, presigned download, ObjectCreated events; pros & cons, alternatives (block, file, BLOB, CDN), interview answer + Q&A; cheat sheet and quiz entries. | current file · tag `core-components/v2.0` |
+| v1.1 | 2026-11-02 | In the interview: one interview-ready answer per component (in one breath + What · Why · How · Where · Trade-offs · When / not), then follow-up Q&A. | git tag `core-components/v1.1` |
 | v1.0 | 2026-11-02 | Load balancer, Cache (Redis), Queue (Kafka): What · Without vs With (live traffic + switch) · How it works (variants) · Pros & cons · When to choose (+ alternatives) · Interview lines + Q&A; When to use what: cheat sheet + 7-question quiz. | git tag `core-components/v1.0` |
 
 **FireFlink System Design** · `fireflink-sd`
@@ -221,7 +222,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v3.3 | 2026-11-02 | 0 · Core Components as the full-width "★ Watch first" card; URL Shortener card opens the classic page. | current file · tag `sd-simulator/v3.3` |
+| v3.4 | 2026-11-02 | Core Components card lists Storage · S3. | current file · tag `sd-simulator/v3.4` |
+| v3.3 | 2026-11-02 | 0 · Core Components as the full-width "★ Watch first" card; URL Shortener card opens the classic page. | git tag `sd-simulator/v3.3` |
 | v3.2 | 2026-11-02 | Keyboard-shortcut hint row removed. | git tag `sd-simulator/v3.2` |
 | v3.1 | 2026-11-02 | URL Shortener as full-width "★ Must read first" card with its 🎓 lessons + classic link. | git tag `sd-simulator/v3.1` |
 | v3.0 | 2026-10-30 | Hub of one-page-per-design cards; rebuilt designs open, others link the v2 file. | git tag `sd-simulator/v3.0` |

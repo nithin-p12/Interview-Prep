@@ -84,3 +84,4 @@
   .cc-ctl small { text-align: left; }
   .cc-doc { overflow: visible; }
 }
+@media (max-width: 1500px) { .cc .tagline { display: none; } }

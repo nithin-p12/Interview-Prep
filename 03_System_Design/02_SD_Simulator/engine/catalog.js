@@ -18,5 +18,5 @@ window.SD_CATALOG = [
 ];
 window.SD_CORE = { file: '00_Core_Components.html', title: 'Core Components', icon: '🧩',
   desc: 'What, why, without vs with, how it works, pros & cons, when to choose: one place for every building block.',
-  components: ['⚖️ Load balancer', '⚡ Cache · Redis', '📨 Queue · Kafka', '🧭 When to use what'], next: 'S3 · CDN · DB scaling · API gateway · search' };
+  components: ['⚖️ Load balancer', '⚡ Cache · Redis', '📨 Queue · Kafka', '🪣 Storage · S3', '🧭 When to use what'], next: 'CDN · DB scaling · API gateway · search' };
 window.SD_LEGACY = '_archive/03_System_Design/02_SD_Interview_Simulator_v1.html';

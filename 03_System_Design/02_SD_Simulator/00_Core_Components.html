@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="core-components">
-<meta name="doc-version" content="v1.1">
+<meta name="doc-version" content="v2.0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Core Components · System Design · v1.1</title>
+<title>Core Components · System Design · v2.0</title>
 <link rel="stylesheet" href="engine/sd.css">
 <link rel="stylesheet" href="engine/components.css">
 </head>
@@ -599,6 +599,219 @@ const KAFKA = {
   },
 };
 
+// ================= Object storage (S3) =================
+const ORANGE = '#e07a1f';
+const S3 = {
+  id: 's3', title: 'Object Storage (S3)', short: 'Storage · S3', icon: '🪣', color: '#d4651e',
+  what: {
+    title: 'Files go to object storage; the database keeps only their metadata',
+    text: 'Object storage keeps **files as objects**: a **key** (`users/42/avatar.jpg`) → **bytes + metadata**, in a **bucket**. It is practically unlimited, replicated across data centres (**11 nines durability**) and cheap per GB. Clients usually upload and download **directly** with short-lived **presigned URLs**. Examples: **AWS S3**, Google Cloud Storage, Azure Blob, MinIO.',
+    build(s) {
+      N(s, 'client', 90, 200, 'Users', 'photos · videos · PDFs', '👥', 'entry', { w: 170 });
+      N(s, 'app', 400, 90, 'App service', 'auth · presigned URLs', '🖥️', 'app');
+      N(s, 'db', 760, 90, 'Database', 'id · owner · key · size', '🗄️', 'data', { w: 190 });
+      N(s, 's3', 560, 310, 'S3 bucket', 'the bytes themselves', '🪣', 'data', { w: 200 });
+      s.wire('client', 'app'); s.wire('app', 'db'); s.wire('client', 's3');
+      s.chip(560, 362, '11 nines durable · unlimited · pay per GB', { color: GREY });
+      s.chip(760, 142, 'small rows you can query', { color: GREY });
+      let acc = 0;
+      SD.loop(s, dt => {
+        for (acc += dt * 1.4; acc >= 1; acc--) {
+          SD.dot(s, ['client', 'app', 'db'], BLUE, { r: 4 });
+          s.wait(500).then(() => SD.dot(s, ['client', 's3'], ORANGE, { r: 8, ms: 900 })).catch(() => {});
+        }
+      });
+    },
+  },
+  why: {
+    title: 'Files on the app servers\' disks break as soon as you scale',
+    text: '**Without:** each upload lands on whichever server the load balancer picked, on its **local disk**. A download that reaches the **other** server gets a **404**, the bytes eat the servers\' bandwidth, and the disks **fill up**. **With:** servers only hand out presigned URLs; every file goes to **one shared bucket**, so any server can serve any file and nothing fills up.',
+    without: 'Without · local disks', with: 'With S3',
+    hint: 'Watch the **404s** and the **disk** meters, then switch.',
+    build(s) {
+      N(s, 'client', 90, 200, 'Users', 'upload + download', '👥', 'entry', { w: 160 });
+      N(s, 'lb', 320, 120, 'Load Balancer', 'round robin', '⚖️', 'entry');
+      const A = ['a1', 'a2'];
+      N(s, 'a1', 580, 60, 'App server 1', 'files on local disk', '🖥️', 'app');
+      N(s, 'a2', 580, 180, 'App server 2', 'files on local disk', '🖥️', 'app');
+      N(s, 'db', 900, 120, 'Database', 'file metadata', '🗄️', 'data', { w: 160 });
+      const s3 = N(s, 's3', 580, 340, 'S3 bucket', 'shared by every server', '🪣', 'data', { w: 190 });
+      s.wire('client', 'lb'); A.forEach(id => { s.wire('lb', id); s.wire(id, 'db'); });
+      const direct = s.wire('client', 's3');
+      const st = { a1: { disk: 0, files: new Set(), full: false, meter: SD.meter(s, 580, 104) }, a2: { disk: 0, files: new Set(), full: false, meter: SD.meter(s, 580, 224) } };
+      const status = s.chip(15, 30, '', { anchor: 'start', color: TEAL });
+      const s3chip = s.chip(690, 340, '', { anchor: 'start', color: ORANGE });
+      const L = { on: false, acc: 0, rr: 0, next: 1, objects: 0, all: [], ok: 0, bad: 0, flashAt: 0, t: 0 };
+      for (const id of A) st[id].meter.set = (orig => function (v) { orig.call(this, v); this.g.lastChild.textContent = `disk ${Math.round(v * 100)}%${v >= 1 ? ' · FULL' : ''}`; })(st[id].meter.set);
+      const look = on => {
+        L.on = on;
+        vis(on, s3, direct, s3chip); A.forEach(id => vis(!on, st[id].meter.g));
+        A.forEach(id => { s.tone(s.nodes[id], on ? null : st[id].full ? 'fail' : null); s.setSub(s.nodes[id], on ? 'stateless · no files' : st[id].full ? '✕ disk full' : 'files on local disk', on ? null : st[id].full ? RED : null); });
+        L.ok = L.bad = 0;
+      };
+      const big = (ids, color) => SD.dot(s, ids, color, { r: 8, ms: 650 });
+      const small = (ids, color) => SD.dot(s, ids, color, { r: 4, ms: 380 });
+      const upload = () => {
+        const id = A[L.rr++ % 2], f = L.next++;
+        if (L.on) {
+          small(['client', 'lb', id], BLUE).then(ok => ok && small([id, 'lb', 'client'], BLUE)).then(ok => ok && big(['client', 's3'], ORANGE)).then(ok => { if (ok) { L.objects++; L.all.push(f); } });
+          return;
+        }
+        big(['client', 'lb', id], ORANGE).then(ok => {
+          if (!ok) return;
+          const h = st[id];
+          if (h.full) { L.bad++; return small([id, 'lb', 'client'], RED); }
+          h.files.add(f); L.all.push(f); h.disk = Math.min(1, h.disk + .07); h.meter.set(h.disk);
+          if (h.disk >= 1 && !h.full) { h.full = true; down(s, s.nodes[id], '✕ disk full'); }
+          small([id, 'lb', 'client'], GREEN);
+        });
+      };
+      const download = () => {
+        if (!L.all.length) return;
+        const f = L.all[Math.floor(Math.random() * L.all.length)], id = A[L.rr++ % 2];
+        if (L.on) {
+          small(['client', 'lb', id], BLUE).then(ok => ok && small([id, 'lb', 'client'], BLUE)).then(ok => ok && small(['client', 's3'], BLUE)).then(ok => { if (ok) { L.ok++; big(['s3', 'client'], GREEN); } });
+          return;
+        }
+        small(['client', 'lb', id], TEAL).then(ok => {
+          if (!ok) return;
+          if (st[id].files.has(f)) { L.ok++; return big([id, 'lb', 'client'], GREEN); }
+          L.bad++;
+          if (L.t - L.flashAt > 2.5) { L.flashAt = L.t; s.flash(580, 120, '404 · that file is on the other server', { color: RED, stroke: RED, fill: '#fff4f4' }, 900).catch(() => {}); }
+          small([id, 'lb', 'client'], RED);
+        });
+      };
+      // a few files exist already, spread over both disks
+      for (let f = 0; f < 6; f++) { const id = A[f % 2]; st[id].files.add(-f); L.all.push(-f); st[id].disk += .07; }
+      SD.loop(s, dt => {
+        L.t += dt;
+        for (L.acc += dt * 2.6; L.acc >= 1; L.acc--) (Math.random() < .5 ? upload : download)();
+        A.forEach(id => st[id].meter.set(st[id].disk));
+        const total = L.ok + L.bad, bad = total ? Math.round(100 * L.bad / total) : 0;
+        s.setChip(status, L.on ? `downloads OK ${total ? 100 - bad : 100}% · uploads skip the app servers` : `requests failing: ${bad}%${bad ? ' (404 / disk full)' : ''}`, { color: bad ? RED : GREEN, stroke: bad ? RED : '#d5d9dc' });
+        s.setChip(s3chip, `${num(L.objects + (L.on ? L.all.length - L.objects : 0))} objects · nothing to fill up`);
+        if (total > 40) { L.ok *= .5; L.bad *= .5; }
+      });
+      return { set: look };
+    },
+  },
+  how: {
+    title: 'Presigned URLs, multipart and events',
+    text: 'The **app decides who may do what**; the **bytes go straight between the client and S3**. Pick a case and follow the packets.',
+    options: ['Presigned upload', 'Multipart · big file', 'Download', 'After upload · events'],
+    explain: [
+      '**Presigned upload:** the app checks the user, inserts a `pending` metadata row and returns a **PUT URL valid for ~5 minutes**. The client uploads the bytes directly to S3: the app never carries them.',
+      '**Multipart:** big files (100 MB+) are split into **parts uploaded in parallel**; a failed part is retried alone. The app completes the upload when all parts are in. A lifecycle rule cleans up abandoned uploads.',
+      '**Download:** the app checks permissions and returns a **presigned GET URL (~60 s)**; the client reads from S3 (usually through a **CDN** in front). The bucket itself stays **private**.',
+      '**Events:** S3 emits `ObjectCreated`; a queue feeds **workers** that virus-scan, make thumbnails or transcode, then mark the file `ready` in the database.',
+    ],
+    build(s) {
+      N(s, 'client', 90, 200, 'Client', 'browser / app', '👤', 'entry', { w: 150 });
+      N(s, 'app', 390, 80, 'App service', 'auth · presign', '🖥️', 'app');
+      N(s, 'db', 730, 80, 'Database', 'file metadata', '🗄️', 'data');
+      N(s, 's3', 390, 320, 'S3 bucket', 'private', '🪣', 'data');
+      N(s, 'queue', 730, 320, 'Queue', 'ObjectCreated events', '📨', 'async');
+      N(s, 'worker', 990, 200, 'Worker', 'scan · resize', '⚙️', 'async', { w: 150 });
+      for (const [a, b] of [['client', 'app'], ['client', 's3'], ['app', 'db'], ['app', 's3'], ['s3', 'queue'], ['queue', 'worker'], ['worker', 'db']]) s.wire(a, b);
+      const Y = (str, c = GREY) => s.flash(560, 200, str, { color: c, stroke: c }, 1100);
+      return scripted(s, [
+        async () => {
+          await s.send(['client', 'app'], 'POST /files', BLUE);
+          await s.send(['app', 'db'], 'INSERT pending', TEAL);
+          await s.send(['app', 'client'], 'PUT URL · 5 min', BLUE);
+          await s.send(['client', 's3'], 'PUT 20 MB', ORANGE, { ms: 900 });
+          await Y('the app never carried the bytes', ORANGE);
+        },
+        async () => {
+          await s.send(['client', 'app'], 'start · 2 GB', BLUE);
+          await s.send(['app', 's3'], 'CreateMultipart', ORANGE);
+          await s.send(['app', 'client'], '3 part URLs', BLUE);
+          await Promise.all([1, 2, 3].map(k => s.wait(k * 180).then(() => s.send(['client', 's3'], `part ${k}`, ORANGE, { ms: 900, pulse: false }))));
+          await s.send(['client', 'app'], 'complete', BLUE);
+          await s.send(['app', 's3'], 'CompleteMultipart', ORANGE);
+          await Y('parallel parts · retry only a failed part', ORANGE);
+        },
+        async () => {
+          await s.send(['client', 'app'], 'GET /files/9', BLUE);
+          await s.send(['app', 'db'], 'owner? key?', TEAL);
+          await s.send(['db', 'app'], 'ok', TEAL);
+          await s.send(['app', 'client'], 'GET URL · 60 s', BLUE);
+          await s.send(['client', 's3'], 'GET', BLUE);
+          await s.send(['s3', 'client'], '20 MB', GREEN, { ms: 900 });
+          await Y('bucket stays private · CDN can sit in front');
+        },
+        async () => {
+          await s.send(['client', 's3'], 'PUT photo.jpg', ORANGE, { ms: 800 });
+          await s.send(['s3', 'queue'], 'ObjectCreated', PURPLE);
+          await s.send(['queue', 'worker'], 'photo.jpg', PURPLE);
+          await s.flash(990, 140, 'virus scan · thumbnail', { color: PURPLE, stroke: PURPLE }, 900);
+          await s.send(['worker', 'db'], 'status=ready', TEAL);
+        },
+      ]);
+    },
+  },
+  pros: {
+    pros: [
+      ['Practically unlimited and cheap.', 'Pay per GB stored (cents per GB-month) and per request; no disks to size.'],
+      ['Very durable and available.', 'Objects are replicated across zones (11 nines durability); versioning protects against deletes.'],
+      ['Keeps app servers stateless.', 'Any instance can serve any file; servers can be replaced freely.'],
+      ['Offloads bandwidth.', 'Presigned URLs let clients upload/download directly; a CDN can serve hot files at the edge.'],
+      ['Lifecycle and events.', 'Move old files to cheaper tiers (IA, Glacier); `ObjectCreated` triggers processing.'],
+    ],
+    cons: [
+      ['Not a filesystem.', 'You replace whole objects: no in-place edits or appends, no fast rename of folders.'],
+      ['Higher latency than local disk.', 'Tens of milliseconds to the first byte; not for random small reads/writes.'],
+      ['Not queryable.', 'Listing millions of keys is slow; anything you search or filter lives in the database.'],
+      ['Cost surprises & security.', 'Egress and request costs add up; a public bucket by mistake leaks data (block public access, presign).'],
+    ],
+    bottom: 'Store files in object storage, metadata in the database, and let clients move the bytes directly with presigned URLs.',
+  },
+  when: {
+    choose: [
+      'Users **upload or download files**: images, videos, documents, exports, backups.',
+      'Blobs bigger than about **1 MB**, or anything that would bloat the database.',
+      'Several app instances must see the **same files**, and files must survive any server.',
+      '**Static website assets**, logs, a data lake, or files a CDN will serve.',
+    ],
+    avoid: [
+      'Small **structured records** you query or update often: that is a database.',
+      'You need **low-latency random writes** inside a file (a DB engine, VM disk): use block storage.',
+      'Legacy software needs a **shared POSIX filesystem** (locks, appends): use a network filesystem.',
+    ],
+    alt: {
+      head: ['Option', 'Type', 'Good for', 'Watch out'],
+      me: 'S3 / GCS / Azure Blob',
+      rows: [
+        ['S3 / GCS / Azure Blob', 'Object storage', 'User files, media, backups, static assets', 'Whole-object writes, first-byte latency'],
+        ['EBS / Persistent Disk', 'Block storage (one VM)', 'Databases, OS disks, low-latency I/O', 'Attached to one machine; you size it'],
+        ['EFS / NFS', 'Shared file system', 'Lift-and-shift apps needing shared folders', 'Pricier, slower than block, POSIX locking'],
+        ['Database BLOB', 'Bytes inside rows', 'Tiny files that must be transactional with the row', 'Bloats DB, backups and replication'],
+        ['CDN', 'Edge cache in front', 'Serving popular files fast worldwide', 'A cache, not the source of truth'],
+      ],
+    },
+  },
+  say: {
+    short: 'Files go to **S3**, metadata to the **database**; clients upload and download **directly with presigned URLs**, big files use **multipart**, and an `ObjectCreated` event triggers processing.',
+    answer: [
+      ['What', '**Object storage**: a bucket of objects, each a **key → bytes + metadata**, practically unlimited and replicated across zones.'],
+      ['Why', 'Keeping files on app-server disks breaks scaling (404s on the other server, full disks), and BLOBs in the database bloat it; the bytes also waste app bandwidth.'],
+      ['How', 'The app authorises the user, writes a `pending` row and returns a **presigned PUT URL**; the client uploads straight to S3 (**multipart** for big files). Downloads use a short **presigned GET**.'],
+      ['Where', 'Beside the database in the data tier; a **CDN** sits in front for downloads, and S3 events feed a **queue → workers** for scanning, thumbnails or transcoding.'],
+      ['Trade-offs', 'Not a filesystem (whole-object writes), tens-of-ms latency, not queryable, egress/request costs; the bucket must stay **private** with block-public-access on.'],
+      ['When / not', 'Any **user files, media, backups, static assets**. Not for small records you query (database) or random low-latency writes (block storage).'],
+    ],
+    used: [['File Upload & Storage', '06_File_Upload.html'], ['Video Streaming'], ['Chat (media)'], ['News Feed (photos)']],
+    qa: [
+      ['Why presigned URLs instead of uploading through the API?', 'The bytes skip the app servers (no bandwidth or memory pressure, no timeouts), S3 scales the transfer, and the URL is scoped to one key and expires in minutes.'],
+      ['How do you upload a 5 GB file?', '**Multipart upload**: split into parts (e.g. 100 MB), upload in parallel, retry failed parts, then complete. A lifecycle rule aborts incomplete uploads after a day.'],
+      ['What if the upload fails after the metadata row was written?', 'The row stays `pending`; it becomes `ready` only on the S3 `ObjectCreated` event (or a confirm call). A cleanup job removes stale pending rows.'],
+      ['How do you serve files fast to users worldwide?', 'Put a **CDN** (CloudFront) in front of the bucket with signed URLs/cookies; popular files are served from edge caches near users.'],
+      ['How do you secure the bucket?', 'Private bucket with **block public access**, short-lived presigned URLs, server-side encryption (SSE-KMS), validate type/size, virus-scan on upload.'],
+      ['Is S3 consistent?', 'Yes: since 2020 S3 gives **strong read-after-write** consistency for puts, overwrites and deletes, including listings.'],
+    ],
+  },
+};
+
 // ================= When to use what =================
 const PICK = {
   id: 'pick', title: 'When to use what', short: 'When to use what', icon: '🧭', color: GREEN, sheet: true,
@@ -610,9 +823,11 @@ const PICK = {
     ['User should not wait for slow work (email, analytics, thumbnails)', 'kafka', 'Publish an event and return; consumers do it later.'],
     ['Spiky traffic into a service with fixed capacity', 'kafka', 'The log buffers the spike; consumers drain it at a steady pace.'],
     ['Several services must react to the same event', 'kafka', 'One topic, one consumer group per service (fan-out).'],
+    ['Users upload or download files: images, videos, PDFs, backups', 's3', 'Bytes in object storage, metadata in the DB; presigned URLs so files skip the app servers.'],
+    ['Files must be visible to every app instance and survive any server', 's3', 'One shared, replicated bucket instead of local disks.'],
   ],
-  rule: 'Scale **compute** with a load balancer, speed up **reads** with a cache, take **slow work off the request path** with a queue. More components (S3, CDN, sharding, search…) are coming next.',
-  choices: ['lb', 'cache', 'kafka'],
+  rule: 'Scale **compute** with a load balancer, speed up **reads** with a cache, take **slow work off the request path** with a queue, keep **files** in object storage. More components (CDN, sharding, search…) are coming next.',
+  choices: ['lb', 'cache', 'kafka', 's3'],
   quiz: [
     { q: 'Your product page reads the same 1,000 products ~20,000 times a second and the database CPU sits at 95%.', a: 'cache', why: 'Repeated reads of a small hot set: cache-aside on Redis takes ~90% of the reads off the DB.' },
     { q: 'Sign-up must send a welcome email, but the email provider sometimes takes 3 seconds.', a: 'kafka', why: 'The user does not need the email to finish: publish `user-signed-up` and let an email consumer send it.' },
@@ -621,13 +836,15 @@ const PICK = {
     { q: 'You must limit each user to 100 requests per minute across 10 app instances.', a: 'cache', why: 'Shared fast counters with TTL in Redis (`INCR` + `EXPIRE`, or a Lua script) are visible to every instance.' },
     { q: 'Black Friday: orders spike to 10× for an hour, and the payment-receipt service can only do 500/s.', a: 'kafka', why: 'Buffer the spike in the log; the receipt consumer drains it at 500/s and catches up after the peak.' },
     { q: 'CPU on your single app server is at 100% even though the cache hit ratio is 95%.', a: 'lb', why: 'The bottleneck is compute, not the DB: add instances behind a load balancer.' },
+    { q: 'Users upload 2 GB videos through your API servers; their network is saturated and uploads time out.', a: 's3', why: 'Presigned **multipart** upload straight to S3: the bytes never pass through the app servers.' },
+    { q: 'After adding a second app server, users randomly get 404 for files they just uploaded.', a: 's3', why: 'The files were on the local disk of one server. A shared bucket lets every instance see every file.' },
   ],
 };
 
 window.CORE = {
   title: 'Core Components', tagline: 'watch first · each building block once',
   viewBox: [1100, 400],
-  components: [LB, CACHE, KAFKA, PICK],
+  components: [LB, CACHE, KAFKA, S3, PICK],
 };
 </script>
 <script src="engine/components.js"></script>
