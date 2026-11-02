@@ -1,7 +1,11 @@
 // The 12 designs, in study order. `file` = rebuilt page in this folder; otherwise the old all-in-one simulator
 // (kept in _archive) is linked through `legacy`.
+// `learn` = the "Why X?" lessons (live traffic → problem → the component that fixes it) a design teaches.
+// Each building block is taught ONCE: Kafka, cache and load balancer live in URL Shortener (must read first);
+// later designs only add lessons for what is new to them (e.g. File Upload: Why S3?, Why a CDN?).
 window.SD_CATALOG = [
-  { n: 1, id: 'url', title: 'URL Shortener', icon: '🔗', desc: 'TinyURL / bit.ly: ID generation, Base62, caching, async analytics.', tags: ['Base62', 'Redis', 'Kafka'], file: '01_URL_Shortener.html' },
+  { n: 1, id: 'url', title: 'URL Shortener', icon: '🔗', desc: 'TinyURL / bit.ly: ID generation, Base62, caching, async analytics.', tags: ['Base62', 'Redis', 'Kafka', 'Load balancer'], file: '01_URL_Shortener_Learn.html', classic: '01_URL_Shortener.html',
+    mustRead: true, learn: ['Why Kafka?', 'Why a cache?', 'Why a load balancer?'] },
   { n: 2, id: 'rate', title: 'Rate Limiter', icon: '⏱', desc: 'Redis, atomicity, concurrency, distributed coordination.', tags: ['Redis Lua', 'Atomic', 'Gateway'] },
   { n: 3, id: 'ticket', title: 'Ticket Booking', icon: '🎟', desc: 'Locking, race conditions, transactions, payment.', tags: ['MongoDB CAS', 'Payments', 'Outbox'], file: '03_Ticket_Booking.html' },
   { n: 4, id: 'notify', title: 'Notification System', icon: '🔔', desc: 'Kafka, retries, DLQ, asynchronous processing.', tags: ['Kafka', 'DLQ', 'SES / FCM'] },
