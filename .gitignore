@@ -1,0 +1,5 @@
+# IDE settings (IntelliJ)
+.idea/
+
+# local archives, not part of the study material
+*.zip
