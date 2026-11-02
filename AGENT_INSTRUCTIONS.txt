@@ -16,7 +16,8 @@ When the owner changes an instruction, update THIS file (and the change log at t
 - Old versions go to _archive\ (never just delete them).
 - After finishing a page: update PROGRESS.txt (status + change log) and 00_Index.html.
 - Every page links back with "← All concepts" → ../00_Index.html
-- Do not commit anything to git; the owner reviews first.
+- Git: commit and push only when the owner asks, on a branch (never main without permission); commit message =
+  subject + point-wise What's introduced / What's changed / Issue fixes / Removed.
 
 ====================================================================
 2. FORMAT
@@ -204,6 +205,22 @@ When the owner changes an instruction, update THIS file (and the change log at t
 - Close topics one by one (see PROGRESS.txt "NEXT UP").
 
 ====================================================================
+8. VERSIONS (owner rule since 2026-11-02)
+====================================================================
+- VERSIONS.md (root) is the registry: every page's id, current version, and the history of each version
+  (date, what it has, where to find it). Owner asks by id + version, e.g. "URL Shortener: use v4".
+- Version = vMAJOR.MINOR. MAJOR = redesign or new capability; MINOR = fixes / small tweaks.
+  Archived pages from before git keep plain vN.
+- Every current page has <meta name="doc-id"> + <meta name="doc-version"> right after <meta charset>, and the
+  version at the end of <title> ("… · v5.2"; SD engine pages read the meta).
+- When a page changes: bump its version in the page AND add a row to VERSIONS.md in the same commit, then tag
+  that commit <id>/<version> (annotated) and push the tag. Old versions stay reachable by tag (git show <tag>:<path>)
+  or as files in _archive/.
+- A change to a shared engine (_shared/*, 02_SD_Simulator/engine/*) bumps the MINOR version of every page it changes.
+- Each building block is taught once (System Design): Kafka, cache, load balancer live in URL Shortener (must
+  read first); other designs only add "🎓 Why X?" lessons for what is new to them (e.g. Why S3?, Why a CDN?).
+
+====================================================================
 CHANGE LOG
 ====================================================================
 2026-10-20  File created. Slide mode, code toggle, show-all toggle, keyboard navigation,
@@ -231,3 +248,5 @@ CHANGE LOG
 2026-10-21  Big picture stage (_shared/stage.css/js): one SVG diagram re-framed per slide with a smooth camera tween;
             JVM Memory rebuilt as the pilot of the new PAGE FLOW (old deck archived as _v3_deck).
 2026-10-23  Testing only on request: no headless tests/screenshots after generating unless the owner asks.
+2026-11-02  Versioning: VERSIONS.md registry, doc-id/doc-version meta + version in <title>, git tags <id>/<version>.
+            Git commits/pushes allowed on request (branch only). System Design: each building block taught once.

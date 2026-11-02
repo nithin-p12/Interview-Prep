@@ -82,7 +82,8 @@
     </section>
   </main>
   <div id="toast" class="toast"></div>`;
-  document.title = `${D.title} · System Design`;
+  const docVersion = document.querySelector('meta[name="doc-version"]')?.content;
+  document.title = `${D.title} · System Design${docVersion ? ` · ${docVersion}` : ''}`;
 
   const arrow = (a, d, dir) => {
     a.classList.toggle('disabled', !d);

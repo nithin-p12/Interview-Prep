@@ -152,3 +152,7 @@ CHANGE LOG
 2026-10-23  Simulator: added Rate Limiter, URL Shortener, E-commerce Order, Notification System (not tested, per owner).
 2026-10-23  Simulator: added File Upload, Chat, Job Scheduler — all 8 designs live; 4 'coming soon' cards remain (not tested).
 2026-10-23  Simulator: added News Feed, Search, Video Streaming, Distributed Cache; all 12 live; home re-ordered (not tested).
+2026-10-30  SD simulator split into one page per design (02_SD_Simulator/); URL Shortener, Ticket Booking, File Upload rebuilt.
+2026-11-01  URL Shortener Learn page: 🎓 Why Kafka? / Why a cache? / Why a load balancer? live-traffic lessons.
+2026-11-02  Guided SD Lab + guided page removed (kept as git tags); URL Shortener = classic v2.2 + Learn v5.2 (must read first).
+2026-11-02  Versioning for every page: VERSIONS.md, doc-version meta + title, git tags <id>/<version>.
