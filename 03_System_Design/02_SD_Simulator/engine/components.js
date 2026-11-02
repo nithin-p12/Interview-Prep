@@ -110,11 +110,10 @@
         <section class="cc-box good"><h3>✅ Choose it when</h3><ul>${items(d.choose)}</ul></section>
         <section class="cc-box bad"><h3>⛔ Skip it when</h3><ul>${items(d.avoid)}</ul></section></div>
       <section class="cc-box"><h3>🔀 Alternatives</h3>${table(d.alt.head, d.alt.rows, d.alt.me)}</section>`,
-    // one interview-ready answer (what → why → how → where → trade-offs → when), then the follow-ups
+    // one interview-ready answer: short connected paragraphs, said in 1–2 minutes (pause between paragraphs)
     say: (c, d) => `<div class="cc-grid say">
-        <section class="cc-box cc-answer"><h3>🎤 Interview-ready answer</h3>
-          <p class="cc-short"><b>In one breath</b> ${rich(d.short)}</p>
-          <dl>${d.answer.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${rich(v)}</dd>`).join('')}</dl>
+        <section class="cc-box cc-answer"><h3>🎤 Interview-ready answer <small>~1–2 min · pause between paragraphs</small></h3>
+          <div class="cc-speech">${d.speech.map(p => `<p>${rich(p)}</p>`).join('')}</div>
           <div class="cc-used"><b>Used in</b>${d.used.map(([t, f]) => f ? `<a href="${f}">${esc(t)}</a>` : `<span>${esc(t)}</span>`).join('')}</div></section>
         <section class="cc-box cc-qa"><h3>❓ Follow-up questions</h3>${d.qa.map(([q, a]) => `<details><summary>${rich(q)}</summary><p>${rich(a)}</p></details>`).join('')}</section></div>`,
     sheet: c => `<section class="cc-box"><h3>🧭 You see this problem → reach for this component</h3>

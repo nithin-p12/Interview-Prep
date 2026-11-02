@@ -205,6 +205,14 @@ When the owner changes an instruction, update THIS file (and the change log at t
 - Close topics one by one (see PROGRESS.txt "NEXT UP").
 
 ====================================================================
+7b. INTERVIEW-READY ANSWERS (owner rule since 2026-11-03)
+====================================================================
+- Every interview-ready answer (chat or page) is said in ~1-2 minutes: short connected paragraphs, conversational,
+  pauses = paragraph breaks. No forced What/Why/How headings, no bullet walls, no long intro or repeated conclusion.
+- Cover what it is, why it is used, how it works, a simple practical example, key limitations. Correct terms, briefly
+  explained. Relate to Java / Spring Boot / microservices / Kafka / MongoDB where it fits.
+
+====================================================================
 8. VERSIONS (owner rule since 2026-11-02)
 ====================================================================
 - VERSIONS.md (root) is the registry: every page's id, current version, and the history of each version
@@ -253,3 +261,4 @@ CHANGE LOG
 2026-11-02  Versioning: VERSIONS.md registry, doc-id/doc-version meta + version in <title>, git tags <id>/<version>.
             Git commits/pushes allowed on request (branch only). System Design: each building block taught once.
 2026-11-02  Core Components page (LB, cache, Kafka + cheat sheet/quiz) replaces the URL Shortener Learn page.
+2026-11-03  Interview-ready answer style (7b): 1-2 min spoken paragraphs, no forced headings.

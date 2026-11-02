@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="core-components">
-<meta name="doc-version" content="v2.0">
+<meta name="doc-version" content="v2.1">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Core Components · System Design · v2.0</title>
+<title>Core Components · System Design · v2.1</title>
 <link rel="stylesheet" href="engine/sd.css">
 <link rel="stylesheet" href="engine/components.css">
 </head>
@@ -211,14 +211,12 @@ const LB = {
     },
   },
   say: {
-    short: 'I run the **stateless** app tier as several instances behind a **managed L7 load balancer** with **health checks** and **least-connections** routing, so we scale out and survive any server dying.',
-    answer: [
-      ['What', 'A load balancer is **one stable address** in front of a pool of **identical servers**; it forwards each request to a healthy one.'],
-      ['Why', 'One server is both a **capacity ceiling** (about 7,000 req/s here) and a **single point of failure**: a crash or a deploy takes the whole product down.'],
-      ['How', 'It **health-checks** every instance (`GET /health` every 5 s) and routes with **least connections**; an unhealthy instance leaves the pool. At L7 it also terminates **TLS** and routes by path.'],
-      ['Where', 'Between the clients and the app tier (and often between internal tiers). It is **managed and multi-AZ**, so it is not a new single point of failure.'],
-      ['Trade-offs', 'Servers must be **stateless** (sessions in Redis or JWTs), it adds a hop of ~1 ms, and **sticky sessions** would skew load, so I avoid them.'],
-      ['When / not', 'Any service with **more than one instance**. It does **not** fix a database bottleneck, and inside a service mesh **client-side** balancing may be enough.'],
+    speech: [
+      "A load balancer sits in front of a group of identical application servers and gives clients **one stable address**. Every request reaches the load balancer first, and it forwards that request to one of the **healthy** servers behind it.",
+      "We use it for two reasons: **scale** and **availability**. A single Spring Boot instance can only handle so many requests, and if it crashes or we deploy a new version, the whole service is down. With a load balancer we run three or four instances and simply add more as traffic grows.",
+      "It keeps **health-checking** every instance, for example calling the Actuator `/health` endpoint every few seconds. If an instance stops responding, it is taken out of the pool and traffic goes only to the healthy ones. To pick a server it uses an algorithm like **round robin** or **least connections**; least connections is a good default when some requests are heavier than others. An L7 load balancer like AWS ALB or Nginx can also terminate TLS and route by path, for example `/api/orders` to the order service.",
+      "For example, in a URL shortener I would run the redirect service as several stateless instances behind an ALB, so if one instance dies during a traffic spike, users don't notice.",
+      "The main consideration is that the services must be **stateless**. If we keep sessions in memory, the next request may land on a different server, so we keep sessions in Redis or use JWTs instead of relying on sticky sessions. And the load balancer itself must not become a single point of failure, which is why we use a managed, multi-AZ one.",
     ],
     used: [['URL Shortener', '01_URL_Shortener.html'], ['Ticket Booking', '03_Ticket_Booking.html'], ['File Upload', '06_File_Upload.html'], ['Chat (sticky WebSockets)'], ['every design']],
     qa: [
@@ -387,14 +385,13 @@ const CACHE = {
     },
   },
   say: {
-    short: 'Reads dominate, so I put **Redis in front of the database** with **cache-aside and a TTL**; it serves ~90% of reads in about a millisecond and the database only sees misses.',
-    answer: [
-      ['What', 'An **in-memory key → value store** (Redis) that keeps hot data next to the app; a hit takes ~1 ms instead of ~10 ms.'],
-      ['Why', 'The **same items** are read thousands of times a second. Without a cache every read hits the database, which overloads at about **8,000 reads/s** and goes down.'],
-      ['How', '**Cache-aside**: read Redis first; on a miss read the DB and `SET` with a **TTL**; on a write update the DB, then **delete the key**. Hot keys get **single-flight** so one expiry cannot stampede the DB.'],
-      ['Where', 'Between the app tier and the database, **shared by all instances**. Redis runs with replicas (Sentinel / Cluster); if it is down we fall back to the DB with a rate limit.'],
-      ['Trade-offs', 'Data can be **stale** until the TTL or delete, **invalidation** must be right on every write path, and it costs RAM plus one more system to run.'],
-      ['When / not', '**Read-heavy, hot, slightly-stale-is-OK** data: product pages, URL lookups, sessions, counters. **Not** for write-heavy data, unique reads, or values that must be exact (balances, seat counts).'],
+    speech: [
+      "Redis is an **in-memory key-value data store**, primarily used for caching. It stores frequently accessed data in RAM, which makes data retrieval much faster compared to fetching it repeatedly from a database.",
+      "We commonly use Redis as a **caching layer between the application and the database** to improve response time and reduce database load.",
+      "For example, when a user requests product details, the application first checks Redis. If the data is available (**cache hit**), it returns the data directly. Otherwise (**cache miss**), it fetches the data from the database, stores it in Redis with a **TTL** (Time To Live), and returns the response. This approach is called the **Cache-Aside** pattern. In Spring Boot this is often just `@Cacheable` backed by Redis.",
+      "Apart from caching, Redis is also used for **session management, rate limiting, distributed locking and real-time counters**.",
+      "One important consideration is **cache invalidation**. Whenever the underlying database data changes, we need to update or invalidate the corresponding cache entry to avoid serving stale data. Usually we update the database and then delete the key, so the next read loads fresh data.",
+      "That's why Redis is useful when we need fast access to frequently requested data without putting unnecessary load on the database.",
     ],
     used: [['URL Shortener', '01_URL_Shortener.html'], ['Ticket Booking', '03_Ticket_Booking.html'], ['Rate Limiter'], ['News Feed'], ['Chat (presence)']],
     qa: [
@@ -579,14 +576,12 @@ const KAFKA = {
     },
   },
   say: {
-    short: 'Anything the user does not need to wait for goes **async**: the service saves the order, **publishes an event to Kafka** and returns; consumers send emails and update analytics at their own pace.',
-    answer: [
-      ['What', 'Kafka is a **durable, partitioned log**: producers append events to a topic; each **consumer group** reads them independently and can **replay** them.'],
-      ['Why', 'Calling slow services (email, analytics) **inline** makes users wait and **fails the request** when they fall over; a spike hits their fixed capacity.'],
-      ['How', 'Events are **keyed** (orderId) so one key stays **in order** in one partition; a group scales up to **one consumer per partition**; offsets are committed after processing.'],
-      ['Where', 'Between the services that produce events and the workers that react to them. I write events with the **outbox pattern** so a DB commit never loses its event.'],
-      ['Trade-offs', '**Eventual consistency**, **at-least-once** delivery (idempotent consumers + DLQ), ordering only **per partition**, and real ops work (lag monitoring, retention).'],
-      ['When / not', '**Slow or fan-out work, spiky traffic, event history / replay.** Not when the caller needs the answer **now**, or for tiny workloads where **SQS / RabbitMQ** is simpler.'],
+    speech: [
+      "Kafka is a **distributed event streaming platform**. Services publish events to a **topic**, and other services consume those events independently, at their own pace. Unlike a normal queue, Kafka keeps the events for a configured time, so consumers can also **replay** them.",
+      "We use it to take slow or non-critical work **off the request path** and to **decouple services**. For example, when a user places an order, the order service saves the order in MongoDB, publishes an `order-placed` event and returns the response immediately. The email, inventory and analytics services each consume that event in their own **consumer group**. If the email provider is slow or down, the order API is not affected; the events simply wait in Kafka.",
+      "Internally a topic is split into **partitions**. Kafka uses the message **key**, like the orderId, to choose the partition, so all events of one order stay in order. Within a consumer group each partition is read by only one consumer, so the number of partitions decides how far we can scale consumers. In Spring Boot we publish with `KafkaTemplate` and consume with `@KafkaListener`.",
+      "There are a few things to handle. Delivery is **at-least-once**, so consumers must be **idempotent**, for example by checking the event id before processing. Ordering is guaranteed only **within a partition**. We monitor **consumer lag** and send failing messages to a retry or **dead-letter topic**. And to make sure an event is never lost after the database commit, we can use the **outbox pattern**.",
+      "So Kafka fits whenever the user doesn't need to wait for the work, or when several services need to react to the same event.",
     ],
     used: [['URL Shortener (analytics)', '01_URL_Shortener.html'], ['Ticket Booking (outbox)', '03_Ticket_Booking.html'], ['File Upload (processing)', '06_File_Upload.html'], ['Notification System'], ['E-commerce saga']],
     qa: [
@@ -791,14 +786,12 @@ const S3 = {
     },
   },
   say: {
-    short: 'Files go to **S3**, metadata to the **database**; clients upload and download **directly with presigned URLs**, big files use **multipart**, and an `ObjectCreated` event triggers processing.',
-    answer: [
-      ['What', '**Object storage**: a bucket of objects, each a **key → bytes + metadata**, practically unlimited and replicated across zones.'],
-      ['Why', 'Keeping files on app-server disks breaks scaling (404s on the other server, full disks), and BLOBs in the database bloat it; the bytes also waste app bandwidth.'],
-      ['How', 'The app authorises the user, writes a `pending` row and returns a **presigned PUT URL**; the client uploads straight to S3 (**multipart** for big files). Downloads use a short **presigned GET**.'],
-      ['Where', 'Beside the database in the data tier; a **CDN** sits in front for downloads, and S3 events feed a **queue → workers** for scanning, thumbnails or transcoding.'],
-      ['Trade-offs', 'Not a filesystem (whole-object writes), tens-of-ms latency, not queryable, egress/request costs; the bucket must stay **private** with block-public-access on.'],
-      ['When / not', 'Any **user files, media, backups, static assets**. Not for small records you query (database) or random low-latency writes (block storage).'],
+    speech: [
+      "Amazon S3 is **object storage**. Instead of rows or files on a disk, it stores **objects**: each object has a **key** like `users/42/avatar.jpg`, the actual bytes, and some metadata. It is practically unlimited, highly durable because the data is replicated across availability zones, and cheap per GB.",
+      "We use it to store **user files** such as images, videos, documents and backups. Keeping them on the application servers' local disks doesn't work once we run multiple instances, because a file uploaded to one server isn't available on another, and the disks eventually fill up. Storing large files as BLOBs in the database also makes it huge and slows down backups.",
+      "A common pattern is **presigned URLs**. When a user wants to upload a file, the Spring Boot service checks permissions, saves a metadata record in MongoDB with status `pending`, and returns a presigned PUT URL valid for a few minutes. The client uploads the file **directly to S3**, so the bytes never pass through our servers. For large files we use **multipart upload**: the file is split into parts that are uploaded in parallel and retried individually. Downloads work the same way with a short-lived presigned GET URL, often served through a CDN like CloudFront.",
+      "After the upload, S3 can publish an **event** that triggers a worker to virus-scan the file, generate thumbnails and mark the record as `ready`.",
+      "One thing to keep in mind is that S3 is **not a filesystem** and not a database: we replace whole objects instead of editing them, and we can't query it. So the metadata stays in the database, and the bucket stays **private**, with access only through presigned URLs.",
     ],
     used: [['File Upload & Storage', '06_File_Upload.html'], ['Video Streaming'], ['Chat (media)'], ['News Feed (photos)']],
     qa: [
