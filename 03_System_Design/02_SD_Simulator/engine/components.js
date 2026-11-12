@@ -29,7 +29,7 @@
   <main class="sd cc" id="sd">
     <header class="sd-head">
       <div class="sd-id">
-        <a class="home" href="../02_SD_Interview_Simulator.html" title="All designs"><i>SD</i> System Design</a>
+        <a class="home" href="../02_SD_Interview_Simulator.html" title="All designs"><i>SD</i><span class="home-t"> System Design</span></a>
         <span class="head-divider" aria-hidden="true"></span>
         <h1><span class="num">★</span>${esc(P.title)}</h1>
         <span class="tagline">${esc(P.tagline)}</span>

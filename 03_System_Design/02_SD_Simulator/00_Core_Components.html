@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="core-components">
-<meta name="doc-version" content="v2.2">
+<meta name="doc-version" content="v2.3">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Core Components · System Design · v2.2</title>
+<title>Core Components · System Design · v2.3</title>
 <link rel="stylesheet" href="engine/sd.css">
 <link rel="stylesheet" href="engine/components.css">
 </head>
@@ -1231,6 +1231,220 @@ const DBS = {
   },
 };
 
+// ================= API gateway + rate limiting =================
+const MAGENTA = '#c0396b';
+const GW = {
+  id: 'gw', title: 'API Gateway · Rate Limiting', short: 'API gateway', icon: '🚪', color: MAGENTA,
+  what: {
+    title: 'One front door for all your microservices',
+    text: 'An API gateway is the **single entry point** for clients. Every request passes through it, and it does the **cross-cutting** work once: **authentication** (JWT), **rate limiting**, **routing** by path to the right service, TLS, CORS, logging and metrics. Services behind it just do business logic. Examples: **Spring Cloud Gateway, Kong, AWS API Gateway, Apigee, Nginx / Envoy**.',
+    build(s) {
+      const C = [['web', 'Web app', '🌐'], ['mob', 'Mobile app', '📱'], ['partner', 'Partner API', '🤝']];
+      const S = [['users', 'User service', '/users/**'], ['orders', 'Order service', '/orders/**'], ['pay', 'Payment service', '/payments/**']];
+      C.forEach(([id, l, ic], i) => N(s, id, 90, 80 + 120 * i, l, 'one base URL', ic, 'entry', { w: 150 }));
+      N(s, 'gw', 430, 200, 'API Gateway', 'auth · limit · route', '🚪', 'entry', { w: 180 });
+      S.forEach(([id, l, path], i) => N(s, id, 860, 80 + 120 * i, l, path, '🖥️', 'app', { w: 190 }));
+      C.forEach(([id]) => s.wire(id, 'gw')); S.forEach(([id]) => s.wire('gw', id));
+      s.chip(430, 290, 'JWT · rate limit · TLS · CORS · logs', { color: GREY });
+      const COL = { users: BLUE, orders: TEAL, pay: AMBER };
+      let acc = 0, k = 0;
+      SD.loop(s, dt => {
+        for (acc += dt * 2.8; acc >= 1; acc--) {
+          const c = C[k % 3][0], t = S[Math.floor(Math.random() * 3)][0]; k++;
+          SD.dot(s, [c, 'gw', t], COL[t]).then(ok => ok && SD.dot(s, [t, 'gw', c], GREEN, { r: 4, ms: 350 }));
+        }
+      });
+    },
+  },
+  why: {
+    title: 'Without a front door, one bad client can take a service down',
+    text: '**Without:** clients call each service directly, so every service must do its own auth and limits, and nobody stops a **scraper bot** sending **6,000 req/s** to the order service (capacity about 6,000): it goes **DOWN** for everyone. **With:** all traffic enters through the gateway, which allows each client **100 req/s**; the bot gets **429 Too Many Requests** and real users are unaffected.',
+    without: 'Without · services exposed directly', with: 'With · gateway + rate limit',
+    hint: 'Watch the **order service** load, then switch.',
+    build(s) {
+      const CAP = 6, USERS = 1.2, BOT = 6, LIMIT = .1;
+      N(s, 'users', 100, 110, 'Users', 'normal · 1,200 req/s', '👥', 'entry', { w: 170 });
+      N(s, 'bot', 100, 300, 'Scraper bot', 'one API key · 6,000 req/s', '🤖', 'entry', { w: 190 });
+      const gw = N(s, 'gw', 440, 200, 'API Gateway', 'limit 100 req/s per key', '🚪', 'entry', { w: 190 });
+      const ids = ['usvc', 'osvc', 'psvc'], Y = { usvc: 70, osvc: 200, psvc: 330 };
+      N(s, 'usvc', 840, 70, 'User service', 'own auth?', '🖥️', 'app', { w: 180 });
+      const osvc = N(s, 'osvc', 840, 200, 'Order service', 'capacity ~6,000 req/s', '🖥️', 'app', { w: 180 });
+      N(s, 'psvc', 840, 330, 'Payment service', 'own auth?', '🖥️', 'app', { w: 180 });
+      const direct = [...ids.map(id => s.wire('users', id)), s.wire('bot', 'osvc')];
+      const via = [s.wire('users', 'gw'), s.wire('bot', 'gw'), ...ids.map(id => s.wire('gw', id))];
+      const meter = SD.meter(s, 840, 246);
+      const rej = s.chip(100, 344, '', { color: RED });
+      const status = s.chip(15, 30, '', { anchor: 'start', color: TEAL });
+      const L = { on: false, acc: 0, bacc: 0, k: 0, load: 0, n429: 0, h: { over: 0, calm: 0, down: false } };
+      const look = on => {
+        L.on = on; L.n429 = 0;
+        vis(on, gw, ...via, rej); vis(!on, ...direct);
+        Object.assign(L.h, { over: 0, calm: 0, down: false });
+        s.tone(osvc, null); s.setSub(osvc, 'capacity ~6,000 req/s');
+        ['usvc', 'psvc'].forEach(id => s.setSub(s.nodes[id], on ? 'business logic only' : 'own auth?'));
+      };
+      const user = () => {
+        const id = ids[L.k++ % 3], path = L.on ? ['users', 'gw', id] : ['users', id];
+        SD.dot(s, path, BLUE, { fail: id === 'osvc' && L.h.down }).then(ok => {
+          if (ok === undefined) return;
+          SD.dot(s, [...path].reverse(), ok ? GREEN : RED, { r: 4, ms: 350 });
+        });
+      };
+      const bot = () => {
+        if (L.on) {
+          SD.dot(s, ['bot', 'gw'], RED).then(ok => {
+            if (!ok) return;
+            if (Math.random() < .08) return SD.dot(s, ['gw', 'osvc'], RED, { r: 4 });
+            L.n429++; SD.dot(s, ['gw', 'bot'], RED, { r: 4, ms: 300 });
+          });
+          return;
+        }
+        SD.dot(s, ['bot', 'osvc'], RED, { fail: L.h.down });
+      };
+      SD.loop(s, dt => {
+        for (L.acc += dt * 1.8; L.acc >= 1; L.acc--) user();
+        for (L.bacc += dt * 3.2; L.bacc >= 1; L.bacc--) bot();
+        const want = (USERS / 3 + (L.on ? LIMIT : BOT)) / CAP;
+        L.load += (want - L.load) * Math.min(1, dt * 1.1);
+        meter.set(L.load);
+        const ch = health(L.h, L.load, dt);
+        if (ch === 'down') down(s, osvc, '✕ DOWN · flooded');
+        else if (ch === 'up') up(s, osvc, 'back up');
+        s.setChip(rej, `429 Too Many Requests × ${num(L.n429)}`);
+        s.setChip(status, L.on ? 'bot limited to 100 req/s · users unaffected' : L.h.down ? 'orders failing for every user!' : 'no limit: the bot gets everything it asks for',
+          { color: L.on ? GREEN : L.h.down ? RED : AMBER, stroke: L.h.down && !L.on ? RED : '#d5d9dc' });
+      });
+      return { set: look };
+    },
+  },
+  how: {
+    title: 'Auth, token bucket, aggregation',
+    text: 'One client, the gateway, a **Redis** for shared rate-limit counters and three services. Pick a case and follow the packets.',
+    options: ['Route + auth', 'No / bad token', 'Rate limit · token bucket', 'Aggregation · one call'],
+    explain: [
+      '**Route + auth:** the gateway validates the **JWT** (signature, expiry) once, then forwards by path (`/orders/{id}` → order service) with the user id in a header. Services trust the gateway and do only **authorization** for their own data.',
+      '**Bad token:** a missing or expired token is rejected with **401** at the edge. The services never see the request.',
+      '**Token bucket:** each API key has a bucket of **N tokens** that refills at a fixed rate; each request takes one, an empty bucket means **429** with `Retry-After`. The bucket lives in **Redis** (atomic Lua script) so every gateway instance shares it. Bursts up to N are allowed.',
+      '**Aggregation:** for a mobile home screen, the gateway (or a **BFF**) calls several services **in parallel** and returns one response: one round trip over a slow network instead of three.',
+    ],
+    build(s) {
+      N(s, 'client', 90, 200, 'Client', 'API key k1', '📱', 'entry', { w: 150 });
+      N(s, 'gw', 410, 200, 'API Gateway', 'auth · limit · route', '🚪', 'entry', { w: 180 });
+      N(s, 'redis', 410, 345, 'Redis', 'bucket per key', '⚡', 'data', { w: 160 });
+      N(s, 'usvc', 840, 75, 'User service', '/users', '🖥️', 'app', { w: 170 });
+      N(s, 'osvc', 840, 200, 'Order service', '/orders', '🖥️', 'app', { w: 170 });
+      N(s, 'psvc', 840, 325, 'Payment service', '/payments', '🖥️', 'app', { w: 170 });
+      for (const [a, b] of [['client', 'gw'], ['gw', 'redis'], ['gw', 'usvc'], ['gw', 'osvc'], ['gw', 'psvc']]) s.wire(a, b);
+      const bucket = s.chip(500, 345, '', { anchor: 'start', color: MAGENTA, mono: true });
+      const fill = n => s.setChip(bucket, `k1: ${'●'.repeat(n)}${'○'.repeat(3 - n)} ${n}/3 tokens`);
+      const F = (str, c) => s.flash(410, 140, str, { color: c, stroke: c }, 800);
+      const Y = (str, c = GREY) => s.flash(620, 200, str, { color: c, stroke: c }, 1200);
+      const sc = [
+        async () => {
+          await s.send(['client', 'gw'], 'GET /orders/7 + JWT', BLUE);
+          await F('JWT valid · user 42', GREEN);
+          await s.send(['gw', 'osvc'], 'X-User-Id: 42', TEAL);
+          await s.send(['osvc', 'gw'], 'order 7', GREEN);
+          await s.send(['gw', 'client'], '200', GREEN);
+          await Y('auth once at the edge · route by path', MAGENTA);
+        },
+        async () => {
+          await s.send(['client', 'gw'], 'GET /orders · expired JWT', RED);
+          await F('signature ok · token expired', RED);
+          await s.send(['gw', 'client'], '401 Unauthorized', RED);
+          await Y('services never saw it', RED);
+        },
+        async () => {
+          fill(3);
+          for (let i = 1; i <= 5; i++) {
+            await s.send(['client', 'gw'], `request ${i}`, BLUE, { ms: 380 });
+            await s.send(['gw', 'redis'], 'take token', MAGENTA, { ms: 300 });
+            const left = Math.max(0, 3 - i);
+            if (i <= 3) {
+              fill(left);
+              await s.send(['redis', 'gw'], `ok · ${left} left`, GREEN, { ms: 300 });
+              await s.send(['gw', 'osvc'], 'forward', TEAL, { ms: 380 });
+            } else {
+              await s.send(['redis', 'gw'], 'empty', RED, { ms: 300 });
+              await s.send(['gw', 'client'], '429 · Retry-After: 1', RED, { ms: 380 });
+            }
+          }
+          await s.wait(500); fill(1);
+          await Y('refill 1 token/s · burst up to 3', MAGENTA);
+        },
+        async () => {
+          await s.send(['client', 'gw'], 'GET /home', BLUE);
+          await Promise.all([s.send(['gw', 'usvc'], 'profile', TEAL), s.send(['gw', 'osvc'], 'recent orders', TEAL), s.send(['gw', 'psvc'], 'wallet', TEAL)]);
+          await Promise.all([s.send(['usvc', 'gw'], '{…}', GREEN), s.send(['osvc', 'gw'], '[…]', GREEN), s.send(['psvc', 'gw'], '₹ 420', GREEN)]);
+          await F('merge', MAGENTA);
+          await s.send(['gw', 'client'], 'one response', GREEN);
+          await Y('1 round trip instead of 3', MAGENTA);
+        },
+      ];
+      sc.reset = i => { if (i === 2) fill(3); else s.setChip(bucket, 'k1: rate limit 1 req/s · burst 3'); };
+      return scripted(s, sc);
+    },
+  },
+  pros: {
+    pros: [
+      ['One entry point.', 'Clients know one base URL; services can be split, moved or renamed behind it.'],
+      ['Cross-cutting concerns once.', 'Auth, rate limits, CORS, TLS, request logs and metrics are not re-implemented in every service.'],
+      ['Protects the services.', 'Rate limits, quotas per plan, request size limits and IP blocks stop abuse at the edge.'],
+      ['Fewer round trips.', 'Aggregation / BFF combines calls for mobile clients; response caching for public GETs.'],
+      ['Safer releases.', 'Canary and blue-green routing, API versioning (`/v1`, `/v2`) in one place.'],
+    ],
+    cons: [
+      ['Extra hop and a critical component.', 'Adds a few ms; if it is down everything is down, so it must be scaled and multi-AZ.'],
+      ['Can become a bottleneck for teams.', 'Every route change goes through it; keep business logic out of it.'],
+      ['Rate limiting needs shared state.', 'Per-instance counters are wrong with many gateway instances: use Redis (or the managed gateway\'s store).'],
+      ['Easy to overload with logic.', 'Too much transformation or orchestration turns it into a "god service".'],
+    ],
+    bottom: 'Put a gateway in front of your microservices for auth, limits and routing; keep it thin, stateless and highly available.',
+  },
+  when: {
+    choose: [
+      'Several **microservices** exposed to web, mobile or partner clients.',
+      'You need **one place** for auth, rate limits, quotas, CORS and API keys.',
+      'Public or partner APIs that must be **protected from abuse** (per-key limits, plans).',
+      'Mobile clients that need **aggregated** responses (gateway or a BFF per client type).',
+    ],
+    avoid: [
+      'A single **monolith**: a load balancer (with a rate-limit filter) is usually enough.',
+      'Service-to-service (internal) calls: use direct calls or a **service mesh**, not the public gateway.',
+      'Putting **business logic** or long workflows into it: that belongs in services.',
+    ],
+    alt: {
+      head: ['Option', 'Sits', 'Good for', 'Watch out'],
+      me: 'API gateway',
+      rows: [
+        ['API gateway (Spring Cloud Gateway, Kong, AWS API GW)', 'Edge, in front of services', 'Auth, limits, routing, API keys, aggregation', 'Extra hop; must be HA; keep it thin'],
+        ['L7 load balancer (ALB, Nginx)', 'Edge, in front of instances', 'Spreading traffic, path routing, TLS', 'No per-user auth or quotas by itself'],
+        ['BFF (backend for frontend)', 'Behind the gateway, per client', 'Tailored, aggregated APIs for web vs mobile', 'One more service per client type'],
+        ['Service mesh (Istio, Linkerd)', 'Between services (east-west)', 'mTLS, retries, traffic splitting inside the cluster', 'Operational complexity; not a public entry point'],
+        ['Rate limit in each service', 'Inside the app (Bucket4j, Resilience4j)', 'Per-endpoint limits, a single service', 'Duplicated; counters must be shared (Redis)'],
+      ],
+    },
+  },
+  say: {
+    speech: [
+      "An API gateway is the **single entry point** in front of our microservices. Web, mobile and partner clients call one base URL, and the gateway **routes** each request to the right service based on the path, for example `/orders/{id}` to the order service.",
+      "The main reason to use it is to handle **cross-cutting concerns once** instead of in every service: validating the **JWT**, **rate limiting**, CORS, TLS termination, logging and metrics. Without it, each service has to repeat that logic, and nothing protects the services from a client that sends too many requests. In a Spring stack this is usually **Spring Cloud Gateway** with filters; on AWS it can be API Gateway, or Kong as a standalone option.",
+      "For **rate limiting**, a common algorithm is the **token bucket**: each user or API key gets a bucket of, say, 100 tokens that refills at a fixed rate. Every request takes a token, and when the bucket is empty the gateway returns **429 Too Many Requests** with a `Retry-After` header. Since we run several gateway instances, the counters live in **Redis**, updated atomically with a Lua script, so the limit is shared. Spring Cloud Gateway has a Redis-based `RequestRateLimiter` filter for exactly this.",
+      "The gateway can also **aggregate**: for a mobile home screen it calls the user, order and wallet services in parallel and returns one response, which saves round trips on a slow network.",
+      "The things to watch are that it's an **extra hop** and a critical component, so it must be stateless, scaled out and multi-AZ, and that we keep **business logic out of it**. Authentication happens at the gateway, but each service still checks **authorization** for its own data.",
+    ],
+    used: [['URL Shortener (rate limit creates)', '01_URL_Shortener.html'], ['Ticket Booking (bot protection)', '03_Ticket_Booking.html'], ['Rate Limiter design'], ['E-commerce (BFF for mobile)'], ['Payment APIs (partner keys)']],
+    qa: [
+      ['API gateway vs load balancer?', 'A load balancer spreads traffic over **identical instances** of one service. A gateway routes to **different services** and adds auth, rate limits, API keys and aggregation. Often both: gateway → LB → instances.'],
+      ['Which rate-limiting algorithms do you know?', '**Fixed window** (simple, bursts at the edges), **sliding window log / counter** (smoother), **token bucket** (allows bursts, steady average), **leaky bucket** (constant output rate). Token bucket is the usual default.'],
+      ['How do you rate limit across many gateway instances?', 'Shared counters in **Redis**, updated atomically (Lua script or `INCR` + `EXPIRE`). If Redis is unavailable, fail open (allow) for normal APIs or fall back to a local limit.'],
+      ['What should the client see when limited?', '**429 Too Many Requests**, a `Retry-After` header and often `X-RateLimit-Limit / Remaining` headers, so clients can back off.'],
+      ['Isn\'t the gateway a single point of failure?', 'Only if it runs as one instance. Run it stateless behind a load balancer, multi-AZ, with autoscaling; managed gateways are already highly available.'],
+      ['Where do you do authentication vs authorization?', 'Authentication (who are you, JWT validation) at the gateway; authorization (may user 42 see order 7?) in the service that owns the data.'],
+    ],
+  },
+};
+
 // ================= When to use what =================
 const PICK = {
   id: 'pick', title: 'When to use what', short: 'When to use what', icon: '🧭', color: GREEN, sheet: true,
@@ -1248,15 +1462,17 @@ const PICK = {
     ['The same static files or public responses are downloaded millions of times', 'cdn', 'High hit ratio at the edge; the origin and S3 see only misses.'],
     ['Reads spread over many different rows (feeds, reports) overload the DB; or you need failover', 'db', 'Read replicas: the primary keeps the writes, replicas serve reads and can be promoted.'],
     ['Write volume or data size outgrows the biggest single primary', 'db', 'Shard by a key most queries use (`hash(userId)`); replicate each shard.'],
+    ['Many clients call many microservices; auth, CORS and limits repeated in each', 'gw', 'One entry point: JWT check, routing by path, logging once.'],
+    ['One client or bot can flood an API; partners need per-key quotas', 'gw', 'Token-bucket rate limit per key at the gateway (counters in Redis) → 429.'],
   ],
-  rule: 'Scale **compute** with a load balancer, speed up **reads** with a cache, take **slow work off the request path** with a queue, keep **files** in object storage, serve **static content close to users** with a CDN, and scale the **database** with replicas (reads) and shards (writes, size). More components (API gateway, search…) are coming next.',
-  choices: ['lb', 'cache', 'kafka', 's3', 'cdn', 'db'],
+  rule: 'Scale **compute** with a load balancer, speed up **reads** with a cache, take **slow work off the request path** with a queue, keep **files** in object storage, serve **static content close to users** with a CDN, scale the **database** with replicas (reads) and shards (writes, size), and put an **API gateway** in front for auth, limits and routing. More components (search, WebSockets…) are coming next.',
+  choices: ['lb', 'cache', 'kafka', 's3', 'cdn', 'db', 'gw'],
   quiz: [
     { q: 'Your product page reads the same 1,000 products ~20,000 times a second and the database CPU sits at 95%.', a: 'cache', why: 'Repeated reads of a small hot set: cache-aside on Redis takes ~90% of the reads off the DB.' },
     { q: 'Sign-up must send a welcome email, but the email provider sometimes takes 3 seconds.', a: 'kafka', why: 'The user does not need the email to finish: publish `user-signed-up` and let an email consumer send it.' },
     { q: 'Your API runs on one VM; a deploy or crash means downtime for everyone.', a: 'lb', why: 'Run 2+ stateless instances behind a load balancer: health checks remove a dead one, deploys roll one at a time.' },
     { q: 'Order placed → email, inventory update and analytics must all happen.', a: 'kafka', why: 'Fan-out: one `order-placed` topic, a separate consumer group for each service.' },
-    { q: 'You must limit each user to 100 requests per minute across 10 app instances.', a: 'cache', why: 'Shared fast counters with TTL in Redis (`INCR` + `EXPIRE`, or a Lua script) are visible to every instance.' },
+    { q: 'You need a live view counter per video, incremented by 10 app instances and read in about 1 ms.', a: 'cache', why: 'Shared in-memory counters in Redis (`INCR`) are atomic and visible to every instance.' },
     { q: 'Black Friday: orders spike to 10× for an hour, and the payment-receipt service can only do 500/s.', a: 'kafka', why: 'Buffer the spike in the log; the receipt consumer drains it at 500/s and catches up after the peak.' },
     { q: 'CPU on your single app server is at 100% even though the cache hit ratio is 95%.', a: 'lb', why: 'The bottleneck is compute, not the DB: add instances behind a load balancer.' },
     { q: 'Users upload 2 GB videos through your API servers; their network is saturated and uploads time out.', a: 's3', why: 'Presigned **multipart** upload straight to S3: the bytes never pass through the app servers.' },
@@ -1265,13 +1481,15 @@ const PICK = {
     { q: 'A product image goes viral and your S3 egress bill and origin traffic explode.', a: 'cdn', why: 'The same file read millions of times: the CDN serves it from edge caches, the origin sees only misses.' },
     { q: 'Heavy analytics reports slow down the production database during the day.', a: 'db', why: 'Run them on a **read replica** so user traffic on the primary is not affected.' },
     { q: 'Your orders collection is 6 TB and takes 40,000 writes/s; the primary is maxed even on the biggest instance.', a: 'db', why: 'Writes and size outgrow one primary: **shard** by a key like `hash(customerId)`, each shard with replicas.' },
+    { q: 'A buggy partner script sends 20,000 req/s to your public API and slows it down for everyone.', a: 'gw', why: 'Per-key **rate limit** (token bucket) at the gateway returns 429 to that key; other clients are unaffected.' },
+    { q: 'Each of your 8 microservices validates JWTs and sets CORS headers in its own way, with bugs.', a: 'gw', why: 'Do authentication, CORS and routing **once** at the gateway; services only check authorization.' },
   ],
 };
 
 window.CORE = {
   title: 'Core Components', tagline: 'watch first · each building block once',
   viewBox: [1100, 400],
-  components: [LB, CACHE, KAFKA, S3, CDN, DBS, PICK],
+  components: [LB, CACHE, KAFKA, S3, CDN, DBS, GW, PICK],
 };
 </script>
 <script src="engine/components.js"></script>
