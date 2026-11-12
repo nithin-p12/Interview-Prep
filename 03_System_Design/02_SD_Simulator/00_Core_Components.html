@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="core-components">
-<meta name="doc-version" content="v2.1">
+<meta name="doc-version" content="v2.2">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Core Components · System Design · v2.1</title>
+<title>Core Components · System Design · v2.2</title>
 <link rel="stylesheet" href="engine/sd.css">
 <link rel="stylesheet" href="engine/components.css">
 </head>
@@ -805,6 +805,432 @@ const S3 = {
   },
 };
 
+// ================= CDN =================
+const CYAN = '#1b8fb5';
+const CDN = {
+  id: 'cdn', title: 'CDN (Content Delivery Network)', short: 'CDN', icon: '🌍', color: CYAN,
+  what: {
+    title: 'Copies of your static content in edge servers close to every user',
+    text: 'A CDN is a worldwide network of **edge servers (PoPs)**. Users are routed to the **nearest edge**; if the edge has the file (**cache hit**) it answers in a few milliseconds, otherwise (**miss**) it fetches it once from your **origin** (S3 or your app) and keeps a copy for the **TTL**. Examples: **AWS CloudFront, Cloudflare, Akamai, Fastly**.',
+    build(s) {
+      const U = [['u1', 'Users · India', 'e1', 'Edge · Mumbai'], ['u2', 'Users · Europe', 'e2', 'Edge · Frankfurt'], ['u3', 'Users · US', 'e3', 'Edge · Virginia']];
+      N(s, 'origin', 900, 200, 'Origin', 'S3 bucket / app · us-east', '🪣', 'data', { w: 200 });
+      U.forEach(([u, ul, e, el], i) => {
+        N(s, u, 95, 80 + 120 * i, ul, '~10 ms to the edge', '👥', 'entry', { w: 160 });
+        N(s, e, 450, 80 + 120 * i, el, 'cached copies', '🌍', 'entry', { w: 180 });
+        s.wire(u, e); s.wire(e, 'origin');
+      });
+      s.chip(450, 22, 'hundreds of edge locations worldwide', { color: GREY });
+      s.chip(900, 252, 'one copy · the source of truth', { color: GREY });
+      let acc = 0, k = 0;
+      SD.loop(s, dt => {
+        for (acc += dt * 3; acc >= 1; acc--) {
+          const [u, , e] = U[k++ % 3];
+          SD.dot(s, [u, e], CYAN, { ms: 300 }).then(ok => {
+            if (!ok) return;
+            if (Math.random() < .12) SD.dot(s, [e, 'origin'], AMBER, { ms: 700 }).then(ok => ok && SD.dot(s, ['origin', e, u], GREEN, { r: 4, ms: 500 }));
+            else SD.dot(s, [e, u], GREEN, { r: 4, ms: 300 });
+          });
+        }
+      });
+    },
+  },
+  why: {
+    title: 'Far-away users wait, and the origin serves every byte',
+    text: '**Without:** every request crosses the world to one origin in us-east: India waits **~250 ms per request** (a page with 40 assets feels slow), and the origin pays for **all 9,000 req/s** of images and JS until it is **overloaded**. **With:** each user hits a nearby edge (**~20 ms**); about **95%** are cache hits, so the origin only sees the misses.',
+    without: 'Without · one far origin', with: 'With CDN · edges near users',
+    hint: 'Watch the **latency** per region and the **origin load**, then switch.',
+    build(s) {
+      const RATE = 9, CAP = 6, HIT = .95;
+      const R = [
+        { u: 'u1', e: 'e1', label: 'Users · India', sub: 'far from us-east', edge: 'Edge · Mumbai', y: 80, far: 260, ms: 1300 },
+        { u: 'u2', e: 'e2', label: 'Users · Europe', sub: 'across the Atlantic', edge: 'Edge · Frankfurt', y: 200, far: 140, ms: 850 },
+        { u: 'u3', e: 'e3', label: 'Users · US', sub: 'near the origin', edge: 'Edge · Virginia', y: 320, far: 45, ms: 420 },
+      ];
+      const origin = N(s, 'origin', 920, 200, 'Origin', 'S3 / app · us-east', '🪣', 'data', { w: 190 });
+      const meter = SD.meter(s, 920, 246);
+      const direct = [], viaEdge = [], edges = [];
+      for (const r of R) {
+        N(s, r.u, 95, r.y, r.label, r.sub, '👥', 'entry', { w: 160 });
+        edges.push(N(s, r.e, 470, r.y, r.edge, 'cache hit ~95%', '🌍', 'entry', { w: 180 }));
+        direct.push(s.wire(r.u, 'origin'));
+        viaEdge.push(s.wire(r.u, r.e), s.wire(r.e, 'origin'));
+        r.chip = s.chip(95, r.y + 44, '', { color: GREY });
+      }
+      const status = s.chip(1085, 30, '', { anchor: 'end', color: TEAL });
+      const L = { on: false, acc: 0, k: 0, load: 0, rate: 3, h: { over: 0, calm: 0, down: false } };
+      const look = on => {
+        L.on = on;
+        vis(on, ...edges, ...viaEdge); vis(!on, ...direct);
+        Object.assign(L.h, { over: 0, calm: 0, down: false }); L.rate = 3; L.load = 0;
+        s.tone(origin, null); s.setSub(origin, 'S3 / app · us-east');
+      };
+      const spawn = () => {
+        const r = R[L.k++ % 3];
+        if (!L.on) {
+          SD.dot(s, [r.u, 'origin'], TEAL, { ms: r.ms, fail: L.h.down }).then(ok => {
+            if (ok === undefined) return;
+            SD.dot(s, ['origin', r.u], ok ? GREEN : RED, { r: 4, ms: r.ms });
+          });
+          return;
+        }
+        SD.dot(s, [r.u, r.e], CYAN, { ms: 260 }).then(ok => {
+          if (!ok) return;
+          if (Math.random() > HIT) SD.dot(s, [r.e, 'origin'], AMBER, { ms: 600 }).then(ok => ok && SD.dot(s, ['origin', r.e, r.u], GREEN, { r: 4, ms: 400 }));
+          else SD.dot(s, [r.e, r.u], GREEN, { r: 4, ms: 260 });
+        });
+      };
+      SD.loop(s, dt => {
+        for (L.acc += dt * 3.4; L.acc >= 1; L.acc--) spawn();
+        L.rate += (RATE - L.rate) * Math.min(1, dt * .12); // traffic grows, so latency shows before the overload
+        const want = (L.on ? L.rate * (1 - HIT) : L.rate) / CAP;
+        L.load += (want - L.load) * Math.min(1, dt * 1.2);
+        meter.set(L.load);
+        const ch = health(L.h, L.load, dt);
+        if (ch === 'down') down(s, origin, '✕ DOWN · egress + CPU');
+        else if (ch === 'up') up(s, origin, 'back up');
+        for (const r of R) {
+          const ms = L.on ? 20 : r.far;
+          s.setChip(r.chip, L.h.down && !L.on ? 'errors · origin down' : `~${ms} ms per request`, { color: L.h.down && !L.on ? RED : ms > 100 ? RED : ms > 40 ? AMBER : GREEN });
+        }
+        const originRate = L.on ? L.rate * (1 - HIT) : L.rate, hot = !L.on && L.load >= .75;
+        s.setChip(status, L.on ? `${num(L.rate * 1000)} req/s · hit ratio 95% · origin serves ${num(originRate * 1000)}` : `origin serves all ${num(originRate * 1000)} req/s${L.h.down ? ' · errors!' : ''}`,
+          { color: L.on ? GREEN : hot ? RED : AMBER, stroke: hot ? RED : '#d5d9dc' });
+      });
+      return { set: look };
+    },
+  },
+  how: {
+    title: 'Hit, miss, expiry and a new deploy',
+    text: 'One user and one edge. The chip under the edge shows **what the edge has cached**. Pick a case and follow the packets.',
+    options: ['Cache hit', 'Miss → origin', 'TTL expired · revalidate', 'New deploy'],
+    explain: [
+      '**Hit:** DNS (or anycast) sends the user to the nearest edge; the file is in its cache, so it answers in **~15 ms**. The origin never sees the request.',
+      '**Miss:** the first request for a file at this edge goes to the **origin**. The response carries `Cache-Control: max-age=…`; the edge stores it, so the **next** user nearby gets a hit.',
+      '**Expiry:** after the TTL the copy is **stale**. The edge asks the origin with `If-None-Match` (ETag); if nothing changed the origin answers **304 Not Modified** (no body) and the copy is fresh again.',
+      '**Deploy:** build files get **versioned names** (`app.4b2c.js`) and a 1-year TTL, so a new release is simply a new cache key. Only `index.html` (short TTL) is **invalidated**. No purging thousands of files.',
+    ],
+    build(s) {
+      N(s, 'client', 90, 200, 'User · India', 'browser', '👤', 'entry', { w: 150 });
+      const edge = N(s, 'edge', 420, 200, 'Edge · Mumbai', 'CDN cache', '🌍', 'entry', { w: 180 });
+      N(s, 'origin', 800, 200, 'Origin', 'S3 / app · us-east', '🪣', 'data', { w: 190 });
+      N(s, 'ci', 800, 340, 'CI / deploy', 'build + upload', '🚀', 'app', { w: 170 });
+      for (const [a, b] of [['client', 'edge'], ['edge', 'origin'], ['ci', 'origin'], ['ci', 'edge']]) s.wire(a, b);
+      const cache = s.chip(420, 252, '', { color: CYAN, mono: true });
+      const C = ['logo.png ✓ · photo-7.jpg ✓', 'logo.png ✓', 'index.html (TTL 60 s · expired)', 'index.html → app.3f9a.js ✓'];
+      const Y = (str, c = GREY) => s.flash(600, 120, str, { color: c, stroke: c }, 1100);
+      const sc = [
+        async () => {
+          await s.send(['client', 'edge'], 'GET logo.png', BLUE);
+          await s.flash(420, 145, 'HIT', { color: GREEN, stroke: GREEN }, 500);
+          await s.send(['edge', 'client'], '200 · 15 ms', GREEN);
+          await Y('origin never saw it', GREEN);
+        },
+        async () => {
+          s.setChip(cache, C[1]);
+          await s.send(['client', 'edge'], 'GET photo-7.jpg', BLUE);
+          await s.flash(420, 145, 'MISS', { color: AMBER, stroke: AMBER }, 500);
+          await s.send(['edge', 'origin'], 'GET photo-7.jpg', AMBER, { ms: 900 });
+          await s.send(['origin', 'edge'], '200 · max-age=86400', GREEN, { ms: 900 });
+          s.setChip(cache, C[0]);
+          await s.send(['edge', 'client'], '200 · 280 ms', GREEN);
+          await s.wait(400);
+          await s.send(['client', 'edge'], 'next user · same file', BLUE);
+          await s.send(['edge', 'client'], 'HIT · 15 ms', GREEN);
+          await Y('one miss, then hits for a day', CYAN);
+        },
+        async () => {
+          s.setChip(cache, C[2]);
+          await s.send(['client', 'edge'], 'GET index.html', BLUE);
+          await s.flash(420, 145, 'stale', { color: AMBER, stroke: AMBER }, 500);
+          await s.send(['edge', 'origin'], 'If-None-Match: "v7"', AMBER, { ms: 900 });
+          await s.send(['origin', 'edge'], '304 Not Modified', GREEN, { ms: 900 });
+          s.setChip(cache, 'index.html (fresh 60 s)');
+          await s.send(['edge', 'client'], '200', GREEN);
+          await Y('revalidated: no body re-sent', CYAN);
+        },
+        async () => {
+          s.setChip(cache, C[3]);
+          await s.send(['ci', 'origin'], 'PUT app.4b2c.js', PURPLE);
+          await s.send(['ci', 'origin'], 'PUT index.html', PURPLE);
+          await s.send(['ci', 'edge'], 'invalidate /index.html', RED);
+          s.setChip(cache, 'app.3f9a.js ✓ (old · harmless)');
+          await s.send(['client', 'edge'], 'GET index.html', BLUE);
+          await s.send(['edge', 'origin'], 'MISS → fetch', AMBER, { ms: 800 });
+          await s.send(['origin', 'edge'], 'new index.html', GREEN, { ms: 800 });
+          await s.send(['edge', 'client'], 'uses app.4b2c.js', GREEN);
+          s.setChip(cache, 'index.html ✓ · app.4b2c.js ✓');
+          await Y('new file name = new cache key', CYAN);
+        },
+      ];
+      sc.reset = i => s.setChip(cache, C[i]);
+      return scripted(s, sc);
+    },
+  },
+  pros: {
+    pros: [
+      ['Low latency worldwide.', 'Users are served from a nearby edge: ~10–30 ms instead of 150–300 ms across oceans.'],
+      ['Offloads the origin.', 'With a 90–99% hit ratio the origin and S3 see only misses; far less egress cost and CPU.'],
+      ['Absorbs spikes and attacks.', 'A viral file or a DDoS hits hundreds of edges, not your servers; WAF and rate limits at the edge.'],
+      ['TLS and HTTP/2/3 near the user.', 'Handshakes finish at the edge; compression (Brotli/gzip) and image resizing can happen there too.'],
+      ['Higher availability.', 'Edges can keep serving cached content (stale-if-error) while the origin is down.'],
+    ],
+    cons: [
+      ['Stale content.', 'Users may see an old copy until the TTL expires or you invalidate; invalidations take seconds to minutes.'],
+      ['Little gain for personalised data.', 'Per-user or real-time responses cannot be shared from a cache; they just pass through.'],
+      ['Cache-key mistakes are dangerous.', 'Caching a response that depends on a cookie or auth header can show one user\'s data to another.'],
+      ['Cost and another layer.', 'Pay per GB and per request; debugging needs edge logs and cache headers.'],
+    ],
+    bottom: 'Put a CDN in front of anything static or shared and read globally; set good Cache-Control headers and version your file names.',
+  },
+  when: {
+    choose: [
+      'Serving **static assets**: JS, CSS, fonts, images, the SPA build.',
+      '**Media and downloads** (images, video segments, installers) from S3 to users worldwide.',
+      'Users are **spread across regions**, or traffic is spiky / viral.',
+      'Public, **cacheable API responses** shared by many users (e.g. product catalogue, short TTL).',
+    ],
+    avoid: [
+      '**Personalised or real-time** responses (cart, balance, chat): they cannot be shared, so they just pass through.',
+      'All users are in **one region near the origin** and traffic is small: little to gain.',
+      'Data that must **never be stale** without careful TTLs and invalidation.',
+    ],
+    alt: {
+      head: ['Option', 'Where it caches', 'Good for', 'Watch out'],
+      me: 'CDN (CloudFront / Cloudflare)',
+      rows: [
+        ['CDN (CloudFront / Cloudflare)', 'Edge servers near users', 'Static files, media, public cacheable responses', 'Staleness, invalidation, cache-key bugs'],
+        ['Redis / app cache', 'Next to the app, in one region', 'Hot data from the DB, per-key logic', 'Does not reduce network distance to users'],
+        ['Browser cache', 'On the user\'s device', 'Repeat visits by the same user', 'Only helps that one user; needs versioned names'],
+        ['Multi-region deployment', 'Full app + data in several regions', 'Low latency for dynamic, personalised data', 'Much more complex: data replication, consistency'],
+        ['S3 directly', 'No cache (origin)', 'Low traffic, one region, private downloads', 'Every request pays latency and egress'],
+      ],
+    },
+  },
+  say: {
+    speech: [
+      "A CDN, or **content delivery network**, is a set of **edge servers** spread across the world that keep **cached copies** of our content close to the users. When a user requests a file, DNS routes them to the **nearest edge**. If the edge already has the file, that's a **cache hit** and it returns it in a few milliseconds; if not, it fetches it once from our **origin**, like an S3 bucket or our application, stores it, and serves the next users from the cache.",
+      "We use it mainly for **latency** and to **offload the origin**. If our servers are in us-east and a user in India loads a page with 40 images and scripts, every request crosses the world at about 250 milliseconds. With a CDN those come from a nearby edge in about 20 milliseconds, and with a 95% hit ratio the origin only sees a small fraction of the traffic, which also cuts bandwidth cost and protects us from spikes and DDoS attacks.",
+      "How long the edge keeps a copy is controlled by **`Cache-Control` headers** from the origin. For example, in a React app served from S3 through CloudFront, the build files get **versioned names** like `app.4b2c.js` with a one-year TTL, so a new deploy simply creates new file names; only `index.html` has a short TTL or is invalidated on deploy. From a Spring Boot API we can also set `Cache-Control` on public responses like a product catalogue.",
+      "The main considerations are **staleness** and **what we cache**. Invalidation takes time, so we prefer versioned names over purging. And we must never cache **personalised** responses: if the cache key ignores the user's auth header, one user could see another user's data. So private or real-time data like a cart or balance always goes to the origin.",
+      "So a CDN fits whenever the same static or public content is read by many users, especially across regions.",
+    ],
+    used: [['URL Shortener (redirects at the edge)', '01_URL_Shortener.html'], ['File Upload & Storage', '06_File_Upload.html'], ['Video Streaming'], ['News Feed (images)'], ['E-commerce (catalogue)']],
+    qa: [
+      ['How does a user reach the nearest edge?', '**DNS-based routing** (the CDN\'s DNS returns the IP of a nearby PoP) or **anycast** (the same IP is announced from every PoP and BGP routes to the closest).'],
+      ['How do you push a new version of a JS file?', '**Versioned file names** (content hash) with a long TTL, so a deploy is a new cache key. Only the short-TTL `index.html` changes or is invalidated. Avoid mass invalidations.'],
+      ['Can a CDN cache API responses?', 'Yes, if they are **public and shared**: set `Cache-Control: public, max-age=60` (or `s-maxage`). Never cache responses that depend on the user unless the cache key includes it; mark them `private, no-store`.'],
+      ['How do you protect private files on a CDN?', 'Keep the S3 bucket private and allow only the CDN (**Origin Access Control**); give users **signed URLs or signed cookies** with a short expiry.'],
+      ['What is an origin shield?', 'An extra regional cache layer between the edges and the origin, so many edges missing at once cause only **one** request to the origin.'],
+      ['What if the origin is down?', 'With `stale-if-error`, edges keep serving the last good copy; dynamic requests still fail, so the origin also needs a load balancer and multiple instances.'],
+    ],
+  },
+};
+
+// ================= Database scaling =================
+const INDIGO = '#5a5fc8';
+const DBS = {
+  id: 'db', title: 'Database Scaling (replicas · sharding)', short: 'DB scaling', icon: '🗃️', color: INDIGO,
+  what: {
+    title: 'Copies for more reads, splits for more writes and data',
+    text: '**Replication:** one **primary** takes the writes and streams them to **read replicas**, which serve reads and take over if the primary dies. **Sharding:** split the data by a **shard key** (`hash(userId)`) across several primaries, so each one holds and writes only a slice. Big systems do both. Examples: **MySQL / PostgreSQL replicas, AWS Aurora, MongoDB replica sets + sharded clusters, Cassandra, DynamoDB**.',
+    build(s) {
+      N(s, 'app', 95, 200, 'App servers', 'Spring Boot', '🖥️', 'app', { w: 160 });
+      N(s, 'router', 340, 200, 'Shard router', 'hash(userId) % 3', '🧭', 'app');
+      const SH = [0, 1, 2];
+      SH.forEach(k => {
+        N(s, `p${k}`, 640, 80 + 120 * k, `Shard ${'ABC'[k]} · primary`, 'writes · 1/3 of users', '🗄️', 'data', { w: 190 });
+        N(s, `r${k}`, 950, 80 + 120 * k, `Shard ${'ABC'[k]} · replica`, 'reads · failover', '🗄️', 'data', { w: 180 });
+        s.wire('router', `p${k}`); s.wire(`p${k}`, `r${k}`);
+      });
+      s.wire('app', 'router');
+      s.chip(795, 22, 'replication: primary → replica (async)', { color: GREY });
+      let acc = 0, n = 0;
+      SD.loop(s, dt => {
+        for (acc += dt * 2.6; acc >= 1; acc--) {
+          const k = n++ % 3;
+          SD.dot(s, ['app', 'router', `p${k}`], n % 2 ? BLUE : TEAL, { r: 5 }).then(ok => ok && n % 2 && SD.dot(s, [`p${k}`, `r${k}`], PURPLE, { r: 4, ms: 600 }));
+        }
+      });
+    },
+  },
+  why: {
+    title: 'One database is a ceiling for reads, writes and storage',
+    text: '**Without:** every query hits one database. It handles about **8,000 queries/s**; we send **9,000 reads + 1,000 writes**. The reads touch many different rows (feeds, search pages, reports), so a cache hit ratio stays low, and the DB goes **DOWN**. **With:** the primary takes only the **writes**; two **read replicas** share the reads. The price: replicas are a few milliseconds **behind** (replication lag).',
+    without: 'Without · one database', with: 'With · primary + 2 read replicas',
+    hint: 'Watch the **DB load** meters, then switch.',
+    build(s) {
+      const READS = 9, WRITES = 1, CAP = 8;
+      N(s, 'app', 105, 200, 'App servers', '9k reads · 1k writes /s', '🖥️', 'app', { w: 190 });
+      const p = N(s, 'p', 520, 200, 'Primary DB', 'reads + writes', '🗄️', 'data', { w: 190 });
+      const r1 = N(s, 'r1', 520, 70, 'Read replica 1', 'reads only', '🗄️', 'data', { w: 190 });
+      const r2 = N(s, 'r2', 520, 330, 'Read replica 2', 'reads only', '🗄️', 'data', { w: 190 });
+      s.wire('app', 'p');
+      const extra = [s.wire('app', 'r1'), s.wire('app', 'r2'), s.wire('p', 'r1'), s.wire('p', 'r2')];
+      const st = { p: { load: 0, over: 0, calm: 0, down: false, meter: SD.meter(s, 735, 200) }, r1: { load: 0, meter: SD.meter(s, 735, 70) }, r2: { load: 0, meter: SD.meter(s, 735, 330) } };
+      const lag = s.chip(532, 135, 'replication lag ~20 ms', { color: PURPLE, anchor: 'start' });
+      const status = s.chip(15, 30, '', { anchor: 'start', color: TEAL });
+      const L = { on: false, acc: 0, k: 0, rate: 4 };
+      const look = on => {
+        L.on = on; L.rate = 4;
+        vis(on, r1, r2, ...extra, lag, st.r1.meter.g, st.r2.meter.g);
+        Object.assign(st.p, { over: 0, calm: 0, down: false });
+        s.tone(p, null); s.setSub(p, on ? 'writes only' : 'reads + writes');
+      };
+      const spawn = () => {
+        const write = L.k++ % 10 === 0;
+        const id = !L.on || write ? 'p' : L.k % 2 ? 'r1' : 'r2';
+        SD.dot(s, ['app', id], write ? BLUE : TEAL, { fail: id === 'p' && st.p.down }).then(ok => {
+          if (ok === undefined) return;
+          SD.dot(s, [id, 'app'], ok ? GREEN : RED, { r: 4, ms: 380 });
+          if (ok && write && L.on) ['r1', 'r2'].forEach(r => SD.dot(s, ['p', r], PURPLE, { r: 4, ms: 500 }));
+        });
+      };
+      SD.loop(s, dt => {
+        L.rate += (READS + WRITES - L.rate) * Math.min(1, dt * .15);
+        for (L.acc += dt * 4; L.acc >= 1; L.acc--) spawn();
+        const reads = L.rate * READS / (READS + WRITES), writes = L.rate - reads;
+        const want = L.on ? { p: writes / CAP, r1: (reads / 2 + writes * .5) / CAP, r2: (reads / 2 + writes * .5) / CAP } : { p: L.rate / CAP, r1: 0, r2: 0 };
+        for (const id of ['p', 'r1', 'r2']) { st[id].load += (want[id] - st[id].load) * Math.min(1, dt * 1.3); st[id].meter.set(st[id].load); }
+        const ch = health(st.p, st.p.load, dt);
+        if (ch === 'down') down(s, p, '✕ DOWN · CPU + connections');
+        else if (ch === 'up') up(s, p, L.on ? 'writes only' : 'back up');
+        const bad = st.p.down;
+        s.setChip(status, `${num(reads * 1000)} reads/s + ${num(writes * 1000)} writes/s${L.on ? ' · reads spread over 2 replicas' : bad ? ' · queries failing!' : ' · all on one DB'}`,
+          { color: bad ? RED : L.on ? GREEN : st.p.load > .75 ? AMBER : TEAL, stroke: bad ? RED : '#d5d9dc' });
+      });
+      return { set: look };
+    },
+  },
+  how: {
+    title: 'Replica lag, read-your-writes, shard keys',
+    text: 'Two shards (A, B), each a primary with a replica. The **router** (a `mongos`, a proxy or a library) picks where each query goes. Pick a case and follow the packets.',
+    options: ['Replica lag', 'Read-your-writes', 'Hash sharding', 'Query without shard key'],
+    explain: [
+      '**Replica lag:** writes go to the primary and reach replicas **asynchronously** (ms, sometimes seconds). A read from a replica right after a write can return the **old value**: replicas are **eventually consistent**.',
+      '**Read-your-writes:** route a user\'s reads to the **primary** for a few seconds after they write (or for their own profile), and send everything else to replicas. In Spring: `@Transactional(readOnly = true)` → replica via a routing DataSource.',
+      '**Hash sharding:** `hash(userId) % shards` picks the shard, so data and writes spread **evenly**. All of one user\'s data sits on **one shard**, so their queries hit one machine.',
+      '**No shard key:** a query by `city` cannot be routed, so it goes to **every shard** (scatter-gather) and the results are merged. Slow and costly: choose the shard key from your **main queries**.',
+    ],
+    build(s) {
+      N(s, 'app', 90, 200, 'App service', 'Spring Boot', '🖥️', 'app', { w: 150 });
+      N(s, 'router', 330, 200, 'Router', 'hash(userId) % 2', '🧭', 'app', { w: 170 });
+      N(s, 'p0', 640, 90, 'Shard A · primary', 'users with hash 0', '🗄️', 'data', { w: 190 });
+      N(s, 'p1', 640, 310, 'Shard B · primary', 'users with hash 1', '🗄️', 'data', { w: 190 });
+      N(s, 'r0', 950, 90, 'Shard A · replica', 'reads', '🗄️', 'data', { w: 170 });
+      N(s, 'r1', 950, 310, 'Shard B · replica', 'reads', '🗄️', 'data', { w: 170 });
+      for (const [a, b] of [['app', 'router'], ['router', 'p0'], ['router', 'p1'], ['router', 'r0'], ['router', 'r1'], ['p0', 'r0'], ['p1', 'r1']]) s.wire(a, b);
+      const F = (x, y, str, c) => s.flash(x, y, str, { color: c, stroke: c }, 900);
+      const Y = (str, c = GREY) => s.flash(640, 200, str, { color: c, stroke: c }, 1300);
+      return scripted(s, [
+        async () => {
+          await s.send(['app', 'router'], 'UPDATE user 42', BLUE);
+          await s.send(['router', 'p0'], 'name = "Ravi"', BLUE);
+          await Promise.all([
+            s.send(['p0', 'r0'], 'replicate · lag', PURPLE, { ms: 2200 }),
+            s.wait(150).then(() => s.send(['app', 'router'], 'GET user 42', TEAL)).then(() => s.send(['router', 'r0'], 'read', TEAL, { ms: 900 }))
+              .then(() => F(950, 40, 'old name! not replicated yet', AMBER)),
+          ]);
+          await Y('replicas are eventually consistent', AMBER);
+        },
+        async () => {
+          await s.send(['app', 'router'], 'UPDATE my profile', BLUE);
+          await s.send(['router', 'p0'], 'write', BLUE);
+          await s.send(['p0', 'router'], 'ok', GREEN);
+          await s.send(['router', 'app'], '200', GREEN);
+          await s.send(['app', 'router'], 'GET my profile', TEAL);
+          await F(330, 140, 'wrote 1 s ago → primary', INDIGO);
+          await s.send(['router', 'p0'], 'read', TEAL);
+          await s.send(['p0', 'router'], 'fresh', GREEN);
+          await s.send(['router', 'app'], 'new value', GREEN);
+          await s.send(['app', 'router'], 'GET feed', TEAL);
+          await s.send(['router', 'r1'], 'read · replica', TEAL);
+          await Y('own recent writes → primary · the rest → replicas', INDIGO);
+        },
+        async () => {
+          await s.send(['app', 'router'], 'user 42', BLUE);
+          await F(330, 140, 'hash(42) % 2 = 0', INDIGO);
+          await s.send(['router', 'p0'], 'shard A', BLUE);
+          await s.send(['app', 'router'], 'user 77', BLUE);
+          await F(330, 140, 'hash(77) % 2 = 1', INDIGO);
+          await s.send(['router', 'p1'], 'shard B', BLUE);
+          await Y('each shard: half the data, half the writes', INDIGO);
+        },
+        async () => {
+          await s.send(['app', 'router'], 'WHERE city = Pune', RED);
+          await F(330, 140, 'no shard key → ask every shard', RED);
+          await Promise.all([s.send(['router', 'p0'], 'scan', RED), s.send(['router', 'p1'], 'scan', RED)]);
+          await Promise.all([s.send(['p0', 'router'], '120 rows', AMBER), s.send(['p1', 'router'], '95 rows', AMBER)]);
+          await F(330, 140, 'merge + sort', AMBER);
+          await s.send(['router', 'app'], '215 rows · slow', AMBER);
+          await Y('scatter-gather: pick the shard key from your main queries', RED);
+        },
+      ]);
+    },
+  },
+  pros: {
+    pros: [
+      ['Read replicas scale reads cheaply.', 'Add a replica, point read-only queries at it; no change to the data model.'],
+      ['High availability.', 'A replica is promoted if the primary dies (automatic failover in RDS Multi-AZ, Aurora, MongoDB replica sets).'],
+      ['Sharding scales writes and storage.', 'Each shard holds and writes only its slice, so capacity grows with the number of shards.'],
+      ['Isolation.', 'Heavy reports or analytics run on a replica without slowing down user traffic.'],
+      ['Smaller blast radius.', 'A broken shard affects only its slice of users.'],
+    ],
+    cons: [
+      ['Replication lag.', 'Replicas are eventually consistent: stale reads, so read-your-writes needs routing.'],
+      ['Shard key is hard to change.', 'A bad key causes hot shards or scatter-gather queries; resharding means moving data live.'],
+      ['Cross-shard work is expensive.', 'Joins, transactions and unique constraints across shards need app logic, sagas or 2PC.'],
+      ['Operational complexity.', 'More nodes to monitor, back up, upgrade and fail over; routing logic in the app or a proxy.'],
+    ],
+    bottom: 'Scale up, add indexes and a cache first; add read replicas for read load; shard only when writes or data outgrow one primary.',
+  },
+  when: {
+    choose: [
+      '**Read replicas:** reads far outnumber writes and are spread over **many different rows** (so a cache does not catch them), or reports must not slow the main DB.',
+      '**Replicas for HA:** you need **failover** when the primary dies (practically always in production).',
+      '**Sharding:** **write throughput** or **data size** outgrows the largest sensible single primary.',
+      '**Sharding:** data has a natural key most queries use (`userId`, `tenantId`, `orderId`).',
+    ],
+    avoid: [
+      'The real problem is **missing indexes**, slow queries or N+1 calls: fix those first.',
+      'Hot, repeated reads of the same items: a **cache** is cheaper than replicas.',
+      'Sharding while one machine is still fine: **vertical scaling** (bigger instance) is far simpler.',
+      'Sharding when most queries **join across** the would-be shards.',
+    ],
+    alt: {
+      head: ['Option', 'Scales', 'Good for', 'Watch out'],
+      me: 'Read replicas / Sharding',
+      rows: [
+        ['Indexes + query tuning', 'Every query', 'The first fix; often 10–100× on slow queries', 'Each index slows writes a bit'],
+        ['Vertical scaling', 'Everything, up to a limit', 'Simple: bigger CPU, RAM, faster disk', 'Expensive at the top; still one machine'],
+        ['Cache (Redis)', 'Hot repeated reads', 'Same items read many times', 'Staleness, invalidation'],
+        ['Read replicas', 'Reads + availability', 'Read-heavy, reports, failover', 'Replication lag; writes still on one primary'],
+        ['Sharding', 'Writes + storage', 'Huge data, very high write rates', 'Shard key, cross-shard queries, resharding'],
+        ['SQL (PostgreSQL / MySQL)', 'Up, replicas; sharding is harder', 'Relations, joins, transactions, strict schema', 'Horizontal write scaling needs extra tools (Citus, Vitess)'],
+        ['NoSQL (MongoDB / Cassandra / DynamoDB)', 'Out: built-in sharding', 'Flexible documents, huge scale, key-based access', 'Weaker joins / multi-document transactions; design around queries'],
+      ],
+    },
+  },
+  say: {
+    speech: [
+      "When one database becomes the bottleneck, I first check the cheap fixes: **indexes**, slow queries, a **bigger instance**, and a **cache** for hot data. If it is still not enough, there are two main ways to scale out: **replication** and **sharding**.",
+      "With **replication**, one **primary** handles all the writes and copies them to one or more **read replicas**. Read-only queries, like listing pages or reports, go to the replicas, so read capacity grows with each replica, and if the primary fails a replica can be **promoted**, which also gives us high availability. In Spring Boot we can route `@Transactional(readOnly = true)` methods to a replica with a routing DataSource, and in MongoDB a replica set with `readPreference=secondaryPreferred` does the same.",
+      "The catch is **replication lag**. Replicas are updated asynchronously, so right after a user updates their profile, a read from a replica might still return the old value. For that we use **read-your-writes**: the user's own recent reads go to the primary, and everything else goes to replicas.",
+      "Replication doesn't help when **writes** or the **data size** outgrow one primary. Then we **shard**: we split the data by a **shard key**, for example `hash(userId)`, so each shard stores and writes only part of the data. MongoDB supports this natively with a sharded cluster. Choosing the shard key is the most important decision: it should spread the load evenly and match the main queries. A query without the shard key has to go to **every shard**, and cross-shard joins or transactions become hard, so they need app-level logic or sagas.",
+      "So I add replicas for read load and availability, and shard only when the write volume or data size really needs it, because it adds a lot of complexity.",
+    ],
+    used: [['URL Shortener (sharded by short code)', '01_URL_Shortener.html'], ['Ticket Booking (primary for seats)', '03_Ticket_Booking.html'], ['Chat (sharded by conversation)'], ['News Feed (replicas)'], ['E-commerce orders']],
+    qa: [
+      ['Replication vs sharding?', 'Replication = **full copies** for reads and failover; writes still go to one primary. Sharding = **split the data** so writes and storage scale. Production systems usually shard and replicate each shard.'],
+      ['How do you choose a shard key?', 'High cardinality, even spread, used by most queries (`userId`, `tenantId`). Avoid monotonic keys like timestamps or auto-increment ids with range sharding: all new writes hit one shard.'],
+      ['Sync or async replication?', 'Async is faster but can lose the last writes on failover; sync (or semi-sync / quorum like MongoDB `w: majority`) waits for replicas, so no data loss but higher write latency.'],
+      ['How do you handle a hot shard?', 'Use a better key (hash, or add a suffix to split a celebrity key), split the shard, or cache the hot data. Consistent hashing reduces data movement when adding shards.'],
+      ['SQL or NoSQL?', 'SQL when data is relational and needs joins and multi-row transactions (payments, orders). NoSQL like MongoDB when access is by key, the schema varies, and you need easy horizontal scale (catalogue, events, chat). Many systems use both.'],
+      ['How do you do a transaction across shards?', 'Avoid it by choosing the key so related data lives together. Otherwise use a **saga** (local transactions + compensations) or 2PC where the database supports it.'],
+    ],
+  },
+};
+
 // ================= When to use what =================
 const PICK = {
   id: 'pick', title: 'When to use what', short: 'When to use what', icon: '🧭', color: GREEN, sheet: true,
@@ -818,9 +1244,13 @@ const PICK = {
     ['Several services must react to the same event', 'kafka', 'One topic, one consumer group per service (fan-out).'],
     ['Users upload or download files: images, videos, PDFs, backups', 's3', 'Bytes in object storage, metadata in the DB; presigned URLs so files skip the app servers.'],
     ['Files must be visible to every app instance and survive any server', 's3', 'One shared, replicated bucket instead of local disks.'],
+    ['Users far from your servers wait for images, JS and CSS', 'cdn', 'Edge servers near users serve cached copies in ~20 ms.'],
+    ['The same static files or public responses are downloaded millions of times', 'cdn', 'High hit ratio at the edge; the origin and S3 see only misses.'],
+    ['Reads spread over many different rows (feeds, reports) overload the DB; or you need failover', 'db', 'Read replicas: the primary keeps the writes, replicas serve reads and can be promoted.'],
+    ['Write volume or data size outgrows the biggest single primary', 'db', 'Shard by a key most queries use (`hash(userId)`); replicate each shard.'],
   ],
-  rule: 'Scale **compute** with a load balancer, speed up **reads** with a cache, take **slow work off the request path** with a queue, keep **files** in object storage. More components (CDN, sharding, search…) are coming next.',
-  choices: ['lb', 'cache', 'kafka', 's3'],
+  rule: 'Scale **compute** with a load balancer, speed up **reads** with a cache, take **slow work off the request path** with a queue, keep **files** in object storage, serve **static content close to users** with a CDN, and scale the **database** with replicas (reads) and shards (writes, size). More components (API gateway, search…) are coming next.',
+  choices: ['lb', 'cache', 'kafka', 's3', 'cdn', 'db'],
   quiz: [
     { q: 'Your product page reads the same 1,000 products ~20,000 times a second and the database CPU sits at 95%.', a: 'cache', why: 'Repeated reads of a small hot set: cache-aside on Redis takes ~90% of the reads off the DB.' },
     { q: 'Sign-up must send a welcome email, but the email provider sometimes takes 3 seconds.', a: 'kafka', why: 'The user does not need the email to finish: publish `user-signed-up` and let an email consumer send it.' },
@@ -831,13 +1261,17 @@ const PICK = {
     { q: 'CPU on your single app server is at 100% even though the cache hit ratio is 95%.', a: 'lb', why: 'The bottleneck is compute, not the DB: add instances behind a load balancer.' },
     { q: 'Users upload 2 GB videos through your API servers; their network is saturated and uploads time out.', a: 's3', why: 'Presigned **multipart** upload straight to S3: the bytes never pass through the app servers.' },
     { q: 'After adding a second app server, users randomly get 404 for files they just uploaded.', a: 's3', why: 'The files were on the local disk of one server. A shared bucket lets every instance see every file.' },
+    { q: 'Your servers are in us-east; users in India wait 3 seconds for a page with 40 images and scripts.', a: 'cdn', why: 'Each asset crosses the world (~250 ms). Edges near the users serve cached copies in ~20 ms.' },
+    { q: 'A product image goes viral and your S3 egress bill and origin traffic explode.', a: 'cdn', why: 'The same file read millions of times: the CDN serves it from edge caches, the origin sees only misses.' },
+    { q: 'Heavy analytics reports slow down the production database during the day.', a: 'db', why: 'Run them on a **read replica** so user traffic on the primary is not affected.' },
+    { q: 'Your orders collection is 6 TB and takes 40,000 writes/s; the primary is maxed even on the biggest instance.', a: 'db', why: 'Writes and size outgrow one primary: **shard** by a key like `hash(customerId)`, each shard with replicas.' },
   ],
 };
 
 window.CORE = {
   title: 'Core Components', tagline: 'watch first · each building block once',
   viewBox: [1100, 400],
-  components: [LB, CACHE, KAFKA, S3, PICK],
+  components: [LB, CACHE, KAFKA, S3, CDN, DBS, PICK],
 };
 </script>
 <script src="engine/components.js"></script>

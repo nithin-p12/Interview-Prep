@@ -87,4 +87,10 @@
   .cc-ctl small { text-align: left; }
   .cc-doc { overflow: visible; }
 }
-@media (max-width: 1500px) { .cc .tagline { display: none; } }
+@media (max-width: 1500px) {
+  .cc .tagline { display: none; }
+  /* 7+ pills: keep the header on one row at laptop widths */
+  .cc-pills { gap: 5px; }
+  .cc-pills button { padding: 3px 10px 3px 4px; gap: 5px; font-size: 13px; }
+  .cc-pills .ci { width: 21px; height: 21px; font-size: 12px; }
+}

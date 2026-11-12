@@ -262,3 +262,4 @@ CHANGE LOG
             Git commits/pushes allowed on request (branch only). System Design: each building block taught once.
 2026-11-02  Core Components page (LB, cache, Kafka + cheat sheet/quiz) replaces the URL Shortener Learn page.
 2026-11-03  Interview-ready answer style (7b): 1-2 min spoken paragraphs, no forced headings.
+2026-11-12  Core Components v2.2: + CDN and DB scaling components.

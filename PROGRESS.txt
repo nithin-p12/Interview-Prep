@@ -158,3 +158,4 @@ CHANGE LOG
 2026-11-02  Versioning for every page: VERSIONS.md, doc-version meta + title, git tags <id>/<version>.
 2026-11-02  00_Core_Components.html v1.0 (watch first): Load balancer, Cache, Kafka, When to use what. Learn page removed;
             URL Shortener is the classic page again (v2.2).
+2026-11-12  Core Components v2.2: + CDN (edges vs one far origin, hit/miss/revalidate/deploy) + DB scaling (replicas, read-your-writes, sharding, SQL vs NoSQL); compact pills.
