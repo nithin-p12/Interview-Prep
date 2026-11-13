@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="sd-simulator">
-<meta name="doc-version" content="v3.6">
+<meta name="doc-version" content="v3.7">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>System Design Interview Simulator · v3.6</title>
+<title>System Design Interview Simulator · v3.7</title>
 <link rel="stylesheet" href="02_SD_Simulator/engine/sd.css">
 <style>
 /* hub: the same "map" layout as the Kafka Learn home */
@@ -96,7 +96,7 @@ document.getElementById('count').textContent = `${live.length} rebuilt · ${SD_C
 const C = window.SD_CORE;
 const coreCard = C ? `<li class="must"><a class="dcard live" href="02_SD_Simulator/${C.file}"><span class="ic">${C.icon}</span><strong><small>0</small>${esc(C.title)}</strong><span class="tag">${esc(C.desc)}</span>
     <span class="row">${C.components.map(t => `<span class="t">${esc(t)}</span>`).join('')}<span class="badge">★ Watch first</span></span></a>
-  <div class="must-side">Every design page assumes these building blocks and does not re-teach them.<span>Coming next: ${esc(C.next)}</span></div></li>` : '';
+  <div class="must-side">Every design page assumes these building blocks and does not re-teach them.<span>Taught inside their designs: ${esc(C.next)}</span></div></li>` : '';
 document.getElementById('cards').innerHTML = coreCard + SD_CATALOG.map(d => {
   const body = `<span class="ic">${d.icon}</span><strong><small>${d.n}</small>${esc(d.title)}</strong><span class="tag">${esc(d.desc)}</span>
     <span class="row">${d.tags.map(t => `<span class="t">${esc(t)}</span>`).join('')}<span class="badge">${d.file ? 'Open →' : `<a href="../${SD_LEGACY}#${d.id}/1">Previous version ↗</a>`}</span></span>`;

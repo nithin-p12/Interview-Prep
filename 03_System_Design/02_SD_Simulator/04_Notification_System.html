@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-notification">
+<meta name="doc-version" content="v2.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notification System · System Design · v2.0</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// Notification System (email + push, transactional + campaigns). Everything specific to this design lives here;
+// engine/app.js renders it. Kafka basics are taught in 00_Core_Components.html (Queue · Kafka).
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+
+// Notification status colours (the Notify DB is the delivery log).
+const ST = {
+  QUEUED: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  SENT: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
+  FAILED: { fill: '#fff4f4', stroke: RED, color: RED },
+};
+const NK = 'order-9:shipped';
+const fmt = (id, status, n) => `${id.padEnd(16)}${status.padEnd(7)}×${n}`;
+
+// State shown next to the components: the notifications log, the topic offsets, the retry topics, the users.
+function setup(s, v, { rows = [], clock = '14:00:00', off = 'email p0 · next 12 · committed 12', retry = 'retry-1m — · retry-10m — · dlq 0', a = 'waiting for an update', b = 'idle' } = {}) {
+  v.clock = s.chip(15, 500, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
+  v.log = s.store(15, 392, 270, 'NOTIFY DB · notifications', { color: AMBER });
+  v.rows = {};
+  rows.forEach(([id, st, n]) => { s.row(v.log, fmt(id, st, n), { ...ST[st], now: true }); v.rows[id] = v.log.rows[v.log.rows.length - 1]; v.rows[id].meta = [id, st, n]; });
+  v.off = s.chip(420, 268, off, { mono: true, color: AMBER });
+  v.retry = s.chip(685, 298, retry, { mono: true, color: PURPLE });
+  v.ua = s.chip(965, 236, a, { color: GREY });
+  v.ub = s.chip(965, 486, b, { color: GREY });
+  return v;
+}
+async function note(s, v, id, st, n) {
+  const r = v.rows[id];
+  if (!r) { v.rows[id] = await s.row(v.log, fmt(id, st, n), ST[st]); v.rows[id].meta = [id, st, n]; return; }
+  r.meta = [id, st, n ?? r.meta[2]];
+  r.label.textContent = fmt(...r.meta);
+  s.paintRow(r, ST[st]);
+  await s.pulse(r, 1, 1.05);
+}
+const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
+const offs = (s, v, t, color = AMBER) => s.setChip(v.off, t, { color });
+const retr = (s, v, t, color = PURPLE) => s.setChip(v.retry, t, { color, stroke: color === RED ? RED : '#d5d9dc' });
+const who = (s, v, u, txt, color = GREY) => s.setChip(u === 'B' ? v.ub : v.ua, txt, { color, stroke: color === GREY ? '#d5d9dc' : color });
+
+window.DESIGN = {
+  id: 'notify', n: 4, title: 'Notification System', tagline: 'accept once, queue per channel and priority, retry without blocking',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'Producers & intake', x0: 0, x1: 300, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'Business services ask for a notification (who, template, channel, priority) with a **dedupe key**. The Notify API accepts it **once** and answers **202**; producers never wait for delivery.',
+      detail: 'One platform for every team: Order, Auth and Marketing do not each integrate SES and FCM.' },
+    { id: 'data', title: 'Rules, queue & log', x0: 300, x1: 540, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: '**Preferences** decide whether a message may be sent; the **Notify DB** records it (the dedupe key is the `_id`); **Kafka** holds the work, one topic per channel and priority.',
+      detail: 'The DB row is written before the message is queued, so a producer retry is caught by the unique `_id`.' },
+    { id: 'async', title: 'Channel workers', x0: 540, x1: 830, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'One consumer group per channel renders the template, calls the provider, records the status and commits. Failures go to **retry topics**, never a sleep inside the consumer.',
+      detail: 'Workers scale with partitions and are throttled to each provider\'s send quota.' },
+    { id: 'app', title: 'Providers & users', x0: 830, x1: 1100, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: 'External providers do the last mile: **SES** for email, **FCM / APNs** for push. They can throttle, fail or be slow, and they have no general "send once" guarantee.',
+      detail: 'That is why delivery is **at-least-once**: we minimise duplicates, we cannot rule them out.' },
+  ],
+  layersIntro: {
+    title: 'Accept once, queue, send, retry on the side',
+    text: 'Producers call the **Notify API**, which checks **preferences**, records the notification in the **Notify DB** and queues it on a **Kafka** topic per channel and priority. **Workers** send through **SES / FCM** and update the status; failures go to **retry / DLQ** topics. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    orderSvc: { x: 75, y: 110, w: 130, label: 'Order Svc', sub: 'producer', icon: '📦', layer: 'entry' },
+    authSvc: { x: 75, y: 300, w: 130, label: 'Auth Svc', sub: 'OTP producer', icon: '🔐', layer: 'entry' },
+    napi: { x: 225, y: 205, w: 142, label: 'Notify API', sub: 'validate · dedupe', icon: '🔔', layer: 'entry' },
+    prefs: { x: 420, y: 70, w: 160, label: 'Preferences', sub: 'opt-in · templates', icon: '⚙️', layer: 'data' },
+    kafka: { x: 420, y: 220, w: 160, label: 'Kafka', sub: 'topic per channel', icon: '📨', layer: 'data' },
+    ndb: { x: 420, y: 440, w: 160, label: 'Notify DB', sub: 'status log', icon: '🍃', layer: 'data' },
+    emailw: { x: 685, y: 110, w: 160, label: 'Email worker', sub: 'group email-svc', icon: '✉️', layer: 'async' },
+    retry: { x: 685, y: 250, w: 160, label: 'Retry / DLQ', sub: 'delay topics', icon: '⏳', layer: 'async' },
+    pushw: { x: 685, y: 400, w: 160, label: 'Push worker', sub: 'group push-svc', icon: '📲', layer: 'async' },
+    ses: { x: 965, y: 80, w: 170, label: 'Email (SES)', sub: 'external', icon: '📧', layer: 'app' },
+    userA: { x: 965, y: 190, w: 170, label: 'User A', sub: 'inbox', icon: '👤', layer: 'app' },
+    fcm: { x: 965, y: 330, w: 170, label: 'Push (FCM)', sub: 'external', icon: '📡', layer: 'app' },
+    userB: { x: 965, y: 440, w: 170, label: 'User B', sub: 'phone', icon: '👤', layer: 'app' },
+  },
+  wires: [['orderSvc', 'napi'], ['authSvc', 'napi'], ['napi', 'prefs'], ['napi', 'kafka'], ['napi', 'ndb'], ['kafka', 'emailw'], ['kafka', 'pushw'], ['emailw', 'retry'], ['emailw', 'ses'], ['pushw', 'fcm'], ['ses', 'userA'], ['fcm', 'userB'], ['emailw', 'ndb'], ['pushw', 'ndb']],
+
+  components: {
+    orderSvc: {
+      name: 'Producers (Order, Marketing …)',
+      what: 'Business services that ask for a notification: `{ userId, template, channel, priority, dedupeKey }`, e.g. "order 9 shipped".',
+      why: 'They own the business event; the notification platform owns how it reaches the user.',
+      without: 'Every team integrates SES / FCM itself, with its own retries, templates and (missing) opt-out checks.',
+      tech: 'REST call to the Notify API (or an event on Kafka)', scale: 'Many producers, one platform.', fails: 'They retry with the **same dedupe key**, so a retry never creates a second notification.',
+    },
+    authSvc: {
+      name: 'Auth Svc (OTP producer)',
+      what: 'Sends login OTPs and security alerts: **high priority**, short time-to-live (60 s).',
+      why: 'Shows why priority must be isolated: an OTP that arrives late is useless.',
+      without: 'OTPs would queue behind marketing campaigns and expire before they arrive.',
+      tech: 'Same Notify API, `priority: "high"`, `ttl: 60`', scale: 'Low volume, strict latency.', fails: 'If push is not delivered in time, fall back to SMS.',
+    },
+    napi: {
+      name: 'Notify API (intake)',
+      what: 'Validates the request, checks **preferences**, inserts the notification with the **dedupe key as `_id`**, produces it to the right **topic**, and returns **202**.',
+      why: 'One front door that makes intake **idempotent** and enforces opt-outs before anything is queued.',
+      without: 'Producer retries create duplicate notifications, and opted-out users still get marketing.',
+      tech: 'Spring Boot; insert then `KafkaTemplate.send` (or a transactional outbox)', scale: 'Stateless pods behind a load balancer.', fails: 'If the send to Kafka fails after the insert, a sweeper re-queues old QUEUED rows (or use the outbox pattern).',
+    },
+    prefs: {
+      name: 'Preferences & templates',
+      what: 'Per-user channel opt-ins, marketing consent, quiet hours, language, device tokens; templates per channel and locale.',
+      why: 'Legal and user-trust rules: no marketing without consent, no pushes at 3 am. Transactional messages (OTP, receipts) skip marketing rules.',
+      without: 'Opted-out users get campaigns (complaints, spam reports, legal risk).',
+      tech: 'MongoDB + Redis cache', scale: 'Read-heavy → cached with a short TTL.', fails: 'Serve the last cached prefs; re-check at send time for marketing.',
+      core: ['cache', 'Cache · Redis'],
+    },
+    kafka: {
+      name: 'Kafka topics (per channel & priority)',
+      what: 'Topics `email`, `push-high` (OTP), `push-bulk` (campaigns), each read by its own consumer group. Key = `userId`, so one user\'s messages stay in order.',
+      why: 'Producers get 202 immediately; spikes (a 1 M campaign) are buffered; channels and priorities never block each other.',
+      without: 'Producers wait on SES / FCM, a slow provider slows every producer, and a campaign delays OTPs.',
+      tech: 'Kafka; `KafkaTemplate` + `@KafkaListener`', scale: 'Partitions per topic; consumers up to one per partition.', fails: 'Redelivery after a crash or rebalance → **at-least-once**, so workers check status before sending.',
+      core: ['kafka', 'Queue · Kafka'],
+    },
+    ndb: {
+      name: 'Notify DB (status log)',
+      what: 'One document per notification: `{ _id: dedupeKey, userId, channel, template, status, attempts, messageId }`. Status QUEUED → SENT → DELIVERED / BOUNCED / FAILED.',
+      why: 'The unique `_id` **is** the dedupe; the status lets a worker skip a message already sent, and support can answer "did the user get it?".',
+      without: 'No dedupe, no history, and no way to stop a redelivered message from being sent again.',
+      tech: 'MongoDB; TTL index on `createdAt` (e.g. 90 days)', scale: 'High write rate → shard by `userId`.', fails: 'Down → new notifications get 503 (producers retry); queued ones keep sending, status updates retry.',
+    },
+    emailw: {
+      name: 'Email worker',
+      what: 'Consumes `email`, checks the status (**SENT? skip**), renders the template, calls SES, marks SENT, then commits the offset.',
+      why: 'Keeps the slow, failure-prone provider call off the producer\'s path.',
+      without: 'Producers call SES directly and fail whenever SES throttles.',
+      tech: 'Spring Kafka `@KafkaListener` + `@RetryableTopic`', scale: 'Up to one consumer per partition; throttled to the SES send rate.', fails: 'Transient errors → retry topic; permanent ones (bad address) → FAILED, no retry.',
+    },
+    retry: {
+      name: 'Retry & dead-letter topics',
+      what: '`email-retry-1m`, `email-retry-10m`, `email-dlq`: delayed retries with growing backoff, then the DLQ after the last attempt.',
+      why: 'A failed message is parked **on the side**, so the main partition keeps flowing.',
+      without: 'Sleeping and retrying inside the consumer blocks every message behind it in the partition.',
+      tech: 'Spring Kafka `@RetryableTopic` (creates the retry topics and the DLT)', scale: 'Small compared to main traffic.', fails: 'The DLQ needs an alert (size, age) and a replay tool; stale messages (yesterday\'s OTP) are dropped.',
+      core: ['kafka', 'Queue · Kafka'],
+    },
+    pushw: {
+      name: 'Push worker',
+      what: 'Sends mobile pushes through FCM / APNs. A **separate consumer group** reads `push-high`, so OTPs never wait behind `push-bulk`.',
+      why: 'Priority isolation needs its own topic **and** its own consumers.',
+      without: 'One shared push queue: a campaign of 1 M pushes delays an OTP by minutes.',
+      tech: 'FCM HTTP v1 API, `priority: high`, short TTL', scale: 'Separate groups for high and bulk; bulk throttled.', fails: 'Invalid device tokens → remove them; offline devices get the push until its TTL.',
+    },
+    ses: {
+      name: 'Email provider (SES)',
+      what: 'Accepts the email and returns a `MessageId`; delivery, bounce and complaint events come back later via SNS.',
+      why: 'Deliverability (IP reputation, DKIM, SPF) is a specialist job.',
+      without: 'Running your own mail servers and fighting spam filters.',
+      tech: 'Amazon SES `SendEmail` + SNS event notifications', scale: 'Account send-rate quota; exceeding it returns throttling errors.', fails: 'No general send-idempotency key: a repeated call sends a second email.',
+    },
+    userA: {
+      name: 'Recipient (email)',
+      what: 'Receives the email "Your order shipped".',
+      why: 'The whole point: the right message, once, in time.',
+      without: '—',
+      tech: 'Any inbox', scale: 'Millions of recipients.', fails: 'Duplicates annoy; bounced addresses must stop receiving mail.',
+    },
+    fcm: {
+      name: 'Push provider (FCM / APNs)',
+      what: 'Delivers pushes to devices; stores them for offline devices until the TTL.',
+      why: 'The only way to reach a phone that is not running the app.',
+      without: '—',
+      tech: 'FCM HTTP v1, APNs', scale: 'High throughput; per-device limits.', fails: 'Expired TTL → dropped; for OTPs fall back to SMS.',
+    },
+    userB: {
+      name: 'Recipient (push)',
+      what: 'Waits for a login OTP on the phone.',
+      why: 'Tight deadline: the OTP expires in 60 seconds.',
+      without: '—',
+      tech: 'Mobile app with a device token', scale: '—', fails: 'Late OTP = failed login.',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Accept once, queue per channel, send, retry on the side.',
+    points: [
+      { t: 'Accept once', color: BLUE, d: 'Notify API checks preferences and inserts with the **dedupe key as `_id`**, then answers **202**.' },
+      { t: 'Queue', color: AMBER, d: 'It produces to the **email** topic (key = user). Producers never wait for SES.' },
+      { t: 'Send', color: PURPLE, d: 'The email worker calls **SES**, marks **SENT**, then **commits** the offset.' },
+      { t: 'Priority', color: RED, d: 'An OTP goes to **push-high** with its own consumers, so campaigns cannot delay it.' },
+    ],
+    stats: [['10 M', 'notifications / day'], ['1 M', 'campaign in minutes'], ['< 5 s', 'OTP end to end'], ['≥ 1', 'delivery (at-least-once)']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v); v.ready = true; }
+    for (const r of [...v.log.rows]) await s.unrow(v.log, r);
+    v.rows = {}; tick(s, v, '14:00:00'); offs(s, v, 'email p0 · next 12 · committed 12'); who(s, v, 'A', 'waiting for an update'); who(s, v, 'B', 'idle');
+
+    ui.say(0); ui.cap('**Accept** · Order Svc asks for "order shipped"; the API checks prefs and records it once');
+    await s.send(['orderSvc', 'napi'], 'POST /notifications', BLUE, { ms: 440 });
+    await s.send(['napi', 'prefs'], 'A: email ok?', BLUE, { ms: 400 });
+    await s.send(['napi', 'ndb'], `insert ${NK}`, BLUE, { ms: 440 });
+    await note(s, v, NK, 'QUEUED', 0);
+    ui.say(1); ui.cap('**Queue** · produce to the `email` topic and answer 202: the producer does not wait');
+    await s.send(['napi', 'kafka'], 'email @12', AMBER, { ms: 420 });
+    offs(s, v, 'email p0 · next 13 · committed 12');
+    await s.send(['napi', 'orderSvc'], '202', GREEN, { ms: 380 });
+    ui.say(2); ui.cap('**Send** · the worker calls SES, marks **SENT**, then commits the offset');
+    await s.send(['kafka', 'emailw'], 'offset 12', PURPLE, { ms: 420 });
+    await s.send(['emailw', 'ses'], 'SendEmail', PURPLE, { ms: 440 });
+    await s.send(['emailw', 'ndb'], 'SENT', GREEN, { ms: 460 });
+    await note(s, v, NK, 'SENT', 1);
+    offs(s, v, 'email p0 · next 13 · committed 13');
+    await s.send(['ses', 'userA'], 'Your order shipped', GREEN, { ms: 400 });
+    who(s, v, 'A', 'got the email ✓', GREEN);
+    ui.say(3); ui.cap('**Priority** · an OTP goes to `push-high` with its own consumer group');
+    await s.send(['authSvc', 'napi'], 'OTP · high', RED, { ms: 420 });
+    await s.send(['napi', 'kafka'], 'push-high', RED, { ms: 400 });
+    await s.send(['kafka', 'pushw', 'fcm', 'userB'], 'OTP 482913', RED, { ms: 380 });
+    who(s, v, 'B', 'OTP in ~1 s ✓', GREEN);
+    await s.wait(1800);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'happy', title: 'Order shipped: email A', sub: 'prefs · log · Kafka · SES', color: BLUE,
+      build: (s, v) => setup(s, v),
+      takeaway: 'The API **accepts once** (dedupe key = `_id`) and returns **202**; the worker sends, records **SENT** and only then **commits** the offset. Delivery events from SES update the status later.',
+      steps: [
+        {
+          title: 'A producer asks for a notification',
+          text: 'Order Svc calls `POST /notifications { userId: "A", template: "order-shipped", channel: "email", dedupeKey: "order-9:shipped" }`. The dedupe key is **stable**: built from the business event, not random per call.',
+          observe: 'The request reaches the Notify API.',
+          focus: v => [v.n.napi],
+          async run(s) { await s.send(['orderSvc', 'napi'], 'POST /notifications', BLUE); },
+        },
+        {
+          title: 'Check preferences',
+          text: 'The API reads A\'s preferences (cached): email allowed? quiet hours? "Order shipped" is **transactional**, so marketing consent and quiet hours do not apply; a campaign would be skipped or delayed here.',
+          observe: 'Preferences allow the email.',
+          say: 'Preferences are checked before anything is queued; transactional messages skip marketing rules.',
+          focus: v => [v.n.prefs],
+          async run(s) {
+            await s.send(['napi', 'prefs'], 'A: email? quiet hours?', BLUE);
+            await s.send(['prefs', 'napi'], 'allowed', GREEN);
+          },
+        },
+        {
+          title: 'Record it: the dedupe key is the _id',
+          text: '`insertOne({ _id: "order-9:shipped", userId: "A", channel: "email", status: "QUEUED", attempts: 0 })`. Because `_id` is unique, a retried request with the same key cannot insert a second row.',
+          observe: 'A QUEUED row appears in the Notify DB.',
+          say: 'The dedupe key is the document id, so producer retries are idempotent.',
+          focus: v => [v.log],
+          async run(s, v) {
+            await s.send(['napi', 'ndb'], 'insert QUEUED', BLUE);
+            await note(s, v, NK, 'QUEUED', 0);
+          },
+        },
+        {
+          title: 'Queue it and answer 202',
+          text: 'The API produces to the `email` topic with **key = userId** (one user\'s messages stay in order) and returns **202 Accepted**. The producer does not wait for SES.',
+          observe: 'The message lands at offset 12; Order Svc gets 202.',
+          focus: v => [v.off],
+          async run(s, v) {
+            await s.send(['napi', 'kafka'], 'email · key A', AMBER);
+            offs(s, v, 'email p0 · next 13 · committed 12'); await s.pulse(v.off);
+            await s.send(['napi', 'orderSvc'], '202 Accepted', GREEN);
+          },
+        },
+        {
+          title: 'The worker sends through SES',
+          text: 'The email worker polls offset 12, checks the row (still **QUEUED**, so send), renders the template in A\'s language and calls `SendEmail`. SES answers with a `MessageId`.',
+          observe: 'The worker calls SES and gets a MessageId.',
+          focus: v => [v.n.emailw, v.n.ses],
+          async run(s) {
+            await s.send(['kafka', 'emailw'], 'offset 12', PURPLE);
+            await s.send(['emailw', 'ses'], 'SendEmail', PURPLE);
+            await s.send(['ses', 'emailw'], 'MessageId 0102-x', GREEN);
+          },
+        },
+        {
+          title: 'Mark SENT, then commit',
+          text: 'Right after the provider call the worker sets `status: "SENT"` with the `MessageId`, then **commits offset 13**. The order matters: if it crashes after SENT but before the commit, the redelivered message is **skipped**.',
+          observe: 'The row turns green and the committed offset moves to 13.',
+          say: 'The worker marks SENT right after the provider call and commits the offset last.',
+          focus: v => [v.rows[NK], v.off],
+          async run(s, v) {
+            await s.send(['emailw', 'ndb'], 'SENT', GREEN);
+            await note(s, v, NK, 'SENT', 1);
+            offs(s, v, 'email p0 · next 13 · committed 13'); await s.pulse(v.off);
+          },
+        },
+        {
+          title: 'Delivered',
+          text: 'A gets "Your order shipped". SES "accepted" is not "delivered": delivery, bounce and complaint events arrive later via SNS and update the status (and stop mail to addresses that bounce).',
+          observe: 'The email reaches A.',
+          focus: v => [v.n.userA],
+          async run(s, v) {
+            await s.send(['ses', 'userA'], 'Your order shipped', GREEN);
+            who(s, v, 'A', 'got the email ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'dedupe', title: 'Producer retries', sub: 'timeout · same dedupe key · E11000', color: TEAL,
+      build: (s, v) => setup(s, v),
+      takeaway: 'A producer cannot know whether a timed-out call succeeded, so it **retries with the same dedupe key**. The unique `_id` turns the retry into a no-op that returns the same 202.',
+      steps: [
+        {
+          title: 'The first request is accepted',
+          text: 'Order Svc sends the request; the API inserts `order-9:shipped` as QUEUED and produces it to Kafka.',
+          observe: 'One row, one message.',
+          focus: v => [v.log, v.off],
+          async run(s, v) {
+            await s.send(['orderSvc', 'napi'], 'POST #1', BLUE);
+            await s.send(['napi', 'ndb'], 'insert', BLUE);
+            await note(s, v, NK, 'QUEUED', 0);
+            await s.send(['napi', 'kafka'], 'email @12', AMBER);
+            offs(s, v, 'email p0 · next 13 · committed 12');
+          },
+        },
+        {
+          title: 'The response is lost',
+          text: 'The 202 never reaches Order Svc (network blip, its timeout was too short). From its point of view the call **failed**.',
+          observe: 'The reply bounces; the producer times out.',
+          focus: v => [v.n.orderSvc],
+          async run(s) {
+            await s.bounce('napi', 'orderSvc', '202', RED);
+            await s.flash(75, 60, 'timeout ✕', { color: RED, stroke: RED, fill: '#fff4f4' }, 600);
+          },
+        },
+        {
+          title: 'Retry with the same key',
+          text: 'Order Svc retries with the **same** `dedupeKey`. The insert hits the unique `_id` → **E11000 duplicate key**. The API treats that as "already accepted".',
+          observe: 'The second insert is rejected by the unique index.',
+          say: 'A retried request hits the unique id, so nothing is queued twice.',
+          focus: v => [v.rows[NK]],
+          async run(s, v) {
+            await s.send(['orderSvc', 'napi'], 'POST #2 (same key)', BLUE);
+            await s.send(['napi', 'ndb'], 'insert', BLUE);
+            await s.flash(420, 390, 'E11000 duplicate key', { mono: true, color: TEAL, stroke: TEAL }, 700);
+            await s.pulse(v.rows[NK], 1, 1.05);
+          },
+        },
+        {
+          title: 'Same answer, nothing new queued',
+          text: 'The API returns **202 { id, duplicate: true }** and does **not** produce again. One row, one Kafka message, one email. Producers must build stable keys (`eventId`, `orderId:type`), never a random UUID per attempt.',
+          observe: 'Order Svc gets 202; the topic offset does not move.',
+          focus: v => [v.off, v.n.orderSvc],
+          async run(s, v) {
+            await s.send(['napi', 'orderSvc'], '202 duplicate', GREEN);
+            await s.pulse(v.off);
+          },
+        },
+      ],
+    },
+    {
+      id: 'retry', title: 'Provider throttles', sub: 'retry topics · backoff · DLQ', color: PURPLE,
+      build: (s, v) => setup(s, v, { rows: [[NK, 'QUEUED', 0]], off: 'email p0 · next 13 · committed 12' }),
+      takeaway: 'Transient failures are **parked on delay topics** with growing backoff while the main partition keeps flowing; after the last attempt the message goes to the **DLQ** with an alert. Permanent errors are never retried.',
+      steps: [
+        {
+          title: 'Attempt 1 is throttled',
+          text: 'The worker sends; SES answers **Throttling: Maximum sending rate exceeded**. That is a **transient** error: worth retrying later. (An invalid address is permanent: mark FAILED, no retry.)',
+          observe: 'SES rejects the first attempt.',
+          focus: v => [v.n.ses],
+          async run(s, v) {
+            await s.send(['kafka', 'emailw'], 'offset 12', PURPLE);
+            await s.send(['emailw', 'ses'], 'attempt 1', PURPLE);
+            await s.send(['ses', 'emailw'], 'Throttling', RED);
+            await note(s, v, NK, 'QUEUED', 1);
+          },
+        },
+        {
+          title: 'Park it on a delay topic, commit, move on',
+          text: 'The worker publishes the message to `email-retry-1m` and **commits offset 13**. Sleeping and retrying inside the consumer would block every message behind it in the partition.',
+          observe: 'The message moves to retry-1m; the main topic continues.',
+          say: 'Failures go to a delay topic so the main partition is never blocked.',
+          focus: v => [v.n.retry, v.retry],
+          async run(s, v) {
+            await s.send(['emailw', 'retry'], 'retry-1m', PURPLE);
+            retr(s, v, 'retry-1m ● · retry-10m — · dlq 0'); await s.pulse(v.retry);
+            offs(s, v, 'email p0 · next 13 · committed 13');
+          },
+        },
+        {
+          title: 'Attempt 2 after a minute, still failing',
+          text: 'After the delay a retry consumer re-sends; SES is still throttling. Backoff grows: the message goes to `email-retry-10m`.',
+          observe: 'Second attempt fails; the delay grows to 10 minutes.',
+          focus: v => [v.retry],
+          async run(s, v) {
+            tick(s, v, '14:01:00');
+            await s.send(['retry', 'emailw'], 'attempt 2', PURPLE);
+            await s.send(['emailw', 'ses'], 'SendEmail', PURPLE);
+            await s.send(['ses', 'emailw'], 'Throttling', RED);
+            await note(s, v, NK, 'QUEUED', 2);
+            await s.send(['emailw', 'retry'], 'retry-10m', PURPLE);
+            retr(s, v, 'retry-1m — · retry-10m ● · dlq 0'); await s.pulse(v.retry);
+          },
+        },
+        {
+          title: 'Attempt 3 fails → dead-letter topic',
+          text: 'The third attempt fails too. After the maximum attempts the message goes to `email-dlq` and the row is marked **FAILED**. An alert fires on the DLQ size and age.',
+          observe: 'The message lands in the DLQ; the row turns red.',
+          say: 'After the last retry the message goes to a dead-letter topic with an alert.',
+          focus: v => [v.retry, v.rows[NK]],
+          async run(s, v) {
+            tick(s, v, '14:11:00');
+            await s.send(['retry', 'emailw'], 'attempt 3', PURPLE);
+            await s.send(['emailw', 'ses'], 'SendEmail', PURPLE);
+            await s.send(['ses', 'emailw'], 'Throttling', RED);
+            await s.send(['emailw', 'retry'], '→ email-dlq', RED);
+            retr(s, v, 'retry-1m — · retry-10m — · dlq 1', RED); await s.pulse(v.retry);
+            await s.send(['emailw', 'ndb'], 'FAILED', RED);
+            await note(s, v, NK, 'FAILED', 3);
+            who(s, v, 'A', 'no email (in DLQ)', RED);
+          },
+        },
+        {
+          title: 'Fix, then replay deliberately',
+          text: 'Someone raises the SES quota (or fixes the bug) and **replays** the DLQ with a tool, not automatically forever. Stale messages are dropped: yesterday\'s OTP is useless. In Spring Kafka, `@RetryableTopic` creates the retry topics and the DLT for you.',
+          observe: 'The replayed message is sent and the row turns SENT.',
+          focus: v => [v.rows[NK], v.n.userA],
+          async run(s, v) {
+            tick(s, v, '14:40:00');
+            await s.send(['retry', 'emailw'], 'replay', TEAL);
+            await s.send(['emailw', 'ses'], 'SendEmail', PURPLE);
+            await s.send(['emailw', 'ndb'], 'SENT', GREEN);
+            await note(s, v, NK, 'SENT', 4);
+            retr(s, v, 'retry-1m — · retry-10m — · dlq 0');
+            await s.send(['ses', 'userA'], 'Your order shipped', GREEN);
+            who(s, v, 'A', 'got it (40 min late)', AMBER);
+          },
+        },
+      ],
+    },
+    {
+      id: 'dup', title: 'Worker crash: duplicate?', sub: 'at-least-once · status check', color: AMBER,
+      build: (s, v) => setup(s, v, { rows: [[NK, 'QUEUED', 0]], off: 'email p0 · next 13 · committed 12' }),
+      takeaway: 'Kafka redelivers after a crash, so delivery is **at-least-once**. Checking the status before sending and marking **SENT right after** the provider call shrinks the duplicate window to a few milliseconds; it cannot remove it, because SES has no send-once key.',
+      steps: [
+        {
+          title: 'The worker sends the email',
+          text: 'The worker polls offset 12, sees **QUEUED**, calls SES and gets a MessageId. A has one email.',
+          observe: 'One email is sent.',
+          focus: v => [v.n.emailw],
+          async run(s, v) {
+            await s.send(['kafka', 'emailw'], 'offset 12', PURPLE);
+            await s.send(['emailw', 'ses'], 'SendEmail', PURPLE);
+            await s.send(['ses', 'userA'], 'email #1', GREEN);
+            who(s, v, 'A', '1 email', GREEN);
+          },
+        },
+        {
+          title: '❌ It crashes before marking SENT',
+          text: 'The pod dies **after** SES accepted the email but **before** the status update and the commit. The row still says QUEUED; the committed offset is still 12.',
+          observe: 'The worker turns red; nothing was recorded.',
+          focus: v => [v.n.emailw, v.rows[NK]],
+          async run(s, v) {
+            s.tone(v.n.emailw, 'fail'); s.setSub(v.n.emailw, '✕ crashed', RED);
+            await s.shake(v.n.emailw);
+          },
+        },
+        {
+          title: '❌ Redelivered and sent again',
+          text: 'After the rebalance another consumer gets offset 12 again, checks the row (**QUEUED**), and sends. A receives **two identical emails**. This gap always exists: SES has no general send-idempotency key.',
+          observe: 'A second email reaches A.',
+          say: 'Delivery is at-least-once: a crash between the provider call and the status update can send twice.',
+          focus: v => [v.n.userA],
+          async run(s, v) {
+            s.tone(v.n.emailw, null); s.setSub(v.n.emailw, 'group email-svc');
+            await s.send(['kafka', 'emailw'], 'offset 12 again', AMBER);
+            await s.send(['emailw', 'ses'], 'SendEmail', PURPLE);
+            await s.send(['ses', 'userA'], 'email #2', RED);
+            who(s, v, 'A', '2 identical emails', RED);
+            await note(s, v, NK, 'SENT', 2);
+          },
+        },
+        {
+          title: '✅ Crash after SENT: the duplicate is skipped',
+          text: 'Same story, but the crash happens **after** the status update and before the commit (the much more common case, because the update follows the provider call immediately). The redelivered message finds **SENT** and is skipped; the worker just commits.',
+          observe: 'The redelivered message is skipped and the offset is committed.',
+          say: 'Checking SENT before sending suppresses almost every duplicate after a crash.',
+          focus: v => [v.rows[NK], v.off],
+          async run(s, v) {
+            who(s, v, 'A', '1 email', GREEN);
+            await s.send(['kafka', 'emailw'], 'offset 12 again', AMBER);
+            await s.send(['emailw', 'ndb'], 'status?', PURPLE);
+            await s.flash(420, 390, 'SENT → skip', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 700);
+            offs(s, v, 'email p0 · next 13 · committed 13'); await s.pulse(v.off);
+          },
+        },
+      ],
+    },
+    {
+      id: 'priority', title: 'Campaign vs OTP', sub: 'shared topic vs push-high', color: RED,
+      build: (s, v) => setup(s, v, { off: 'push-bulk · 1,000,000 queued', b: 'waiting for OTP' }),
+      takeaway: 'Priority must be **isolated**, not just a field: OTPs get their own **topic and consumer group** (and a short TTL), so a million marketing pushes can never delay them.',
+      steps: [
+        {
+          title: 'A campaign of 1 million pushes',
+          text: 'Marketing queued a campaign: 1 M pushes. The fan-out job already **skipped B** (marketing opt-out). At ~2,000 pushes/s the workers need about **8 minutes** to drain it.',
+          observe: 'One million messages wait in the push topic.',
+          focus: v => [v.off],
+          async run(s, v) { await s.pulse(v.off); await s.flash(420, 170, 'B opted out of marketing', { color: GREY, stroke: '#c3c9ce' }, 700); },
+        },
+        {
+          title: 'B asks for a login OTP',
+          text: 'Auth Svc requests a push OTP for B: `priority: "high"`, `ttl: 60`. It is transactional, so opt-out and quiet hours do not apply.',
+          observe: 'The OTP request is accepted.',
+          focus: v => [v.n.authSvc, v.n.napi],
+          async run(s, v) {
+            await s.send(['authSvc', 'napi'], 'OTP for B · ttl 60', RED);
+            await s.send(['napi', 'ndb'], 'insert', BLUE);
+            await note(s, v, 'otp-B-551', 'QUEUED', 0);
+          },
+        },
+        {
+          title: '❌ One shared push topic',
+          text: 'If all pushes share one topic, the OTP is message **1,000,001**. The workers reach it after ~8 minutes, long after it expired. B cannot log in.',
+          observe: 'The OTP arrives after it expired.',
+          focus: v => [v.n.userB],
+          async run(s, v) {
+            await s.send(['napi', 'kafka'], 'push · #1,000,001', RED);
+            tick(s, v, '14:08:20');
+            await s.send(['kafka', 'pushw', 'fcm', 'userB'], 'OTP (late)', RED);
+            who(s, v, 'B', 'OTP expired ✕', RED);
+          },
+        },
+        {
+          title: '✅ A separate push-high topic',
+          text: 'Rewind. OTPs go to `push-high`, read by its **own consumer group** with reserved capacity. The campaign keeps draining `push-bulk` (throttled) in parallel.',
+          observe: 'The OTP skips the campaign entirely.',
+          say: 'OTPs have their own topic and consumer group, so bulk traffic cannot delay them.',
+          focus: v => [v.n.kafka, v.n.pushw],
+          async run(s, v) {
+            tick(s, v, '14:00:01'); who(s, v, 'B', 'waiting for OTP', AMBER);
+            offs(s, v, 'push-high @7 · push-bulk 1 M', RED);
+            await s.send(['napi', 'kafka'], 'push-high @7', RED);
+            await s.send(['kafka', 'pushw'], 'group push-high', RED);
+          },
+        },
+        {
+          title: 'Delivered in about a second',
+          text: 'The push worker sends with FCM `priority: high` and `ttl: 60s`, marks SENT and commits. If the device is offline past the TTL, fall back to **SMS**.',
+          observe: 'B gets the OTP in about a second.',
+          focus: v => [v.n.userB, v.rows['otp-B-551']],
+          async run(s, v) {
+            await s.send(['pushw', 'fcm'], 'priority high · ttl 60s', RED);
+            await s.send(['fcm', 'userB'], 'OTP 482913', GREEN);
+            who(s, v, 'B', 'OTP in ~1 s ✓', GREEN);
+            await s.send(['pushw', 'ndb'], 'SENT', GREEN);
+            await note(s, v, 'otp-B-551', 'SENT', 1);
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Channels, senders, message types, deadlines, volume.',
+      lines: [
+        ['I', 'Design a notification system for our platform.'],
+        ['C', 'Which channels: email, push, SMS, in-app? Who sends: internal services only?'],
+        ['I', 'Email and push first, SMS later. Internal services send.'],
+        ['C', 'Transactional only, or marketing campaigns too?'],
+        ['I', 'Both. Campaigns can go to millions of users.'],
+        ['C', 'Any messages with tight deadlines, like OTPs?'],
+        ['I', 'Yes, login OTPs must arrive within seconds.'],
+        ['C', 'Volume?'],
+        ['I', 'About 10 million a day; campaigns spike to 1 million in minutes.'],
+        ['P', 'Write: email + push · transactional + campaigns · OTP within seconds · 10 M/day.'],
+      ],
+      avoid: 'Promising "exactly once" delivery: say at-least-once with dedupe early.',
+    },
+    {
+      t: 'Estimate the scale', min: 3, goal: 'Show averages are small, spikes and priorities are the problem.',
+      lines: [
+        ['C', '10 M/day ÷ 86,400 ≈ **120/s** on average: easy.'],
+        ['C', 'A 1 M campaign in ~10 minutes ≈ **1,700/s**: spiky, so we buffer in Kafka and throttle to provider quotas.'],
+        ['C', 'Status log: ~500 B × 10 M ≈ **5 GB/day**; keep 90 days with a TTL index.'],
+        ['P', 'The numbers say: buffer bursts, isolate priorities, the DB is not the hard part.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 5, goal: 'Contract and the dedupe key.',
+      lines: [
+        ['C', '`POST /notifications { userId, template, data, channel?, priority?, dedupeKey }` → **202** `{ id }` (or `{ id, duplicate: true }`).'],
+        ['C', '`GET /notifications/{id}` → status + attempts. `PUT /users/{id}/preferences` for opt-ins and quiet hours.'],
+        ['C', '`notifications { _id: dedupeKey, userId, channel, template, status, attempts, messageId, createdAt }`.'],
+        ['I', 'Why make the dedupe key the `_id`?'],
+        ['C', 'The unique index makes the insert itself the dedupe check: a retry fails with E11000, no read-then-write race.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Intake, queue, workers, retries.',
+      lines: [
+        ['P', 'Draw: Producers → Notify API → (Preferences, Notify DB) → Kafka topics → Email / Push workers → SES / FCM → users, Retry / DLQ beside the workers.'],
+        ['C', 'The Notify API validates, checks preferences, inserts with the dedupe key and produces to a topic per **channel and priority**, then returns 202.'],
+        ['C', 'Each channel has a consumer group: check status, render, call the provider, mark SENT, commit.'],
+        ['C', 'Transient failures go to delay topics, then a DLQ; permanent ones are marked FAILED.'],
+        ['P', 'Walk one real message: order-9:shipped → QUEUED → email @12 → SENT → commit 13.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Duplicates, retries, priorities, providers.',
+      lines: [
+        ['I', 'The producer retries after a timeout.'],
+        ['C', 'The insert hits E11000 on the dedupe key, so we return 202 again and queue nothing.'],
+        ['I', 'SES is throttling.'],
+        ['C', 'Publish to a 1-minute retry topic and commit, so the partition is not blocked; backoff to 10 minutes, then the DLQ with an alert.'],
+        ['I', 'Can a user get a duplicate email?'],
+        ['C', 'Yes, if the worker crashes between the SES call and the status update. We check SENT before sending and update right after, so the window is tiny, but it is at-least-once.'],
+        ['I', 'A campaign is sending a million pushes and someone needs an OTP.'],
+        ['C', 'OTPs use a separate high-priority topic and consumer group, so they never wait behind bulk traffic.'],
+      ],
+      avoid: 'Retrying inside the consumer with Thread.sleep: it blocks the whole partition.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: idempotent intake with a dedupe key, preferences before queueing, a topic per channel and priority, retry topics and a DLQ, a status log; delivery is at-least-once.'],
+        ['C', 'Next: SMS with provider failover, per-user caps against spamming, digests for low-priority messages, dashboards for send rate, failures and DLQ age.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): 1–2 minutes, pause between paragraphs
+    summary: [
+      "A notification system lets any service send email, push or SMS to users without integrating the providers itself. Producers like the Order Service call a **Notify API** with the user, a template, the channel and a **dedupe key**, and get **202** back immediately; they never wait for delivery.",
+      "The API first checks the user's **preferences**: channel opt-ins, marketing consent and quiet hours. Then it inserts the notification into MongoDB with the **dedupe key as the `_id`**, so if the producer retries after a timeout, the insert fails with a duplicate key and nothing is queued twice. Finally it publishes to a **Kafka topic per channel and priority**, keyed by user id.",
+      "A worker per channel consumes the topic, checks the status, renders the template, calls the provider, like **SES** for email or **FCM** for push, marks the row **SENT** and only then commits the offset. If the provider throttles, the worker doesn't sleep and retry; it moves the message to a **retry topic** with backoff, and after the last attempt to a **dead-letter topic** with an alert. In Spring Kafka, `@RetryableTopic` sets this up for us.",
+      "Two things to call out. Delivery is **at-least-once**: if a worker crashes between the SES call and the status update, the user can get a duplicate, because SES has no send-once key, so we keep that window tiny. And priorities are **isolated**: OTPs go to their own high-priority topic and consumer group, so a campaign of a million pushes can never delay a login code.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> send by template and channel, respect preferences and quiet hours, retry failures, track status, dedupe producer retries.</li>
+        <li><b>Non-functional:</b> OTP p99 &lt; ~5 s end to end, campaigns never delay transactional traffic, survive provider outages, audit log.</li>
+        <li><b>Out of scope (say so):</b> campaign authoring UI, A/B testing, in-app inbox.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Average</td><td class="m">10 M/day</td><td>≈ 120/s</td></tr>
+        <tr><td>Campaign</td><td class="m">1 M in ~10 min</td><td>≈ 1,700/s → buffer + throttle</td></tr>
+        <tr><td>Status log</td><td class="m">~500 B × 10 M</td><td>≈ 5 GB/day, TTL 90 days</td></tr></table>` },
+      { h: '3 · API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">POST /notifications</td><td>{ userId, template, data, channel?, priority?, dedupeKey } → 202 { id }</td></tr>
+        <tr><td class="m">GET /notifications/{id}</td><td>status + attempts</td></tr>
+        <tr><td class="m">PUT /users/{id}/preferences</td><td>opt-ins, marketing consent, quiet hours</td></tr>
+        <tr><td class="m">POST /webhooks/ses</td><td>delivery / bounce / complaint events (via SNS)</td></tr></table>` },
+      { h: '4 · Data & topics', color: '#8f4fc4', html: `<pre>// notifications (_id = dedupe key)
+{ _id: "order-9:shipped", userId: "A", channel: "email",
+  template: "order-shipped", status: "SENT",
+  attempts: 1, messageId: "0102-x", createdAt: … }
+// TTL index on createdAt (90 days)
+
+// preferences
+{ _id: "A", email: true, push: true, marketing: true,
+  quietHours: "23:00-07:00", locale: "en-IN" }</pre>
+        <p>Topics: <code>email</code>, <code>push-high</code>, <code>push-bulk</code>, <code>email-retry-1m</code>, <code>email-retry-10m</code>, <code>email-dlq</code>. Key = userId.</p>` },
+      { h: '5 · Request path', color: '#2f6fe0', html: `<ol>
+        <li>Producer → Notify API: validate, preferences, insert QUEUED (dedupe), produce, 202.</li>
+        <li>Worker: status QUEUED? → render → provider → SENT → commit.</li>
+        <li>Transient error → retry-1m → retry-10m → DLQ (FAILED + alert). Permanent → FAILED.</li></ol>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>At-least-once: status check before send, SENT right after, commit last.</li>
+        <li>Priority isolation: own topic + consumer group for OTPs; bulk throttled.</li>
+        <li>Provider outage: retries with backoff, circuit breaker, optional second provider.</li>
+        <li>Insert-then-produce gap: sweeper re-queues old QUEUED rows, or a transactional outbox.</li></ul>` },
+    ],
+    decisions: [
+      ['Dedupe key as _id', 'Producer retries are idempotent; the insert is the check.', 'Producers must build stable keys.'],
+      ['Kafka between API and workers', 'Producers get 202 at once; spikes are buffered.', 'Asynchronous: status shows QUEUED for a while.'],
+      ['Topic per channel and priority', 'A campaign cannot delay OTPs; channels fail independently.', 'More topics and consumer groups to run.'],
+      ['Retry topics + DLQ', 'The main partition never blocks on a failing message.', 'Per-user ordering is lost for retried messages.'],
+      ['Status check + SENT before commit', 'Most redeliveries are skipped.', 'A tiny duplicate window remains (at-least-once).'],
+      ['Preferences before queueing', 'No marketing without consent; quiet hours respected.', 'Cached prefs can be a few seconds stale.'],
+    ],
+    code: [
+      { t: 'Intake: dedupe key as _id (Spring Data MongoDB)', code: '@PostMapping("/notifications")\nResponseEntity<Accepted> notify(@RequestBody NotifyRequest r) {\n  if (!prefs.allows(r.userId(), r.channel(), r.type())) return accepted(r.dedupeKey(), "SKIPPED");\n  try {\n    notifications.insert(Notification.queued(r.dedupeKey(), r));   // _id = dedupeKey\n  } catch (DuplicateKeyException e) {\n    return accepted(r.dedupeKey(), "DUPLICATE");                  // retry → no second message\n  }\n  kafka.send(topicFor(r), r.userId(), r.toMessage());              // key = userId\n  return accepted(r.dedupeKey(), "QUEUED");                          // 202\n}' },
+      { t: 'Worker: non-blocking retries with @RetryableTopic', code: '@RetryableTopic(attempts = "3",\n    backoff = @Backoff(delay = 60_000, multiplier = 10),      // 1 min, then 10 min\n    exclude = PermanentEmailException.class,                   // bad address → no retry\n    dltTopicSuffix = "-dlq")\n@KafkaListener(topics = "email", groupId = "email-svc")\nvoid onEmail(NotificationMsg m) {\n  if (notifications.isSent(m.id())) return;                   // redelivery → skip\n  String messageId = ses.send(render(m));                      // may throw Throttling\n  notifications.markSent(m.id(), messageId);                   // right after the call\n}                                                              // offset committed after return\n\n@DltHandler\nvoid dead(NotificationMsg m) { notifications.markFailed(m.id()); alerts.dlq("email", m.id()); }' },
+      { t: 'OTP push: high priority, short TTL (FCM)', code: 'Message msg = Message.builder()\n    .setToken(deviceToken)\n    .putData("otp", otp)\n    .setAndroidConfig(AndroidConfig.builder()\n        .setPriority(AndroidConfig.Priority.HIGH)\n        .setTtl(60_000)                        // useless after 60 s\n        .build())\n    .build();\nString id = FirebaseMessaging.getInstance().send(msg);   // from the push-high consumer group' },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    cc: { name: 'Duplicates', color: '#c47d1e' },
+    mq: { name: 'Messaging', color: '#8f4fc4' },
+    db: { name: 'Data', color: '#13968a' },
+    sc: { name: 'Scale & priority', color: '#2f6fe0' },
+    rr: { name: 'Providers', color: '#ce3434' },
+  },
+  followups: [
+    { g: 'cc', q: 'A producer retries a request. Do we send twice?', what: 'Without a key, yes.', why: 'A timeout hides whether the first call succeeded.', how: 'Dedupe key as `_id`: the retry hits **E11000** and returns the existing id.', trade: 'Producers must build stable keys (`eventId`, `orderId:type`).', flow: 'dedupe' },
+    { g: 'cc', q: 'Two workers process the same notification. Can both send?', what: 'Within one group a partition has one owner, but after a rebalance a message can be redelivered.', why: 'Kafka is at-least-once.', how: 'Check status before sending, mark SENT right after the provider call, commit last.', trade: 'A tiny duplicate window remains.', flow: 'dup' },
+    { g: 'cc', q: 'Can we guarantee exactly-once emails?', what: 'No.', why: 'SES / SMTP have no general send-once key; a crash between send and status update causes a resend.', how: 'At-least-once + status check; keep the window tiny. Push: FCM collapse keys reduce visible duplicates.', trade: 'Rare duplicates remain; say so in the interview.', flow: 'dup' },
+    { g: 'mq', q: 'Why retry topics instead of retrying in the consumer?', what: 'Sleeping in the consumer blocks every message behind it in the partition.', why: 'A partition is an ordered queue.', how: 'Commit and publish to `email-retry-1m` / `-10m`; a delayed consumer resends; DLQ after N attempts. Spring Kafka `@RetryableTopic`.', trade: 'More topics; ordering per user is lost for retried messages.', flow: 'retry' },
+    { g: 'mq', q: 'What do you do with the DLQ?', what: 'Messages that failed every retry.', why: 'Bad data, bugs or long provider outages.', how: 'Alert on size and age, inspect, fix, replay with a tool; drop stale ones (an old OTP).', trade: 'Needs an owner and a runbook.', flow: 'retry' },
+    { g: 'mq', q: 'What if the API crashes between the DB insert and the Kafka send?', what: 'The row is QUEUED but nothing is in Kafka.', why: 'Two systems, no shared transaction.', how: 'A sweeper re-produces QUEUED rows older than a minute, or a **transactional outbox** + relay.', trade: 'The sweeper can produce a duplicate; workers already skip SENT.' },
+    { g: 'db', q: 'The Notify DB is down. Do we stop sending?', what: 'The API cannot record new notifications.', why: 'The insert is the dedupe step.', how: 'Return 503 (producers retry with the same key); workers keep sending what is queued and retry status updates.', trade: 'Skipping the DB would lose dedupe and history.' },
+    { g: 'db', q: 'A user just opted out but still got a campaign.', what: 'Preferences were cached.', why: 'Cache TTL.', how: 'Short TTL, invalidate on change, and re-check preferences at send time for marketing.', trade: 'An extra read per marketing send.' },
+    { g: 'sc', q: 'How do you stop campaigns delaying OTPs?', what: 'In a shared topic the OTP waits behind bulk messages.', why: 'One queue = one line.', how: 'Separate `push-high` topic and consumer group with reserved capacity; bulk is throttled.', trade: 'More topics and consumers to run.', flow: 'priority' },
+    { g: 'sc', q: 'A campaign sends 1 million pushes. How does it scale?', what: 'Fan-out to many users quickly.', why: 'Bulk volume can swamp workers and providers.', how: 'A fan-out job reads the audience in pages (skipping opt-outs), produces to `push-bulk`; workers scale per partition; throttle to provider quotas.', trade: 'A campaign takes minutes, by design.', flow: 'priority' },
+    { g: 'sc', q: 'How do you avoid spamming one user?', what: 'Many services may notify the same user at once.', why: 'Each producer only sees its own messages.', how: 'Per-user caps (Redis counters), collapse or digest low-priority messages, quiet hours.', trade: 'Some messages are delayed or merged.' },
+    { g: 'rr', q: 'SES is down for an hour.', what: 'Every email send fails.', why: 'External dependency.', how: 'Retry topics with backoff, circuit breaker, Kafka retention keeps the backlog; optionally a second provider.', trade: 'Failover needs a warmed-up domain and templates at the second provider.', flow: 'retry' },
+    { g: 'rr', q: 'How do you know an email was delivered, not just sent?', what: '`SendEmail` success only means SES accepted it.', why: 'Delivery happens later.', how: 'Subscribe to SES delivery / bounce / complaint events via SNS; update the status; stop sending to bouncing addresses.', trade: 'Events are asynchronous and occasionally missing.' },
+    { g: 'rr', q: 'How fast can an OTP arrive, and what if push fails?', what: 'API → Kafka → worker → FCM → device: about a second for online devices.', why: 'Each hop is milliseconds; FCM is fast when the device is online.', how: '`push-high` topic, FCM `priority: high` with a 60 s TTL, **SMS fallback** if not delivered in time.', trade: 'SMS costs money per message.', flow: 'priority' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>

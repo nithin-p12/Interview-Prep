@@ -160,3 +160,14 @@ CHANGE LOG
             URL Shortener is the classic page again (v2.2).
 2026-11-12  Core Components v2.2: + CDN (edges vs one far origin, hit/miss/revalidate/deploy) + DB scaling (replicas, read-your-writes, sharding, SQL vs NoSQL); compact pills.
 2026-11-12  Core Components v2.3: + API Gateway / rate limiting (bot flood vs 429, JWT, token bucket in Redis, aggregation); compact header always; segmented wraps on mobile.
+2026-11-12  Rate Limiter rebuilt as its own page (v2.0): 5 flows, links to Core Components, spoken 60-second answer.
+2026-11-12  Notification System rebuilt as its own page (v2.0): 5 flows (dedupe, retry topics/DLQ, duplicate on crash, OTP priority), spoken answer.
+2026-11-12  E-commerce Order System rebuilt as its own page (v2.0): orchestrated saga, outbox, last-unit race, compensation, late payment refund, retries/duplicates.
+2026-11-12  Chat System rebuilt as its own page (v2.0): WebSockets taught here (polling vs upgrade, heartbeats), seq ordering, clientMsgId dedupe, offline sync, gateway crash.
+2026-11-13  Distributed Job Scheduler rebuilt as its own page (v2.0): atomic claim, leases, fencing tokens, run keys, retries/backoff, misfire policy.
+2026-11-13  News Feed rebuilt as its own page (v2.0): fan-out on write, celebrity hybrid pull, cursor pagination, hydration, timeline rebuild.
+2026-11-13  Search System rebuilt as its own page (v2.0): Elasticsearch taught here (inverted index, analyzers, BM25, shards), CDC indexing, external versions, alias reindex.
+2026-11-13  Video Streaming rebuilt as its own page (v2.0): chunked parallel transcoding, idempotent tasks, HLS + adaptive bitrate, CDN collapsing/origin shield.
+2026-11-13  Distributed Cache rebuilt as its own page (v2.0): consistent hashing taught here (mod N vs ring + vnodes), delete-on-write, versioned sets, eviction, failover, hot keys.
+2026-11-13  All 12 designs now have their own pages; the archived all-in-one simulator is history only.
+2026-11-13  Ticket Booking and File Upload (v2.3): Core Components links and 4-paragraph spoken interview answers, matching the other designs.

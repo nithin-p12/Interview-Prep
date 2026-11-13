@@ -1,0 +1,1007 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-search">
+<meta name="doc-version" content="v2.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Search System · System Design · v2.0</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// Product search (e-commerce). Elasticsearch is taught HERE (flow "Why Elasticsearch?"), not in Core Components.
+// API gateway, Redis, Kafka and DB basics live in 00_Core_Components.html.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+const KEEP = '#d5d9dc';
+
+// Row colours for the store under the pipeline (posting lists, search documents, results or indices).
+const ST = {
+  NEW: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  IDX: { fill: '#f3f6fe', stroke: BLUE, color: BLUE },
+  OK: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
+  BAD: { fill: '#fff4f4', stroke: RED, color: RED },
+  DIM: { fill: '#f6f7fb', stroke: '#e3e6ee', color: GREY },
+};
+const SHARDS = ['s0', 's1', 's2'];
+
+// State shown next to the components: the store (bottom right), DB doc, Kafka, indexer, cache, shards, users.
+function setup(s, v, { rows = [], title = 'SEARCH INDEX · products (copy)', clock = '15:00:00', db = 'p-7 · ₹100 · v3', kaf = 'product-changes —', idx = 'idle', cache = 'cache empty', sh = ['17 M docs', '17 M docs', '16 M docs'], a = 'browsing', b = 'browsing', c = 'seller portal', es = null } = {}) {
+  v.clock = s.chip(15, 500, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
+  v.log = s.store(840, 405, 250, title, { color: BLUE });
+  v.rows = {};
+  rows.forEach(([key, text, st]) => { s.row(v.log, text, { ...ST[st], now: true }); v.rows[key] = v.log.rows[v.log.rows.length - 1]; });
+  v.db = s.chip(650, 492, db, { mono: true, color: TEAL });
+  v.kaf = s.chip(960, 378, kaf, { mono: true, color: PURPLE });
+  v.idx = s.chip(960, 140, idx, { mono: true, color: GREY });
+  v.cache = s.chip(650, 112, cache, { mono: true, color: GREY });
+  v.sh = [542, 650, 758].map((x, i) => s.chip(x, 357, sh[i], { mono: true, color: GREY }));
+  v.ua = s.chip(65, 116, a, { color: GREY });
+  v.ub = s.chip(65, 271, b, { color: GREY });
+  v.uc = s.chip(65, 436, c, { color: GREY });
+  if (es) s.setSub(s.nodes.es, es, BLUE);
+  return v;
+}
+async function put(s, v, key, text, st) {
+  const r = v.rows[key];
+  if (!r) { v.rows[key] = await s.row(v.log, text, ST[st]); return; }
+  r.label.textContent = text;
+  s.paintRow(r, ST[st]);
+  await s.pulse(r, 1, 1.05);
+}
+async function clearRows(s, v) { for (const r of [...v.log.rows]) await s.unrow(v.log, r); v.rows = {}; }
+const paint = color => ({ color, stroke: color === GREY ? KEEP : color });
+const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
+const db = (s, v, t, color = TEAL) => s.setChip(v.db, t, { color });
+const kaf = (s, v, t, color = PURPLE) => s.setChip(v.kaf, t, { color });
+const idx = (s, v, t, color = GREY) => s.setChip(v.idx, t, paint(color));
+const cch = (s, v, t, color = GREY) => s.setChip(v.cache, t, paint(color));
+const shd = (s, v, i, t, color = GREY) => s.setChip(v.sh[i], t, paint(color));
+const who = (s, v, u, txt, color = GREY) => s.setChip(u === 'B' ? v.ub : u === 'C' ? v.uc : v.ua, txt, paint(color));
+const both = (...ps) => Promise.all(ps);
+// Coordinating node → every shard (query phase), and back (only one pulse on the shared node).
+const scatter = (s, label, color = BLUE) => both(
+  s.send(['es', 's0'], label, color, { ms: 380 }), s.send(['es', 's1'], label, color, { ms: 380 }), s.send(['es', 's2'], label, color, { ms: 380 }));
+const gather = (s, [a, b, c], color = GREEN) => both(
+  s.send(['s0', 'es'], a, color, { ms: 380 }), s.send(['s1', 'es'], b, color, { ms: 380, pulse: false }), s.send(['s2', 'es'], c, color, { ms: 380, pulse: false }));
+const ok = { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, bad = { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, info = { mono: true, color: BLUE, stroke: BLUE, fill: '#f3f6fe' };
+
+window.DESIGN = {
+  id: 'search', n: 10, title: 'Search System', tagline: 'the DB is the truth, Elasticsearch is a versioned copy fed by CDC, queries fan out to shards',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'Shoppers, sellers & gateway', x0: 0, x1: 290, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: '**Shoppers** search (thousands per second); **sellers** change products (far fewer). Both come through the **API gateway** for auth and rate limits.',
+      detail: 'Reads ≫ writes, and the two paths are completely separate behind the gateway.' },
+    { id: 'app', title: 'Query side · write side', x0: 290, x1: 470, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: 'The **Search Service** turns user input into an Elasticsearch **bool query** and caches hot queries. The **Catalog Service** writes products to the **Catalog DB only**.',
+      detail: 'The thin Catalog → Elasticsearch line is the ❌ dual-write shortcut from one flow; the real path goes DB → Kafka → Indexer.' },
+    { id: 'data', title: 'Elasticsearch, cache & truth', x0: 470, x1: 820, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: '**Elasticsearch** keeps an **inverted index** (term → documents) split into **shards**; a **coordinating node** fans each query out and merges the top results. The **Catalog DB** (MongoDB) stays the **source of truth**.',
+      detail: 'The index is a derived copy: if it is lost, rebuild it from the DB.' },
+    { id: 'async', title: 'Indexing pipeline', x0: 820, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'A MongoDB **change stream** puts every product change on **Kafka** (key = productId); the **Indexer** bulk-writes them to Elasticsearch with the DB **version** as an **external version**.',
+      detail: 'Near real-time: a change is searchable about one second after the indexer writes it.' },
+  ],
+  layersIntro: {
+    title: 'Write to the truth, derive the index, fan the query out',
+    text: 'Sellers write only to the **Catalog DB**. A **change stream → Kafka → Indexer** pipeline copies every change into **Elasticsearch** with the DB version. Shoppers\' queries go **Search Svc → coordinating node → every shard**; each shard returns its **top 10**, the coordinator merges and fetches. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    userA: { x: 65, y: 70, w: 120, label: 'Shopper A', sub: 'web / app', icon: '👤', layer: 'entry' },
+    userB: { x: 65, y: 225, w: 120, label: 'Shopper B', sub: 'web / app', icon: '👤', layer: 'entry' },
+    seller: { x: 65, y: 390, w: 120, label: 'Seller C', sub: 'seller portal', icon: '🏪', layer: 'entry' },
+    gw: { x: 210, y: 230, w: 138, label: 'API Gateway', sub: 'auth · limits', icon: '🚪', layer: 'entry' },
+    search: { x: 375, y: 110, w: 160, label: 'Search Svc', sub: 'bool query · cache', icon: '🔎', layer: 'app' },
+    catalog: { x: 375, y: 360, w: 160, label: 'Catalog Svc', sub: 'product writes', icon: '🏷️', layer: 'app' },
+    cache: { x: 650, y: 60, w: 160, label: 'Query cache', sub: 'Redis · 30 s TTL', icon: '⚡', layer: 'data' },
+    es: { x: 650, y: 190, w: 160, label: 'Elasticsearch', sub: 'coordinating node', icon: '🔍', layer: 'data' },
+    s0: { x: 542, y: 318, w: 104, h: 46, label: 'Shard 0', sub: '+ replica', icon: '🧩', layer: 'data' },
+    s1: { x: 650, y: 318, w: 104, h: 46, label: 'Shard 1', sub: '+ replica', icon: '🧩', layer: 'data' },
+    s2: { x: 758, y: 318, w: 104, h: 46, label: 'Shard 2', sub: '+ replica', icon: '🧩', layer: 'data' },
+    catdb: { x: 650, y: 450, w: 160, label: 'Catalog DB', sub: 'MongoDB · truth', icon: '🍃', layer: 'data' },
+    indexer: { x: 960, y: 190, w: 160, label: 'Indexer', sub: 'Kafka → _bulk', icon: '⚙️', layer: 'async' },
+    kafka: { x: 960, y: 330, w: 160, label: 'Kafka', sub: 'product-changes', icon: '📨', layer: 'async' },
+  },
+  wires: [['userA', 'gw'], ['userB', 'gw'], ['seller', 'gw'], ['gw', 'search'], ['gw', 'catalog'], ['search', 'cache'], ['search', 'es'],
+    ['es', 's0'], ['es', 's1'], ['es', 's2'], ['catalog', 'catdb'], ['catalog', 'es'], ['catdb', 'kafka'], ['kafka', 'indexer'], ['indexer', 'es']],
+
+  components: {
+    userA: {
+      name: 'Shoppers (A, B)',
+      what: 'Type a query, pick filters (price, brand, in stock), sort and page through results; the UI also asks for **autocomplete** while they type.',
+      why: 'Search is the main way people find products: it must be fast (< 200 ms) and relevant.',
+      without: '—',
+      tech: 'Web / mobile app', scale: '~5 k searches/s at peak, far more than product writes.', fails: 'A slow search is an abandoned session: time out and show cached or partial results.',
+    },
+    userB: {
+      name: 'Shopper B',
+      what: 'Runs the same popular query a moment after A.',
+      why: 'Shows the **query cache**: popular queries follow a power law.',
+      without: '—',
+      tech: 'Web / mobile app', scale: '—', fails: '—',
+    },
+    seller: {
+      name: 'Seller C',
+      what: 'Creates and edits products: title, description, price, stock.',
+      why: 'Every edit must reach search within seconds, without ever losing or reordering a change.',
+      without: '—',
+      tech: 'Seller portal', scale: 'Low write rate compared with searches.', fails: 'Their own product page reads the **DB**, so they see their change at once even if search lags a second.',
+    },
+    gw: {
+      name: 'API Gateway',
+      what: 'JWT auth, rate limits per user / IP (search is a favourite for scrapers), routing `/search` and `/products`.',
+      why: 'Cross-cutting concerns in one place; abusive clients stop here, not in the Elasticsearch cluster.',
+      without: 'A scraper paging through every result can saturate the cluster.',
+      tech: 'Spring Cloud Gateway / Kong', scale: 'Stateless pods.', fails: 'Retries only idempotent GETs.',
+      core: ['gw', 'API Gateway'],
+    },
+    search: {
+      name: 'Search Service',
+      what: 'Normalises the input, builds the Elasticsearch **bool query** (scored `must`, cached `filter`, boosts, facets), always queries the **alias** `products`, caches hot result pages.',
+      why: 'Keeps query rules, synonyms config and relevance tuning in one place; clients never talk to Elasticsearch.',
+      without: 'Every client builds its own queries; one bad query (a leading wildcard, page 5 000) hurts everyone.',
+      tech: 'Spring Boot · Elasticsearch Java client', scale: 'Stateless; scale with traffic.', fails: 'ES slow → timeout, return cached or partial results (`timeout`, `allow_partial_search_results`).',
+    },
+    catalog: {
+      name: 'Catalog Service',
+      what: 'Validates and stores product changes in the **Catalog DB**, bumping a `version` field on every change.',
+      why: 'One write, one commit: the DB is the only thing the request path writes.',
+      without: 'It would also write Elasticsearch directly (dual write) and the two copies would drift.',
+      tech: 'Spring Boot · Spring Data MongoDB', scale: 'Normal OLTP traffic.', fails: 'Never writes Elasticsearch: the pipeline does.',
+    },
+    cache: {
+      name: 'Query cache',
+      what: 'Result pages of popular queries, keyed by the **normalised query + filters + page**, for ~30 s.',
+      why: 'A few queries ("iphone", "running shoes") make up a large share of traffic.',
+      without: 'Every repeat goes to every shard again.',
+      tech: 'Redis `SET q:… EX 30`; Elasticsearch also caches filters and shard requests itself', scale: 'Small values, high hit rate on the head of the distribution.', fails: 'Miss → Elasticsearch; results may be up to 30 s old (fine for search, not for checkout prices).',
+      core: ['cache', 'Cache · Redis'],
+    },
+    es: {
+      name: 'Elasticsearch (coordinating node)',
+      what: 'Receives the query, sends it to **one copy of every shard** (query phase), merges their top-k lists, then **fetches** the full documents of the winners (fetch phase).',
+      why: 'Lets the index be split across many machines while a query still sees all of it.',
+      without: 'One machine holding a 50 M-document index, with no failover.',
+      tech: 'Elasticsearch / OpenSearch; any node can coordinate (dedicated coordinating nodes at large scale)', scale: 'Add data nodes and replicas; the coordinator itself is cheap.', fails: 'A node loss promotes replicas on other nodes; the cluster turns yellow, not down.',
+    },
+    s0: {
+      name: 'Shards (primary + replica)',
+      what: 'Each shard is a complete **Lucene index**: an **inverted index** (term → posting list of doc ids) plus doc values for sorting and facets. A doc lives on shard `hash(_id) % 3`; every primary has a **replica** on another node.',
+      why: 'Shards spread data and work over machines; replicas give failover and extra read capacity.',
+      without: 'No horizontal scale for indexing or searching.',
+      tech: '3 primary shards × 1 replica; aim for ~10–50 GB per shard', scale: 'Primary count is fixed at index creation (change it with a reindex or `_split`).', fails: 'Primary lost → its replica is promoted; a new replica is rebuilt elsewhere.',
+    },
+    s1: {
+      name: 'Shard 1',
+      what: 'Same as shard 0. Product p-7 hashes here in the flows.',
+      why: '—', without: '—', tech: 'Lucene index', scale: '—', fails: '—',
+    },
+    s2: {
+      name: 'Shard 2',
+      what: 'Same as shard 0.',
+      why: '—', without: '—', tech: 'Lucene index', scale: '—', fails: '—',
+    },
+    catdb: {
+      name: 'Catalog DB (source of truth)',
+      what: '`products { _id: "p-7", title, brand, price, inStock, version }`. Every update does `$inc: { version: 1 }`.',
+      why: 'The version orders changes per product and travels with every event to the index.',
+      without: 'No way to tell an old change from a new one once events are retried or replayed.',
+      tech: 'MongoDB replica set; **change streams** (oplog) feed the pipeline', scale: 'Shard by product id.', fails: 'The change-stream reader stores a **resume token**, so after a restart it continues exactly where it stopped.',
+      core: ['db', 'DB scaling'],
+    },
+    kafka: {
+      name: 'Kafka (product-changes)',
+      what: 'Product change events, **key = productId**, so all changes of one product land in one partition, in order.',
+      why: 'Decouples the DB from Elasticsearch: if the cluster is slow or down, events wait here.',
+      without: 'The change-stream reader would have to block on Elasticsearch.',
+      tech: 'Kafka (change stream reader, or Debezium for SQL databases)', scale: 'Partitions by productId; replayable for backfills.', fails: 'Redelivery and replays re-index old changes: harmless thanks to external versions.',
+      core: ['kafka', 'Queue · Kafka'],
+    },
+    indexer: {
+      name: 'Indexer',
+      what: 'Consumes batches, maps DB documents to search documents and writes them with the **_bulk** API, using `version_type=external` with the DB version. Commits offsets only after the bulk response.',
+      why: 'Bulk requests are 10–100× cheaper than single writes; external versions make the index converge whatever the arrival order.',
+      without: 'Single-document writes overload the cluster; late retries overwrite newer data.',
+      tech: 'Spring Kafka `@KafkaListener` (batch) + Elasticsearch Java client', scale: 'One consumer per partition; ~5–15 MB per bulk.', fails: '429 → back off and retry failed items; 409 = already newer → skip; a broken document → DLQ.',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Write the truth, stream it into an inverted index, fan the query out to shards.',
+    points: [
+      { t: 'Truth', color: TEAL, d: 'Sellers write only to **MongoDB**, which bumps the product\'s **version**.' },
+      { t: 'Index', color: PURPLE, d: 'Change stream → **Kafka** → **Indexer** → `_bulk` with an **external version**; searchable after ~1 s.' },
+      { t: 'Query', color: BLUE, d: 'Search Svc sends a **bool query**; the coordinating node asks **every shard** for its top 10.' },
+      { t: 'Merge', color: GREEN, d: 'Merge, **fetch** the winners, return; hot queries are **cached** for 30 s.' },
+    ],
+    stats: [['50 M', 'products'], ['5 k/s', 'searches'], ['< 200 ms', 'p99 search'], ['~1 s', 'index lag']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v); v.ready = true; }
+    await clearRows(s, v);
+    await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹100 · v3', 'OK');
+    await put(s, v, 'p-9', 'p-9 · Road shoes · ₹120 · v7', 'OK');
+    db(s, v, 'p-7 · ₹100 · v3'); kaf(s, v, 'product-changes —'); idx(s, v, 'idle'); cch(s, v, 'cache empty');
+    SHARDS.forEach((_, i) => shd(s, v, i, i === 2 ? '16 M docs' : '17 M docs'));
+    who(s, v, 'A', 'browsing'); who(s, v, 'B', 'browsing'); who(s, v, 'C', 'lowers p-7 to ₹80');
+
+    ui.say(0); ui.cap('**Truth** · the seller\'s change goes only to the Catalog DB; the version becomes 4');
+    await s.send(['seller', 'gw', 'catalog'], 'PATCH price 80', AMBER, { ms: 400 });
+    await s.send(['catalog', 'catdb'], '$inc version', TEAL, { ms: 400 });
+    db(s, v, 'p-7 · ₹80 · v4'); await s.pulse(v.db);
+    who(s, v, 'C', 'saved ✓', GREEN);
+    ui.say(1); ui.cap('**Index** · change stream → Kafka → indexer → _bulk with version 4 → searchable after a refresh');
+    await s.send(['catdb', 'kafka'], 'p-7 v4', PURPLE, { ms: 400 });
+    kaf(s, v, 'p-7 v4 ₹80 @910');
+    await s.send(['kafka', 'indexer'], 'batch', PURPLE, { ms: 380 });
+    idx(s, v, '_bulk · p-7 v4', PURPLE);
+    await s.send(['indexer', 'es', 's1'], '_bulk v4 external', PURPLE, { ms: 380 });
+    await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹80 · v4', 'OK');
+    ui.say(2); ui.cap('**Query** · A searches; cache miss; the coordinating node sends the query to every shard');
+    await s.send(['userA', 'gw', 'search'], '"running shoes" ≤ ₹150', BLUE, { ms: 380 });
+    await s.send(['search', 'cache'], 'GET q:…', RED, { ms: 340 });
+    cch(s, v, 'miss', GREY);
+    await s.send(['search', 'es'], 'bool query', BLUE, { ms: 380 });
+    await scatter(s, 'query');
+    ['top · 6.9', 'top · 7.3', 'top · 5.8'].forEach((t, i) => shd(s, v, i, t, BLUE));
+    ui.say(3); ui.cap('**Merge** · top 10 of each shard → global top 10 → fetch → results; the page is cached for B');
+    await gather(s, ['10 ids', '10 ids', '10 ids']);
+    await s.flash(800, 255, 'merge 30 → top 10', info, 600);
+    await s.send(['es', 's1'], 'fetch _source', TEAL, { ms: 340 });
+    await s.send(['es', 'search', 'gw', 'userA'], '10 hits · p-7 ₹80', GREEN, { ms: 360 });
+    who(s, v, 'A', '10 hits · 45 ms', GREEN);
+    await s.send(['search', 'cache'], 'SET EX 30', RED, { ms: 340 });
+    cch(s, v, 'q:running shoes · 30 s', RED);
+    await s.send(['userB', 'gw', 'search', 'cache'], 'same query', BLUE, { ms: 340 });
+    await s.send(['search', 'gw', 'userB'], 'cache hit', GREEN, { ms: 340 });
+    who(s, v, 'B', 'cache hit · 4 ms', GREEN);
+    await s.wait(1800);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'why', title: 'Why Elasticsearch?', sub: 'regex scan vs inverted index', color: AMBER,
+      build: (s, v) => setup(s, v, { title: 'INVERTED INDEX · title', db: '50 M products', sh: ['—', '—', '—'], a: 'wants running shoes' }),
+      takeaway: 'A regex / `LIKE \'%…%\'` cannot use a B-tree index, so it **scans everything** and still matches characters, not words. Elasticsearch **analyzes** text into terms once (tokenize, lowercase, stem), keeps an **inverted index** (term → posting list), ranks with **BM25**, and splits the index into **shards** that a coordinating node queries in parallel and merges.',
+      steps: [
+        {
+          title: '❌ Search with a regex on MongoDB',
+          text: 'The first idea: `db.products.find({ title: /running shoes/i })` (SQL: `LIKE \'%running shoes%\'`). A B-tree index is sorted by the **start** of the value, so a pattern that can match **anywhere** cannot use it: MongoDB does a **COLLSCAN** of all 50 M products. Seconds per query, at 5 000 queries per second.',
+          observe: 'The Catalog DB scans 50 M documents for one search.',
+          say: 'A leading-wildcard or regex search cannot use a normal index, so it scans the whole collection.',
+          focus: v => [v.n.catdb, v.db],
+          async run(s, v) {
+            await s.send(['userA', 'gw', 'catalog', 'catdb'], '$regex /running shoes/i', AMBER);
+            s.tone(v.n.catdb, 'warn'); s.setSub(v.n.catdb, 'COLLSCAN 50 M', RED);
+            db(s, v, 'scanned 50 M · 4.2 s', RED);
+            await s.shake(v.n.catdb);
+            await s.send(['catdb', 'catalog', 'gw', 'userA'], '3 hits · 4.2 s', RED);
+            who(s, v, 'A', 'waited 4.2 s ✕', RED);
+          },
+        },
+        {
+          title: '❌ ...and it matches characters, not words',
+          text: '"Running Shoe" (singular), "shoes for running" (other order) and "runners" are **missed**; "shoestring running belt" **matches**. And there is **no ranking**: a product with "running shoes" in its title is no better than one that mentions it once deep in the description.',
+          observe: 'Wrong matches, missed matches, no order.',
+          say: 'Regex has no notion of words, stemming or relevance.',
+          focus: v => [v.n.catalog],
+          async run(s, v) {
+            await s.flash(375, 440, '✕ missed "Running Shoe"', bad, 650);
+            await s.flash(375, 440, '✕ missed "shoes for running"', bad, 650);
+            await s.flash(375, 440, '✕ matched "shoestring belt"', bad, 650);
+            who(s, v, 'A', 'bad results ✕', RED);
+          },
+        },
+        {
+          title: '✅ Analyze the text once, when indexing',
+          text: 'Elasticsearch passes every `text` field through an **analyzer**: **tokenize** on word boundaries, **lowercase**, drop stop words, **stem** (running → run, shoes → shoe). "Trail Running Shoes" becomes the terms `[trail, run, shoe]`. The **same analyzer** runs on the query later, so both sides speak the same terms.',
+          observe: 'p-7 becomes three terms, each pointing to p-7.',
+          say: 'An analyzer turns text into normalised terms: tokenize, lowercase, stem.',
+          focus: v => [v.n.indexer, v.log],
+          async run(s, v) {
+            s.tone(v.n.catdb, null); s.setSub(v.n.catdb, 'MongoDB · truth'); db(s, v, '50 M products');
+            who(s, v, 'A', 'wants running shoes');
+            await s.send(['catdb', 'kafka', 'indexer'], 'p-7 "Trail Running Shoes"', PURPLE);
+            idx(s, v, '[trail, run, shoe]', PURPLE); await s.pulse(v.idx);
+            await s.send(['indexer', 'es', 's1'], 'p-7 terms', PURPLE);
+            await put(s, v, 'trail', 'trail → p-7', 'IDX');
+            await put(s, v, 'run', 'run → p-7', 'IDX');
+            await put(s, v, 'shoe', 'shoe → p-7', 'IDX');
+          },
+        },
+        {
+          title: '✅ The inverted index: term → posting list',
+          text: 'More products arrive: p-9 "Road Running Shoe", p-12 "Running Socks". For each **term** the index keeps a sorted **posting list** of the documents that contain it, like the index at the back of a book. Finding a term is a dictionary lookup, not a scan: the cost depends on how many documents **match**, not on 50 M.',
+          observe: '"run" now points to three products, "shoe" to two.',
+          say: 'The inverted index maps each term to the list of documents that contain it.',
+          focus: v => [v.log],
+          async run(s, v) {
+            await s.send(['indexer', 'es', 's1'], 'p-9, p-12', PURPLE);
+            await put(s, v, 'run', 'run → p-7 p-9 p-12', 'IDX');
+            await put(s, v, 'shoe', 'shoe → p-7 p-9', 'IDX');
+            await put(s, v, 'sock', 'sock → p-12', 'IDX');
+            idx(s, v, 'idle');
+          },
+        },
+        {
+          title: '✅ Query: same analyzer, two lookups, BM25',
+          text: '"running shoes" → `[run, shoe]` → two posting lists → p-7, p-9, p-12. **BM25** scores each one: **term frequency** (more mentions help, with diminishing returns), **inverse document frequency** (a rare term like "trail" weighs more than a common one like "shoe") and **field length** (a match in a short title beats one in a long description). p-7 and p-9 match both terms, so they rank first.',
+          observe: 'Ranked: p-7 7.3, p-9 6.9, p-12 2.1, in milliseconds.',
+          say: 'Elasticsearch looks up each query term and ranks the matches with BM25.',
+          focus: v => [v.rows.run, v.rows.shoe],
+          async run(s, v) {
+            await s.send(['userA', 'gw', 'search', 'es'], '[run, shoe]', BLUE);
+            await put(s, v, 'run', 'run → p-7 p-9 p-12', 'OK');
+            await put(s, v, 'shoe', 'shoe → p-7 p-9', 'OK');
+            await s.flash(800, 255, 'p-7 7.3 · p-9 6.9 · p-12 2.1', info, 900);
+            await s.send(['es', 'search', 'gw', 'userA'], 'p-7, p-9, p-12', GREEN);
+            who(s, v, 'A', 'ranked · 30 ms ✓', GREEN);
+          },
+        },
+        {
+          title: 'Shards and replicas',
+          text: 'One index of 50 M products is split into **3 primary shards**: a document goes to shard `hash(_id) % 3`. Each shard is a complete little inverted index (a Lucene index) on its own node, and has a **replica** on a different node: the replica takes over if that node dies and also serves searches. The number of primaries is fixed when the index is created.',
+          observe: 'Each shard holds about a third of the products.',
+          say: 'The index is split into shards for scale, each with a replica for failover and reads.',
+          focus: v => [v.n.s0, v.n.s1, v.n.s2],
+          async run(s, v) {
+            await scatter(s, 'hash(_id) % 3', PURPLE);
+            ['17 M docs', '17 M docs', '16 M docs'].forEach((t, i) => shd(s, v, i, t, TEAL));
+            await s.flash(650, 395, 'every primary has a replica on another node', info, 1000);
+          },
+        },
+        {
+          title: 'Query fan-out: scatter, top-k, gather, fetch',
+          text: 'The node that receives a search is the **coordinating node**. **Query phase:** it sends the query to one copy of **every** shard; each scores locally and returns only its **top 10 ids + scores**. The coordinator merges 3 × 10 → the global top 10. **Fetch phase:** it asks the owning shards for the full `_source` of just those 10.',
+          observe: 'Three shards answer in parallel; only 10 full documents travel back.',
+          say: 'The coordinating node scatters the query to all shards, merges their top results, then fetches the winners.',
+          focus: v => [v.n.es, ...v.sh],
+          async run(s, v) {
+            await s.send(['userA', 'gw', 'search', 'es'], '"running shoes"', BLUE);
+            await scatter(s, 'query phase');
+            ['top · 6.9', 'top · 7.3', 'top · 5.8'].forEach((t, i) => shd(s, v, i, t, BLUE));
+            await gather(s, ['10 ids', '10 ids', '10 ids']);
+            await s.flash(800, 255, 'merge 30 → top 10', info, 700);
+            await both(s.send(['es', 's1'], 'fetch 6', TEAL, { ms: 360 }), s.send(['es', 's0'], 'fetch 4', TEAL, { ms: 360 }));
+            await s.send(['es', 'search', 'gw', 'userA'], '10 hits', GREEN);
+            who(s, v, 'A', '10 hits · 40 ms ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'query', title: 'Search with filters', sub: 'bool: must + filter · fan-out · cache', color: BLUE,
+      build: (s, v) => setup(s, v, { title: 'MERGED RESULTS · top 10', db: 'p-7 · ₹80 · v4', a: 'types running shoes' }),
+      takeaway: 'Put **free text** in `must` (scored with BM25) and **exact constraints** (price, stock, brand) in `filter`: no scoring, cached as bitsets and reused. Every shard returns its top-k, the coordinator merges and fetches. A short-TTL **query cache** absorbs the head of the query distribution.',
+      steps: [
+        {
+          title: 'A searches "running shoes" under ₹150',
+          text: '`GET /search?q=running shoes&maxPrice=150&inStock=true&page=1`. The gateway checks the token and the rate limit, then routes to the Search Service.',
+          observe: 'The request reaches the Search Service.',
+          focus: v => [v.n.search],
+          async run(s, v) {
+            who(s, v, 'A', 'searching…', AMBER);
+            await s.send(['userA', 'gw', 'search'], 'GET /search?q=…', BLUE);
+          },
+        },
+        {
+          title: 'Query cache: miss',
+          text: 'The key is the **normalised** request: `q:running shoes|price≤150|inStock|p1` (lowercased, trimmed, filters sorted). Popular queries are served from here; this one is not cached yet.',
+          observe: 'Redis answers (nil).',
+          focus: v => [v.cache],
+          async run(s, v) {
+            await s.send(['search', 'cache'], 'GET q:running shoes|…', RED);
+            await s.send(['cache', 'search'], '(nil)', GREY);
+            cch(s, v, 'miss', GREY);
+          },
+        },
+        {
+          title: 'Build a bool query: must + filter',
+          text: '`must`: `multi_match` "running shoes" on `title^3` and `description`: **scored** with BM25, the title boosted 3×. `filter`: `range price ≤ 150` and `term inStock: true`: **yes/no only**, no scoring, so Elasticsearch caches them as **bitsets** and reuses them for the next query with the same filter.',
+          observe: 'One query: a scored part and a cached filter part.',
+          say: 'Text goes in must and is scored; exact constraints go in filter, which is unscored and cached.',
+          focus: v => [v.n.es],
+          async run(s, v) {
+            await s.send(['search', 'es'], 'bool: must + filter', BLUE);
+            await s.flash(800, 255, 'filter: price ≤ 150 · inStock', info, 900);
+          },
+        },
+        {
+          title: 'Query phase on every shard',
+          text: 'Each shard intersects the **filter bitset** with the posting lists of `run` and `shoe`, scores only the surviving documents and keeps its **top 10** (a small heap). It returns ids and scores, not documents. Facet counts (brand, price ranges) are computed in the same pass with **aggregations** on `keyword` fields.',
+          observe: 'Shard 1 has the best score (7.3).',
+          say: 'Each shard filters, scores and returns only its top ten.',
+          focus: v => v.sh,
+          async run(s, v) {
+            await scatter(s, 'query phase');
+            ['top · 6.9', 'top · 7.3', 'top · 5.8'].forEach((t, i) => shd(s, v, i, t, BLUE));
+            await gather(s, ['10 ids', '10 ids', '10 ids']);
+          },
+        },
+        {
+          title: 'Merge, then fetch only the winners',
+          text: 'The coordinating node merges 30 candidates into the **global top 10** and adds up the facet counts. **Fetch phase:** it asks each owning shard for the `_source` of its winners only. Page 2 repeats this with `from: 10`; deep pages get expensive (see follow-ups: `search_after`).',
+          observe: 'The merged list: p-7, p-9, p-31 …',
+          focus: v => [v.log],
+          async run(s, v) {
+            await put(s, v, 'p-7', 'p-7 · 7.3 · ₹80 · shard 1', 'OK');
+            await put(s, v, 'p-9', 'p-9 · 6.9 · ₹120 · shard 0', 'OK');
+            await put(s, v, 'p-31', 'p-31 · 5.8 · ₹95 · shard 2', 'OK');
+            await put(s, v, 'more', '… 7 more · facets: Asics 41', 'DIM');
+            await both(s.send(['es', 's1'], 'fetch', TEAL, { ms: 360 }), s.send(['es', 's0'], 'fetch', TEAL, { ms: 360 }), s.send(['es', 's2'], 'fetch', TEAL, { ms: 360 }));
+            await s.send(['es', 'search'], 'hits + facets', GREEN);
+          },
+        },
+        {
+          title: 'Answer and cache for 30 s; B gets a hit',
+          text: 'The Search Service stores the page with `SET q:… EX 30` and returns 10 results with facets in ~45 ms. A second later Shopper B runs the same search: served from Redis in ~4 ms without touching the cluster. A 30 s TTL means a price can be 30 s old in the list; the product page and checkout read the DB.',
+          observe: 'A gets results; B gets the same page from the cache.',
+          say: 'Popular queries are cached for a few seconds.',
+          focus: v => [v.cache, v.ub],
+          async run(s, v) {
+            await s.send(['search', 'cache'], 'SET … EX 30', RED);
+            cch(s, v, 'q:running shoes · 30 s', RED);
+            await s.send(['search', 'gw', 'userA'], '10 hits + facets', GREEN);
+            who(s, v, 'A', '10 results · 45 ms', GREEN);
+            await s.send(['userB', 'gw', 'search', 'cache'], 'same query', BLUE);
+            await s.send(['search', 'gw', 'userB'], 'cache hit', GREEN);
+            who(s, v, 'B', 'cache hit · 4 ms ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'index', title: 'Seller changes a price', sub: 'DB → change stream → Kafka → _bulk', color: PURPLE,
+      build: (s, v) => setup(s, v, { rows: [['p-7', 'p-7 · Trail shoes · ₹100 · v3', 'OK'], ['p-9', 'p-9 · Road shoes · ₹120 · v7', 'OK']], c: 'lowers p-7 to ₹80' }),
+      takeaway: 'The request path writes **only the DB** (with `version++`). The DB\'s own change log drives the index: **change stream → Kafka (key = productId) → indexer → `_bulk` with the DB version**. Search is **near real-time** (~1 s after the refresh); the seller\'s own pages read the DB.',
+      steps: [
+        {
+          title: 'Seller C lowers the price',
+          text: '`PATCH /products/p-7 { price: 80 }` through the gateway to the Catalog Service.',
+          observe: 'The write reaches the Catalog Service.',
+          focus: v => [v.n.catalog],
+          async run(s, v) { await s.send(['seller', 'gw', 'catalog'], 'PATCH price 80', AMBER); },
+        },
+        {
+          title: 'Write the source of truth, and only it',
+          text: '`updateOne({ _id: "p-7" }, { $set: { price: 80 }, $inc: { version: 1 } })` → **version 4**. The version is what will keep the index correct later, whatever order events arrive in.',
+          observe: 'Catalog DB: p-7 ₹80 v4. The index still says ₹100.',
+          say: 'The service writes only the database and bumps a version.',
+          focus: v => [v.db],
+          async run(s, v) {
+            await s.send(['catalog', 'catdb'], '$set price · $inc version', TEAL);
+            db(s, v, 'p-7 · ₹80 · v4'); await s.pulse(v.db);
+          },
+        },
+        {
+          title: 'Saved: the seller\'s view reads the DB',
+          text: '`200 { version: 4 }`. The seller\'s product page and dashboard read the **Catalog DB**, so C sees ₹80 immediately (read-your-writes where it matters). Public search will catch up in about a second.',
+          observe: 'C sees the new price at once.',
+          focus: v => [v.uc],
+          async run(s, v) {
+            await s.send(['catalog', 'gw', 'seller'], '200 · v4', GREEN);
+            who(s, v, 'C', 'saved · sees ₹80 ✓', GREEN);
+          },
+        },
+        {
+          title: 'Change stream → Kafka, keyed by productId',
+          text: 'A small publisher watches `products.watch(…, { fullDocument: "updateLookup" })` and sends the new document to `product-changes` with **key "p-7"**: every change of p-7 goes to the same partition, in order. It saves the change stream\'s **resume token** after each send, so a restart continues where it stopped.',
+          observe: 'Kafka holds "p-7 v4 ₹80" at offset 910.',
+          say: 'A change stream publishes every product change to Kafka, keyed by product id.',
+          focus: v => [v.kaf],
+          async run(s, v) {
+            await s.send(['catdb', 'kafka'], 'change: p-7 v4', PURPLE);
+            kaf(s, v, 'p-7 v4 ₹80 @910'); await s.pulse(v.kaf);
+          },
+        },
+        {
+          title: 'Indexer: one _bulk with the DB version',
+          text: 'The indexer polls ~500 events and sends **one** `POST _bulk` request. Each item carries `"version": 4, "version_type": "external"`. Elasticsearch routes p-7 to shard 1 (`hash(_id) % 3`). The indexer commits the Kafka offset only after the bulk response.',
+          observe: 'Shard 1 has ₹80 v4, but it is not searchable yet.',
+          focus: v => [v.idx, v.rows['p-7']],
+          async run(s, v) {
+            await s.send(['kafka', 'indexer'], 'poll 500', PURPLE);
+            idx(s, v, '_bulk 500 · p-7 v4', PURPLE);
+            await s.send(['indexer', 'es', 's1'], '_bulk · v4 external', PURPLE);
+            await put(s, v, 'p-7', 'p-7 · ₹80 · v4 · not refreshed', 'NEW');
+          },
+        },
+        {
+          title: 'Refresh: searchable about 1 s later',
+          text: 'Elasticsearch is **near real-time**: new writes become visible to search at the next **refresh** (`refresh_interval: 1s`), which opens a new segment. A searches and sees ₹80. Never send `refresh=true` on bulk traffic (tiny segments); for a single seller write that must be searchable at once, `refresh=wait_for` is the tool.',
+          observe: 'A sees ₹80 in search, ~1 s after the seller saved.',
+          say: 'Search is near real-time: documents become visible after the next refresh, about a second.',
+          focus: v => [v.rows['p-7'], v.ua],
+          async run(s, v) {
+            tick(s, v, '15:00:01');
+            await s.flash(800, 255, 'refresh → new segment', ok, 700);
+            await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹80 · v4', 'OK');
+            idx(s, v, 'offset 910 committed', GREEN);
+            await s.send(['userA', 'gw', 'search', 'es'], '"trail shoes"', BLUE);
+            await s.send(['es', 'search', 'gw', 'userA'], 'p-7 ₹80', GREEN);
+            who(s, v, 'A', 'sees ₹80 ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'dual', title: 'Dual write vs CDC', sub: 'app writes both stores vs change stream', color: RED,
+      build: (s, v) => setup(s, v, { rows: [['p-7', 'p-7 · Trail shoes · ₹100 · v3', 'OK']], c: 'lowers p-7 to ₹80' }),
+      takeaway: 'Writing the DB **and** Elasticsearch from the service has no transaction across them: one can fail, the pod can die in between, two pods can interleave. Write **only the DB** and derive the index from its change log (**change stream / CDC**, or an **outbox** written in the same transaction). Kafka buffers while Elasticsearch is down, and the index **converges**.',
+      steps: [
+        {
+          title: '❌ Write the DB, then Elasticsearch, from the service',
+          text: 'The Catalog Service saves ₹80 in MongoDB (✓), then calls `index p-7` on Elasticsearch, which **times out** (a GC pause, or 429 because the cluster is busy).',
+          observe: 'DB updated; the index write bounces.',
+          say: 'With a dual write, the second write can fail after the first succeeded.',
+          focus: v => [v.n.catalog, v.n.es],
+          async run(s, v) {
+            await s.send(['seller', 'gw', 'catalog'], 'PATCH price 80', AMBER);
+            await s.send(['catalog', 'catdb'], 'update v4', TEAL);
+            db(s, v, 'p-7 · ₹80 · v4');
+            await s.bounce('catalog', 'es', 'index p-7 ₹80', BLUE);
+            await s.flash(475, 250, 'timeout / 429', bad, 700);
+          },
+        },
+        {
+          title: '❌ The two copies drift',
+          text: 'The pod crashes before its retry (or the retry fails too). The DB says ₹80, search says **₹100**, forever, until the product changes again. The reverse order is no better: index first, then the DB write fails → search shows a price that never existed. And two pods dual-writing can apply their index writes in the wrong order.',
+          observe: 'Search shows ₹100; the product page shows ₹80.',
+          say: 'There is no transaction across MongoDB and Elasticsearch, so dual writes drift.',
+          focus: v => [v.rows['p-7'], v.db],
+          async run(s, v) {
+            await put(s, v, 'p-7', 'p-7 · ₹100 · v3 · DB has ₹80!', 'BAD');
+            await s.send(['userA', 'gw', 'search', 'es'], '"trail shoes"', BLUE);
+            await s.send(['es', 'search', 'gw', 'userA'], 'p-7 ₹100', RED);
+            who(s, v, 'A', 'search ₹100 ≠ ₹80 ✕', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: write only the DB',
+          text: 'One write, one commit: `$set price, $inc version` → v4. The request path never touches Elasticsearch, so there is nothing to half-fail. (If you also need a business event, write an **outbox** document in the **same** MongoDB transaction; for SQL databases **Debezium** reads the binlog / WAL.)',
+          observe: 'DB: ₹80 v4.',
+          say: 'Write only the database; derive the index from its change log.',
+          focus: v => [v.db],
+          async run(s, v) {
+            await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹100 · v3', 'OK');
+            who(s, v, 'A', 'browsing');
+            await s.send(['catalog', 'catdb'], 'update v4 (only)', TEAL);
+            await s.pulse(v.db);
+          },
+        },
+        {
+          title: '✅ The change stream publishes it',
+          text: 'The change stream reads MongoDB\'s **oplog**, the same log replication uses, so every committed change appears **exactly once in commit order**. The publisher sends it to Kafka and stores the resume token; after a crash it resumes from the token and skips nothing.',
+          observe: 'Kafka: p-7 v4 ₹80.',
+          focus: v => [v.kaf],
+          async run(s, v) {
+            await s.send(['catdb', 'kafka'], 'p-7 v4', PURPLE);
+            kaf(s, v, 'p-7 v4 ₹80 @910'); await s.pulse(v.kaf);
+          },
+        },
+        {
+          title: '✅ Elasticsearch is down? Events wait in Kafka',
+          text: 'The cluster is unreachable for a minute. The indexer\'s bulk fails; it **backs off and retries** and does **not commit** the offset. Changes pile up in Kafka (consumer lag grows); nothing is lost and the request path is not affected at all.',
+          observe: 'Bulk bounces; lag grows to 1 240.',
+          say: 'If Elasticsearch is down, changes wait in Kafka and the indexer retries.',
+          focus: v => [v.n.indexer, v.kaf],
+          async run(s, v) {
+            s.tone(v.n.es, 'fail'); s.setSub(v.n.es, '✕ unreachable', RED);
+            await s.send(['kafka', 'indexer'], 'poll', PURPLE);
+            await s.bounce('indexer', 'es', '_bulk', PURPLE);
+            idx(s, v, 'retry · backoff 2 s', AMBER);
+            tick(s, v, '15:01:00');
+            kaf(s, v, 'lag 1 240', AMBER); await s.pulse(v.kaf);
+          },
+        },
+        {
+          title: '✅ The cluster is back: the index converges',
+          text: 'The retry succeeds; the indexer drains the backlog in big bulks and commits offsets. Search shows ₹80, and the DB and the index agree again: the index is **eventually consistent**, never permanently wrong.',
+          observe: 'Lag 0; search shows ₹80.',
+          focus: v => [v.rows['p-7'], v.ua],
+          async run(s, v) {
+            s.tone(v.n.es, null); s.setSub(v.n.es, 'coordinating node');
+            await s.send(['indexer', 'es', 's1'], '_bulk catch-up', PURPLE);
+            await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹80 · v4', 'OK');
+            kaf(s, v, 'lag 0'); idx(s, v, 'caught up', GREEN);
+            await s.send(['userA', 'gw', 'search', 'es'], '"trail shoes"', BLUE);
+            await s.send(['es', 'search', 'gw', 'userA'], 'p-7 ₹80', GREEN);
+            who(s, v, 'A', 'search ₹80 ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'order', title: 'Out-of-order updates', sub: 'last write wins vs external version', color: TEAL,
+      build: (s, v) => setup(s, v, { rows: [['p-7', 'p-7 · Trail shoes · ₹80 · v4', 'OK']], db: 'p-7 · ₹80 · v4', c: 'changes price twice' }),
+      takeaway: 'Kafka keeps order per key, but **retries, replays, backfills and deploys** can still deliver an older change after a newer one. Index with `version_type=external` and the **DB version**: Elasticsearch rejects anything not newer with **409**, the indexer treats 409 as "already newer", and the index converges to the DB.',
+      steps: [
+        {
+          title: 'Two quick price changes',
+          text: 'C sets ₹90 (**v5**), then a second later ₹70 (**v6**). The DB has the latest, ₹70 v6. Both changes are in Kafka, in order, in p-7\'s partition.',
+          observe: 'DB: ₹70 v6. Kafka: v5 then v6.',
+          focus: v => [v.db, v.kaf],
+          async run(s, v) {
+            await s.send(['seller', 'gw', 'catalog', 'catdb'], '₹90 → v5', AMBER);
+            db(s, v, 'p-7 · ₹90 · v5');
+            await s.send(['seller', 'gw', 'catalog', 'catdb'], '₹70 → v6', AMBER);
+            db(s, v, 'p-7 · ₹70 · v6'); await s.pulse(v.db);
+            await s.send(['catdb', 'kafka'], 'v5, v6', PURPLE);
+            kaf(s, v, 'p-7 v5 ₹90 · v6 ₹70');
+          },
+        },
+        {
+          title: 'v5 fails, v6 succeeds',
+          text: 'In the bulk response, the item for v5 failed (429, shard busy); the indexer sends it to a **retry topic** so the rest of the partition is not blocked. The next batch with **v6** succeeds: the index shows ₹70, correct.',
+          observe: 'Index: ₹70 v6. v5 waits for a retry.',
+          say: 'Retries and replays can deliver an older change after a newer one.',
+          focus: v => [v.idx, v.rows['p-7']],
+          async run(s, v) {
+            await s.send(['kafka', 'indexer'], 'v5 ₹90', PURPLE);
+            await s.bounce('indexer', 'es', 'v5 → 429', PURPLE);
+            idx(s, v, 'v5 → retry topic', AMBER);
+            await s.send(['kafka', 'indexer'], 'v6 ₹70', PURPLE);
+            await s.send(['indexer', 'es', 's1'], 'v6 ₹70', PURPLE);
+            await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹70 · v6', 'OK');
+          },
+        },
+        {
+          title: '❌ The late retry overwrites the newer price',
+          text: 'Ten seconds later the retry of v5 runs as a plain `PUT products/_doc/p-7 { "price": 90 }`. Without a version check, **the last write wins, and the last write is the older change**. Search now says ₹90 while the DB says ₹70, until the product changes again.',
+          observe: 'Search shows ₹90; the DB has ₹70.',
+          focus: v => [v.rows['p-7'], v.ua],
+          async run(s, v) {
+            tick(s, v, '15:00:10');
+            await s.send(['indexer', 'es', 's1'], 'retry v5 ₹90', RED);
+            await put(s, v, 'p-7', 'p-7 · ₹90 · stale (DB ₹70)', 'BAD');
+            await s.send(['userA', 'gw', 'search', 'es'], '"trail shoes"', BLUE);
+            await s.send(['es', 'search', 'gw', 'userA'], 'p-7 ₹90', RED);
+            who(s, v, 'A', 'sees ₹90 ✕', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: the DB version as an external version',
+          text: 'The retry sends `PUT products/_doc/p-7?version=5&version_type=external`. Elasticsearch stores the version with the document and accepts a write **only if the new version is higher** than the stored one. Stored is 6, so v5 is rejected: **409 version_conflict_engine_exception**.',
+          observe: 'v5 is rejected; the index keeps ₹70 v6.',
+          say: 'With external versioning, Elasticsearch rejects any change older than what it already has.',
+          focus: v => [v.rows['p-7']],
+          async run(s, v) {
+            await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹70 · v6', 'OK');
+            who(s, v, 'A', 'browsing');
+            await s.send(['indexer', 'es', 's1'], 'v5 · external', TEAL);
+            await s.flash(650, 395, '409 · 5 is not > 6', bad, 800);
+            await s.send(['s1', 'es', 'indexer'], '409 conflict', AMBER);
+          },
+        },
+        {
+          title: '✅ 409 means "already newer": skip it',
+          text: 'The indexer treats a version conflict as **success** and commits the offset. Replays, retries, backfills and two indexer versions during a deploy all become harmless: the index always ends at the DB\'s highest version. Deletes use the version too (or a soft-delete flag) so an old update cannot resurrect a deleted product.',
+          observe: 'A sees ₹70, the same as the DB.',
+          focus: v => [v.idx, v.ua],
+          async run(s, v) {
+            idx(s, v, '409 → skip, commit', GREEN); await s.pulse(v.idx);
+            await s.send(['userA', 'gw', 'search', 'es'], '"trail shoes"', BLUE);
+            await s.send(['es', 'search', 'gw', 'userA'], 'p-7 ₹70', GREEN);
+            who(s, v, 'A', 'sees ₹70 ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'reindex', title: 'Reindex, zero downtime', sub: 'new index · backfill · alias swap', color: GREEN,
+      build: (s, v) => setup(s, v, { title: 'INDICES · alias "products"', rows: [['v1', 'products_v1 · standard · 50 M', 'OK']], es: 'alias → products_v1', db: '50 M products', a: 'searching all day' }),
+      takeaway: 'You cannot change an existing field\'s analyzer (or the primary shard count) in place. Build **products_v2** next to v1, **backfill** it from the DB while live changes go to both, **catch up**, then **swap the alias** in one atomic request. Clients always query the alias; v1 stays for rollback.',
+      steps: [
+        {
+          title: 'A new analyzer is needed',
+          text: 'Shoppers type "sneakers" and "trainers" and find nothing; we want a **synonym** filter and better stemming on `title`. The inverted index was built with the **old** terms, so an existing field\'s analyzer cannot be changed in place: every document must be re-analyzed into a **new index**.',
+          observe: '"sneakers" → 0 hits today.',
+          focus: v => [v.n.es, v.ua],
+          async run(s, v) {
+            await s.send(['userA', 'gw', 'search', 'es'], '"sneakers"', BLUE);
+            await s.send(['es', 'search', 'gw', 'userA'], '0 hits', GREY);
+            who(s, v, 'A', '"sneakers" → 0 hits', AMBER);
+            await s.flash(800, 255, 'title: + synonyms filter', info, 800);
+          },
+        },
+        {
+          title: '❌ Delete and recreate',
+          text: '`DELETE products`, create it again with the new mapping, re-index 50 M products. For the **hour** the rebuild takes, search returns **nothing or partial results**, and there is no way back if the new analyzer turns out worse.',
+          observe: 'Search is empty during the rebuild.',
+          say: 'Deleting and recreating the index means an outage.',
+          focus: v => [v.rows.v1, v.ua],
+          async run(s, v) {
+            await s.send(['indexer', 'es'], 'DELETE products', RED);
+            await put(s, v, 'v1', 'products · new · 0 → filling…', 'BAD');
+            s.setSub(v.n.es, 'rebuilding…', RED);
+            await s.send(['userA', 'gw', 'search', 'es'], '"running shoes"', BLUE);
+            await s.send(['es', 'search', 'gw', 'userA'], '0 hits', RED);
+            who(s, v, 'A', 'search empty ✕', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: build products_v2 next to v1',
+          text: '`PUT products_v2` with the new mappings and analyzer. During the load use `number_of_replicas: 0` and `refresh_interval: -1` (much faster), then restore them. Searches still go to the **alias** `products` → v1, so nobody notices.',
+          observe: 'v2 exists and is empty; search still uses v1.',
+          say: 'Build a new index with the new mapping next to the old one.',
+          focus: v => [v.log],
+          async run(s, v) {
+            await put(s, v, 'v1', 'products_v1 · standard · 50 M', 'OK');
+            s.setSub(v.n.es, 'alias → products_v1', BLUE); who(s, v, 'A', 'searching all day');
+            await s.send(['indexer', 'es'], 'PUT products_v2', TEAL);
+            await put(s, v, 'v2', 'products_v2 · synonyms · 0', 'NEW');
+          },
+        },
+        {
+          title: 'Backfill from the truth; live changes go to both',
+          text: 'Note the Kafka offset, then stream every product from the **Catalog DB** into v2 through the indexer (or `_reindex` from v1 if v1 has every field). Meanwhile the live indexer writes each new change to **v1 and v2**. Overlaps are safe: external versions make the highest version win in both.',
+          observe: 'v2 fills up while v1 keeps serving.',
+          say: 'Backfill the new index from the database while live changes are written to both.',
+          focus: v => [v.idx, v.rows.v2],
+          async run(s, v) {
+            idx(s, v, 'live → v1 + v2', PURPLE);
+            await s.send(['catdb', 'kafka', 'indexer', 'es'], 'snapshot → v2', PURPLE);
+            await put(s, v, 'v2', 'products_v2 · synonyms · 31 M', 'NEW');
+            kaf(s, v, 'backfill 31 M / 50 M');
+            await s.send(['indexer', 'es'], 'snapshot → v2', PURPLE);
+            await put(s, v, 'v2', 'products_v2 · synonyms · 50 M', 'NEW');
+            kaf(s, v, 'lag 0', GREEN);
+          },
+        },
+        {
+          title: 'Catch up and verify',
+          text: 'Lag is 0. Set replicas back to 1 and refresh to 1 s, compare document counts, run a sample of real queries against both (or shadow traffic) and check the results look better.',
+          observe: 'Counts match; v2 is ready.',
+          focus: v => [v.rows.v2],
+          async run(s, v) {
+            await s.flash(800, 255, 'count v1 = v2 = 50 M ✓', ok, 800);
+            await put(s, v, 'v2', 'products_v2 · synonyms · 50 M', 'OK');
+          },
+        },
+        {
+          title: '✅ Swap the alias atomically',
+          text: '`POST _aliases` with `remove products_v1` **and** `add products_v2` in **one** request: the switch is atomic, so no query ever sees zero or both indices. A\'s next search uses v2. Keep v1 for a quick rollback (swap back), delete it later.',
+          observe: '"sneakers" now finds 42 products; zero downtime.',
+          say: 'Swap the alias atomically; clients always query the alias, so there is no downtime.',
+          focus: v => [v.n.es, v.ua],
+          async run(s, v) {
+            await s.send(['indexer', 'es'], 'POST _aliases', GREEN);
+            s.setSub(v.n.es, 'alias → products_v2', GREEN); await s.pulse(v.n.es);
+            await put(s, v, 'v1', 'products_v1 · kept for rollback', 'DIM');
+            await s.send(['userA', 'gw', 'search', 'es'], '"sneakers"', BLUE);
+            await s.send(['es', 'search', 'gw', 'userA'], '42 hits', GREEN);
+            who(s, v, 'A', '"sneakers" → 42 ✓', GREEN);
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'What is searched, filters, freshness, scale.',
+      lines: [
+        ['I', 'Design product search for an e-commerce site.'],
+        ['C', 'Full-text search plus filters like price, brand and stock? Sorting and facets?'],
+        ['I', 'Yes, and autocomplete.'],
+        ['C', 'How many products and searches, and how fast must a seller\'s change show up?'],
+        ['I', 'About 50 million products, 5,000 searches per second, updates within a few seconds.'],
+        ['C', 'Synonyms, typo tolerance, personalisation?'],
+        ['I', 'Synonyms and typos yes, no personalisation for now.'],
+        ['P', 'Write: 50 M docs · 5 k QPS · seconds of lag OK · filters + facets + autocomplete.'],
+      ],
+      avoid: 'Jumping to "use Elasticsearch" before saying where the truth lives and how the index is fed.',
+    },
+    {
+      t: 'Estimate the scale', min: 3, goal: 'Index size, shards, write rate.',
+      lines: [
+        ['C', '50 M × ~2 KB ≈ **100 GB** of source; the index ≈ 1–1.5× that.'],
+        ['C', 'At ~30–50 GB per shard → **3 primaries**, 1 replica each → 6 shards on 3+ nodes.'],
+        ['C', '5 k searches/s × 3 shards = 15 k shard queries/s; replicas share the reads.'],
+        ['C', 'Writes: price and stock changes, maybe a few hundred per second → easy with `_bulk`.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 5, goal: 'Search API, truth vs search document, mapping.',
+      lines: [
+        ['C', '`GET /search?q=&filters=&sort=&cursor=` → hits + facets + next cursor; `GET /suggest?q=run` for autocomplete.'],
+        ['C', 'Catalog DB: `products { _id, title, brand, price, inStock, version }`. The search document is derived from it.'],
+        ['C', 'Mapping: `title` as `text` (analyzed, plus an edge n-gram subfield for autocomplete), `brand` as `keyword`, `price` numeric.'],
+        ['I', 'Why both text and keyword?'],
+        ['C', 'Text is analyzed for matching; keyword is exact for filters, facets and sorting.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Write path, pipeline, query path.',
+      lines: [
+        ['P', 'Draw: Seller → Catalog Svc → Catalog DB → change stream → Kafka → Indexer → Elasticsearch ← Search Svc ← Shoppers; Redis query cache.'],
+        ['C', 'Writes go only to the DB with version++. The change stream publishes to Kafka keyed by productId; the indexer bulk-writes with the version as an external version.'],
+        ['C', 'Queries: bool query with scored must and cached filter; the coordinating node fans out to shards, merges top-k, fetches.'],
+        ['C', 'I explain the inverted index briefly: analyzer → terms → posting lists → BM25.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Consistency of the copy, freshness, reindexing, relevance.',
+      lines: [
+        ['I', 'Why not write to Elasticsearch from the service?'],
+        ['C', 'Dual writes drift: no transaction across both. CDC from the DB, or an outbox.'],
+        ['I', 'Two updates arrive out of order.'],
+        ['C', 'External versioning: Elasticsearch rejects older versions with 409; the indexer skips them.'],
+        ['I', 'A seller saves and searches immediately.'],
+        ['C', 'Near real-time, ~1 s; the seller\'s pages read the DB, or `refresh=wait_for` for that one write.'],
+        ['I', 'We need a new analyzer.'],
+        ['C', 'New index, backfill, dual-write live changes, atomic alias swap, keep the old one for rollback.'],
+        ['I', 'Page 500 is slow.'],
+        ['C', '`search_after` with a point-in-time instead of from + size.'],
+      ],
+      avoid: 'Treating Elasticsearch as the primary database.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: DB as truth, CDC through Kafka into Elasticsearch with external versions, bool queries with scored must and cached filters, near real-time refresh, alias-based reindexing.'],
+        ['C', 'Next: learning-to-rank from click logs, synonyms mined from query logs, per-region clusters, personalisation.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    summary: [
+      "For product search I'd keep **MongoDB as the source of truth** and treat **Elasticsearch as a derived, rebuildable copy**. A regex or `LIKE '%shoes%'` query can't use a normal index, so it scans every product and still has no idea about words or relevance. Elasticsearch runs the text through an **analyzer**, lowercase, split into words, stem them, and keeps an **inverted index**: for every term, the list of products that contain it. Ranking is **BM25**, so rare terms and short-field matches count more.",
+      "On the write side, the Catalog Service writes **only to MongoDB** and bumps a **version** on every change. I don't dual-write to Elasticsearch, because there's no transaction across the two and they'd drift. Instead a **change stream** publishes each change to **Kafka** keyed by productId, and a Spring Kafka **indexer** sends them in `_bulk` requests with `version_type=external` and the DB version. If an older change arrives late after a retry, Elasticsearch rejects it with a **409**, so the index always converges to the DB.",
+      "On the read side, the Search Service builds a **bool query**: the text goes in `must`, which is scored, and price, brand and stock go in `filter`, which isn't scored and gets cached. The index is split into **shards** with replicas; the coordinating node sends the query to every shard, each returns its **top ten**, it merges them and fetches just the winners. Popular queries sit in **Redis** for thirty seconds.",
+      "Search is **near real-time**: a change is visible after the next refresh, about a second, so the seller's own pages read the DB. And when I need a new analyzer, I never change the index in place: I build **products_v2**, backfill it from the DB, and **swap the alias** atomically, so there's no downtime and I can roll back.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> keyword search with filters (price, brand, stock), facets, sorting, pagination, autocomplete, synonyms and typo tolerance.</li>
+        <li><b>Non-functional:</b> p99 &lt; ~200 ms, changes searchable within seconds, survive a node loss, reindex without downtime.</li>
+        <li><b>Out of scope (say so):</b> personalisation, learning-to-rank, image search.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Source data</td><td class="m">50 M × ~2 KB</td><td>≈ 100 GB</td></tr>
+        <tr><td>Shards</td><td class="m">~30–50 GB each</td><td>3 primaries × 1 replica</td></tr>
+        <tr><td>Searches</td><td class="m">5 k/s × 3 shards</td><td>15 k shard queries/s</td></tr>
+        <tr><td>Index lag</td><td class="m">CDC + bulk + refresh</td><td>~1–2 s</td></tr></table>` },
+      { h: '3 · API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">GET /search?q=&amp;filters=&amp;sort=&amp;cursor=</td><td>hits + facets + next cursor</td></tr>
+        <tr><td class="m">GET /suggest?q=run</td><td>autocomplete (edge n-grams / completion)</td></tr>
+        <tr><td class="m">PATCH /products/{id}</td><td>catalog write → DB only → searchable in ~1 s</td></tr>
+        <tr><td class="m">POST /admin/reindex</td><td>build new index, swap alias</td></tr></table>` },
+      { h: '4 · Data & mapping', color: '#8f4fc4', html: `<pre>// Catalog DB (truth)
+{ _id: "p-7", title: "Trail running shoes",
+  brand: "Asics", price: 80, inStock: true, version: 4 }
+
+// Elasticsearch mapping (derived copy)
+title:   text (analyzer en_syn) + title.ac (edge n-gram)
+brand:   keyword      // filters, facets, sort
+price:   scaled_float
+inStock: boolean
+
+// clients query the alias "products" → products_v1 / v2</pre>` },
+      { h: '5 · Query & index paths', color: '#2f6fe0', html: `<ol>
+        <li>Write: Catalog Svc → MongoDB (<code>$inc version</code>) → change stream → Kafka (key productId).</li>
+        <li>Indexer: batch → <code>_bulk</code> with <code>version_type=external</code> → visible after refresh (~1 s).</li>
+        <li>Query: cache? → bool (must + filter) → coordinator → all shards (top-k) → merge → fetch.</li>
+        <li>Facets: aggregations on <code>keyword</code> fields in the same request.</li></ol>` },
+      { h: '6 · Reliability & operations', color: '#ce3434', html: `<ul>
+        <li>No dual writes; the change stream resumes from its token; Kafka buffers when ES is down.</li>
+        <li>External versions: late or replayed changes get 409 and are skipped.</li>
+        <li>Replicas on other nodes; total loss → rebuild from the DB.</li>
+        <li>Mapping changes: new index + backfill + atomic alias swap; keep the old index for rollback.</li></ul>` },
+    ],
+    decisions: [
+      ['Elasticsearch next to MongoDB', 'Inverted index, analyzers, BM25, facets at scale.', 'A second system to run and keep in sync.'],
+      ['DB as truth, index derived', 'The index can always be rebuilt.', 'Search lags the DB by about a second.'],
+      ['CDC → Kafka instead of dual write', 'No drift, buffering when ES is down, replayable.', 'More moving parts (publisher, topic, indexer).'],
+      ['External versioning', 'Order-independent, idempotent indexing.', 'Every event must carry the DB version.'],
+      ['must vs filter', 'Filters are unscored and cached.', 'Must think about which clauses affect ranking.'],
+      ['Alias + reindex', 'Zero-downtime mapping changes and rollback.', 'Double storage while both indices exist.'],
+    ],
+    code: [
+      { t: 'Search: bool query with the Elasticsearch Java client', code: `public SearchPage search(String q, BigDecimal maxPrice, int size) throws IOException {
+  SearchResponse<ProductDoc> res = es.search(s -> s
+      .index("products")                                        // always the alias
+      .query(qb -> qb.bool(b -> b
+          .must(m -> m.multiMatch(mm -> mm.query(q).fields("title^3", "description")))   // scored (BM25)
+          .filter(f -> f.range(r -> r.number(n -> n.field("price").lte(maxPrice.doubleValue()))))
+          .filter(f -> f.term(t -> t.field("inStock").value(true)))))                      // cached, unscored
+      .aggregations("brands", a -> a.terms(t -> t.field("brand").size(10)))               // facets
+      .size(size)
+      .timeout("500ms"),
+      ProductDoc.class);
+  return SearchPage.of(res.hits().hits(), res.aggregations().get("brands"));
+}` },
+      { t: 'Change stream → Kafka (keyed by productId)', code: `@Component
+class ProductChangePublisher {
+  @EventListener(ApplicationReadyEvent.class)
+  void start() {
+    BsonDocument token = tokens.load("products");               // resume where we stopped
+    var stream = mongo.getCollection("products").watch()
+        .fullDocument(FullDocument.UPDATE_LOOKUP);
+    if (token != null) stream = stream.resumeAfter(token);
+    for (ChangeStreamDocument<Document> c : stream) {
+      String id = c.getDocumentKey().getString("_id").getValue();
+      kafka.send("product-changes", id, ProductEvent.from(c))     // key = productId → per-product order
+           .get();                                                // wait for the ack…
+      tokens.save("products", c.getResumeToken());              // …then move the resume token
+    }
+  }
+}` },
+      { t: 'Indexer: @KafkaListener → _bulk with external versions', code: `@KafkaListener(topics = "product-changes", batch = "true")
+void index(List<ProductEvent> events, Acknowledgment ack) throws IOException {
+  BulkResponse res = es.bulk(b -> {
+    for (ProductEvent e : events)
+      b.operations(op -> op.index(i -> i
+          .index("products").id(e.id())
+          .version(e.version()).versionType(VersionType.External)   // DB version
+          .document(ProductDoc.from(e))));
+    return b;
+  });
+  for (BulkResponseItem item : res.items()) {
+    if (item.error() == null || item.status() == 409) continue;     // 409: index already has a newer version
+    if (item.status() == 429) retry.send(item.id());               // back off, retry later
+    else dlq.send(item.id(), item.error().reason());                // bad document → DLQ
+  }
+  ack.acknowledge();                                                // commit offsets after the bulk
+}` },
+      { t: 'Zero-downtime reindex: atomic alias swap', code: `PUT products_v2
+{ "settings": { "number_of_shards": 3, "number_of_replicas": 0, "refresh_interval": "-1" },
+  "mappings":  { "properties": {
+      "title": { "type": "text", "analyzer": "en_syn",
+                 "fields": { "ac": { "type": "text", "analyzer": "edge_ngram_2_15" } } },
+      "brand": { "type": "keyword" },
+      "price": { "type": "scaled_float", "scaling_factor": 100 } } } }
+
+// backfill from the Catalog DB (live indexer writes v1 + v2), then:
+PUT products_v2/_settings { "number_of_replicas": 1, "refresh_interval": "1s" }
+
+POST _aliases
+{ "actions": [
+    { "remove": { "index": "products_v1", "alias": "products" } },
+    { "add":    { "index": "products_v2", "alias": "products" } } ] }   // one atomic switch` },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    es: { name: 'Elasticsearch basics', color: '#c47d1e' },
+    ix: { name: 'Indexing pipeline', color: '#8f4fc4' },
+    rq: { name: 'Relevance & queries', color: '#2f6fe0' },
+    sc: { name: 'Scale', color: '#13968a' },
+    rr: { name: 'Failures & operations', color: '#ce3434' },
+  },
+  followups: [
+    { g: 'es', q: 'Why not SQL LIKE or a MongoDB regex?', what: 'A full scan, no word awareness, no ranking.', why: 'B-tree indexes cannot serve a leading wildcard.', how: 'Inverted index with analyzers (tokenize, lowercase, stem) and BM25 scoring.', trade: 'A second system to operate and feed.', flow: 'why' },
+    { g: 'es', q: 'What does an analyzer do, and why at both index and query time?', what: 'Turns text into terms: tokenizer + filters (lowercase, stop words, stemming, synonyms).', why: 'Query terms must match index terms exactly.', how: 'Same analyzer on both sides (synonyms often only at query time, so they can change without a reindex).', trade: 'Changing the index-time analyzer needs a reindex.', flow: 'why' },
+    { g: 'es', q: 'Can Elasticsearch be the primary database?', what: 'It stores documents, but it is built for search.', why: 'Near real-time visibility, no multi-document transactions, mapping changes need a reindex.', how: 'Keep MongoDB as truth; the index is a rebuildable copy.', trade: 'Two systems instead of one.' },
+    { g: 'es', q: 'Elasticsearch, OpenSearch or MongoDB Atlas Search?', what: 'All are Lucene-based inverted-index search.', why: 'Licensing, hosting and integration differ.', how: 'Atlas Search syncs from the collection itself (no pipeline to build); ES / OpenSearch for large, heavily tuned clusters.', trade: 'Built-in options are simpler but less flexible.' },
+    { g: 'ix', q: 'Why not write to the DB and Elasticsearch from the service?', what: 'One write can succeed while the other fails.', why: 'No transaction spans both stores (dual-write problem).', how: 'Write the DB only; change stream / CDC or an outbox → Kafka → indexer.', trade: 'The index lags by about a second.', flow: 'dual' },
+    { g: 'ix', q: 'Two updates for one product reach the index out of order.', what: 'Without a version, the older one can win.', why: 'Retries, replays and backfills reorder events.', how: '`version_type=external` with the DB version; 409 = already newer → skip.', trade: 'Every event must carry the DB version.', flow: 'order' },
+    { g: 'ix', q: 'A seller saves and searches immediately: not found.', what: 'The document is not refreshed yet.', why: 'Near real-time: visible after the next refresh (~1 s).', how: 'Seller pages read the DB; or `refresh=wait_for` for that single write.', trade: '`wait_for` makes that save slower; never use `refresh=true` on bulk traffic.', flow: 'index' },
+    { g: 'ix', q: 'A product document keeps failing to index.', what: 'A batch that retries forever blocks the partition.', why: 'Bad data vs the mapping (text in a numeric field).', how: 'Bulk responses are per item: retry 429s, send mapping errors to a DLQ, alert.', trade: 'That product is missing from search until fixed.' },
+    { g: 'rq', q: 'How do you build autocomplete?', what: 'Results while the user types "run…".', why: 'Normal terms only match whole words.', how: 'An **edge n-gram** subfield (r, ru, run, runn…) at index time with a plain analyzer at query time, or the `completion` suggester (in-memory FST) for pure prefix suggestions; debounce in the UI.', trade: 'Edge n-grams grow the index; completion cannot filter much.' },
+    { g: 'rq', q: 'How do you handle typos?', what: '"runnign shoes" should still match.', why: 'Users misspell constantly on mobile.', how: '`fuzziness: "AUTO"` on match (edit distance 1–2 by term length), `prefix_length: 1` to keep it fast; a "did you mean" phrase suggester.', trade: 'Fuzzy queries are slower and can match wrong words; boost exact matches.' },
+    { g: 'rq', q: 'How would you tune relevance?', what: 'BM25 alone does not know what sells.', why: 'Business signals matter: popularity, stock, margin.', how: 'Field boosts (`title^3`), `function_score` with popularity / recency, synonyms from query logs, measure with click-through and NDCG; later learning-to-rank.', trade: 'Over-boosting popularity hides new products.' },
+    { g: 'rq', q: 'Why is deep pagination slow, and what do you use instead?', what: 'Page 500 means each shard ranks from + size documents.', why: 'The coordinator merges shards × (from + size); default cap 10 000.', how: '`search_after` with the last hit\'s sort values + a point-in-time; cap page depth in the UI.', trade: 'No jumping straight to page N.' },
+    { g: 'sc', q: 'How many shards?', what: 'The primary count is fixed at index creation.', why: 'Too few → huge shards, slow recovery; too many → overhead per shard and per query.', how: 'Aim for ~10–50 GB per shard; grow with `_split` or a reindex behind the alias.', trade: 'Changing it later means copying data.', flow: 'reindex' },
+    { g: 'sc', q: '5,000 searches/s is too much for the cluster.', what: 'Latency climbs.', why: 'Every search hits one copy of every shard.', how: 'More replicas (more copies to serve reads), the query cache, filters instead of scoring, route by category with custom routing.', trade: 'Replicas cost storage and indexing work.', flow: 'query' },
+    { g: 'rr', q: 'How do you change an analyzer without downtime?', what: 'Field mappings cannot be changed in place.', why: 'The index was built with the old terms.', how: 'New index + backfill + live dual write + atomic alias swap; keep the old index for rollback.', trade: 'Double storage during the migration.', flow: 'reindex' },
+    { g: 'rr', q: 'An Elasticsearch node dies, or the indexer falls behind.', what: 'Shards on that node are gone; or search shows old prices.', why: 'Data lives on nodes; bulk throughput below the change rate.', how: 'Replicas are promoted and rebuilt elsewhere (total loss → reindex from the DB). For lag: scale consumers up to the partition count, tune bulk size, back off on 429, alert on lag.', trade: 'Replicas double storage; more indexing load on the cluster.', flow: 'dual' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>

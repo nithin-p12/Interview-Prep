@@ -1,0 +1,956 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-job-scheduler">
+<meta name="doc-version" content="v2.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Distributed Job Scheduler · System Design · v2.0</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// Distributed job scheduler (cron at scale). Leases, atomic claims and fencing tokens are taught HERE.
+// Leader election is only the alternative (follow-ups / decisions). DB basics live in 00_Core_Components.html.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+const KEEP = '#d5d9dc';
+
+// Row colours: job documents, run-log entries and report documents.
+const ST = {
+  SCHED: { fill: '#f3f6fe', stroke: BLUE, color: BLUE },
+  RUN: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  OK: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
+  LOG: { fill: '#f6f7fb', stroke: '#e3e6ee', color: '#203347' },
+  BAD: { fill: '#fff4f4', stroke: RED, color: RED },
+};
+// SVG collapses normal spaces, so pad with non-breaking ones to keep the monospace columns aligned.
+const pad = (str, n) => str.padEnd(n, ' ');
+const J = (id, status, rest = '') => `${pad(id, 7)}${pad(status, 10)}${rest}`;   // job row
+const R = (key, rest) => `${pad(key, 12)}${rest}`;                                // run-log / report row
+
+// State shown next to the components: job docs + run log, lease, reports, inbox, workers, owner.
+function setup(s, v, { jobs = [], reps = [], clock = '01:59:58', lease = 'lease —', a = 'owns job-7', w1 = 'idle · polling', w2 = 'idle · polling', inbox = 'B inbox: 0' } = {}) {
+  v.clock = s.chip(15, 500, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
+  v.db = s.store(300, 322, 250, 'JOB DB · jobs + runs', { color: TEAL });
+  v.rep = s.store(842, 378, 250, 'REPORT STORE · reports', { color: PURPLE });
+  v.rows = {};
+  jobs.forEach(([key, txt, st]) => { s.row(v.db, txt, { ...ST[st], now: true }); v.rows[key] = v.db.rows[v.db.rows.length - 1]; v.rows[key].st = v.db; });
+  reps.forEach(([key, txt, st]) => { s.row(v.rep, txt, { ...ST[st], now: true }); v.rows[key] = v.rep.rows[v.rep.rows.length - 1]; v.rows[key].st = v.rep; });
+  v.lease = s.chip(425, 292, lease, { mono: true, color: TEAL });
+  v.inbox = s.chip(965, 302, inbox, { color: GREY });
+  v.ua = s.chip(70, 156, a, { color: GREY });
+  v.uw1 = s.chip(695, 158, w1, { color: GREY });
+  v.uw2 = s.chip(695, 378, w2, { color: GREY });
+  return v;
+}
+// Add or update a row in the Job DB (default) or the Report Store.
+async function put(s, v, key, txt, st, store = v.db) {
+  const r = v.rows[key];
+  if (!r) { v.rows[key] = await s.row(store, txt, ST[st]); v.rows[key].st = store; return; }
+  r.label.textContent = txt;
+  s.paintRow(r, ST[st]);
+  await s.pulse(r, 1, 1.05);
+}
+async function drop(s, v, key) { const r = v.rows[key]; if (r) { await s.unrow(r.st, r); delete v.rows[key]; } }
+async function clearRows(s, v) { for (const st of [v.db, v.rep]) for (const r of [...st.rows]) await s.unrow(st, r); v.rows = {}; }
+const paint = color => ({ color, stroke: color === GREY ? KEEP : color });
+const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
+const lease = (s, v, t, color = TEAL) => s.setChip(v.lease, t, { color });
+const inbox = (s, v, t, color = GREY) => s.setChip(v.inbox, t, paint(color));
+const who = (s, v, u, txt, color = GREY) => s.setChip(u === 'w1' ? v.uw1 : u === 'w2' ? v.uw2 : v.ua, txt, paint(color));
+const ok = { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, bad = { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, warn = { mono: true, color: AMBER, stroke: AMBER, fill: '#fdf6ea' };
+const JOB7 = ['job-7', J('job-7', 'SCHEDULED', 'next 02:00 f0'), 'SCHED'];
+
+window.DESIGN = {
+  id: 'jobs', n: 8, title: 'Distributed Job Scheduler', tagline: 'jobs in a database, stateless workers claim them atomically with a lease and a fencing token',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'Owners & API', x0: 0, x1: 290, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'Teams create, pause and trigger jobs through a small **Job API**: a cron expression, a **time zone**, a payload and a misfire policy.',
+      detail: 'The API only writes job documents; it never runs anything.' },
+    { id: 'data', title: 'Job DB', x0: 290, x1: 560, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: 'The **Job DB** is the single source of truth: `nextRunAt`, `status`, and the **lease** (`lockedBy`, `leaseUntil`, `fence`). Claims are **atomic updates** on one document.',
+      detail: 'Index `{status, nextRunAt}` makes "what is due now?" a cheap range query.' },
+    { id: 'app', title: 'Workers', x0: 560, x1: 830, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: '**Stateless workers** poll every second and claim one due job with `findOneAndUpdate`. No leader: any worker can take any job, and a dead worker\'s job comes back when its lease expires.',
+      detail: 'Add workers to run more jobs in parallel.' },
+    { id: 'async', title: 'Side effects', x0: 830, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'What jobs actually do: write a **report**, send an **email**. Execution is **at-least-once**, so these must be **idempotent** and the store must reject **stale fences**.',
+      detail: 'The Report Store (bottom right) keeps the last fence it accepted per document.' },
+  ],
+  layersIntro: {
+    title: 'Jobs in the database, workers that claim them, idempotent side effects',
+    text: 'A team creates a job through the **Job API**; it is stored with its **nextRunAt**. Stateless **workers** poll and **claim** a due job in one atomic update that sets a **lease** and bumps a **fencing token**. The worker runs it, writes results with its fence, and **completes** only if it still owns the lease, computing the next run from cron + time zone. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    userA: { x: 70, y: 110, w: 120, label: 'Team A', sub: 'job owner', icon: '👤', layer: 'entry' },
+    api: { x: 200, y: 240, w: 140, label: 'Job API', sub: 'create · pause', icon: '🗓️', layer: 'entry' },
+    jobdb: { x: 425, y: 240, w: 160, label: 'Job DB', sub: 'Mongo · leases', icon: '🍃', layer: 'data' },
+    w1: { x: 695, y: 110, w: 160, label: 'Worker 1', sub: 'polls every 1 s', icon: '⚙️', layer: 'app' },
+    w2: { x: 695, y: 330, w: 160, label: 'Worker 2', sub: 'polls every 1 s', icon: '⚙️', layer: 'app' },
+    reports: { x: 965, y: 110, w: 170, label: 'Report Store', sub: 'checks the fence', icon: '📦', layer: 'async' },
+    email: { x: 965, y: 250, w: 170, label: 'Email (SES)', sub: 'external', icon: '✉️', layer: 'async', ext: true },
+  },
+  wires: [['userA', 'api'], ['api', 'jobdb'], ['w1', 'jobdb'], ['w2', 'jobdb'], ['w1', 'reports'], ['w2', 'reports'], ['w1', 'email'], ['w2', 'email']],
+
+  components: {
+    userA: {
+      name: 'Job owner (Team A)',
+      what: 'Registers "daily-report at 02:00 Asia/Kolkata" and gets alerts when a job ends up **FAILED**.',
+      why: 'Jobs belong to teams; somebody has to hear about permanent failures.',
+      without: '—',
+      tech: 'Any service or an admin UI calling the Job API', scale: '—', fails: 'Gets an alert after max attempts.',
+    },
+    api: {
+      name: 'Job API',
+      what: '`POST /jobs { name, cron, tz, payload, misfire }` validates the cron, computes the first **nextRunAt** and inserts the job. Also pause, resume, trigger now, run history.',
+      why: 'One place that validates cron expressions and time zones before they reach the workers.',
+      without: 'Teams write job documents by hand, with broken crons and missing time zones.',
+      tech: 'Spring Boot REST, `CronExpression.parse` for validation', scale: 'Low traffic: jobs change rarely.', fails: 'Stateless; if it is down, existing jobs keep running.',
+    },
+    jobdb: {
+      name: 'Job DB',
+      what: '`jobs { _id, cron, tz, status, nextRunAt, lockedBy, leaseUntil, fence, attempts, misfire }` and a run log `runs { _id: "job-7@02:00", emailSent }`.',
+      why: 'Job state and the lease live in **one document**, so a single atomic update both finds a due job and takes it.',
+      without: 'Separate lock service + job store → two systems to keep consistent.',
+      tech: 'MongoDB replica set; indexes `{status, nextRunAt}`, `{status, leaseUntil}`; TTL index on old runs', scale: '~1 M jobs fit easily; shard by jobId and give worker groups their own shards beyond that.', fails: 'Primary failover pauses claims for seconds; leases are long enough to survive it.',
+      core: ['db', 'DB scaling'],
+    },
+    w1: {
+      name: 'Workers',
+      what: 'Every second: claim one due job (`findOneAndUpdate`), run it, **heartbeat** the lease while it runs, then **complete** with a filter on `lockedBy` + `fence`.',
+      why: 'No leader to elect or fail over: every worker is equal and the database arbitrates.',
+      without: 'A single cron box: one machine dies and nothing runs.',
+      tech: 'Spring Boot, `@Scheduled(fixedDelay = 1000)`, `MongoTemplate.findAndModify`', scale: 'Add workers; claim in small batches; shard the poll for millions of jobs.', fails: 'Crash → lease expires → another worker re-runs the job (at-least-once).',
+    },
+    w2: {
+      name: 'Worker 2',
+      what: 'Same code as worker 1. Races it for jobs, takes over after crashes and zombies.',
+      why: 'Two workers show every concurrency problem this design solves.',
+      without: '—',
+      tech: 'Same', scale: 'Same', fails: 'Same',
+    },
+    reports: {
+      name: 'Report Store (fenced)',
+      what: 'Stores `reports { _id: "rpt-11-13", data, lastFence }` and accepts a write only if its **fence is newer** than `lastFence`.',
+      why: 'A lease cannot stop a worker that froze and woke up late; the **resource** must reject its stale write.',
+      without: 'A paused "zombie" worker overwrites fresh results with stale ones.',
+      tech: 'MongoDB conditional upsert on `lastFence: { $lt: fence }`; S3 conditional writes or a DB version column elsewhere', scale: 'One document per scheduled run.', fails: 'Rejects stale writes with a duplicate-key error; the zombie aborts.',
+      core: ['db', 'DB scaling'],
+    },
+    email: {
+      name: 'Email provider (SES)',
+      what: 'Sends the report to B. Not ours, not transactional, not fenced.',
+      why: 'The typical side effect you cannot undo.',
+      without: '—',
+      tech: 'Amazon SES / SMTP', scale: 'External rate limits.', fails: 'Can be down (retry with backoff) and cannot check fences → dedupe with a run key.',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Store the job, claim it atomically, run it idempotently, complete only if you still own it.',
+    points: [
+      { t: 'Store', color: BLUE, d: 'The job is a document with **cron**, **time zone** and **nextRunAt**.' },
+      { t: 'Claim', color: TEAL, d: 'Workers poll; one `findOneAndUpdate` sets **RUNNING**, a **60 s lease** and **fence + 1**. The loser gets null.' },
+      { t: 'Run', color: AMBER, d: 'Write results **with the fence**; dedupe side effects with a **run key** (job + scheduled time).' },
+      { t: 'Complete', color: GREEN, d: 'Only if `lockedBy` and `fence` still match; **nextRunAt** from cron + time zone.' },
+    ],
+    stats: [['1 M', 'jobs'], ['1 s', 'poll interval'], ['60 s', 'lease'], ['0', 'double starts']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v); v.ready = true; }
+    await clearRows(s, v);
+    tick(s, v, '18:00:00'); lease(s, v, 'lease —'); inbox(s, v, 'B inbox: 0');
+    who(s, v, 'A', 'owns job-7'); who(s, v, 'w1', 'idle · polling'); who(s, v, 'w2', 'idle · polling');
+
+    ui.say(0); ui.cap('**Store** · A creates "daily-report at 02:00 IST"; the API stores nextRunAt');
+    await s.send(['userA', 'api', 'jobdb'], 'POST /jobs', BLUE, { ms: 420 });
+    await put(s, v, 'job-7', J('job-7', 'SCHEDULED', 'next 02:00 f0'), 'SCHED');
+    ui.say(1); ui.cap('**Claim** · at 02:00 both workers poll; one atomic update gives the job to w1');
+    tick(s, v, '02:00:00');
+    await Promise.all([
+      s.send(['w1', 'jobdb'], 'claim due', TEAL, { ms: 420 }),
+      s.send(['w2', 'jobdb'], 'claim due', TEAL, { ms: 460, pulse: false }),
+    ]);
+    await put(s, v, 'job-7', J('job-7', 'RUNNING', 'w1 f1'), 'RUN');
+    lease(s, v, 'w1 · until 02:01:00 · fence 1');
+    await Promise.all([
+      s.send(['jobdb', 'w1'], 'job-7 · f1', GREEN, { ms: 400 }),
+      s.send(['jobdb', 'w2'], 'null', GREY, { ms: 400, pulse: false }),
+    ]);
+    who(s, v, 'w1', 'running job-7', AMBER);
+    ui.say(2); ui.cap('**Run** · write the report with fence 1, email B, record it in the run log');
+    await s.send(['w1', 'reports'], 'put · fence 1', PURPLE, { ms: 400 });
+    await put(s, v, 'rpt', R('rpt-11-13', 'fence 1 · w1'), 'OK', v.rep);
+    await s.send(['w1', 'email'], 'report → B', PURPLE, { ms: 400 });
+    inbox(s, v, 'B inbox: 1 ✓', GREEN);
+    ui.say(3); ui.cap('**Complete** · only if lockedBy w1 and fence 1 still match; next run from cron + TZ');
+    await s.send(['w1', 'jobdb'], 'complete if w1·f1', GREEN, { ms: 400 });
+    await put(s, v, 'job-7', J('job-7', 'SCHEDULED', 'next +1d 02:00'), 'SCHED');
+    lease(s, v, 'lease —'); who(s, v, 'w1', 'idle · polling');
+    await s.wait(1800);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'happy', title: 'A scheduled run', sub: 'create · claim · run · complete', color: BLUE,
+      build: (s, v) => setup(s, v, { clock: '18:00:00' }),
+      takeaway: 'The job document **is** the schedule and the lock. A worker claims it with one atomic update (status, lease, **fence + 1**), writes results with that fence, and completes **only if it still owns the lease**. The next run is computed from **cron + time zone**, never by adding 24 h.',
+      steps: [
+        {
+          title: 'A creates the job',
+          text: '`POST /jobs { name: "daily-report", cron: "0 0 2 * * *", tz: "Asia/Kolkata" }`. The API validates the cron, computes the first run and inserts `{ _id: "job-7", status: "SCHEDULED", nextRunAt: 02:00 IST, fence: 0 }`. Spring cron has **6 fields** (seconds first).',
+          observe: 'job-7 is SCHEDULED for 02:00.',
+          focus: v => [v.n.jobdb, v.db],
+          async run(s, v) {
+            await s.send(['userA', 'api', 'jobdb'], 'POST /jobs', BLUE);
+            await put(s, v, 'job-7', J('job-7', 'SCHEDULED', 'next 02:00 f0'), 'SCHED');
+            await s.send(['api', 'userA'], '201 job-7', GREEN);
+            who(s, v, 'A', 'job-7 created', BLUE);
+          },
+        },
+        {
+          title: '02:00: a worker claims the due job',
+          text: 'Worker 1\'s poll runs `findOneAndUpdate({ status: "SCHEDULED", nextRunAt: { $lte: now } }, { $set: { status: "RUNNING", lockedBy: "w1", leaseUntil: now + 60s }, $inc: { fence: 1 } })`. Finding and taking the job is **one** operation, and it returns the job with **fence 1**.',
+          observe: 'job-7 is RUNNING, leased to w1 until 02:01:00.',
+          say: 'Workers claim a due job with one atomic update that sets a lease and increments a fencing token.',
+          focus: v => [v.lease, v.rows['job-7']],
+          async run(s, v) {
+            tick(s, v, '02:00:00');
+            await s.send(['w1', 'jobdb'], 'claim due job', TEAL);
+            await put(s, v, 'job-7', J('job-7', 'RUNNING', 'w1 f1'), 'RUN');
+            lease(s, v, 'w1 · until 02:01:00 · fence 1'); await s.pulse(v.lease);
+            await s.send(['jobdb', 'w1'], 'job-7 · fence 1', GREEN);
+            who(s, v, 'w1', 'running job-7 · f1', AMBER);
+          },
+        },
+        {
+          title: 'Run: write the report with the fence',
+          text: 'The worker builds the report and writes it **with its fence**: `updateOne({ _id: "rpt-11-13", lastFence: { $lt: 1 } }, { $set: { data, lastFence: 1 } }, { upsert: true })`. Same `_id` for the same scheduled run, so a re-run overwrites instead of adding a copy.',
+          observe: 'The report exists, written with fence 1.',
+          focus: v => [v.n.reports, v.rep],
+          async run(s, v) {
+            tick(s, v, '02:00:04');
+            await s.send(['w1', 'reports'], 'put rpt · fence 1', PURPLE);
+            await put(s, v, 'rpt', R('rpt-11-13', 'fence 1 · w1'), 'OK', v.rep);
+          },
+        },
+        {
+          title: 'Email B, then record it in the run log',
+          text: 'The worker sends the email and upserts `runs { _id: "job-7@02:00", emailSent: true }`. The run key is **jobId + scheduled time**, not the attempt number, so any retry of this same run sees that the email already went out.',
+          observe: 'B has one email; the run log says so.',
+          focus: v => [v.inbox, v.rows['run']],
+          async run(s, v) {
+            await s.send(['w1', 'email'], 'report → B', PURPLE);
+            inbox(s, v, 'B inbox: 1 ✓', GREEN);
+            await s.send(['w1', 'jobdb'], 'run log', TEAL);
+            await put(s, v, 'run', R('job-7@02:00', 'emailSent ✓'), 'LOG');
+          },
+        },
+        {
+          title: 'Complete only if we still own it',
+          text: '`updateOne({ _id: "job-7", lockedBy: "w1", fence: 1 }, { $set: { status: "SCHEDULED", nextRunAt: next }, $unset: { lockedBy: 1, leaseUntil: 1 } })` → matched **1**. `next` comes from `CronExpression.next(now in Asia/Kolkata)`: tomorrow 02:00 IST, correct across DST in zones that have it. If matched were 0, someone else owns the job now and this worker must stop.',
+          observe: 'job-7 is SCHEDULED again for tomorrow 02:00.',
+          say: 'Completion is conditional on still holding the lease, and the next run comes from cron plus time zone.',
+          focus: v => [v.rows['job-7'], v.lease],
+          async run(s, v) {
+            await s.send(['w1', 'jobdb'], 'complete if w1·f1', GREEN);
+            await put(s, v, 'job-7', J('job-7', 'SCHEDULED', 'next +1d 02:00'), 'SCHED');
+            lease(s, v, 'lease —');
+            who(s, v, 'w1', 'idle · polling');
+          },
+        },
+      ],
+    },
+    {
+      id: 'race', title: 'Two workers, one job', sub: 'read-then-update vs atomic claim', color: PURPLE,
+      build: (s, v) => setup(s, v, { jobs: [JOB7], clock: '01:59:59' }),
+      takeaway: 'Never "find, then update": both workers read the same due job and both run it. Put the condition (`status: "SCHEDULED"`, due) **inside** one `findOneAndUpdate`. MongoDB updates a single document atomically, so the second worker\'s filter no longer matches and it gets **null**.',
+      steps: [
+        {
+          title: '02:00:00: both workers poll at the same moment',
+          text: 'Workers poll every second, so at 02:00:00 both see job-7 as due. This is not a rare race: with 20 workers it happens to **every** job.',
+          observe: 'Two polls hit the Job DB together.',
+          focus: v => [v.n.w1, v.n.w2],
+          async run(s, v) {
+            tick(s, v, '02:00:00');
+            await Promise.all([
+              s.send(['w1', 'jobdb'], 'find due', BLUE),
+              s.send(['w2', 'jobdb'], 'find due', BLUE, { pulse: false }),
+            ]);
+          },
+        },
+        {
+          title: '❌ Read, then update',
+          text: 'Naive code: `job = find({ status: "SCHEDULED", nextRunAt: { $lte: now } })`, then `updateOne({ _id: job.id }, { $set: { status: "RUNNING", lockedBy: me } })`. Both reads return job-7 because neither update has happened yet.',
+          observe: 'Both workers think job-7 is theirs.',
+          focus: v => [v.uw1, v.uw2],
+          async run(s, v) {
+            await Promise.all([
+              s.send(['jobdb', 'w1'], 'job-7', AMBER),
+              s.send(['jobdb', 'w2'], 'job-7', AMBER, { pulse: false }),
+            ]);
+            who(s, v, 'w1', 'got job-7', AMBER); who(s, v, 'w2', 'got job-7', AMBER);
+          },
+        },
+        {
+          title: '❌ Both updates succeed, both run it',
+          text: 'The update filters only on `_id`, so both match. The last writer wins the `lockedBy` field, but **both** workers run the job: two reports, and B gets **two emails**.',
+          observe: 'B gets the report twice.',
+          say: 'Read-then-update is a race: both workers can start the same job.',
+          focus: v => [v.inbox, v.rows['job-7']],
+          async run(s, v) {
+            await Promise.all([
+              s.send(['w1', 'jobdb'], 'set RUNNING w1', RED),
+              s.send(['w2', 'jobdb'], 'set RUNNING w2', RED, { pulse: false }),
+            ]);
+            await put(s, v, 'job-7', J('job-7', 'RUNNING', 'w2 (w1 too!)'), 'BAD');
+            await Promise.all([
+              s.send(['w1', 'email'], 'report → B', RED),
+              s.send(['w2', 'email'], 'report → B', RED, { pulse: false }),
+            ]);
+            inbox(s, v, 'B inbox: 2 ✕', RED);
+            who(s, v, 'w1', 'running job-7', RED); who(s, v, 'w2', 'running job-7', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: one atomic findOneAndUpdate',
+          text: 'Put the condition **in the update**: `findOneAndUpdate({ status: "SCHEDULED", nextRunAt: { $lte: now } }, { $set: { status: "RUNNING", lockedBy: me, leaseUntil: now + 60s }, $inc: { fence: 1 } })`. MongoDB applies updates to one document atomically: whichever arrives first flips status to RUNNING.',
+          observe: 'Two claims reach the DB again.',
+          say: 'The claim is a single atomic findOneAndUpdate with the status in the filter.',
+          focus: v => [v.n.jobdb],
+          async run(s, v) {
+            await put(s, v, 'job-7', J('job-7', 'SCHEDULED', 'next 02:00 f0'), 'SCHED');
+            inbox(s, v, 'B inbox: 0'); who(s, v, 'w1', 'idle · polling'); who(s, v, 'w2', 'idle · polling');
+            await Promise.all([
+              s.send(['w1', 'jobdb'], 'claim (atomic)', TEAL),
+              s.send(['w2', 'jobdb'], 'claim (atomic)', TEAL, { pulse: false }),
+            ]);
+          },
+        },
+        {
+          title: 'One winner, one null',
+          text: 'w1\'s update arrives first: job-7 becomes RUNNING with fence 1. When w2\'s update is evaluated, `status: "SCHEDULED"` no longer matches, so it returns **null** and w2 simply polls again next second.',
+          observe: 'w1 owns job-7; w2 got null.',
+          focus: v => [v.lease, v.uw2],
+          async run(s, v) {
+            await put(s, v, 'job-7', J('job-7', 'RUNNING', 'w1 f1'), 'RUN');
+            lease(s, v, 'w1 · until 02:01:00 · fence 1');
+            await Promise.all([
+              s.send(['jobdb', 'w1'], 'job-7 · f1', GREEN),
+              s.send(['jobdb', 'w2'], 'null', GREY, { pulse: false }),
+            ]);
+            who(s, v, 'w1', 'running job-7 · f1', AMBER); who(s, v, 'w2', 'null · polls again', GREY);
+          },
+        },
+        {
+          title: 'One run, one email',
+          text: 'Only w1 runs the job, so B gets exactly one email. Polling cost grows with the number of workers; at large scale workers claim **small batches** and poll only their own shard.',
+          observe: 'B inbox: 1.',
+          focus: v => [v.inbox],
+          async run(s, v) {
+            await s.send(['w1', 'email'], 'report → B', PURPLE);
+            inbox(s, v, 'B inbox: 1 ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'crash', title: 'Worker crashes mid-job', sub: 'lease expiry · re-claim · run key', color: RED,
+      build: (s, v) => setup(s, v, { jobs: [JOB7], clock: '01:59:59' }),
+      takeaway: 'A crashed worker never says "I\'m done", so the claim query also accepts **RUNNING jobs whose lease expired**. Another worker re-runs the job: execution is **at-least-once**. Side effects stay single with a **run key** (`jobId + scheduledAt`) and same-`_id` upserts.',
+      steps: [
+        {
+          title: 'w1 claims job-7 (fence 1)',
+          text: 'Same claim as always: RUNNING, `lockedBy: "w1"`, `leaseUntil: 02:01:00`, fence **1**.',
+          observe: 'w1 holds a 60 s lease.',
+          focus: v => [v.lease],
+          async run(s, v) {
+            tick(s, v, '02:00:00');
+            await s.send(['w1', 'jobdb'], 'claim due job', TEAL);
+            await put(s, v, 'job-7', J('job-7', 'RUNNING', 'w1 f1'), 'RUN');
+            lease(s, v, 'w1 · until 02:01:00 · fence 1');
+            await s.send(['jobdb', 'w1'], 'job-7 · f1', GREEN);
+            who(s, v, 'w1', 'running job-7 · f1', AMBER);
+          },
+        },
+        {
+          title: 'Report written, email sent, run log updated',
+          text: 'w1 writes the report with fence 1, emails B and upserts `runs { _id: "job-7@02:00", emailSent: true }`.',
+          observe: 'B has the email; the run log knows.',
+          focus: v => [v.rep, v.inbox],
+          async run(s, v) {
+            tick(s, v, '02:00:05');
+            await s.send(['w1', 'reports'], 'put rpt · fence 1', PURPLE);
+            await put(s, v, 'rpt', R('rpt-11-13', 'fence 1 · w1'), 'OK', v.rep);
+            await s.send(['w1', 'email'], 'report → B', PURPLE);
+            inbox(s, v, 'B inbox: 1 ✓', GREEN);
+            await s.send(['w1', 'jobdb'], 'run log', TEAL);
+            await put(s, v, 'run', R('job-7@02:00', 'emailSent ✓'), 'LOG');
+          },
+        },
+        {
+          title: 'w1 crashes before completing',
+          text: 'The pod is OOM-killed (or the node dies) just before the complete call. job-7 still says **RUNNING, lockedBy w1**. Nobody else touches it while the lease is valid, because the worker might still be alive.',
+          observe: 'w1 is gone; job-7 is stuck in RUNNING.',
+          focus: v => [v.n.w1, v.rows['job-7']],
+          async run(s, v) {
+            tick(s, v, '02:00:06');
+            s.tone(v.n.w1, 'fail'); s.setSub(v.n.w1, '✕ crashed', RED);
+            await s.shake(v.n.w1);
+            who(s, v, 'w1', 'crashed', RED);
+          },
+        },
+        {
+          title: 'Lease expires → w2 re-claims (fence 2)',
+          text: 'The claim filter has a second branch: `$or: [ { status: "SCHEDULED", nextRunAt ≤ now }, { status: "RUNNING", leaseUntil < now } ]`. At 02:01:05 the lease has expired, so w2\'s ordinary poll takes job-7 and bumps the fence to **2**.',
+          observe: 'job-7 now belongs to w2 with fence 2.',
+          say: 'If a worker dies, its lease expires and another worker re-claims the job, so execution is at-least-once.',
+          focus: v => [v.lease, v.rows['job-7']],
+          async run(s, v) {
+            tick(s, v, '02:01:05');
+            lease(s, v, 'w1 · lease expired', RED);
+            await s.send(['w2', 'jobdb'], 'claim (lease < now)', TEAL);
+            await put(s, v, 'job-7', J('job-7', 'RUNNING', 'w2 f2'), 'RUN');
+            lease(s, v, 'w2 · until 02:02:05 · fence 2');
+            await s.send(['jobdb', 'w2'], 'job-7 · f2', GREEN);
+            who(s, v, 'w2', 'running job-7 · f2', AMBER);
+          },
+        },
+        {
+          title: '❌ Without a run key: a second email',
+          text: 'If w2 just runs the job from the top, B gets the report **again**. A retry cannot tell "not done" from "done but not recorded" unless the side effect is keyed by the scheduled run.',
+          observe: 'B inbox: 2.',
+          focus: v => [v.inbox],
+          async run(s, v) {
+            await s.send(['w2', 'email'], 'report → B', RED);
+            inbox(s, v, 'B inbox: 2 ✕', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: check the run key first',
+          text: 'w2 reads `runs["job-7@02:00"]` → **emailSent: true** → skip the email. The report is rewritten with the **same `_id`** and fence 2, which replaces it instead of adding a copy. Remaining gap: a crash between "email sent" and "run log written" can still send twice; pass the run key as an idempotency key to the provider if it supports one.',
+          observe: 'Email skipped; report overwritten in place.',
+          say: 'Side effects are idempotent, keyed by job id plus scheduled time.',
+          focus: v => [v.rows['run'], v.rows['rpt']],
+          async run(s, v) {
+            inbox(s, v, 'B inbox: 1 ✓', GREEN);
+            await s.send(['w2', 'jobdb'], 'get job-7@02:00', TEAL);
+            await s.pulse(v.rows['run'], 1, 1.05);
+            await s.flash(695, 280, 'emailSent ✓ → skip', ok, 800);
+            await s.send(['w2', 'reports'], 'put rpt · fence 2', PURPLE);
+            await put(s, v, 'rpt', R('rpt-11-13', 'fence 2 · w2'), 'OK', v.rep);
+          },
+        },
+        {
+          title: 'w2 completes',
+          text: 'Complete with `{ lockedBy: "w2", fence: 2 }` → matched 1 → SCHEDULED, next run tomorrow 02:00. A shorter lease detects crashes faster but risks expiring during a long GC or a DB failover: **60 s + heartbeats** is a common middle ground.',
+          observe: 'job-7 is back on schedule.',
+          focus: v => [v.rows['job-7']],
+          async run(s, v) {
+            await s.send(['w2', 'jobdb'], 'complete if w2·f2', GREEN);
+            await put(s, v, 'job-7', J('job-7', 'SCHEDULED', 'next +1d 02:00'), 'SCHED');
+            lease(s, v, 'lease —'); who(s, v, 'w2', 'idle · polling');
+          },
+        },
+      ],
+    },
+    {
+      id: 'zombie', title: 'GC pause: zombie worker', sub: 'fencing tokens', color: AMBER,
+      build: (s, v) => setup(s, v, { jobs: [JOB7], clock: '01:59:59' }),
+      takeaway: 'A lease cannot stop a process that is **frozen**: when it wakes up it still believes it owns the job. Every claim increments a **fencing token**; the resource and the complete step accept only the **newest** token, so the zombie\'s writes are rejected.',
+      steps: [
+        {
+          title: 'w1 claims job-7 (fence 1)',
+          text: 'Normal claim: RUNNING, `lockedBy: "w1"`, lease until 02:01:00, fence **1**.',
+          observe: 'w1 owns job-7 with fence 1.',
+          focus: v => [v.lease],
+          async run(s, v) {
+            tick(s, v, '02:00:00');
+            await s.send(['w1', 'jobdb'], 'claim due job', TEAL);
+            await put(s, v, 'job-7', J('job-7', 'RUNNING', 'w1 f1'), 'RUN');
+            lease(s, v, 'w1 · until 02:01:00 · fence 1');
+            await s.send(['jobdb', 'w1'], 'job-7 · f1', GREEN);
+            who(s, v, 'w1', 'running job-7 · f1', AMBER);
+          },
+        },
+        {
+          title: 'w1 freezes in a 75 s GC pause',
+          text: 'A stop-the-world GC (or a VM migration, or a long network stall) freezes the JVM. Its heartbeat thread is frozen too, and it **cannot notice** that time is passing. The report is already computed in memory.',
+          observe: 'w1 is paused, not dead.',
+          focus: v => [v.n.w1],
+          async run(s, v) {
+            tick(s, v, '02:00:10');
+            s.tone(v.n.w1, 'warn'); s.setSub(v.n.w1, '⏸ GC pause…', AMBER);
+            await s.shake(v.n.w1);
+            who(s, v, 'w1', 'frozen · thinks f1', AMBER);
+          },
+        },
+        {
+          title: 'Lease expires → w2 claims (fence 2)',
+          text: 'From the database\'s view w1 looks dead. At 02:01:05 w2 re-claims job-7: `$inc: { fence: 1 }` → **fence 2**.',
+          observe: 'job-7 now belongs to w2.',
+          focus: v => [v.lease, v.rows['job-7']],
+          async run(s, v) {
+            tick(s, v, '02:01:05');
+            await s.send(['w2', 'jobdb'], 'claim (lease < now)', TEAL);
+            await put(s, v, 'job-7', J('job-7', 'RUNNING', 'w2 f2'), 'RUN');
+            lease(s, v, 'w2 · until 02:02:05 · fence 2');
+            await s.send(['jobdb', 'w2'], 'job-7 · f2', GREEN);
+            who(s, v, 'w2', 'running job-7 · f2', AMBER);
+          },
+        },
+        {
+          title: 'w2 writes fresh results (fence 2)',
+          text: 'w2 writes the report with fence 2. The store now remembers `lastFence: 2` for rpt-11-13.',
+          observe: 'Fresh report, lastFence 2.',
+          focus: v => [v.rep],
+          async run(s, v) {
+            tick(s, v, '02:01:15');
+            await s.send(['w2', 'reports'], 'put rpt · fence 2', PURPLE);
+            await put(s, v, 'rpt', R('rpt-11-13', 'fence 2 · w2 fresh'), 'OK', v.rep);
+          },
+        },
+        {
+          title: '❌ w1 wakes up: without fencing, stale data wins',
+          text: 'At 02:01:25 w1 resumes and writes its **stale** report with a plain `updateOne({ _id: "rpt-11-13" }, { $set: { data } })`. It overwrites w2\'s fresh one. Then it "completes" with `{ _id: "job-7" }` only, marking the job SCHEDULED while w2 is still running.',
+          observe: 'Fresh data replaced by stale data.',
+          say: 'A lease alone cannot stop a paused process from writing when it wakes up.',
+          focus: v => [v.rep, v.rows['job-7']],
+          async run(s, v) {
+            tick(s, v, '02:01:25');
+            s.tone(v.n.w1, null); s.setSub(v.n.w1, 'woke up', AMBER);
+            await s.send(['w1', 'reports'], 'put rpt (no fence)', RED);
+            await put(s, v, 'rpt', R('rpt-11-13', 'w1 stale ✕'), 'BAD', v.rep);
+            await s.send(['w1', 'jobdb'], 'complete job-7', RED);
+            await put(s, v, 'job-7', J('job-7', 'SCHEDULED', 'w2 still runs'), 'BAD');
+          },
+        },
+        {
+          title: '✅ Rewind: the store checks the fence',
+          text: 'The write is `updateOne({ _id: "rpt-11-13", lastFence: { $lt: 1 } }, { $set: { data, lastFence: 1 } }, { upsert: true })`. lastFence is 2, so the filter does not match; the upsert then tries to insert the same `_id` → **E11000 duplicate key** → rejected. The fence must be checked by the **resource**, not by the worker.',
+          observe: 'w1\'s write bounces; the fresh report stays.',
+          say: 'Fencing tokens: the resource rejects writes carrying an older token.',
+          focus: v => [v.rows['rpt'], v.n.reports],
+          async run(s, v) {
+            await put(s, v, 'rpt', R('rpt-11-13', 'fence 2 · w2 fresh'), 'OK', v.rep);
+            await put(s, v, 'job-7', J('job-7', 'RUNNING', 'w2 f2'), 'RUN');
+            await s.bounce('w1', 'reports', 'put · fence 1', AMBER);
+            await s.flash(965, 60, 'lastFence 2 > 1 → rejected', bad, 900);
+          },
+        },
+        {
+          title: 'The stale complete is rejected too',
+          text: 'w1\'s complete filters on `{ lockedBy: "w1", fence: 1 }` → **matched 0**. That is w1\'s signal that it lost the job: it logs and aborts. w2 finishes and completes with fence 2.',
+          observe: 'w1 aborts; w2 completes normally.',
+          focus: v => [v.uw1, v.rows['job-7']],
+          async run(s, v) {
+            await s.bounce('w1', 'jobdb', 'complete · f1', AMBER);
+            who(s, v, 'w1', 'matched 0 → abort', GREY);
+            s.setSub(v.n.w1, 'polls every 1 s');
+            await s.send(['w2', 'jobdb'], 'complete if w2·f2', GREEN);
+            await put(s, v, 'job-7', J('job-7', 'SCHEDULED', 'next +1d 02:00'), 'SCHED');
+            lease(s, v, 'lease —'); who(s, v, 'w2', 'idle · polling');
+          },
+        },
+      ],
+    },
+    {
+      id: 'retry', title: 'Long job, then failures', sub: 'heartbeat · backoff · FAILED', color: TEAL,
+      build: (s, v) => setup(s, v, { jobs: [JOB7], clock: '01:59:59' }),
+      takeaway: 'Long jobs **heartbeat** the lease (only while they still own it). Failures go back to SCHEDULED with **exponential backoff** and `attempts + 1`; after the max they park as **FAILED** (the scheduler\'s dead-letter state) and the owner is alerted.',
+      steps: [
+        {
+          title: 'w1 claims job-7 (fence 1)',
+          text: 'Today the report takes **3 minutes**, much longer than the 60 s lease.',
+          observe: 'Lease until 02:01:00.',
+          focus: v => [v.lease],
+          async run(s, v) {
+            tick(s, v, '02:00:00');
+            await s.send(['w1', 'jobdb'], 'claim due job', TEAL);
+            await put(s, v, 'job-7', J('job-7', 'RUNNING', 'w1 f1 a0'), 'RUN');
+            lease(s, v, 'w1 · until 02:01:00 · fence 1');
+            await s.send(['jobdb', 'w1'], 'job-7 · f1', GREEN);
+            who(s, v, 'w1', 'running job-7 · f1', AMBER);
+          },
+        },
+        {
+          title: 'Heartbeat every 20 s',
+          text: 'A background thread runs `updateOne({ _id: "job-7", lockedBy: "w1", fence: 1 }, { $set: { leaseUntil: now + 60s } })`. The lease keeps moving forward while the job runs. If it ever returns **matched 0**, the worker has lost the job and must stop.',
+          observe: 'The lease moves from 02:01:00 to 02:01:40.',
+          say: 'Long jobs heartbeat their lease, conditional on still owning it.',
+          focus: v => [v.lease],
+          async run(s, v) {
+            tick(s, v, '02:00:20');
+            await s.send(['w1', 'jobdb'], 'heartbeat · f1', TEAL);
+            lease(s, v, 'w1 · until 02:01:20 · fence 1'); await s.pulse(v.lease);
+            tick(s, v, '02:00:40');
+            await s.send(['w1', 'jobdb'], 'heartbeat · f1', TEAL);
+            lease(s, v, 'w1 · until 02:01:40 · fence 1'); await s.pulse(v.lease);
+          },
+        },
+        {
+          title: 'The email provider is down',
+          text: 'At 02:03 the report is ready and written, but SES answers **503**. The job failed this time; the cause is transient.',
+          observe: 'The email bounces.',
+          focus: v => [v.n.email],
+          async run(s, v) {
+            tick(s, v, '02:03:00');
+            await s.send(['w1', 'reports'], 'put rpt · fence 1', PURPLE);
+            await put(s, v, 'rpt', R('rpt-11-13', 'fence 1 · w1'), 'OK', v.rep);
+            s.tone(v.n.email, 'fail'); s.setSub(v.n.email, '503 unavailable', RED);
+            await s.bounce('w1', 'email', 'report → B', PURPLE);
+          },
+        },
+        {
+          title: 'Reschedule with backoff',
+          text: 'Fail = a conditional update too: `{ lockedBy: "w1", fence: 1 }` → `status: "SCHEDULED"`, `$inc: { attempts: 1 }`, `nextRunAt: now + min(2^attempts min, 1 h)` plus jitter. Retry only **transient** errors; a bad payload goes straight to FAILED.',
+          observe: 'job-7 retries at 02:05 (attempt 1).',
+          say: 'Failures retry with exponential backoff and a max number of attempts.',
+          focus: v => [v.rows['job-7']],
+          async run(s, v) {
+            await s.send(['w1', 'jobdb'], 'fail · retry later', AMBER);
+            await put(s, v, 'job-7', J('job-7', 'SCHEDULED', 'a1 · 02:05'), 'SCHED');
+            lease(s, v, 'lease —'); who(s, v, 'w1', 'idle · polling');
+          },
+        },
+        {
+          title: 'Still failing…',
+          text: 'At 02:05 w2 claims it (fence 2), the run log says the report exists, SES fails again → attempt 2 at 02:09, then 02:17, 02:33, 03:05. Backoff gives the provider room to recover instead of hammering it.',
+          observe: 'Attempts climb to 5.',
+          focus: v => [v.rows['job-7']],
+          async run(s, v) {
+            tick(s, v, '02:05:00');
+            await s.send(['w2', 'jobdb'], 'claim due job', TEAL);
+            await put(s, v, 'job-7', J('job-7', 'RUNNING', 'w2 f2 a1'), 'RUN');
+            await s.bounce('w2', 'email', 'report → B', PURPLE);
+            await s.send(['w2', 'jobdb'], 'fail · retry later', AMBER);
+            await put(s, v, 'job-7', J('job-7', 'SCHEDULED', 'a2 · 02:09'), 'SCHED');
+            await s.flash(425, 185, 'a3 02:17 · a4 02:33 · a5 03:05', warn, 1000);
+            tick(s, v, '03:05:00');
+            await put(s, v, 'job-7', J('job-7', 'RUNNING', 'w1 f5 a5'), 'RUN');
+            who(s, v, 'w1', 'running job-7 · a5', AMBER);
+          },
+        },
+        {
+          title: 'Max attempts → FAILED + alert',
+          text: 'Attempt 5 fails too: `status: "FAILED"`. Nobody polls FAILED jobs, so it stops consuming workers; the owner gets an alert. After fixing the cause they call `POST /jobs/job-7/trigger`, which goes through the same claim path. FAILED is our dead-letter queue.',
+          observe: 'job-7 is FAILED; Team A is alerted.',
+          focus: v => [v.rows['job-7'], v.ua],
+          async run(s, v) {
+            await s.bounce('w1', 'email', 'report → B', PURPLE);
+            await s.send(['w1', 'jobdb'], 'attempts > max', RED);
+            await put(s, v, 'job-7', J('job-7', 'FAILED', 'a5 · alert'), 'BAD');
+            who(s, v, 'w1', 'idle · polling');
+            await s.send(['jobdb', 'api', 'userA'], 'alert: job-7', RED);
+            who(s, v, 'A', '🔔 job-7 FAILED', RED);
+          },
+        },
+      ],
+    },
+    {
+      id: 'misfire', title: 'Cluster down for 3 hours', sub: 'misfire: fire once vs catch up', color: GREEN,
+      build: (s, v) => setup(s, v, { jobs: [['job-9', J('job-9', 'SCHEDULED', 'next 02:00'), 'SCHED']], clock: '01:55:00', a: 'owns job-9 hourly' }),
+      takeaway: 'After downtime a job can be many slots behind. A per-job **misfire policy** decides: **fire once** and jump to the next future slot (reports, "sync latest state"), or **catch up** every missed window (hourly billing, aggregates). Never let reminders fire four times at once.',
+      steps: [
+        {
+          title: 'All workers go down at 01:55',
+          text: 'A bad deploy takes every worker down until 05:10. job-9 (`hourly-sync`, `0 0 * * * *`) misses 02:00, 03:00, 04:00 and 05:00. The jobs are safe in the DB; nobody claims them.',
+          observe: 'Four slots missed.',
+          focus: v => [v.n.w1, v.n.w2],
+          async run(s, v) {
+            for (const w of ['w1', 'w2']) { s.tone(v.n[w], 'fail'); s.setSub(v.n[w], '✕ down', RED); who(s, v, w, 'down', RED); }
+            await s.shake(v.n.w1);
+            tick(s, v, '05:10:00');
+            await put(s, v, 'job-9', J('job-9', 'SCHEDULED', 'due 02:00 ⚠'), 'BAD');
+            await s.flash(425, 185, 'missed 02 · 03 · 04 · 05', bad, 900);
+          },
+        },
+        {
+          title: 'Workers are back; job-9 is 3 h overdue',
+          text: '`nextRunAt: 02:00 ≤ now`, so the normal claim picks it up. Now the worker reads `misfire` on the job to decide what "run" means.',
+          observe: 'w1 claims job-9.',
+          focus: v => [v.rows['job-9']],
+          async run(s, v) {
+            for (const w of ['w1', 'w2']) { s.tone(v.n[w], null); s.setSub(v.n[w], 'polls every 1 s'); who(s, v, w, 'idle · polling'); }
+            await s.send(['w1', 'jobdb'], 'claim due job', TEAL);
+            await put(s, v, 'job-9', J('job-9', 'RUNNING', 'w1 f1'), 'RUN');
+            lease(s, v, 'w1 · until 05:11:00 · fence 1');
+            await s.send(['jobdb', 'w1'], 'job-9 · f1', GREEN);
+            who(s, v, 'w1', 'running job-9', AMBER);
+          },
+        },
+        {
+          title: 'Policy A: catch up every missed slot',
+          text: 'Run 02:00, 03:00, 04:00, 05:00 back to back, each for **its own window** (01:00–02:00, …), each with its own run key. Right for per-window work like hourly billing or aggregates. Wrong for "send a reminder": users would get four at once.',
+          observe: 'Four late runs, one per window.',
+          say: 'Misfire policy is per job: catch up for per-window work...',
+          focus: v => [v.db],
+          async run(s, v) {
+            for (const t of ['02:00', '03:00', '04:00', '05:00']) {
+              await s.send(['w1', 'jobdb'], `run ${t}`, AMBER, { ms: 320 });
+              await put(s, v, `r${t}`, R(`job-9@${t}`, 'OK (late)'), 'LOG');
+            }
+          },
+        },
+        {
+          title: 'Rewind · Policy B: fire once, then next future slot',
+          text: 'One run now covers the gap; `nextRunAt = cron.next(now)` = **06:00**, so 02:00–05:00 are skipped. Right for "sync the latest state", daily reports and cleanups. Quartz calls these **misfire instructions** (fire now / do nothing); a third option is **skip** entirely.',
+          observe: 'One run at 05:10.',
+          say: '...and fire once for jobs that only care about the latest state.',
+          focus: v => [v.db],
+          async run(s, v) {
+            for (const t of ['02:00', '03:00', '04:00', '05:00']) await drop(s, v, `r${t}`);
+            await s.send(['w1', 'jobdb'], 'run once', GREEN);
+            await put(s, v, 'r05:10', R('job-9@05:10', 'OK · fire once'), 'OK');
+          },
+        },
+        {
+          title: 'Complete: back on schedule',
+          text: 'Complete with `{ lockedBy: "w1", fence: 1 }` and `nextRunAt: 06:00`. Store the policy on the job (`misfire: "FIRE_ONCE" | "CATCH_UP" | "SKIP"`), and alert when a job runs far behind its schedule.',
+          observe: 'job-9 next at 06:00.',
+          focus: v => [v.rows['job-9']],
+          async run(s, v) {
+            await s.send(['w1', 'jobdb'], 'complete · next 06:00', GREEN);
+            await put(s, v, 'job-9', J('job-9', 'SCHEDULED', 'next 06:00'), 'SCHED');
+            lease(s, v, 'lease —'); who(s, v, 'w1', 'idle · polling');
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Job types, precision, scale, "run twice?".',
+      lines: [
+        ['I', 'Design a distributed job scheduler: cron jobs for our services.'],
+        ['C', 'Recurring cron jobs only, or one-off delayed jobs too?'],
+        ['I', 'Both.'],
+        ['C', 'How many jobs, and how precise must start times be?'],
+        ['I', 'About a million jobs; starting within a few seconds is fine.'],
+        ['C', 'Can a job ever run twice, or must it be exactly once?'],
+        ['I', 'Business says "never twice".'],
+        ['C', 'I\'ll be honest about that: I\'ll guarantee it never starts on two workers at once, and make side effects idempotent, because exactly-once execution isn\'t possible with crashes.'],
+        ['P', 'Write: cron + one-off · 1 M jobs · seconds precision · time zones · never twice → idempotency.'],
+      ],
+      avoid: 'Promising exactly-once execution.',
+    },
+    {
+      t: 'Estimate the scale', min: 3, goal: 'Claims per second, not storage.',
+      lines: [
+        ['C', '1 M jobs, mostly daily or hourly → peak maybe **a few thousand claims/s**, with spikes at round times like 00:00.'],
+        ['C', 'Job documents ~1 KB → **1 GB**: fits on one replica set.'],
+        ['C', '20 workers polling every second is only 20 queries/s plus the claims.'],
+        ['P', 'The hard part is correctness under races and crashes, not volume.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 5, goal: 'Job document with a lease.',
+      lines: [
+        ['C', '`POST /jobs { name, cron, tz, payload, misfire }`, pause, resume, `POST /jobs/{id}/trigger`, `GET /jobs/{id}/runs`.'],
+        ['C', '`jobs { _id, cron, tz, status, nextRunAt, lockedBy, leaseUntil, fence, attempts, misfire }`.'],
+        ['C', '`runs { _id: "job-7@2026-11-13T02:00", emailSent, status }`: one per scheduled run.'],
+        ['C', 'Indexes `{status, nextRunAt}` and `{status, leaseUntil}`.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'API, Job DB, stateless workers.',
+      lines: [
+        ['P', 'Draw: Owner → Job API → Job DB ← Workers → Report Store / Email.'],
+        ['C', 'Workers poll every second and claim one due job with an atomic findOneAndUpdate: RUNNING, lockedBy, lease 60 s, fence + 1.'],
+        ['C', 'Run, write with the fence, record side effects in the run log, then complete only if lockedBy and fence still match.'],
+        ['C', 'Next run from CronExpression plus the job\'s ZoneId.'],
+        ['I', 'Why not a single leader that dispatches?'],
+        ['C', 'Possible, with ZooKeeper or ShedLock, but then I need leader failover and fencing anyway. Here the DB arbitrates and any worker can die.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Race, crash, zombie, retries, misfire.',
+      lines: [
+        ['I', 'Two workers poll at the same moment.'],
+        ['C', 'Status is in the claim filter; the update is atomic on one document, so the second gets null.'],
+        ['I', 'A worker crashes mid-job.'],
+        ['C', 'The claim also matches RUNNING with an expired lease; another worker re-runs it. At-least-once, so a run key jobId + scheduledAt dedupes the email.'],
+        ['I', 'A worker freezes in a GC pause past its lease.'],
+        ['C', 'Fencing token: the new owner has fence 2, the store rejects fence 1, and the zombie\'s complete matches 0.'],
+        ['I', 'The job keeps failing.'],
+        ['C', 'Backoff with attempts, then FAILED and an alert.'],
+        ['I', 'The cluster was down for three hours.'],
+        ['C', 'Per-job misfire policy: fire once, or catch up each window.'],
+      ],
+      avoid: 'Saying "the lock prevents double runs": without fencing a paused worker still writes.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: jobs in MongoDB with leases, atomic claims, heartbeats, fencing tokens, idempotent runs by scheduled time, backoff to FAILED, misfire policy.'],
+        ['C', 'Next: shard the poll for millions of jobs, priority lanes, per-tenant quotas, a Kafka dispatch for heavy jobs, and a "schedule lag" dashboard.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): 1–2 minutes, pause between paragraphs
+    summary: [
+      "I'd store every job as a **document in MongoDB**: the cron expression, the time zone, `nextRunAt`, a status, and a **lease**, meaning `lockedBy`, `leaseUntil` and a `fence` counter. There's no leader. A pool of stateless Spring Boot **workers** polls every second, and the claim is a single `findOneAndUpdate`: find a job that's SCHEDULED and due, or RUNNING with an expired lease, set it to RUNNING with my worker id and a 60-second lease, and increment the fence. Because that's **one atomic update** on one document, two workers can never start the same run; the loser just gets null.",
+      "While the job runs, the worker **heartbeats** the lease every 20 seconds, but only with a filter on its own id and fence, so if the update matches nothing it knows it lost the job and stops. When it's done, it **completes** the same way, conditional on still owning the lease, and computes the next run with Spring's `CronExpression` in the job's `ZoneId`, so daylight saving is handled.",
+      "If a worker crashes, its lease expires and another worker picks the job up, so execution is **at-least-once**, not exactly-once. That's why side effects are idempotent: I keep a run log keyed by **job id plus scheduled time**, and the report is an upsert with the same id. The nastier case is a worker that freezes in a long GC pause and wakes up thinking it still owns the job. That's what the **fencing token** is for: the new owner has fence 2, and the store only accepts writes with a newer fence, so the zombie's write is rejected.",
+      "Failures retry with **exponential backoff** and an attempts counter, and after five tries the job parks as FAILED and the owner gets an alert. After an outage, each job has a **misfire policy**: fire once and jump to the next slot for things like reports, or catch up every window for hourly billing. If someone asks why not ZooKeeper or ShedLock with a single leader: that works, but you still need fencing for a paused leader, and here the database already does the arbitration.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> create / pause / trigger / delete jobs; cron with time zone and one-off delayed jobs; retries with backoff; run history; misfire policy.</li>
+        <li><b>Non-functional:</b> no single point of failure; a run never starts on two workers at once; survive worker crashes and pauses; start within seconds; ~1 M jobs.</li>
+        <li><b>Honest guarantee:</b> at-least-once execution + idempotent side effects (exactly-once is not possible with crashes).</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Jobs</td><td class="m">1 M × ~1 KB</td><td>≈ 1 GB: one replica set</td></tr>
+        <tr><td>Claims</td><td class="m">peaks at 00:00</td><td>a few k/s → jitter, batches</td></tr>
+        <tr><td>Polling</td><td class="m">20 workers × 1/s</td><td>20 queries/s + claims</td></tr>
+        <tr><td>Precision</td><td class="m">poll + claim</td><td>≈ 1–2 s late at most</td></tr></table>` },
+      { h: '3 · API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">POST /jobs</td><td>{ name, cron, tz, payload, misfire } → 201 { id, nextRunAt }</td></tr>
+        <tr><td class="m">POST /jobs/{id}/pause · /resume</td><td>stop / restart scheduling</td></tr>
+        <tr><td class="m">POST /jobs/{id}/trigger</td><td>run now, through the same claim path</td></tr>
+        <tr><td class="m">GET /jobs/{id}/runs</td><td>history, durations, failures</td></tr></table>` },
+      { h: '4 · Data', color: '#8f4fc4', html: `<pre>// jobs
+{ _id: "job-7", name: "daily-report",
+  cron: "0 0 2 * * *", tz: "Asia/Kolkata",
+  status: "RUNNING", nextRunAt: ISODate(…),
+  lockedBy: "w1", leaseUntil: ISODate(…),
+  fence: 3, attempts: 0, misfire: "FIRE_ONCE" }
+// indexes { status: 1, nextRunAt: 1 }, { status: 1, leaseUntil: 1 }
+
+// runs: one per scheduled time (TTL index on old ones)
+{ _id: "job-7@2026-11-13T02:00", by: "w1", fence: 3,
+  status: "OK", emailSent: true }
+
+// reports: fenced resource
+{ _id: "rpt-11-13", data: …, lastFence: 3 }</pre>` },
+      { h: '5 · Job lifecycle', color: '#2f6fe0', html: `<ol>
+        <li>Claim: <code>findOneAndUpdate</code> (SCHEDULED &amp; due, or RUNNING &amp; lease expired) → RUNNING, lease 60 s, <code>$inc fence</code>.</li>
+        <li>Run: heartbeat every 20 s (filter lockedBy + fence); write with the fence; check / write the run log.</li>
+        <li>Complete (same filter) → SCHEDULED, <code>nextRunAt</code> from cron + ZoneId.</li>
+        <li>Fail → backoff, <code>attempts + 1</code>; over max → FAILED + alert.</li></ol>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>No leader: any worker can die; the DB arbitrates every claim.</li>
+        <li>Crash → lease expiry → re-run (at-least-once) → idempotent run keys.</li>
+        <li>GC pause / zombie → fencing tokens checked by the resource and by complete.</li>
+        <li>Lease ≫ heartbeat interval and longer than a DB failover; misfire policy after outages.</li></ul>` },
+    ],
+    decisions: [
+      ['DB leases, no leader', 'Any worker can claim; nothing to elect or fail over.', 'Every worker polls the DB.'],
+      ['Atomic findOneAndUpdate claim', 'Two workers never start the same run.', 'One DB round trip per claim.'],
+      ['Lease + heartbeat', 'Crashed workers\' jobs come back automatically.', 'Short lease = false expiries; long lease = slow recovery.'],
+      ['Fencing tokens', 'A paused zombie cannot overwrite fresh results.', 'Every resource must support conditional writes.'],
+      ['At-least-once + run keys', 'Honest guarantee that survives crashes.', 'Jobs must be written idempotently.'],
+      ['Backoff → FAILED', 'Broken jobs stop consuming workers and alert a human.', 'Late runs; misfire handling needed.'],
+      ['vs leader + ZooKeeper / ShedLock', 'Simpler mental model, one dispatcher.', 'Leader is a bottleneck and needs fencing too.'],
+    ],
+    code: [
+      { t: 'Worker: poll and claim atomically', code: `@Scheduled(fixedDelay = 1000)
+void poll() {
+  Instant now = Instant.now();
+  Query due = query(new Criteria().orOperator(
+      where("status").is("SCHEDULED").and("nextRunAt").lte(now),
+      where("status").is("RUNNING").and("leaseUntil").lt(now)));   // crashed owner
+  Update claim = new Update()
+      .set("status", "RUNNING").set("lockedBy", workerId)
+      .set("leaseUntil", now.plusSeconds(60))
+      .inc("fence", 1);                                            // fencing token
+  Job job = mongo.findAndModify(due, claim, options().returnNew(true), Job.class);
+  if (job != null) executor.submit(() -> run(job));               // null = nothing due / lost the race
+}` },
+      { t: 'Heartbeat and complete: only while we own it', code: `Query mine(Job j) {
+  return query(where("_id").is(j.id()).and("lockedBy").is(workerId).and("fence").is(j.fence()));
+}
+
+boolean heartbeat(Job j) {                                       // every 20 s while running
+  return mongo.updateFirst(mine(j), new Update().set("leaseUntil", Instant.now().plusSeconds(60)), Job.class)
+              .getMatchedCount() == 1;                            // false → we lost the job: stop
+}
+
+void complete(Job j) {
+  Update done = new Update().set("status", "SCHEDULED").set("attempts", 0)
+      .set("nextRunAt", nextRun(j.cron(), j.tz()))
+      .unset("lockedBy").unset("leaseUntil");
+  if (mongo.updateFirst(mine(j), done, Job.class).getMatchedCount() == 0)
+    log.warn("job {} fence {} lost its lease, result discarded", j.id(), j.fence());
+}` },
+      { t: 'Fenced write and idempotent run key', code: `void writeReport(Job j, Report r) {
+  try {
+    mongo.upsert(query(where("_id").is(r.id()).and("lastFence").lt(j.fence())),
+                 new Update().set("data", r.data()).set("lastFence", j.fence()),
+                 "reports");
+  } catch (DuplicateKeyException e) {                            // lastFence ≥ ours: newer owner exists
+    throw new StaleFenceException(j.id(), j.fence());
+  }
+}
+
+void emailOnce(Job j, Instant scheduledAt) {
+  String runKey = j.id() + "@" + scheduledAt;                    // scheduled time, not attempt #
+  Run run = mongo.findById(runKey, Run.class);
+  if (run != null && run.emailSent()) return;                   // a previous attempt already sent it
+  ses.send(reportMail(j), runKey);                               // provider idempotency key if supported
+  mongo.upsert(query(where("_id").is(runKey)), new Update().set("emailSent", true), Run.class);
+}` },
+      { t: 'Next run from cron + time zone, backoff on failure', code: `Instant nextRun(String cron, String tz) {
+  ZonedDateTime now = ZonedDateTime.now(ZoneId.of(tz));        // "Asia/Kolkata"
+  return CronExpression.parse(cron)                            // "0 0 2 * * *": 6 fields, seconds first
+                       .next(now).toInstant();                 // DST-aware: local 02:00, not now + 24 h
+}
+
+void fail(Job j, Exception e) {
+  int attempts = j.attempts() + 1;
+  Update u = attempts >= 5 || !isTransient(e)
+      ? new Update().set("status", "FAILED")                   // parked: alert the owner
+      : new Update().set("status", "SCHEDULED").set("attempts", attempts)
+          .set("nextRunAt", Instant.now().plus(backoff(attempts)));   // min(2^n min, 1 h) + jitter
+  mongo.updateFirst(mine(j), u.unset("lockedBy").unset("leaseUntil"), Job.class);
+}` },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    cc: { name: 'Concurrency', color: '#8f4fc4' },
+    rr: { name: 'Failures', color: '#ce3434' },
+    db: { name: 'Data & time', color: '#13968a' },
+    sc: { name: 'Scale', color: '#2f6fe0' },
+    tt: { name: 'Alternatives', color: '#c47d1e' },
+  },
+  followups: [
+    { g: 'cc', q: 'Two workers claim the same job at the same time.', what: 'With find-then-update, both run it.', why: 'The read and the write are separate operations.', how: 'One atomic `findOneAndUpdate` with `status: "SCHEDULED"` and due in the filter; the second gets null.', trade: 'Polling load on the DB grows with workers.', flow: 'race' },
+    { g: 'cc', q: 'A worker pauses (GC) past its lease and wakes up.', what: 'It believes it still owns the job.', why: 'A frozen process cannot notice time passing; its heartbeat was frozen too.', how: 'Fencing token incremented on every claim; the resource and the complete step reject older tokens.', trade: 'Every resource the job writes must support conditional writes.', flow: 'zombie' },
+    { g: 'cc', q: 'Can you guarantee a job runs exactly once?', what: 'Not for external side effects.', why: 'A worker can crash after the side effect but before recording it.', how: 'At-least-once execution + idempotent side effects: run log keyed by jobId + scheduled time, same-`_id` upserts, provider idempotency keys.', trade: 'A tiny duplicate window remains for non-idempotent externals like email.', flow: 'crash' },
+    { g: 'cc', q: 'Why increment the fence on claim and not on heartbeat?', what: 'The fence identifies one ownership period.', why: 'Heartbeats extend the same ownership; a new claim starts a new one.', how: '`$inc fence` only in the claim; heartbeat and complete filter on the current fence.', trade: 'Fences only grow: store them as 64-bit.' },
+    { g: 'rr', q: 'A worker crashes mid-job.', what: 'The job stays RUNNING with a dead owner.', why: 'Nobody calls complete.', how: 'The claim also matches `RUNNING` with `leaseUntil < now`; another worker re-claims with a new fence and re-runs.', trade: 'The job starts up to one lease late.', flow: 'crash' },
+    { g: 'rr', q: 'How long should the lease be?', what: 'Too short: healthy workers lose jobs. Too long: crashes recover slowly.', why: 'GC pauses and DB failovers can last seconds.', how: '~60 s lease, heartbeat every 20 s, so two missed heartbeats are tolerated; longer than a replica-set election.', trade: 'Crash recovery takes up to a minute.', flow: 'retry' },
+    { g: 'rr', q: 'A job keeps failing.', what: 'It retries forever and hides the problem.', why: 'A bug or a broken dependency.', how: 'Exponential backoff with jitter and a cap, max attempts → FAILED + alert; non-transient errors fail at once.', trade: 'Late runs may need a misfire decision.', flow: 'retry' },
+    { g: 'rr', q: 'The cluster was down for three hours.', what: 'Several runs were missed.', why: 'Nobody claimed them.', how: 'Per-job misfire policy: fire once, catch up each window, or skip.', trade: 'Wrong choice = four reminders at once, or missing billing windows.', flow: 'misfire' },
+    { g: 'db', q: 'The Job DB primary fails.', what: 'Claims, heartbeats and completions pause.', why: 'Replica-set election takes seconds.', how: 'Retry with backoff; leases longer than an election; jobs start a few seconds late.', trade: 'Short leases detect crashes faster but break during DB blips.' },
+    { g: 'db', q: 'Daylight saving time: what happens to "02:30 daily"?', what: 'Some days 02:30 does not exist; on others it happens twice.', why: 'Local time jumps.', how: 'Store the time zone, compute every next run with `CronExpression.next(ZonedDateTime)`, test DST days; never "+ 24 h".', trade: 'Owners must know the chosen rule; UTC jobs avoid it.' },
+    { g: 'db', q: 'How do you support one-off delayed jobs ("send in 30 minutes")?', what: 'No cron, just a time.', why: 'Same claim machinery.', how: 'Same document with `nextRunAt` and no cron; on complete set status DONE instead of rescheduling; TTL index to clean up.', trade: 'Millions of tiny jobs → shard and batch the claims.' },
+    { g: 'sc', q: 'How do you poll a million jobs efficiently?', what: 'Every worker scans for due jobs every second.', why: 'Cost grows with workers.', how: 'Index `{status, nextRunAt}`; claim small batches; shard jobs and give each worker group its own shard range.', trade: 'Shard assignment is another moving part.' },
+    { g: 'sc', q: 'Thousands of jobs are scheduled at exactly 00:00.', what: 'A burst of claims and downstream load.', why: 'Humans love round numbers.', how: 'Jitter for jobs that allow it, per-tenant quotas, rate limits per downstream, more workers at peak.', trade: 'Jobs start a few seconds later than written.' },
+    { g: 'sc', q: 'How precise are start times?', what: 'Within the poll interval plus claim latency.', why: 'Workers poll every second.', how: 'Shorter polling for urgent jobs, or an in-memory timer wheel for jobs due in the next minute, still claimed through the DB.', trade: 'More polling = more DB load.' },
+    { g: 'tt', q: 'Why not a single leader with ZooKeeper or ShedLock?', what: 'One elected leader (ZooKeeper / etcd / Kubernetes Lease) or ShedLock\'s "only one instance runs this @Scheduled" lock.', why: 'Simple for a handful of in-app jobs.', how: 'Fine for small systems; at scale the leader is a bottleneck and must fail over, and a paused leader still needs **fencing**. Per-job DB claims spread the work and survive any worker dying.', trade: 'DB polling instead of one dispatcher.', flow: 'zombie' },
+    { g: 'tt', q: 'Should due jobs go through Kafka instead of workers polling?', what: 'A dispatcher claims due jobs and publishes them; a consumer group runs them.', why: 'Separates "when" from "how many workers" and absorbs bursts.', how: 'Good for heavy jobs; keep leases and fencing, because Kafka redelivery also repeats jobs. Key by jobId for ordering.', trade: 'Two places where duplicates can happen.' },
+    { g: 'tt', q: 'Build this or use Quartz / a cloud scheduler?', what: 'Quartz (JDBC store), db-scheduler, Temporal, EventBridge Scheduler and Kubernetes CronJobs exist.', why: 'They solve claims, misfires and retries.', how: 'Use one unless you need multi-tenant, product-level scheduling; still make jobs idempotent.', trade: 'Each has its own limits (cluster setup, precision, cost).' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>

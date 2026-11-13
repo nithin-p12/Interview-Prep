@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-ecommerce">
+<meta name="doc-version" content="v2.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E-commerce Order System · System Design · v2.0</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// E-commerce order flow as an orchestrated saga (Order → Inventory → Payment → Shipping). Everything specific to this
+// design lives here; engine/app.js renders it. Kafka, API gateway and DB basics are taught in 00_Core_Components.html.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f', INDIGO = '#5a5fc8';
+
+// Order status colours (the order status IS the saga state).
+const ST = {
+  PENDING: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  PAYMENT_PENDING: { fill: '#f3f6fe', stroke: BLUE, color: BLUE },
+  CONFIRMED: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
+  CANCELLING: { fill: '#fff8f0', stroke: AMBER, color: RED },
+  CANCELLED: { fill: '#fff4f4', stroke: RED, color: RED },
+};
+const fmt = (id, user, label) => `${id.padEnd(5)}${user.padEnd(3)}${label}`;
+const KEEP = '#d5d9dc';
+
+// State shown next to the components: orders, outbox, Kafka offsets, stock, holds, payments, shipments, users.
+function setup(s, v, { rows = [], clock = '11:00:00', stock = [5, 0], hold = 'holds —', pay = 'payments —', box = 'outbox —', kaf = 'cmd — · events —', a = 'browsing', b = 'browsing', ship = 'shipments —' } = {}) {
+  v.clock = s.chip(15, 500, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
+  v.log = s.store(15, 392, 262, 'ORDER DB · orders', { color: AMBER });
+  v.rows = {};
+  rows.forEach(([id, user, st, label]) => { s.row(v.log, fmt(id, user, label || st), { ...ST[st], now: true }); v.rows[id] = v.log.rows[v.log.rows.length - 1]; });
+  v.box = s.chip(420, 470, box, { mono: true, color: AMBER });
+  v.kaf = s.chip(665, 305, kaf, { mono: true, color: PURPLE });
+  v.stk = s.chip(940, 140, '', { mono: true, color: TEAL });
+  stk(s, v, ...stock);
+  v.hold = s.chip(940, 167, hold, { mono: true, color: GREY });
+  v.pay = s.chip(940, 320, pay, { mono: true, color: GREY });
+  v.ship = s.chip(855, 478, ship, { mono: true, color: GREY });
+  v.ua = s.chip(70, 126, a, { color: GREY });
+  v.ub = s.chip(70, 336, b, { color: GREY });
+  return v;
+}
+async function ord(s, v, id, user, st, label = st) {
+  const txt = fmt(id, user, label), r = v.rows[id];
+  if (!r) { v.rows[id] = await s.row(v.log, txt, ST[st]); return; }
+  r.label.textContent = txt;
+  s.paintRow(r, ST[st]);
+  await s.pulse(r, 1, 1.05);
+}
+const paint = color => ({ color, stroke: color === GREY ? KEEP : color });
+const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
+const stk = (s, v, a, r, color) => s.setChip(v.stk, `SKU-42 · available ${a} · reserved ${r}`, paint(color || (a < 0 ? RED : TEAL)));
+const hld = (s, v, t, color = GREY) => s.setChip(v.hold, t, paint(color));
+const pay = (s, v, t, color = GREY) => s.setChip(v.pay, t, paint(color));
+const obx = (s, v, t, color = AMBER) => s.setChip(v.box, t, { color, stroke: color === GREEN ? GREEN : KEEP });
+const kaf = (s, v, t, color = PURPLE) => s.setChip(v.kaf, t, { color });
+const shp = (s, v, t, color = GREY) => s.setChip(v.ship, t, paint(color));
+const who = (s, v, u, txt, color = GREY) => s.setChip(u === 'B' ? v.ub : v.ua, txt, paint(color));
+const both = (...ps) => Promise.all(ps);
+
+window.DESIGN = {
+  id: 'shop', n: 5, title: 'E-commerce Order System', tagline: 'no distributed transaction: local transactions, outbox, idempotent steps, compensations',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'Shoppers & edge', x0: 0, x1: 290, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'Shoppers place orders with an **Idempotency-Key** (one per checkout) through the **API gateway**, and get **202 PENDING** back in milliseconds; the final status arrives later.',
+      detail: 'The gateway does auth and rate limits; it holds no order state.' },
+    { id: 'app', title: 'Order service (orchestrator)', x0: 290, x1: 560, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: 'The **Order Service** owns the order and drives the saga. Every step is a **local transaction** that updates the order **and** writes the next command to an **outbox** table; a **relay** publishes it.',
+      detail: 'The order status **is** the saga state, so a crashed pod loses nothing: the next reply continues from the stored status.' },
+    { id: 'async', title: 'Kafka · commands & replies', x0: 560, x1: 770, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'Commands (`inventory-cmd`, `payment-cmd`) go to the participants; replies come back on `saga-events`. Key = `orderId`.',
+      detail: 'Delivery is **at-least-once**, so every consumer must be **idempotent**.' },
+    { id: 'data', title: 'Participant services', x0: 770, x1: 1100, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: '**Inventory** reserves stock with a **conditional decrement** and an expiring **hold**; **Payment** charges with a provider **idempotency key**; **Shipping** reacts to OrderConfirmed. Each owns **its own database**.',
+      detail: 'No 2PC across these databases: on failure the saga runs **compensations** (release the hold, refund).' },
+  ],
+  layersIntro: {
+    title: 'A saga of local transactions',
+    text: 'The **Order Service** saves the order and an **outbox** command in one transaction and answers **202**. Through **Kafka** it asks **Inventory** to reserve stock, then **Payment** to charge, then confirms; if a step fails it **compensates** instead of rolling back. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    userA: { x: 70, y: 80, w: 120, label: 'User A', sub: 'web / app', icon: '👤', layer: 'entry' },
+    userB: { x: 70, y: 290, w: 120, label: 'User B', sub: 'web / app', icon: '👤', layer: 'entry' },
+    gw: { x: 215, y: 195, w: 120, label: 'API Gateway', sub: 'auth · limits', icon: '🚪', layer: 'entry' },
+    order: { x: 420, y: 110, w: 160, label: 'Order Svc', sub: 'saga orchestrator', icon: '🧾', layer: 'app' },
+    orderdb: { x: 420, y: 250, w: 160, label: 'Order DB', sub: 'orders · outbox', icon: '🍃', layer: 'app' },
+    relay: { x: 420, y: 400, w: 160, label: 'Outbox relay', sub: 'change stream', icon: '📤', layer: 'app' },
+    kafka: { x: 665, y: 220, w: 170, label: 'Kafka', sub: 'commands · events', icon: '📨', layer: 'async' },
+    inventory: { x: 855, y: 90, w: 150, label: 'Inventory Svc', sub: 'holds stock', icon: '📦', layer: 'data' },
+    stockdb: { x: 1025, y: 90, w: 140, label: 'Stock DB', sub: 'stock · holds', icon: '🍃', layer: 'data' },
+    payment: { x: 855, y: 270, w: 150, label: 'Payment Svc', sub: 'charge · refund', icon: '💳', layer: 'data' },
+    provider: { x: 1025, y: 270, w: 140, label: 'Provider', sub: 'card / UPI', icon: '🏦', layer: 'data' },
+    shipping: { x: 855, y: 430, w: 150, label: 'Shipping Svc', sub: 'on confirmed', icon: '🚚', layer: 'data' },
+  },
+  wires: [['userA', 'gw'], ['userB', 'gw'], ['gw', 'order'], ['order', 'orderdb'], ['orderdb', 'relay'], ['relay', 'kafka'], ['kafka', 'order'], ['kafka', 'inventory'], ['kafka', 'payment'], ['kafka', 'shipping'], ['inventory', 'stockdb'], ['payment', 'provider']],
+
+  components: {
+    userA: {
+      name: 'Shoppers',
+      what: 'Place orders from the web or the app, then poll `GET /orders/{id}` or get a push with the final status.',
+      why: 'They create a fresh **Idempotency-Key** per checkout and reuse it on every retry of that checkout.',
+      without: 'A timeout followed by a retry would create a second order (and a second charge).',
+      tech: 'Browser / mobile app', scale: 'Flash sales concentrate thousands of buyers on a few SKUs.', fails: 'Retries with the same key are safe; the server returns the same order.',
+    },
+    userB: {
+      name: 'Another shopper',
+      what: 'Competes with A for the last unit in the race flow.',
+      why: 'Shows why the stock check must be **inside** the write, not before it.',
+      without: '—',
+      tech: 'Browser / mobile app', scale: '—', fails: 'Must be told "sold out" **before** being charged.',
+    },
+    gw: {
+      name: 'API Gateway',
+      what: 'Single entry: JWT auth, rate limits per user, routing `/orders` to the Order Service.',
+      why: 'Cross-cutting concerns in one place; bots hammering checkout are stopped here.',
+      without: 'Every service re-implements auth and limits.',
+      tech: 'Spring Cloud Gateway / Kong', scale: 'Stateless pods.', fails: 'Retries only idempotent calls; `POST /orders` is safe because of the Idempotency-Key.',
+      core: ['gw', 'API Gateway'],
+    },
+    order: {
+      name: 'Order Service (saga orchestrator)',
+      what: 'Creates the order, then drives the steps: **reserve stock → charge → confirm**, or **compensate** on failure. Reacts to replies on `saga-events`.',
+      why: 'One place owns the multi-step flow, so it is easy to follow, debug and change.',
+      without: 'Choreography only: the flow is spread across many event handlers and compensations are hard to see.',
+      tech: 'Spring Boot, `@KafkaListener` on `saga-events`, MongoDB transactions', scale: 'Stateless pods; state lives in the order document.', fails: 'A crash mid-saga is safe: the status is stored, and every transition is guarded by the expected status.',
+    },
+    orderdb: {
+      name: 'Order DB (orders + outbox)',
+      what: '`orders { _id, user, items, status, idemKey }` with a unique index on `idemKey`, and an `outbox` collection written **in the same transaction**.',
+      why: 'The state change and the message to send are committed together: never one without the other.',
+      without: 'Save then `kafka.send()`: a crash between them leaves an order that never progresses (or a message for an order that does not exist).',
+      tech: 'MongoDB replica set (multi-document transactions)', scale: 'Shard by `orderId` or `userId`.', fails: 'Failover pauses writes for a few seconds; the client retries with the same key.',
+      core: ['db', 'DB scaling'],
+    },
+    relay: {
+      name: 'Outbox relay',
+      what: 'Reads unpublished outbox rows (MongoDB **change stream** or a poller), sends them to Kafka, marks them published.',
+      why: 'Turns "committed in the DB" into "published to Kafka", even if Kafka was down at commit time.',
+      without: 'Dual writes: DB and Kafka can disagree after a crash.',
+      tech: 'Change stream / Debezium / scheduled poller', scale: 'One active relay per shard (leader) or partitioned by key.', fails: 'Crash after send, before marking → sends again, so consumers must dedupe (they do).',
+    },
+    kafka: {
+      name: 'Kafka (commands & replies)',
+      what: 'Command topics `inventory-cmd`, `payment-cmd`; reply topic `saga-events`. Key = `orderId`, so one order\'s messages stay in order.',
+      why: 'Services stay decoupled and keep working when another one is slow or down; commands wait in the log.',
+      without: 'Synchronous REST chain: Payment down = checkout down.',
+      tech: 'Kafka; `KafkaTemplate` + `@KafkaListener`', scale: 'Partitions per topic; consumers up to one per partition.', fails: 'Redelivery after a crash or rebalance → **at-least-once**.',
+      core: ['kafka', 'Queue · Kafka'],
+    },
+    inventory: {
+      name: 'Inventory Service',
+      what: 'Reserves stock: `available ≥ qty` **in the update filter**, and a **hold** with `_id = orderId` that **expires** (15 min). Confirms or releases the hold later.',
+      why: 'The conditional update makes overselling impossible; the hold gives stock back if the buyer never pays.',
+      without: 'Read-then-write: two buyers both see 1 unit and both get it.',
+      tech: 'Spring Boot, `MongoTemplate.updateFirst` with a condition, TTL / expiry job', scale: 'Hot SKUs contend on one document → split stock into buckets for flash sales.', fails: 'Redelivered command → hold `o-1` already exists → skip, resend the reply.',
+    },
+    stockdb: {
+      name: 'Stock DB',
+      what: '`stock { _id: sku, available, reserved }` and `holds { _id: orderId, sku, qty, status, expiresAt }`.',
+      why: 'Database per service: only Inventory writes stock.',
+      without: 'Shared DB: other services update stock directly and bypass the rules.',
+      tech: 'MongoDB', scale: 'Shard by SKU.', fails: 'Down → ReserveInventory commands wait in Kafka; orders stay PENDING.',
+      core: ['db', 'DB scaling'],
+    },
+    payment: {
+      name: 'Payment Service',
+      what: 'Charges with an **idempotency key** per order (`pay-o-1`), refunds with its own key (`refund-o-1`), handles provider webhooks.',
+      why: 'A retried charge must never become a second charge.',
+      without: 'A timeout + retry charges the customer twice.',
+      tech: 'Stripe / Razorpay SDK, signed webhooks', scale: 'Stateless; provider rate limits apply.', fails: 'A timeout is **unknown**, not failed: retry with the same key or query the provider.',
+    },
+    provider: {
+      name: 'Payment provider',
+      what: 'Moves the money. Returns succeeded, declined, or answers late (3-D Secure, bank delays).',
+      why: 'External: we cannot roll it back, only refund.',
+      without: '—',
+      tech: 'Stripe / Razorpay style API', scale: 'Rate limits per account.', fails: 'Slow, declined or late answers; the saga must handle all three.',
+    },
+    shipping: {
+      name: 'Shipping Service',
+      what: 'Creates a shipment when **OrderConfirmed** arrives.',
+      why: 'A simple reaction to an event: no compensation needed, so choreography is fine here.',
+      without: '—',
+      tech: 'Kafka consumer', scale: 'Batch-friendly.', fails: 'Redelivery → dedupe by `orderId` (shipment `_id`).',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Accept, reserve, charge, confirm: or compensate.',
+    points: [
+      { t: 'Accept', color: BLUE, d: 'Save the order **and** an outbox command in one transaction; answer **202 PENDING**.' },
+      { t: 'Reserve', color: TEAL, d: 'Inventory decrements only if `available ≥ 1` and writes a **hold** that expires.' },
+      { t: 'Charge', color: PURPLE, d: 'Payment charges with an **idempotency key**, so a retry never charges twice.' },
+      { t: 'Confirm', color: GREEN, d: 'The order becomes **CONFIRMED** and Shipping starts. On failure: **release the hold**.' },
+    ],
+    stats: [['1 k', 'orders / s'], ['100×', 'flash-sale peak'], ['0', 'oversold units'], ['1', 'charge per order']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v); v.ready = true; }
+    for (const r of [...v.log.rows]) await s.unrow(v.log, r);
+    v.rows = {}; stk(s, v, 5, 0); hld(s, v, 'holds —'); pay(s, v, 'payments —'); obx(s, v, 'outbox —'); kaf(s, v, 'cmd — · events —'); shp(s, v, 'shipments —'); who(s, v, 'A', 'browsing');
+
+    ui.say(0); ui.cap('**Accept** · A places the order; order + outbox command in one transaction, then 202');
+    await s.send(['userA', 'gw', 'order'], 'POST /orders', BLUE, { ms: 420 });
+    await s.send(['order', 'orderdb'], 'order + outbox', BLUE, { ms: 420 });
+    await ord(s, v, 'o-1', 'A', 'PENDING');
+    obx(s, v, 'outbox: ReserveInventory ⏳');
+    await s.send(['order', 'gw', 'userA'], '202 PENDING', GREEN, { ms: 380 });
+    who(s, v, 'A', 'order pending', AMBER);
+    ui.say(1); ui.cap('**Reserve** · the relay publishes the command; Inventory decrements only if stock is left');
+    await s.send(['orderdb', 'relay', 'kafka'], 'ReserveInventory', AMBER, { ms: 400 });
+    obx(s, v, 'outbox: ReserveInventory ✓', GREEN);
+    await s.send(['kafka', 'inventory', 'stockdb'], 'available ≥ 1 ?', TEAL, { ms: 400 });
+    stk(s, v, 4, 1); hld(s, v, 'hold o-1 HELD · 11:15', TEAL);
+    await s.send(['inventory', 'kafka', 'order'], 'InventoryReserved', TEAL, { ms: 400 });
+    await ord(s, v, 'o-1', 'A', 'PAYMENT_PENDING');
+    ui.say(2); ui.cap('**Charge** · Payment charges with idempotency key `pay-o-1`');
+    await s.send(['kafka', 'payment', 'provider'], 'charge · pay-o-1', PURPLE, { ms: 400 });
+    await s.send(['provider', 'payment'], 'succeeded', GREEN, { ms: 380 });
+    pay(s, v, 'pay-o-1 CAPTURED ₹999', GREEN);
+    await s.send(['payment', 'kafka', 'order'], 'PaymentCompleted', PURPLE, { ms: 400 });
+    ui.say(3); ui.cap('**Confirm** · order CONFIRMED, hold becomes a sale, Shipping starts');
+    await ord(s, v, 'o-1', 'A', 'CONFIRMED');
+    await both(s.send(['kafka', 'inventory'], 'ConfirmHold', GREEN, { ms: 400 }), s.send(['kafka', 'shipping'], 'OrderConfirmed', GREEN, { ms: 400 }));
+    stk(s, v, 4, 0); hld(s, v, 'hold o-1 CONFIRMED', GREEN); shp(s, v, 'shipment s-9 · o-1', GREEN);
+    await s.send(['order', 'gw', 'userA'], 'CONFIRMED', GREEN, { ms: 380 });
+    who(s, v, 'A', 'order confirmed ✓', GREEN);
+    await s.wait(1800);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'happy', title: 'A buys SKU-42', sub: 'outbox · reserve · charge · confirm', color: BLUE,
+      build: (s, v) => setup(s, v),
+      takeaway: 'Each step is a **local transaction** plus an **outbox** command; the orchestrator moves the order status forward on each reply. The user gets **202** at once and the final status later.',
+      steps: [
+        {
+          title: 'A places the order with an Idempotency-Key',
+          text: '`POST /orders { sku: "SKU-42", qty: 1 }` with header `Idempotency-Key: ck-A-77`. The app generates the key **once per checkout** and reuses it on every retry.',
+          observe: 'The request reaches the Order Service through the gateway.',
+          focus: v => [v.n.order],
+          async run(s, v) {
+            who(s, v, 'A', 'placing order…', AMBER);
+            await s.send(['userA', 'gw', 'order'], 'POST /orders · ck-A-77', BLUE);
+          },
+        },
+        {
+          title: 'Order + outbox command in one transaction',
+          text: 'In **one MongoDB transaction**: insert order `o-1` as **PENDING** (unique index on `idemKey`) **and** insert an outbox row `ReserveInventory(o-1)`. Both are committed, or neither is.',
+          observe: 'o-1 appears as PENDING; the outbox holds an unpublished command.',
+          say: 'The order and the first command are saved in one local transaction, the outbox pattern.',
+          focus: v => [v.log, v.box],
+          async run(s, v) {
+            await s.send(['order', 'orderdb'], 'txn: order + outbox', BLUE);
+            await ord(s, v, 'o-1', 'A', 'PENDING');
+            obx(s, v, 'outbox: ReserveInventory ⏳'); await s.pulse(v.box);
+          },
+        },
+        {
+          title: 'Answer 202 now',
+          text: 'The API returns **202 { orderId: "o-1", status: "PENDING" }** in a few milliseconds. Stock and payment happen asynchronously; the app polls or gets a push.',
+          observe: 'A sees "order pending".',
+          focus: v => [v.n.userA],
+          async run(s, v) {
+            await s.send(['order', 'gw', 'userA'], '202 PENDING', GREEN);
+            who(s, v, 'A', 'order o-1 pending', AMBER);
+          },
+        },
+        {
+          title: 'The relay publishes the command',
+          text: 'The outbox relay (a MongoDB **change stream**) sees the new row, sends `ReserveInventory(o-1)` to `inventory-cmd` with key `o-1`, and marks the row published.',
+          observe: 'The command lands on inventory-cmd; the outbox row is published.',
+          focus: v => [v.n.relay, v.kaf],
+          async run(s, v) {
+            await s.send(['orderdb', 'relay', 'kafka'], 'ReserveInventory', AMBER);
+            obx(s, v, 'outbox: ReserveInventory ✓', GREEN);
+            kaf(s, v, 'inventory-cmd @0 · events —'); await s.pulse(v.kaf);
+          },
+        },
+        {
+          title: 'Reserve: conditional decrement + hold',
+          text: 'Inventory runs `updateOne({ _id: "SKU-42", available: { $gte: 1 } }, { $inc: { available: -1, reserved: 1 } })` and inserts hold `{ _id: "o-1", status: "HELD", expiresAt: 11:15 }`, in one local transaction. The filter refuses to go below zero.',
+          observe: 'available 5 → 4, reserved 0 → 1; hold o-1 is HELD until 11:15.',
+          say: 'Inventory reserves with a conditional decrement and a hold that expires.',
+          focus: v => [v.stk, v.hold],
+          async run(s, v) {
+            await s.send(['kafka', 'inventory'], 'ReserveInventory o-1', TEAL);
+            await s.send(['inventory', 'stockdb'], 'available ≥ 1 ? −1', TEAL);
+            stk(s, v, 4, 1); hld(s, v, 'hold o-1 HELD · expires 11:15', TEAL);
+            await s.pulse(v.stk);
+          },
+        },
+        {
+          title: 'Reply → the orchestrator takes the next step',
+          text: 'Inventory replies `InventoryReserved(o-1)`. The orchestrator runs `updateOne({ _id: "o-1", status: "PENDING" }, { $set: { status: "PAYMENT_PENDING" } })` **plus** an outbox `ProcessPayment(o-1)`, again in one transaction.',
+          observe: 'o-1 moves to PAYMENT_PENDING.',
+          say: 'Each reply moves the order status forward and writes the next command in the same transaction.',
+          focus: v => [v.rows['o-1']],
+          async run(s, v) {
+            await s.send(['inventory', 'kafka', 'order'], 'InventoryReserved', TEAL);
+            kaf(s, v, 'inventory-cmd @0 · saga-events @0');
+            await s.send(['order', 'orderdb'], 'status + outbox', BLUE);
+            await ord(s, v, 'o-1', 'A', 'PAYMENT_PENDING');
+            obx(s, v, 'outbox: ProcessPayment ⏳');
+          },
+        },
+        {
+          title: 'Charge with an idempotency key',
+          text: 'The relay publishes `ProcessPayment(o-1)`. Payment calls the provider with `Idempotency-Key: pay-o-1`: if this call is ever retried, the provider returns the **same** charge instead of making a new one.',
+          observe: 'The provider captures ₹999 once.',
+          say: 'Payment uses an idempotency key per order, so a retry never charges twice.',
+          focus: v => [v.pay],
+          async run(s, v) {
+            await s.send(['orderdb', 'relay', 'kafka'], 'ProcessPayment', AMBER);
+            obx(s, v, 'outbox: ProcessPayment ✓', GREEN);
+            await s.send(['kafka', 'payment'], 'ProcessPayment o-1', PURPLE);
+            await s.send(['payment', 'provider'], 'charge · key pay-o-1', PURPLE);
+            await s.send(['provider', 'payment'], 'succeeded', GREEN);
+            pay(s, v, 'pay-o-1 CAPTURED ₹999', GREEN); await s.pulse(v.pay);
+          },
+        },
+        {
+          title: 'Confirm, turn the hold into a sale, ship',
+          text: '`PaymentCompleted` → o-1 **CONFIRMED** + outbox `ConfirmHold` and `OrderConfirmed`. Inventory marks the hold CONFIRMED (`reserved −1`); Shipping creates shipment `s-9`. A gets the final status.',
+          observe: 'o-1 is CONFIRMED, the hold is sold, a shipment exists.',
+          focus: v => [v.rows['o-1'], v.ship],
+          async run(s, v) {
+            await s.send(['payment', 'kafka', 'order'], 'PaymentCompleted', PURPLE);
+            await ord(s, v, 'o-1', 'A', 'CONFIRMED');
+            kaf(s, v, 'inventory-cmd @1 · saga-events @2');
+            await both(s.send(['kafka', 'inventory', 'stockdb'], 'ConfirmHold', GREEN), s.send(['kafka', 'shipping'], 'OrderConfirmed', GREEN));
+            stk(s, v, 4, 0); hld(s, v, 'hold o-1 CONFIRMED (sold)', GREEN); shp(s, v, 'shipment s-9 · o-1', GREEN);
+            await s.send(['order', 'gw', 'userA'], 'CONFIRMED', GREEN);
+            who(s, v, 'A', 'order confirmed ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'race', title: 'Last unit: A vs B', sub: 'read-then-write vs conditional update', color: RED,
+      build: (s, v) => setup(s, v, { stock: [1, 0], rows: [['o-1', 'A', 'PENDING'], ['o-2', 'B', 'PENDING']], kaf: 'cmd p0: o-1 · p1: o-2', a: 'order o-1 pending', b: 'order o-2 pending' }),
+      takeaway: 'The stock check must be **inside the write**: `available ≥ 1` in the update filter. MongoDB applies a single-document update atomically, so only one buyer matches; the other is cancelled **before** any charge.',
+      steps: [
+        {
+          title: 'Two commands, two instances, same SKU',
+          text: 'Only **1 unit** is left. `ReserveInventory(o-1)` and `(o-2)` are keyed by orderId, so they land on **different partitions** and two Inventory instances process them **at the same time**.',
+          observe: 'Both commands reach Inventory in parallel.',
+          focus: v => [v.n.inventory, v.stk],
+          async run(s) {
+            await both(s.send(['kafka', 'inventory'], 'o-1 (inst 1)', BLUE), s.send(['kafka', 'inventory'], 'o-2 (inst 2)', AMBER, { ms: 900, pulse: false }));
+          },
+        },
+        {
+          title: '❌ Read the stock in Java first',
+          text: 'Naive handler: `stock = findOne("SKU-42")`, `if (stock.available >= 1)` then `$inc available −1`. Both instances read **available: 1**, both checks pass.',
+          observe: 'Both reads return 1 unit.',
+          focus: v => [v.stk],
+          async run(s, v) {
+            await both(s.send(['inventory', 'stockdb'], 'read (o-1)', BLUE), s.send(['inventory', 'stockdb'], 'read (o-2)', AMBER, { ms: 900, pulse: false }));
+            await s.flash(940, 40, 'o-1 sees 1 · o-2 sees 1', { mono: true, color: AMBER, stroke: AMBER }, 800);
+          },
+        },
+        {
+          title: '❌ Both decrement: oversold',
+          text: 'The `$inc` has **no condition**, so both apply: available **1 → 0 → −1**. Both orders go to PAYMENT_PENDING and both buyers will be charged for **one** unit; someone gets a cancellation and a refund after paying.',
+          observe: 'available goes to −1 and both orders move on to payment.',
+          say: 'Check-then-write in application code oversells under concurrency.',
+          focus: v => [v.stk, v.n.userB],
+          async run(s, v) {
+            await both(s.send(['inventory', 'stockdb'], '$inc −1', BLUE), s.send(['inventory', 'stockdb'], '$inc −1', AMBER, { ms: 900, pulse: false }));
+            stk(s, v, -1, 2); hld(s, v, 'holds o-1, o-2 HELD', RED); await s.shake(v.stk);
+            await ord(s, v, 'o-1', 'A', 'PAYMENT_PENDING'); await ord(s, v, 'o-2', 'B', 'PAYMENT_PENDING');
+            who(s, v, 'B', 'charged, no unit ✕', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: the condition goes in the filter',
+          text: 'Same race, but each instance runs `updateOne({ _id: "SKU-42", available: { $gte: 1 } }, { $inc: … })`. The update is atomic on one document: the first one matches (**modifiedCount 1**); for the second, available is already 0, so **modifiedCount 0** and its transaction aborts (no hold).',
+          observe: 'available 1 → 0; only o-1 gets a hold.',
+          say: 'With the condition in the update filter, only one buyer can take the last unit.',
+          focus: v => [v.stk, v.hold],
+          async run(s, v) {
+            stk(s, v, 1, 0); hld(s, v, 'holds —'); who(s, v, 'B', 'order o-2 pending');
+            await ord(s, v, 'o-1', 'A', 'PENDING'); await ord(s, v, 'o-2', 'B', 'PENDING');
+            await both(s.send(['inventory', 'stockdb'], 'available ≥ 1 ? (o-1)', BLUE), s.send(['inventory', 'stockdb'], 'available ≥ 1 ? (o-2)', AMBER, { ms: 900, pulse: false }));
+            stk(s, v, 0, 1); hld(s, v, 'hold o-1 HELD · expires 11:15', TEAL);
+            await s.flash(940, 40, 'o-1: modified 1 · o-2: modified 0', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 900);
+          },
+        },
+        {
+          title: 'B is told before any charge',
+          text: 'Inventory replies `InventoryReserved(o-1)` and `InventoryRejected(o-2, OUT_OF_STOCK)`. o-1 goes to payment; o-2 is **CANCELLED** and B is told "sold out, not charged". **Reserve first, charge second.**',
+          observe: 'o-2 is cancelled; B was never charged.',
+          focus: v => [v.rows['o-2'], v.n.userB],
+          async run(s, v) {
+            await s.send(['inventory', 'kafka', 'order'], 'Reserved o-1 · Rejected o-2', TEAL);
+            await ord(s, v, 'o-1', 'A', 'PAYMENT_PENDING');
+            await ord(s, v, 'o-2', 'B', 'CANCELLED', 'CANCELLED · sold out');
+            await s.send(['order', 'gw', 'userB'], 'sold out', RED);
+            who(s, v, 'B', 'sold out, no charge', AMBER); who(s, v, 'A', 'paying…', BLUE);
+          },
+        },
+      ],
+    },
+    {
+      id: 'comp', title: 'Payment declined', sub: 'compensate: release the hold', color: PURPLE,
+      build: (s, v) => setup(s, v, { clock: '11:00:30', stock: [4, 1], hold: 'hold o-1 HELD · expires 11:15', rows: [['o-1', 'A', 'PAYMENT_PENDING']], box: 'outbox: ProcessPayment ✓', kaf: 'payment-cmd @0', a: 'paying…' }),
+      takeaway: 'There is **no rollback across services**. The saga runs a **compensating step** (ReleaseHold) that undoes the reservation, and it is **idempotent**: guarded by `status: "HELD"`, so a duplicate changes nothing.',
+      steps: [
+        {
+          title: 'The card is declined',
+          text: 'Payment consumes `ProcessPayment(o-1)` and charges with key `pay-o-1`. The provider answers **402 card_declined**.',
+          observe: 'The charge fails.',
+          focus: v => [v.pay],
+          async run(s, v) {
+            await s.send(['kafka', 'payment'], 'ProcessPayment o-1', PURPLE);
+            await s.send(['payment', 'provider'], 'charge · key pay-o-1', PURPLE);
+            await s.send(['provider', 'payment'], '402 card_declined', RED);
+            pay(s, v, 'pay-o-1 FAILED · card_declined', RED); await s.shake(v.pay);
+          },
+        },
+        {
+          title: 'No rollback: start the compensation',
+          text: 'Payment replies `PaymentFailed(o-1)`. Stock was already committed in another database, so nothing can "roll back". The orchestrator moves o-1 from PAYMENT_PENDING to **CANCELLING** and writes outbox `ReleaseHold(o-1)`.',
+          observe: 'o-1 is CANCELLING; ReleaseHold is in the outbox.',
+          say: 'There is no rollback across services, so the saga runs a compensating step.',
+          focus: v => [v.rows['o-1'], v.box],
+          async run(s, v) {
+            await s.send(['payment', 'kafka', 'order'], 'PaymentFailed', RED);
+            await s.send(['order', 'orderdb'], 'status + outbox', BLUE);
+            await ord(s, v, 'o-1', 'A', 'CANCELLING');
+            obx(s, v, 'outbox: ReleaseHold ⏳'); await s.pulse(v.box);
+          },
+        },
+        {
+          title: 'Release the hold, guarded by its status',
+          text: 'Inventory runs `holds.updateOne({ _id: "o-1", status: "HELD" }, { $set: { status: "RELEASED" } })` and, **only if it matched**, `$inc available +1, reserved −1`, in one transaction.',
+          observe: 'The hold is RELEASED; available goes back to 5.',
+          focus: v => [v.hold, v.stk],
+          async run(s, v) {
+            await s.send(['orderdb', 'relay', 'kafka'], 'ReleaseHold', AMBER);
+            obx(s, v, 'outbox: ReleaseHold ✓', GREEN);
+            await s.send(['kafka', 'inventory', 'stockdb'], 'HELD → RELEASED', TEAL);
+            hld(s, v, 'hold o-1 RELEASED', AMBER); stk(s, v, 5, 0); await s.pulse(v.stk);
+          },
+        },
+        {
+          title: 'A duplicate ReleaseHold changes nothing',
+          text: 'Kafka redelivers `ReleaseHold(o-1)` after a rebalance. The filter `status: "HELD"` no longer matches (**matched 0**), so stock is **not** incremented twice. Compensations must be idempotent too.',
+          observe: 'The duplicate is a no-op; available stays 5.',
+          say: 'Compensations are idempotent: the hold status guards the release.',
+          focus: v => [v.stk],
+          async run(s, v) {
+            await s.send(['kafka', 'inventory', 'stockdb'], 'ReleaseHold (again)', AMBER);
+            await s.flash(940, 40, 'status ≠ HELD → no-op', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 800);
+            await s.pulse(v.stk);
+          },
+        },
+        {
+          title: 'Cancelled, and A is told',
+          text: 'Inventory replies `HoldReleased(o-1)`; the orchestrator moves CANCELLING → **CANCELLED (payment failed)** and notifies A. The unit is back on sale for others.',
+          observe: 'o-1 is CANCELLED; A sees "payment failed".',
+          focus: v => [v.rows['o-1'], v.n.userA],
+          async run(s, v) {
+            await s.send(['inventory', 'kafka', 'order'], 'HoldReleased', TEAL);
+            await ord(s, v, 'o-1', 'A', 'CANCELLED', 'CANCELLED · payment failed');
+            await s.send(['order', 'gw', 'userA'], 'payment failed', RED);
+            who(s, v, 'A', 'payment failed ✕', RED);
+          },
+        },
+      ],
+    },
+    {
+      id: 'late', title: 'Late payment', sub: 'hold expires · then refund', color: AMBER,
+      build: (s, v) => setup(s, v, { clock: '11:00:30', stock: [4, 1], hold: 'hold o-1 HELD · expires 11:15', rows: [['o-1', 'A', 'PAYMENT_PENDING']], box: 'outbox: ProcessPayment ✓', kaf: 'payment-cmd @0', a: 'paying…' }),
+      takeaway: 'Payment success alone does **not** confirm an order: the reservation may be gone. The orchestrator only moves from the **expected status**; a payment on a CANCELLED order triggers a **refund** with its own idempotency key.',
+      steps: [
+        {
+          title: 'The provider hangs',
+          text: 'Payment sends the charge; the bank is slow (3-D Secure, UPI pending). A timeout is **unknown**, not failed: Payment waits for the webhook or queries the provider, it never charges again with a new key.',
+          observe: 'The charge is PROCESSING with no answer.',
+          focus: v => [v.pay],
+          async run(s, v) {
+            await s.send(['kafka', 'payment'], 'ProcessPayment o-1', PURPLE);
+            await s.send(['payment', 'provider'], 'charge · key pay-o-1', PURPLE);
+            pay(s, v, 'pay-o-1 PROCESSING…', AMBER);
+            tick(s, v, '11:15:00');
+            await s.flash(1025, 225, 'no answer for 15 min', { color: AMBER, stroke: AMBER }, 800);
+          },
+        },
+        {
+          title: 'The hold expires: stock goes back',
+          text: 'An expiry job finds `holds { status: "HELD", expiresAt < now }` and releases them with the same idempotent update (HELD → **EXPIRED**, `available +1`). Abandoned checkouts must not lock stock forever.',
+          observe: 'Hold o-1 is EXPIRED; available is 5 again.',
+          say: 'Holds expire, so abandoned or stuck checkouts give their stock back.',
+          focus: v => [v.hold, v.stk],
+          async run(s, v) {
+            await s.send(['inventory', 'stockdb'], 'expire HELD < now', TEAL);
+            hld(s, v, 'hold o-1 EXPIRED', RED); stk(s, v, 5, 0); await s.pulse(v.stk);
+          },
+        },
+        {
+          title: 'The order is cancelled',
+          text: 'Inventory replies `HoldExpired(o-1)`; the orchestrator moves o-1 from PAYMENT_PENDING to **CANCELLED (hold expired)**.',
+          observe: 'o-1 is CANCELLED.',
+          focus: v => [v.rows['o-1']],
+          async run(s, v) {
+            await s.send(['inventory', 'kafka', 'order'], 'HoldExpired', AMBER);
+            await ord(s, v, 'o-1', 'A', 'CANCELLED', 'CANCELLED · hold expired');
+          },
+        },
+        {
+          title: 'The charge succeeds after all',
+          text: 'At 11:16 the provider answers **succeeded**. Payment replies `PaymentCompleted(o-1)`. The orchestrator tries `updateOne({ _id: "o-1", status: "PAYMENT_PENDING" }, …)` → **matched 0**, because the order is already CANCELLED.',
+          observe: 'The late success does not confirm the order.',
+          say: 'The orchestrator only moves from the expected status, so a late reply cannot confirm a cancelled order.',
+          focus: v => [v.pay, v.rows['o-1']],
+          async run(s, v) {
+            tick(s, v, '11:16:10');
+            await s.send(['provider', 'payment'], 'succeeded (late)', AMBER);
+            pay(s, v, 'pay-o-1 CAPTURED (late)', AMBER);
+            await s.send(['payment', 'kafka', 'order'], 'PaymentCompleted', PURPLE);
+            await s.flash(420, 40, 'status is CANCELLED → matched 0', { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, 900);
+          },
+        },
+        {
+          title: 'Refund with its own idempotency key',
+          text: 'The orchestrator writes outbox `RefundPayment(o-1)`; Payment refunds with `Idempotency-Key: refund-o-1`, so a redelivered refund command never refunds twice. (Alternative: try to re-reserve if stock is still there.)',
+          observe: 'The money goes back; A is told.',
+          focus: v => [v.pay, v.n.userA],
+          async run(s, v) {
+            await s.send(['order', 'orderdb'], 'outbox RefundPayment', BLUE);
+            await s.send(['orderdb', 'relay', 'kafka', 'payment'], 'RefundPayment', AMBER);
+            await s.send(['payment', 'provider'], 'refund · key refund-o-1', PURPLE);
+            pay(s, v, 'pay-o-1 REFUNDED', GREEN);
+            await s.send(['order', 'gw', 'userA'], 'cancelled · refund', AMBER);
+            who(s, v, 'A', 'cancelled · refund', AMBER);
+          },
+        },
+      ],
+    },
+    {
+      id: 'dup', title: 'Retries & duplicates', sub: 'Idempotency-Key · outbox · redelivery', color: INDIGO,
+      build: (s, v) => setup(s, v),
+      takeaway: 'Every hop can repeat: the client retries, the relay re-sends, Kafka redelivers. **Natural keys** (idemKey, hold `_id` = orderId) and **status-guarded updates** make each repeat a no-op, and the **outbox** keeps orders safe while Kafka is down.',
+      steps: [
+        {
+          title: 'The order is saved, the response is lost',
+          text: 'A posts with `Idempotency-Key: ck-A-77`; order o-1 + outbox are committed. The 202 never reaches the app (mobile network drop); from its point of view the call **failed**.',
+          observe: 'o-1 exists, but A times out.',
+          focus: v => [v.rows['o-1'], v.n.userA],
+          async run(s, v) {
+            await s.send(['userA', 'gw', 'order'], 'POST · ck-A-77', BLUE);
+            await s.send(['order', 'orderdb'], 'txn: order + outbox', BLUE);
+            await ord(s, v, 'o-1', 'A', 'PENDING');
+            obx(s, v, 'outbox: ReserveInventory ⏳');
+            await s.send(['order', 'gw'], '202', GREEN);
+            await s.bounce('gw', 'userA', '202', RED);
+            who(s, v, 'A', 'timeout ✕', RED);
+          },
+        },
+        {
+          title: 'Retry with the same key: same order',
+          text: 'The app retries with the **same** key. `findByIdemKey("ck-A-77")` returns o-1 (a concurrent retry would hit **E11000** on the unique index). The API returns **202 o-1** again: one order, one charge. Same key with a **different body** → 422.',
+          observe: 'A gets the existing order back; no second row.',
+          say: 'A client retry with the same Idempotency-Key returns the same order.',
+          focus: v => [v.rows['o-1']],
+          async run(s, v) {
+            await s.send(['userA', 'gw', 'order'], 'retry · ck-A-77', BLUE);
+            await s.send(['order', 'orderdb'], 'find idemKey', BLUE);
+            await s.flash(420, 190, 'ck-A-77 → o-1 exists', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 700);
+            await s.pulse(v.rows['o-1'], 1, 1.05);
+            await s.send(['order', 'gw', 'userA'], '202 o-1', GREEN);
+            who(s, v, 'A', 'order o-1 (once)', GREEN);
+          },
+        },
+        {
+          title: 'Kafka is down: the order is still safe',
+          text: 'The relay tries to publish and Kafka is unreachable. Nothing is lost: the command sits in the **outbox**, the relay retries with backoff. Without an outbox, a `save()` then `kafka.send()` would leave o-1 stuck forever.',
+          observe: 'The send bounces; the outbox row stays unpublished.',
+          say: 'The outbox keeps the command while Kafka is down; the relay publishes it later.',
+          focus: v => [v.box, v.n.kafka],
+          async run(s, v) {
+            s.tone(v.n.kafka, 'fail'); s.setSub(v.n.kafka, '✕ unreachable', RED);
+            await s.send(['orderdb', 'relay'], 'unpublished ev-1', AMBER);
+            await s.bounce('relay', 'kafka', 'send', AMBER);
+            obx(s, v, 'outbox: ReserveInventory · retrying', RED); await s.pulse(v.box);
+          },
+        },
+        {
+          title: 'Kafka is back: published',
+          text: 'Two minutes later Kafka recovers and the relay publishes. If the relay crashes **after** sending but **before** marking the row, it sends again: consumers must dedupe (next step).',
+          observe: 'The command is on inventory-cmd.',
+          focus: v => [v.kaf],
+          async run(s, v) {
+            tick(s, v, '11:02:00');
+            s.tone(v.n.kafka, null); s.setSub(v.n.kafka, 'commands · events');
+            await s.send(['relay', 'kafka'], 'ReserveInventory', AMBER);
+            obx(s, v, 'outbox: ReserveInventory ✓', GREEN);
+            kaf(s, v, 'inventory-cmd @0 · committed —'); await s.pulse(v.kaf);
+          },
+        },
+        {
+          title: 'Inventory crashes before committing the offset',
+          text: 'Inventory reserves (hold o-1, available 5 → 4), sends `InventoryReserved`, then **dies before committing** the offset. After the rebalance the same command is delivered **again**.',
+          observe: 'Inventory crashes; offset 0 is redelivered.',
+          focus: v => [v.n.inventory],
+          async run(s, v) {
+            await s.send(['kafka', 'inventory', 'stockdb'], 'reserve o-1', TEAL);
+            stk(s, v, 4, 1); hld(s, v, 'hold o-1 HELD · expires 11:15', TEAL);
+            await s.send(['inventory', 'kafka'], 'InventoryReserved', TEAL);
+            s.tone(v.n.inventory, 'fail'); s.setSub(v.n.inventory, '✕ crashed', RED);
+            await s.shake(v.n.inventory);
+            s.tone(v.n.inventory, null); s.setSub(v.n.inventory, 'holds stock');
+            await s.send(['kafka', 'inventory'], 'offset 0 again', AMBER);
+          },
+        },
+        {
+          title: 'The hold _id = orderId makes it a no-op',
+          text: 'The handler first checks hold `o-1`: it exists, so it **skips** the decrement and just re-sends the reply (a racing duplicate would hit **E11000** on `_id` and abort). With a random hold id it would reserve a **second** unit for the same order.',
+          observe: 'Stock stays at 4; the reply is sent again.',
+          say: 'The hold id is the order id, so a redelivered command cannot reserve twice.',
+          focus: v => [v.stk, v.hold],
+          async run(s, v) {
+            await s.send(['inventory', 'stockdb'], 'hold o-1 exists?', TEAL);
+            await s.flash(940, 40, 'already held → skip', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 800);
+            await s.pulse(v.stk);
+            await s.send(['inventory', 'kafka'], 'InventoryReserved (again)', AMBER);
+            kaf(s, v, 'inventory-cmd committed @1');
+          },
+        },
+        {
+          title: 'The orchestrator ignores the duplicate reply',
+          text: 'The first `InventoryReserved` moves o-1 **PENDING → PAYMENT_PENDING** (matched 1). The duplicate finds status PAYMENT_PENDING, not PENDING → **matched 0** → ignored. No second ProcessPayment is written.',
+          observe: 'o-1 moves forward exactly once.',
+          focus: v => [v.rows['o-1']],
+          async run(s, v) {
+            await s.send(['kafka', 'order'], 'InventoryReserved', TEAL);
+            await ord(s, v, 'o-1', 'A', 'PAYMENT_PENDING');
+            await s.send(['kafka', 'order'], 'duplicate', AMBER);
+            await s.flash(420, 40, 'PENDING? no → matched 0 → ignore', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 900);
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Scope, services, scale, the hard guarantees.',
+      lines: [
+        ['I', 'Design the order flow for an e-commerce site.'],
+        ['C', 'From "Place order" to "Confirmed", including inventory and payment? Is shipping in scope?'],
+        ['I', 'Place order through confirmation; shipping just needs to be triggered.'],
+        ['C', 'Are orders, inventory and payments separate services with their own databases?'],
+        ['I', 'Yes, microservices, database per service.'],
+        ['C', 'Scale? Any flash sales?'],
+        ['I', 'About 1,000 orders per second, flash sales with 100× traffic on a few SKUs.'],
+        ['C', 'So we must never oversell, never double-charge, and never keep money for an order we cannot fulfil.'],
+        ['P', 'Write: DB per service · 1 k orders/s · flash sales · no oversell, no double charge.'],
+      ],
+      avoid: 'Jumping to "use a distributed transaction": say early why 2PC does not fit.',
+    },
+    {
+      t: 'Estimate the scale', min: 3, goal: 'Show where the pressure is.',
+      lines: [
+        ['C', '1 k orders/s × ~5 messages per saga ≈ **5 k Kafka messages/s**: comfortable.'],
+        ['C', 'Orders: ~2 KB × 86 M/day ≈ **170 GB/day** → shard the Order DB by orderId.'],
+        ['C', 'A flash sale puts **thousands of updates per second on one stock document**: that is the real hotspot.'],
+        ['P', 'Average load is easy; contention on hot SKUs and failure handling are the interview.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 5, goal: 'Contract, order states, idempotency.',
+      lines: [
+        ['C', '`POST /orders { items }` + `Idempotency-Key` → **202** `{ orderId, status: PENDING }`. `GET /orders/{id}`, `POST /orders/{id}/cancel`.'],
+        ['C', '`orders { _id, user, items, status, idemKey (unique) }`, `outbox { type, payload, published }`.'],
+        ['C', '`stock { _id: sku, available, reserved }`, `holds { _id: orderId, qty, status, expiresAt }`.'],
+        ['C', 'States: PENDING → PAYMENT_PENDING → CONFIRMED, or → CANCELLING → CANCELLED.'],
+        ['I', 'Why 202 and not 201?'],
+        ['C', 'The order is accepted, not finished: stock and payment complete asynchronously.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Saga, outbox, the happy path.',
+      lines: [
+        ['P', 'Draw: Users → Gateway → Order Svc (+ Order DB, outbox relay) → Kafka → Inventory, Payment, Shipping.'],
+        ['C', 'No distributed transaction across three databases, so a **saga**: the Order Service orchestrates and the order status is the saga state.'],
+        ['C', 'Every step is a local transaction plus an outbox row; a relay publishes to Kafka; participants reply on saga-events.'],
+        ['I', 'Why orchestration and not choreography?'],
+        ['C', 'With several steps and compensations, one owner of the flow is easier to reason about; choreography is fine for simple reactions like shipping.'],
+        ['P', 'Walk o-1: PENDING → reserve → PAYMENT_PENDING → charge → CONFIRMED → ship.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Races, compensations, duplicates.',
+      lines: [
+        ['I', 'Two customers buy the last unit at the same time.'],
+        ['C', 'The decrement has `available ≥ 1` in its filter; only one matches, the other is cancelled before any charge.'],
+        ['I', 'Payment fails after stock was reserved.'],
+        ['C', 'Compensation: ReleaseHold, guarded by `status: HELD` so it runs once, then the order is cancelled.'],
+        ['I', 'Payment succeeds after the hold expired.'],
+        ['C', 'The order is already CANCELLED, so the orchestrator ignores the confirmation and issues a refund with its own idempotency key.'],
+        ['I', 'Kafka redelivers a command.'],
+        ['C', 'The hold id is the order id, so the second reservation is a no-op; the orchestrator only moves from expected states.'],
+      ],
+      avoid: 'Saying "Kafka exactly-once solves it": the DB writes and the payment provider are outside Kafka transactions.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: an orchestrated saga of local transactions, an outbox for reliable messaging, conditional decrements with expiring holds, idempotency keys for the client and the provider, compensations instead of rollbacks.'],
+        ['C', 'Next: flash-sale admission (queue or tokens per SKU, stock split into buckets), alerts on saga age per status and DLQ size, maybe a workflow engine like Temporal if sagas multiply.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): 1–2 minutes, pause between paragraphs
+    summary: [
+      "Placing an order touches three services with their own databases: orders, inventory and payments. A distributed transaction across them isn't practical, so I'd use a **saga**: a sequence of local transactions, where the **Order Service** acts as the orchestrator and the order status is the saga state.",
+      "The client posts the order with an **Idempotency-Key**. In one MongoDB transaction the Order Service saves the order as **PENDING** and writes a `ReserveInventory` command to an **outbox** collection, then answers **202**. A relay, for example a change stream, publishes outbox rows to Kafka, so the order and the message can never disagree, even if Kafka is down for a minute.",
+      "Inventory reserves with a **conditional update**, `available ≥ 1` inside the filter, and writes a **hold** whose id is the order id and which expires in 15 minutes. So two buyers can't both get the last unit, and a redelivered command can't reserve twice. Then the orchestrator sends `ProcessPayment`, and Payment charges with an **idempotency key** per order, so a retry never charges twice. On success the order is **CONFIRMED** and Shipping reacts to the event.",
+      "If something fails, we don't roll back, we **compensate**. A declined card releases the hold and cancels the order. If the payment arrives after the hold expired, the order is already cancelled, so we **refund**. Kafka is at-least-once, so every step is **idempotent**: natural keys with unique indexes, and status-guarded updates like \"move to CONFIRMED only from PAYMENT_PENDING\".",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> place order, reserve stock, charge, confirm, cancel with compensation, order status API, trigger shipping.</li>
+        <li><b>Non-functional:</b> never oversell, never double-charge, place-order p99 &lt; ~300 ms, survive any one service being down, audit of every status change.</li>
+        <li><b>Out of scope (say so):</b> catalogue, cart, pricing and promotions, delivery tracking.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Orders</td><td class="m">1 k/s (100× in flash sales)</td><td>≈ 86 M/day</td></tr>
+        <tr><td>Saga messages</td><td class="m">~5 per order</td><td>≈ 5 k/s on Kafka</td></tr>
+        <tr><td>Order storage</td><td class="m">~2 KB × 86 M</td><td>≈ 170 GB/day → shard</td></tr>
+        <tr><td>Hotspot</td><td class="m">one stock document</td><td>flash sale → buckets / admission</td></tr></table>` },
+      { h: '3 · API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">POST /orders</td><td>{ items } + Idempotency-Key → 202 { orderId, status: PENDING }</td></tr>
+        <tr><td class="m">GET /orders/{id}</td><td>PENDING · PAYMENT_PENDING · CONFIRMED · CANCELLED</td></tr>
+        <tr><td class="m">POST /orders/{id}/cancel</td><td>before shipping → compensations</td></tr>
+        <tr><td class="m">POST /webhooks/payments</td><td>provider → Payment Svc (signed)</td></tr></table>` },
+      { h: '4 · Data & messages', color: '#8f4fc4', html: `<pre>// orders (Order DB) · unique index on idemKey
+{ _id: "o-1", user: "A", items: [{ sku: "SKU-42", qty: 1 }],
+  status: "PAYMENT_PENDING", idemKey: "ck-A-77" }
+// outbox (same DB, same transaction)
+{ _id: …, type: "ProcessPayment", orderId: "o-1", published: false }
+
+// stock + holds (Stock DB)
+{ _id: "SKU-42", available: 4, reserved: 1 }
+{ _id: "o-1", sku: "SKU-42", qty: 1, status: "HELD", expiresAt: … }</pre>
+        <p>Commands: <code>ReserveInventory</code>, <code>ConfirmHold</code>, <code>ReleaseHold</code>, <code>ProcessPayment</code>, <code>RefundPayment</code>. Replies on <code>saga-events</code>: Reserved / Rejected, HoldReleased / Expired, PaymentCompleted / Failed, OrderConfirmed. Key = orderId.</p>` },
+      { h: '5 · Saga states', color: '#2f6fe0', html: `<pre>PENDING          ─ InventoryReserved → PAYMENT_PENDING (+ ProcessPayment)
+                 ─ InventoryRejected → CANCELLED
+PAYMENT_PENDING  ─ PaymentCompleted  → CONFIRMED (+ ConfirmHold, OrderConfirmed)
+                 ─ PaymentFailed     → CANCELLING (+ ReleaseHold)
+                 ─ HoldExpired       → CANCELLED
+CANCELLING       ─ HoldReleased      → CANCELLED
+CANCELLED        ─ PaymentCompleted  → RefundPayment</pre>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>Outbox + relay: state change and message commit together; Kafka outages only delay the saga.</li>
+        <li>Idempotent everywhere: idemKey (client), hold _id = orderId (inventory), provider idempotency keys (payment), status-guarded transitions (orchestrator).</li>
+        <li>Holds expire, so stuck sagas give stock back; alert on saga age per status and on DLQ size.</li>
+        <li>Flash sales: admission queue / tokens per SKU, stock split into N bucket documents, per-user limits.</li></ul>` },
+    ],
+    decisions: [
+      ['Saga instead of 2PC', 'Each service commits locally; no locks held across services; Kafka and the provider can take part.', 'Temporary inconsistency (reserved, not yet paid) is visible.'],
+      ['Orchestration', 'One place owns the steps and compensations; easy to trace an order.', 'The orchestrator must not absorb other services\' business logic.'],
+      ['Transactional outbox', 'Order state and the next command commit together.', 'A relay to run; at-least-once publishing → consumers dedupe.'],
+      ['Conditional decrement + hold', 'No oversell; abandoned checkouts give stock back.', 'Hot SKUs contend on one document.'],
+      ['Reserve before charge', 'Nobody pays for an item that is gone.', 'Stock is held briefly for buyers who may not pay.'],
+      ['202 + async status', 'Fast checkout; no service waits on the provider.', 'The UI must handle "pending".'],
+    ],
+    code: [
+      { t: 'Place order: idempotency key + outbox in one transaction', code: `@PostMapping("/orders")
+@Transactional                                    // MongoTransactionManager
+public ResponseEntity<OrderView> place(@RequestHeader("Idempotency-Key") String key,
+                                       @RequestBody PlaceOrder req) {
+  Optional<Order> existing = orders.findByIdemKey(key);
+  if (existing.isPresent()) return accepted(existing.get());        // client retry → same order
+  Order o = orders.insert(Order.pending(key, req));                 // unique index on idemKey
+  outbox.insert(Outbox.of(new ReserveInventory(o.id(), req.sku(), req.qty())));  // same txn
+  return accepted(o);                                               // 202 PENDING
+}   // a racing retry hits E11000 → @ExceptionHandler returns the existing order` },
+      { t: 'Inventory: conditional decrement + hold (Spring Data MongoDB)', code: `boolean reserve(ReserveInventory c) {             // inside TransactionTemplate
+  if (mongo.exists(query(where("_id").is(c.orderId())), Hold.class))
+    return true;                                    // redelivered command → already reserved
+  UpdateResult r = mongo.updateFirst(
+      query(where("_id").is(c.sku()).and("available").gte(c.qty())),   // never below zero
+      new Update().inc("available", -c.qty()).inc("reserved", c.qty()),
+      Stock.class);
+  if (r.getModifiedCount() == 0) return false;      // sold out → InventoryRejected
+  mongo.insert(Hold.held(c.orderId(), c.sku(), c.qty(), now().plus(15, MINUTES)));  // _id = orderId
+  return true;                                      // → InventoryReserved
+}` },
+      { t: 'Orchestrator: status-guarded transitions (Java 21 switch)', code: `@KafkaListener(topics = "saga-events", groupId = "order-saga")
+@Transactional
+void on(SagaEvent e) {
+  switch (e) {
+    case InventoryReserved r -> advance(r.orderId(), PENDING, PAYMENT_PENDING, new ProcessPayment(r.orderId()));
+    case InventoryRejected r -> advance(r.orderId(), PENDING, CANCELLED, null);
+    case PaymentFailed p     -> advance(p.orderId(), PAYMENT_PENDING, CANCELLING, new ReleaseHold(p.orderId()));
+    case HoldReleased h      -> advance(h.orderId(), CANCELLING, CANCELLED, null);
+    case PaymentCompleted p  -> {
+      if (!advance(p.orderId(), PAYMENT_PENDING, CONFIRMED, new ConfirmHold(p.orderId())))
+        refundIfCancelled(p.orderId());             // late payment on a cancelled order
+    }
+    default -> { }
+  }
+}
+boolean advance(String id, Status from, Status to, Command next) {
+  UpdateResult r = mongo.updateFirst(query(where("_id").is(id).and("status").is(from)),
+                                     Update.update("status", to), Order.class);
+  if (r.getModifiedCount() == 0) return false;      // duplicate or stale event → ignore
+  if (next != null) outbox.insert(Outbox.of(next)); // same transaction
+  return true;
+}` },
+      { t: 'Payment: one charge per order (Stripe Java)', code: `PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
+    .setAmount(99_900L).setCurrency("inr")
+    .setPaymentMethod(cmd.paymentMethodId()).setConfirm(true)
+    .build();
+RequestOptions opts = RequestOptions.builder()
+    .setIdempotencyKey("pay-" + cmd.orderId())      // retry → same charge, never a second one
+    .build();
+PaymentIntent pi = PaymentIntent.create(params, opts);
+// timeout? unknown, not failed: retry with the SAME key or wait for the webhook` },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    cc: { name: 'Concurrency', color: '#ce3434' },
+    tx: { name: 'Transactions', color: '#8f4fc4' },
+    mq: { name: 'Messaging', color: '#c47d1e' },
+    sc: { name: 'Scale', color: '#2f6fe0' },
+    rr: { name: 'Payments & retries', color: '#13968a' },
+  },
+  followups: [
+    { g: 'cc', q: 'Two buyers order the last unit at the same moment.', what: 'Both ReserveInventory commands run in parallel.', why: 'Commands keyed by orderId land on different partitions.', how: 'Conditional decrement: `available ≥ 1` in the update filter; the loser gets modifiedCount 0 and is cancelled before payment.', trade: 'Hot SKUs contend on one document.', flow: 'race' },
+    { g: 'cc', q: 'Why not key commands by SKU so they are serialised?', what: 'All commands for a SKU go to one partition and one consumer.', why: 'That removes the race but creates a hot partition.', how: 'Fine for low-volume SKUs; for hot ones rely on the conditional update and split stock.', trade: 'Ordering vs parallelism; multi-SKU orders span partitions anyway.', flow: 'race' },
+    { g: 'cc', q: 'Can the product page show stock from a cache?', what: 'Yes, an approximate "in stock" flag.', why: 'Product pages are read-heavy.', how: 'Cache counts with a short TTL; the real check is the conditional decrement.', trade: 'Users may see "in stock" and then get "sold out".' },
+    { g: 'tx', q: 'Why not one distributed (2PC) transaction?', what: '2PC locks rows in every service until the coordinator decides.', why: 'Slow, blocks when a participant is down, and Kafka or the payment provider cannot join it.', how: 'Saga of local transactions with compensations.', trade: 'Intermediate states (reserved, not paid) are visible.', flow: 'comp' },
+    { g: 'tx', q: 'Why an outbox instead of save() then kafka.send()?', what: 'Two writes to two systems without a shared transaction.', why: 'A crash between them leaves an order with no command (stuck) or a command with no order.', how: 'Write the command to an outbox collection in the same DB transaction; a relay (change stream, Debezium, poller) publishes it.', trade: 'At-least-once publishing, so consumers dedupe.', flow: 'dup' },
+    { g: 'tx', q: 'Orchestration or choreography?', what: 'Both implement sagas.', why: 'Orchestration centralises the flow; choreography spreads it across event handlers.', how: 'Orchestration for multi-step flows with compensations; choreography for simple reactions (shipping, emails).', trade: 'The orchestrator can turn into a "god service" if it absorbs business logic.' },
+    { g: 'tx', q: 'Could a workflow engine replace this code?', what: 'Yes: Temporal, Camunda, AWS Step Functions.', why: 'They persist workflow state, timers and retries for you.', how: 'Use one when sagas are many and long-running; outbox + Kafka is enough for a few simple flows.', trade: 'A new platform to operate and learn.' },
+    { g: 'mq', q: 'The same command is delivered twice.', what: 'Without protection, stock is reserved twice.', why: 'At-least-once delivery after a crash or rebalance.', how: 'Hold `_id` = orderId → already reserved = skip (E11000 if racing); status-guarded updates in the orchestrator.', trade: 'Every handler needs a natural key.', flow: 'dup' },
+    { g: 'mq', q: 'Kafka is down when an order is placed.', what: 'Commands cannot be published.', why: 'Kafka carries every saga step.', how: 'The order is still accepted (outbox); the relay publishes when Kafka returns.', trade: 'The saga is delayed; alert on the oldest unpublished outbox row.', flow: 'dup' },
+    { g: 'mq', q: 'The Inventory DB is down. What happens to new orders?', what: 'ReserveInventory commands wait in Kafka.', why: 'Inventory cannot commit.', how: 'Orders stay PENDING; consumers retry with backoff, then a DLQ; alert on saga age.', trade: 'Longer pending times; the UI shows "processing".' },
+    { g: 'sc', q: 'Flash sale: 100 k users for 500 units.', what: 'Massive contention on one stock document.', why: 'Every reservation updates the same document.', how: 'Admission queue or tokens per SKU, stock split into N bucket documents, per-user limits at the gateway.', trade: 'A bucket can say "sold out" while another still has units → rebalance buckets.', flow: 'race' },
+    { g: 'sc', q: 'How do you keep place-order fast?', what: 'The user waits only for the local insert.', why: 'Inventory and payment are asynchronous.', how: 'Return 202 after the local transaction; push the final status (WebSocket / notification).', trade: 'The UX must handle "pending".', flow: 'happy' },
+    { g: 'rr', q: 'Payment fails after stock was reserved.', what: 'Stock is held for an order that will not complete.', why: 'The reservation committed in another database.', how: 'Compensation: ReleaseHold, guarded by `status: HELD` so it runs once; then CANCELLED.', trade: 'Stock is unavailable to others for a few seconds.', flow: 'comp' },
+    { g: 'rr', q: 'Payment succeeds after the hold expired.', what: 'The order is already cancelled and the stock released.', why: 'Payment success alone does not prove the order is still valid.', how: 'The orchestrator sees CANCELLED → RefundPayment with key `refund-o-1` (or re-reserve if stock allows).', trade: 'Refunds take days; unhappy customer.', flow: 'late' },
+    { g: 'rr', q: 'The client retries POST /orders. Two orders?', what: 'Without a key, yes.', why: 'A timeout does not tell the client whether the server succeeded.', how: 'Idempotency-Key with a unique index; same key + different body → 422.', trade: 'Keys must be kept for a retention window.', flow: 'dup' },
+    { g: 'rr', q: 'The payment call times out. Failed or not?', what: 'Unknown: the provider may have charged.', why: 'A timeout is not a failure.', how: 'Retry with the same idempotency key, wait for the webhook, or query the provider; never charge again with a new key.', trade: 'The order stays pending longer.', flow: 'late' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>

@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="sd-file-upload">
-<meta name="doc-version" content="v2.2">
+<meta name="doc-version" content="v2.3">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>File Upload & Storage · System Design · v2.2</title>
+<title>File Upload & Storage · System Design · v2.3</title>
 <link rel="stylesheet" href="engine/sd.css">
 </head>
 <body>
@@ -105,6 +105,7 @@ window.DESIGN = {
       why: 'Auth and abuse protection in one place, before any URL is signed. Uploads cost storage money, so limits matter.',
       without: 'Every service re-implements auth; nothing stops one user from requesting millions of upload URLs.',
       tech: 'Spring Cloud Gateway / AWS ALB / API Gateway', scale: 'Light: no file bytes pass through it.', fails: 'Redundant instances behind DNS / LB; health checks drop bad ones.',
+      core: ['gw', 'API Gateway'],
     },
     api: {
       name: 'Upload API (control plane)',
@@ -119,6 +120,7 @@ window.DESIGN = {
       why: 'S3 knows bytes, not business rules. Downloads are decided by the **record** (READY + shared with you), not by whether an object exists.',
       without: 'You would serve whatever is in the bucket, including unscanned or infected files, and could not list or share files efficiently.',
       tech: 'MongoDB (or PostgreSQL); index `{ owner: 1, createdAt: -1 }` and `{ status: 1, createdAt: 1 }`', scale: '~1 KB per file, ~2 GB/day: easy. Shard by owner if needed.', fails: 'Down → no new upload URLs (503); uploads already in flight still land in S3 and the scanner retries its update later.',
+      core: ['db', 'DB scaling'],
     },
     s3: {
       name: 'S3 bucket (bytes)',
@@ -126,6 +128,7 @@ window.DESIGN = {
       why: 'Cheap, practically unlimited, 11-nines-durable storage that accepts uploads directly from clients using signed URLs.',
       without: 'Blobs in the database: huge backups, slow replication, and app servers proxying every byte.',
       tech: 'Amazon S3 (or GCS / Azure Blob); multipart up to 5 TiB per object; lifecycle rules for tiers and cleanup', scale: 'Practically unlimited; spread keys across prefixes for very high request rates.', fails: 'Very rare; event notifications are at-least-once and can arrive late or out of order.',
+      core: ['s3', 'Storage · S3'],
     },
     events: {
       name: 'S3 events → SQS',
@@ -133,6 +136,7 @@ window.DESIGN = {
       why: 'S3 knows when an object **really** exists. Driving the scan from S3 means a client that crashes, or lies, cannot skip it.',
       without: 'You depend on the client calling "upload finished"; some never will, and a malicious one could claim a file is done before it is.',
       tech: 'S3 Event Notifications → SQS (or EventBridge), with a DLQ', scale: 'Buffers bursts; scanners scale on queue depth.', fails: 'Duplicates happen (at-least-once) → idempotent handler; poison messages go to the DLQ after N receives.',
+      core: ['kafka', 'Queue · Kafka'],
     },
     scanner: {
       name: 'Virus scanner',
@@ -693,7 +697,12 @@ window.DESIGN = {
 
   // ---------------- 5 · interview answer ----------------
   answer: {
-    summary: 'Clients **never send file bytes through our servers**. The client asks the Upload API for a URL; the API checks type, size and quota, inserts a **PENDING** record and signs, locally, a **presigned PUT for exactly one key and content type, valid 15 minutes**. The client uploads **straight to S3**; large files use **multipart** with 10 MB parts that are retried individually and assembled with CompleteMultipartUpload. S3 sends an **ObjectCreated** event to a queue; the scanner checks the size, scans the stream and **conditionally** updates the record from PENDING to READY or INFECTED, which also makes duplicate events harmless. Downloads go through the API for the access and status check and **redirect to a 5-minute presigned GET**. Presigned URLs are bearer tokens, so they are short and scoped; a cleanup job expires abandoned PENDING records and a lifecycle rule aborts incomplete multipart uploads.',
+    summary: [
+      'For file upload, the key decision is that **file bytes never go through our servers**. Our Spring Boot Upload API is only the control plane: the client asks it for an upload URL, it checks the type, size and the user\'s quota, inserts a **PENDING** record in MongoDB, and signs a **presigned PUT** for exactly one key and content type, valid for about fifteen minutes. Signing is done locally, so it is cheap.',
+      'The client then uploads **straight to S3**. Large files use **multipart upload**: say 10 MB parts, sent in parallel and retried individually, and CompleteMultipartUpload stitches them together. So a flaky mobile network only costs one part, not the whole file, and our servers never hold gigabytes in memory.',
+      'When the object lands, S3 sends an **ObjectCreated** event to a queue. A scanner worker checks the real size, virus-scans the stream, and then **conditionally** updates the record from PENDING to READY or INFECTED. Because that update only matches PENDING, a duplicate or late event is harmless. Downloads go back through the API, which checks access and status and then redirects to a short **five-minute presigned GET**.',
+      'Presigned URLs are basically bearer tokens, so I keep them short-lived and scoped to one key, keep the bucket private, and generate the keys myself instead of using user file names. A cleanup job expires PENDING records that never completed, and a **lifecycle rule** aborts incomplete multipart uploads so we do not pay for orphaned parts.',
+    ],
     sections: [
       { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
         <li><b>Functional:</b> upload (with progress and resume for big files), scan, share, download, delete.</li>

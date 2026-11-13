@@ -1,0 +1,883 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-chat">
+<meta name="doc-version" content="v2.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat System · System Design · v2.0</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// Chat system (WhatsApp-style 1:1 and groups). WebSockets are taught HERE (flow "Why WebSockets?"), not in
+// Core Components. Load balancer, Redis, Kafka and DB basics live in 00_Core_Components.html.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+const KEEP = '#d5d9dc';
+
+// Message row colours (the Message DB is the source of truth; ticks show receipts).
+const ST = {
+  NEW: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  SENT: { fill: '#f3f6fe', stroke: BLUE, color: BLUE },
+  DELIVERED: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
+  BAD: { fill: '#fff4f4', stroke: RED, color: RED },
+};
+const fmt = (id, from, text, tick = '') => `${id.padEnd(9)}${from.padEnd(3)}${text.padEnd(13)}${tick}`;
+const PRES = 'user:A→ws1 · user:C→ws1 · user:B→ws2';
+
+// State shown next to the components: messages, the conversation counter, presence, Kafka, users.
+function setup(s, v, { rows = [], clock = '12:00:00', seq = 'c-AB · lastSeq 41', pres = PRES, kaf = 'notify —', a = 'online · ws1', b = 'online · ws2', c = 'online · ws1' } = {}) {
+  v.clock = s.chip(15, 500, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
+  v.log = s.store(842, 350, 250, 'MESSAGE DB · messages', { color: TEAL });
+  v.rows = {};
+  rows.forEach(([key, from, text, st, tick]) => { s.row(v.log, fmt(key, from, text, tick), { ...ST[st], now: true }); v.rows[key] = v.log.rows[v.log.rows.length - 1]; });
+  v.seq = s.chip(695, 468, seq, { mono: true, color: TEAL });
+  v.pres = s.chip(695, 128, pres, { mono: true, color: RED });
+  v.kaf = s.chip(965, 198, kaf, { mono: true, color: PURPLE });
+  v.ua = s.chip(70, 121, a, { color: GREY });
+  v.uc = s.chip(70, 261, c, { color: GREY });
+  v.ub = s.chip(70, 416, b, { color: GREY });
+  return v;
+}
+async function put(s, v, key, from, text, st, tick = '') {
+  const txt = fmt(key, from, text, tick), r = v.rows[key];
+  if (!r) { v.rows[key] = await s.row(v.log, txt, ST[st]); return; }
+  r.label.textContent = txt;
+  s.paintRow(r, ST[st]);
+  await s.pulse(r, 1, 1.05);
+}
+async function clearRows(s, v) { for (const r of [...v.log.rows]) await s.unrow(v.log, r); v.rows = {}; }
+const paint = color => ({ color, stroke: color === GREY ? KEEP : color });
+const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
+const seq = (s, v, t) => s.setChip(v.seq, t);
+const pres = (s, v, t, color = RED) => s.setChip(v.pres, t, { color });
+const kaf = (s, v, t, color = PURPLE) => s.setChip(v.kaf, t, { color });
+const who = (s, v, u, txt, color = GREY) => s.setChip(u === 'B' ? v.ub : u === 'C' ? v.uc : v.ua, txt, paint(color));
+const ok = { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, bad = { mono: true, color: RED, stroke: RED, fill: '#fff4f4' };
+
+window.DESIGN = {
+  id: 'chat', n: 7, title: 'Chat System', tagline: 'one open WebSocket per device, one sequence per conversation, sync is the guarantee',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'Devices & load balancer', x0: 0, x1: 300, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'Every online device keeps **one WebSocket** open: a single TCP connection that both sides can write to at any time. The **load balancer** spreads **new connections**, not requests.',
+      detail: 'The limit is open connections (memory, file descriptors), not requests per second.' },
+    { id: 'app', title: 'WebSocket gateways', x0: 300, x1: 560, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: 'Gateways only **hold sockets**: authenticate the upgrade, register **presence**, forward frames to the Chat Service and push frames down to devices.',
+      detail: 'Thin and non-blocking (Netty / WebFlux): 100 k+ sockets per node.' },
+    { id: 'data', title: 'Chat core', x0: 560, x1: 830, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: 'The **Chat Service** dedupes by `clientMsgId`, assigns a **per-conversation sequence**, stores, acks and routes. **Presence** (Redis) says which gateway holds each user.',
+      detail: 'The **seq** is the order every device shows and the cursor every device syncs from.' },
+    { id: 'async', title: 'Offline path', x0: 830, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'Offline users get a **push** through Kafka and FCM / APNs. A push is only a **wake-up hint**: the message itself arrives by **sync** when the app reconnects.',
+      detail: 'The Message DB (bottom right) is the source of truth for history.' },
+  ],
+  layersIntro: {
+    title: 'Sockets in front, sequence in the middle, sync as the safety net',
+    text: 'Devices keep a **WebSocket** to a **gateway**. The **Chat Service** gives each message the next **seq** of its conversation, stores it, acks the sender and routes it through **presence** to the recipient\'s gateway; offline users get a **push**, then **sync** everything after their last seq. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    userA: { x: 70, y: 75, w: 120, label: 'User A', sub: 'phone', icon: '👤', layer: 'entry' },
+    userC: { x: 70, y: 215, w: 120, label: 'User C', sub: 'phone', icon: '👤', layer: 'entry' },
+    userB: { x: 70, y: 370, w: 120, label: 'User B', sub: 'phone', icon: '👤', layer: 'entry' },
+    lb: { x: 225, y: 220, w: 128, label: 'Load Balancer', sub: 'L4 · upgrade', icon: '⚖️', layer: 'entry' },
+    ws1: { x: 430, y: 110, w: 160, label: 'WS Gateway 1', sub: 'holds sockets', icon: '🔌', layer: 'app' },
+    ws2: { x: 430, y: 330, w: 160, label: 'WS Gateway 2', sub: 'holds sockets', icon: '🔌', layer: 'app' },
+    presence: { x: 695, y: 80, w: 160, label: 'Presence', sub: 'Redis · user → gw', icon: '⚡', layer: 'data' },
+    chat: { x: 695, y: 240, w: 160, label: 'Chat Svc', sub: 'dedupe · seq · route', icon: '💬', layer: 'data' },
+    msgdb: { x: 695, y: 420, w: 160, label: 'Message DB', sub: 'by conversation', icon: '🍃', layer: 'data' },
+    kafka: { x: 965, y: 150, w: 170, label: 'Kafka', sub: 'offline notify', icon: '📨', layer: 'async' },
+    push: { x: 965, y: 270, w: 170, label: 'Push (FCM)', sub: 'external', icon: '📲', layer: 'async' },
+  },
+  wires: [['userA', 'lb'], ['userC', 'lb'], ['userB', 'lb'], ['lb', 'ws1'], ['lb', 'ws2'], ['ws1', 'presence'], ['ws2', 'presence'], ['ws1', 'chat'], ['ws2', 'chat'], ['chat', 'presence'], ['chat', 'msgdb'], ['chat', 'kafka'], ['kafka', 'push']],
+
+  components: {
+    userA: {
+      name: 'Devices (A, C)',
+      what: 'The app keeps one WebSocket open, sends each message with a **clientMsgId** generated on the phone, and remembers the **last seq** it has per conversation.',
+      why: 'clientMsgId makes resends recognisable; lastSeq makes catching up a single query.',
+      without: 'No client id → every resend is a new message. No lastSeq → the app cannot tell what it missed.',
+      tech: 'Mobile app: WebSocket client + local SQLite', scale: 'Millions of devices online at once.', fails: 'Reconnect with exponential backoff **+ jitter**, then sync from lastSeq.',
+    },
+    userC: {
+      name: 'Group member with a slow clock',
+      what: 'In the group flow, C\'s phone clock is 5 seconds behind.',
+      why: 'Shows why ordering must never use device timestamps.',
+      without: '—',
+      tech: 'Any phone', scale: '—', fails: 'Its timestamps are wrong; its messages still get the right seq.',
+    },
+    userB: {
+      name: 'Recipient (B)',
+      what: 'Receives messages live over its socket, acks delivery (✓✓), or catches up by sync after being offline.',
+      why: 'The delivered ack is what turns one tick into two.',
+      without: '—',
+      tech: 'Mobile app', scale: '—', fails: 'Offline or on a dead gateway → push hint + sync on reconnect.',
+    },
+    lb: {
+      name: 'Load balancer (WebSocket-aware)',
+      what: 'Spreads **new** WebSocket connections across gateways. After the `101 Switching Protocols` handshake the connection stays on that gateway.',
+      why: 'Connections live for hours, so balancing happens per connection, not per message.',
+      without: 'Clients must know gateway addresses; one hot gateway gets all new users.',
+      tech: 'L4 (AWS NLB) or L7 that supports `Upgrade: websocket`; idle timeout above the heartbeat interval', scale: 'Connection count, not request rate.', fails: 'Draining a gateway closes its sockets; clients reconnect elsewhere.',
+      core: ['lb', 'Load balancer'],
+    },
+    ws1: {
+      name: 'WebSocket gateways',
+      what: 'Accept the upgrade (JWT checked once), keep sockets in memory, write **presence**, forward frames to the Chat Service, push frames to devices, answer heartbeats.',
+      why: 'Separates "holding millions of connections" from chat logic, so each scales on its own.',
+      without: 'Chat logic inside the socket servers: every deploy of business code drops millions of sockets.',
+      tech: 'Netty / Spring WebFlux / Spring `WebSocketHandler`', scale: '~100 k+ sockets per node; add nodes.', fails: 'A crash drops all its sockets; presence entries expire by TTL; clients reconnect.',
+    },
+    ws2: {
+      name: 'WS Gateway 2',
+      what: 'Same as gateway 1; B is connected here in most flows.',
+      why: 'Two gateways show why we need presence: A and B are on different machines.',
+      without: '—',
+      tech: 'Same', scale: 'Same', fails: 'Crashes in the last flow.',
+    },
+    presence: {
+      name: 'Presence registry',
+      what: '`user:B → "ws2"` with a **TTL** (60 s) refreshed by heartbeats every 20 s.',
+      why: 'The Chat Service must know **which gateway** holds the recipient\'s socket.',
+      without: 'Broadcast every message to every gateway, or no way to tell online from offline.',
+      tech: 'Redis `SET user:B ws2 EX 60` + `EXPIRE` on heartbeat', scale: 'Tiny values, very high read rate.', fails: 'Stale entry after a crash → delivery fails → treat as offline (push + sync).',
+      core: ['cache', 'Cache · Redis'],
+    },
+    chat: {
+      name: 'Chat Service',
+      what: 'Dedupes by `(conv, clientMsgId)`, increments the conversation\'s `lastSeq`, stores the message, acks the sender, looks up presence and routes; records receipts.',
+      why: 'One place decides order and identity of messages.',
+      without: 'Gateways would each number messages differently and duplicates would slip through.',
+      tech: 'Spring Boot, stateless', scale: 'Partition work by conversation id.', fails: 'Crash after storing → the client resends → deduped, original seq acked.',
+    },
+    msgdb: {
+      name: 'Message DB',
+      what: '`conversations { _id, members, lastSeq }` and `messages { _id: "c-AB:42", conv, seq, from, clientMsgId, text }`. Indexes `{conv, seq}` and unique `{conv, clientMsgId}`.',
+      why: '"Everything in c-AB after seq 41" is one indexed range read: that is the sync.',
+      without: 'No history for new devices or offline users.',
+      tech: 'MongoDB here; Cassandra / ScyllaDB at WhatsApp scale', scale: 'Shard by conversation id.', fails: 'Primary failover pauses sends for seconds; clients keep them in their outbox.',
+      core: ['db', 'DB scaling'],
+    },
+    kafka: {
+      name: 'Kafka (offline notifications)',
+      what: '`notify` topic: "user B has a new message from A". Key = recipient id.',
+      why: 'Keeps the slow push call off the hot path.',
+      without: 'The Chat Service waits on FCM for every offline recipient.',
+      tech: 'Kafka', scale: 'Partitions by recipient.', fails: 'Redelivery → maybe two pushes; harmless, it is only a hint.',
+      core: ['kafka', 'Queue · Kafka'],
+    },
+    push: {
+      name: 'Push provider (FCM / APNs)',
+      what: 'Wakes the phone with "A: Call me".',
+      why: 'The only way to reach an app that is not running.',
+      without: 'Offline users only see messages when they happen to open the app.',
+      tech: 'FCM HTTP v1 / APNs', scale: 'External.', fails: 'Best effort: can be late, doubled or dropped. Sync covers it.',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Open socket, next seq, ack, route: sync covers the rest.',
+    points: [
+      { t: 'Socket', color: AMBER, d: 'Each device keeps **one WebSocket** to a gateway; presence records **user → gateway**.' },
+      { t: 'Sequence', color: TEAL, d: 'Chat Svc gives the message the next **seq** of its conversation and stores it.' },
+      { t: 'Ack & route', color: BLUE, d: 'Sender gets **✓**; presence finds B\'s gateway; B acks and A sees **✓✓**.' },
+      { t: 'Offline', color: PURPLE, d: 'No socket? A **push** wakes the phone; it **syncs** everything after its last seq.' },
+    ],
+    stats: [['10 M', 'open sockets'], ['100 k+', 'sockets / gateway'], ['< 300 ms', 'online delivery'], ['0', 'lost messages']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v); v.ready = true; }
+    await clearRows(s, v);
+    seq(s, v, 'c-AB · lastSeq 41'); pres(s, v, 'user:A→ws1 · user:C→ws1'); kaf(s, v, 'notify —');
+    who(s, v, 'A', 'online · ws1'); who(s, v, 'B', 'offline'); who(s, v, 'C', 'online · ws1');
+
+    ui.say(0); ui.cap('**Socket** · B opens one WebSocket; the gateway records where B is connected');
+    await s.send(['userB', 'lb', 'ws2'], 'Upgrade: websocket', AMBER, { ms: 420 });
+    await s.send(['ws2', 'lb', 'userB'], '101 Switching', GREEN, { ms: 380 });
+    await s.send(['ws2', 'presence'], 'SET user:B ws2', RED, { ms: 400 });
+    pres(s, v, PRES); who(s, v, 'B', 'online · ws2', GREEN);
+    ui.say(1); ui.cap('**Sequence** · A sends "Hi"; Chat Svc assigns seq 42 and stores it');
+    await s.send(['userA', 'lb', 'ws1', 'chat'], '"Hi" · a-901', BLUE, { ms: 400 });
+    await s.send(['chat', 'msgdb'], 'lastSeq → 42', TEAL, { ms: 420 });
+    seq(s, v, 'c-AB · lastSeq 42');
+    await put(s, v, 'c-AB:42', 'A', 'Hi', 'NEW');
+    ui.say(2); ui.cap('**Ack & route** · ✓ to A, presence says ws2, B gets it and acks: ✓✓');
+    await s.send(['chat', 'ws1', 'lb', 'userA'], 'ack 42 ✓', GREEN, { ms: 360 });
+    await put(s, v, 'c-AB:42', 'A', 'Hi', 'SENT', '✓');
+    await s.send(['chat', 'presence'], 'GET user:B', RED, { ms: 380 });
+    await s.send(['chat', 'ws2', 'lb', 'userB'], 'seq 42 "Hi"', BLUE, { ms: 380 });
+    who(s, v, 'B', 'got "Hi"', GREEN);
+    await s.send(['userB', 'lb', 'ws2', 'chat'], 'delivered 42', GREEN, { ms: 360 });
+    await put(s, v, 'c-AB:42', 'A', 'Hi', 'DELIVERED', '✓✓');
+    who(s, v, 'A', '"Hi" ✓✓', GREEN);
+    ui.say(3); ui.cap('**Offline** · C is offline: a push wakes the phone, the app syncs after its last seq');
+    who(s, v, 'C', 'offline · seq 41', GREY); pres(s, v, 'user:A→ws1 · user:B→ws2');
+    await s.send(['chat', 'kafka', 'push'], 'notify C', PURPLE, { ms: 400 });
+    kaf(s, v, 'notify @88 → C');
+    await s.flash(70, 175, '📲 A: Hi', { color: PURPLE, stroke: PURPLE }, 700);
+    await s.send(['userC', 'lb', 'ws1', 'chat', 'msgdb'], 'sync > 41', TEAL, { ms: 360 });
+    await s.send(['chat', 'ws1', 'lb', 'userC'], '[42]', GREEN, { ms: 360 });
+    who(s, v, 'C', 'synced · has 42', GREEN);
+    await s.wait(1800);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'ws', title: 'Why WebSockets?', sub: 'polling vs one open socket', color: AMBER,
+      build: (s, v) => setup(s, v, { pres: 'user:A→ws1 · user:C→ws1', b: 'polling every 3 s' }),
+      takeaway: 'Polling asks "anything new?" millions of times a second and still arrives late. A **WebSocket** is upgraded from HTTP **once** (`101 Switching Protocols`) and then stays open, so the server **pushes** each message the moment it exists. Heartbeats keep it (and presence) alive.',
+      steps: [
+        {
+          title: '❌ Polling: "anything new?" every 3 seconds',
+          text: 'Without a socket, B\'s app sends `GET /conversations/c-AB/messages?afterSeq=41` every 3 s. Almost every answer is **empty**. With 10 M online users that is **~3.3 M requests/s**, each with headers, TLS and auth.',
+          observe: 'Three polls, three empty answers.',
+          focus: v => [v.n.userB, v.ub],
+          async run(s, v) {
+            for (let i = 1; i <= 3; i++) {
+              await s.send(['userB', 'lb', 'ws2', 'chat'], 'GET ?afterSeq=41', BLUE, { ms: 320 });
+              await s.send(['chat', 'ws2', 'lb', 'userB'], '[] empty', GREY, { ms: 300 });
+              who(s, v, 'B', `polls ${i} · all empty`, AMBER);
+            }
+          },
+        },
+        {
+          title: '❌ ...and messages still arrive late',
+          text: 'A sends "Hi" at 12:00:00.5. It is stored at once, but B only sees it on its **next poll**, up to 3 s later. Polling faster makes the load worse; polling slower makes chat feel broken. (Long polling helps, but each answer still costs a new request.)',
+          observe: 'B gets "Hi" about 2.5 s after it was sent.',
+          say: 'Polling either wastes millions of empty requests or delivers late.',
+          focus: v => [v.n.userB],
+          async run(s, v) {
+            await s.send(['userA', 'lb', 'ws1', 'chat'], '"Hi"', BLUE);
+            await s.send(['chat', 'msgdb'], 'seq 42', TEAL);
+            seq(s, v, 'c-AB · lastSeq 42'); await put(s, v, 'c-AB:42', 'A', 'Hi', 'SENT', '✓');
+            await s.flash(70, 330, 'waiting for the next poll…', { color: AMBER, stroke: AMBER }, 900);
+            tick(s, v, '12:00:03');
+            await s.send(['userB', 'lb', 'ws2', 'chat'], 'GET ?afterSeq=41', BLUE, { ms: 320 });
+            await s.send(['chat', 'ws2', 'lb', 'userB'], '[42 "Hi"]', AMBER, { ms: 320 });
+            who(s, v, 'B', 'got "Hi" 2.5 s late', RED);
+          },
+        },
+        {
+          title: '✅ Upgrade to a WebSocket once',
+          text: 'B sends `GET /ws` with `Upgrade: websocket` and its JWT. The gateway checks the token **once** and answers **`101 Switching Protocols`**. The TCP connection now stays open and carries small **frames** in both directions. The gateway writes presence: `SET user:B ws2 EX 60`.',
+          observe: 'B has an open socket on ws2; presence knows it.',
+          say: 'A WebSocket is one HTTP upgrade, then a long-lived two-way connection.',
+          focus: v => [v.n.ws2, v.pres],
+          async run(s, v) {
+            tick(s, v, '12:00:05');
+            await s.send(['userB', 'lb', 'ws2'], 'GET /ws · Upgrade', AMBER);
+            await s.send(['ws2', 'lb', 'userB'], '101 Switching Protocols', GREEN);
+            who(s, v, 'B', 'socket open · ws2', GREEN);
+            await s.send(['ws2', 'presence'], 'SET user:B ws2 EX 60', RED);
+            pres(s, v, PRES); await s.pulse(v.pres);
+          },
+        },
+        {
+          title: '✅ The server pushes the moment a message exists',
+          text: 'A sends "Hi again". The Chat Service stores seq 43, looks up B (`ws2`) and **writes a frame** to B\'s open socket. No request from B, no empty answers: about **100 ms** end to end.',
+          observe: 'B gets the message almost instantly.',
+          focus: v => [v.n.userB],
+          async run(s, v) {
+            await s.send(['userA', 'lb', 'ws1', 'chat'], '"Hi again"', BLUE);
+            await s.send(['chat', 'msgdb'], 'seq 43', TEAL);
+            seq(s, v, 'c-AB · lastSeq 43'); await put(s, v, 'c-AB:43', 'A', 'Hi again', 'SENT', '✓');
+            await s.send(['chat', 'presence'], 'GET user:B', RED);
+            await s.send(['chat', 'ws2', 'lb', 'userB'], 'frame seq 43', GREEN);
+            who(s, v, 'B', 'got it in ~100 ms', GREEN);
+          },
+        },
+        {
+          title: 'Keep it alive: heartbeats',
+          text: 'Every ~20 s the app sends `ping`, the gateway answers `pong` and refreshes presence (`EXPIRE user:B 60`). Heartbeats detect dead connections and stop proxies / the LB from closing an **idle** socket (keep the LB idle timeout above the interval). The cost moves from requests to **open connections**: memory and file descriptors per socket.',
+          observe: 'Ping, pong, presence TTL refreshed.',
+          say: 'Heartbeats keep the socket and the presence entry alive.',
+          focus: v => [v.n.ws2, v.pres],
+          async run(s, v) {
+            tick(s, v, '12:00:25');
+            await s.send(['userB', 'lb', 'ws2'], 'ping', GREY);
+            await s.send(['ws2', 'lb', 'userB'], 'pong', GREEN);
+            await s.send(['ws2', 'presence'], 'EXPIRE user:B 60', RED);
+            await s.pulse(v.pres);
+          },
+        },
+      ],
+    },
+    {
+      id: 'happy', title: 'A → B: "Hi"', sub: 'seq · store · ack · route · ✓✓', color: BLUE,
+      build: (s, v) => setup(s, v),
+      takeaway: 'The server, not the phone, decides the order: **next seq of the conversation**. One tick = stored on the server, two ticks = the recipient\'s device acked it. Receipts use `$max`, so they only move forward.',
+      steps: [
+        {
+          title: 'A sends a frame over its socket',
+          text: '`{ type: "send", conv: "c-AB", clientMsgId: "a-901", text: "Hi" }`. The **clientMsgId** is generated on the phone and stored in the app\'s local outbox until the server acks it.',
+          observe: 'The frame reaches the Chat Service through gateway 1.',
+          focus: v => [v.n.chat],
+          async run(s, v) {
+            who(s, v, 'A', '"Hi" 🕓 sending', AMBER);
+            await s.send(['userA', 'lb', 'ws1', 'chat'], 'send "Hi" · a-901', BLUE);
+          },
+        },
+        {
+          title: 'Next seq, then store',
+          text: '`findOneAndUpdate({ _id: "c-AB" }, { $inc: { lastSeq: 1 } })` → **42**, then insert `{ _id: "c-AB:42", seq: 42, clientMsgId: "a-901", from: "A", text: "Hi" }`. The `$inc` on one document is atomic, so two senders never get the same seq.',
+          observe: 'lastSeq 41 → 42; message c-AB:42 is stored.',
+          say: 'The server assigns the next sequence number of the conversation and stores the message.',
+          focus: v => [v.seq, v.log],
+          async run(s, v) {
+            await s.send(['chat', 'msgdb'], '$inc lastSeq → 42', TEAL);
+            seq(s, v, 'c-AB · lastSeq 42'); await s.pulse(v.seq);
+            await put(s, v, 'c-AB:42', 'A', 'Hi', 'NEW');
+          },
+        },
+        {
+          title: 'Ack the sender: one tick',
+          text: '`{ type: "ack", clientMsgId: "a-901", seq: 42 }`. A\'s app removes the message from its local outbox and shows **✓** (stored on the server).',
+          observe: 'A sees one tick.',
+          focus: v => [v.n.userA],
+          async run(s, v) {
+            await s.send(['chat', 'ws1', 'lb', 'userA'], 'ack seq 42', GREEN);
+            await put(s, v, 'c-AB:42', 'A', 'Hi', 'SENT', '✓');
+            who(s, v, 'A', '"Hi" ✓ sent', BLUE);
+          },
+        },
+        {
+          title: 'Where is B connected?',
+          text: '`GET user:B` in Redis → **"ws2"**. A and B are on different gateways, which is the normal case with millions of users.',
+          observe: 'Presence answers ws2.',
+          say: 'Presence in Redis tells us which gateway holds the recipient\'s socket.',
+          focus: v => [v.pres],
+          async run(s, v) {
+            await s.send(['chat', 'presence'], 'GET user:B', RED);
+            await s.send(['presence', 'chat'], '"ws2"', GREEN);
+          },
+        },
+        {
+          title: 'Deliver to B',
+          text: 'The Chat Service calls gateway 2, which writes `{ type: "msg", conv: "c-AB", seq: 42, from: "A", text: "Hi" }` to B\'s socket. B\'s app stores it and sets its lastSeq to 42.',
+          observe: 'B receives seq 42.',
+          focus: v => [v.n.userB],
+          async run(s, v) {
+            await s.send(['chat', 'ws2', 'lb', 'userB'], 'seq 42 "Hi"', BLUE);
+            who(s, v, 'B', 'got "Hi" · seq 42', GREEN);
+          },
+        },
+        {
+          title: 'Delivered receipt: two ticks',
+          text: 'B acks `{ type: "delivered", upToSeq: 42 }`; the service stores `receipts.updateOne({ _id: "c-AB:B" }, { $max: { deliveredSeq: 42 } })` and tells A. `$max` keeps receipts monotonic even if acks arrive out of order. "Read" (blue ticks) works the same way with `readSeq`.',
+          observe: 'A sees ✓✓.',
+          focus: v => [v.rows['c-AB:42'], v.n.userA],
+          async run(s, v) {
+            await s.send(['userB', 'lb', 'ws2', 'chat'], 'delivered ≤ 42', GREEN);
+            await s.send(['chat', 'msgdb'], '$max deliveredSeq', TEAL);
+            await put(s, v, 'c-AB:42', 'A', 'Hi', 'DELIVERED', '✓✓');
+            await s.send(['chat', 'ws1', 'lb', 'userA'], 'receipt ✓✓', GREEN);
+            who(s, v, 'A', '"Hi" ✓✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'order', title: 'Group: who spoke first?', sub: 'phone clocks vs server seq', color: PURPLE,
+      build: (s, v) => setup(s, v, { seq: 'c-G · lastSeq 41', a: 'in group c-G', b: 'in group c-G', c: 'clock 5 s slow' }),
+      takeaway: 'Never order by device clocks: they drift. The conversation\'s **seq**, assigned on arrival at the server, is the one order every device shows.',
+      steps: [
+        {
+          title: 'A asks a question',
+          text: 'In group c-G (A, B, C), A sends "Lunch at 1?" with its phone time `clientTs: 12:00:00`.',
+          observe: 'A\'s message reaches the server.',
+          focus: v => [v.n.userA],
+          async run(s) { await s.send(['userA', 'lb', 'ws1', 'chat'], '"Lunch at 1?" · 12:00:00', BLUE); },
+        },
+        {
+          title: 'C answers two seconds later',
+          text: 'C replies "Yes!" at real time 12:00:02, but C\'s phone clock is 5 s slow, so it stamps `clientTs: 11:59:57`: **earlier** than the question.',
+          observe: 'C\'s reply carries an earlier timestamp.',
+          focus: v => [v.n.userC],
+          async run(s, v) {
+            tick(s, v, '12:00:02');
+            await s.send(['userC', 'lb', 'ws1', 'chat'], '"Yes!" · 11:59:57', PURPLE);
+          },
+        },
+        {
+          title: '❌ Sort by the phones\' timestamps',
+          text: 'If devices sort by `clientTs`, B sees **"Yes!" before "Lunch at 1?"**. Phone clocks (and even server clocks) drift; wall-clock time from different machines cannot order events.',
+          observe: 'B sees the answer before the question.',
+          say: 'Device clocks drift, so they cannot order messages.',
+          focus: v => [v.log, v.n.userB],
+          async run(s, v) {
+            await s.send(['chat', 'msgdb'], 'store by clientTs', RED);
+            await put(s, v, 'ts1', 'C', 'Yes!', 'BAD', '11:59:57');
+            await put(s, v, 'ts2', 'A', 'Lunch at 1?', 'BAD', '12:00:00');
+            await s.send(['chat', 'ws2', 'lb', 'userB'], 'sorted by clientTs', RED);
+            who(s, v, 'B', 'answer first ✕', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: the server assigns the seq on arrival',
+          text: 'A\'s message reached the server first → `$inc lastSeq` → **42**; C\'s reply arrived second → **43**. The counter is one document per conversation, so increments are atomic and never repeat.',
+          observe: '"Lunch at 1?" is 42, "Yes!" is 43.',
+          say: 'The server assigns a sequence per conversation in arrival order.',
+          focus: v => [v.seq, v.log],
+          async run(s, v) {
+            await clearRows(s, v); who(s, v, 'B', 'in group c-G');
+            await s.send(['chat', 'msgdb'], 'seq 42 (A)', TEAL);
+            seq(s, v, 'c-G · lastSeq 42'); await put(s, v, 'c-G:42', 'A', 'Lunch at 1?', 'SENT', '✓');
+            await s.send(['chat', 'msgdb'], 'seq 43 (C)', TEAL);
+            seq(s, v, 'c-G · lastSeq 43'); await put(s, v, 'c-G:43', 'C', 'Yes!', 'SENT', '✓');
+          },
+        },
+        {
+          title: 'Every device shows the same order',
+          text: 'The gateways deliver 42 then 43 to all members; every app sorts by **seq**, so A, B and C see the question first. The phone timestamp is only shown as a label. One counter per busy group is a small hotspot, fine for chats; giant channels need other tricks.',
+          observe: 'B (and everyone) sees the question, then "Yes!".',
+          focus: v => [v.n.userB],
+          async run(s, v) {
+            await s.send(['chat', 'ws2', 'lb', 'userB'], '42, 43', GREEN);
+            who(s, v, 'B', 'question first ✓', GREEN);
+            await s.send(['chat', 'ws1', 'lb', 'userC'], '42, 43', GREEN);
+            who(s, v, 'C', 'same order ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'dup', title: 'Lost ack → resend', sub: 'clientMsgId dedupe', color: TEAL,
+      build: (s, v) => setup(s, v, { a: 'weak signal · ws1' }),
+      takeaway: 'The sender cannot tell "not stored" from "stored but the ack was lost", so it **resends with the same clientMsgId**. The server finds the existing message and acks the **original seq**; a unique index catches racing resends.',
+      steps: [
+        {
+          title: 'A sends; the server stores and delivers',
+          text: 'A sends "On my way" with `clientMsgId: "a-903"`. It is stored as **seq 42** and delivered to B.',
+          observe: 'B has the message.',
+          focus: v => [v.log, v.n.userB],
+          async run(s, v) {
+            await s.send(['userA', 'lb', 'ws1', 'chat'], '"On my way" · a-903', BLUE);
+            await s.send(['chat', 'msgdb'], 'seq 42', TEAL);
+            seq(s, v, 'c-AB · lastSeq 42'); await put(s, v, 'c-AB:42', 'A', 'On my way', 'SENT', '✓');
+            await s.send(['chat', 'ws2', 'lb', 'userB'], 'seq 42', BLUE);
+            who(s, v, 'B', 'got "On my way"', GREEN);
+          },
+        },
+        {
+          title: 'The ack never arrives',
+          text: 'A walks into a lift: the socket drops before `ack seq 42` arrives. For A the message is still in the local outbox with a clock icon.',
+          observe: 'The ack bounces; A shows "unconfirmed".',
+          focus: v => [v.n.userA],
+          async run(s, v) {
+            await s.send(['chat', 'ws1', 'lb'], 'ack 42', GREEN);
+            await s.bounce('lb', 'userA', 'ack 42', GREEN);
+            who(s, v, 'A', '🕓 unconfirmed', AMBER);
+          },
+        },
+        {
+          title: 'A reconnects and resends',
+          text: 'Eight seconds later A reconnects and resends everything in its outbox, with the **same** `clientMsgId: "a-903"`. Resending is correct: the app cannot know the first one was stored.',
+          observe: 'The same message arrives a second time.',
+          focus: v => [v.n.chat],
+          async run(s, v) {
+            tick(s, v, '12:00:08');
+            await s.send(['userA', 'lb', 'ws1', 'chat'], 'resend a-903', AMBER);
+          },
+        },
+        {
+          title: '❌ Without a client id: a duplicate',
+          text: 'If the server just stores every send, the resend becomes **seq 43** and B sees "On my way" **twice**.',
+          observe: 'A second row and a second delivery.',
+          focus: v => [v.log, v.n.userB],
+          async run(s, v) {
+            await s.send(['chat', 'msgdb'], 'seq 43', RED);
+            seq(s, v, 'c-AB · lastSeq 43'); await put(s, v, 'c-AB:43', 'A', 'On my way', 'BAD', 'dup');
+            await s.send(['chat', 'ws2', 'lb', 'userB'], 'seq 43', RED);
+            who(s, v, 'B', 'sees it twice ✕', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: dedupe by (conv, clientMsgId)',
+          text: '`messages.findOne({ conv: "c-AB", clientMsgId: "a-903" })` → found **seq 42**. Nothing is stored or delivered again; A gets `ack seq 42`. Two resends racing each other? The unique index `{conv, clientMsgId}` rejects the second insert.',
+          observe: 'One message, one seq; A finally sees ✓.',
+          say: 'Resends carry the same client message id, so the server acks the original instead of storing a duplicate.',
+          focus: v => [v.rows['c-AB:42'], v.n.userA],
+          async run(s, v) {
+            await s.unrow(v.log, v.rows['c-AB:43']); delete v.rows['c-AB:43'];
+            seq(s, v, 'c-AB · lastSeq 42'); who(s, v, 'B', 'got it once ✓', GREEN);
+            await s.send(['chat', 'msgdb'], 'find (c-AB, a-903)', TEAL);
+            await s.flash(695, 375, 'found seq 42 → no insert', ok, 800);
+            await s.pulse(v.rows['c-AB:42'], 1, 1.05);
+            await s.send(['chat', 'ws1', 'lb', 'userA'], 'ack seq 42', GREEN);
+            who(s, v, 'A', '"On my way" ✓', BLUE);
+          },
+        },
+      ],
+    },
+    {
+      id: 'offline', title: 'B is offline', sub: 'push is a hint, sync is delivery', color: GREEN,
+      build: (s, v) => setup(s, v, { pres: 'user:A→ws1 · user:C→ws1', b: 'offline · seq 41' }),
+      takeaway: 'Store first, then try to deliver. For an offline user the push is only a **wake-up hint**; the guarantee is **sync**: on every (re)connect the app asks for everything after its **lastSeq**, in order.',
+      steps: [
+        {
+          title: 'A sends; it is stored and acked',
+          text: 'A sends "Call me". Seq **42**, stored, `ack` to A (✓). Storing does not depend on B being online.',
+          observe: 'A sees one tick.',
+          focus: v => [v.log],
+          async run(s, v) {
+            await s.send(['userA', 'lb', 'ws1', 'chat'], '"Call me"', BLUE);
+            await s.send(['chat', 'msgdb'], 'seq 42', TEAL);
+            seq(s, v, 'c-AB · lastSeq 42'); await put(s, v, 'c-AB:42', 'A', 'Call me', 'SENT', '✓');
+            await s.send(['chat', 'ws1', 'lb', 'userA'], 'ack 42', GREEN);
+            who(s, v, 'A', '"Call me" ✓', BLUE);
+          },
+        },
+        {
+          title: 'B has no socket',
+          text: '`GET user:B` → **(nil)**: no gateway holds a socket for B (the phone is in a pocket, app closed).',
+          observe: 'Presence has no entry for B.',
+          focus: v => [v.pres],
+          async run(s, v) {
+            await s.send(['chat', 'presence'], 'GET user:B', RED);
+            await s.send(['presence', 'chat'], '(nil)', GREY);
+            await s.flash(695, 30, 'B offline', { color: GREY, stroke: '#c3c9ce' }, 600);
+          },
+        },
+        {
+          title: 'Queue a push notification',
+          text: 'The Chat Service produces `{ to: "B", preview: "A: Call me" }` to Kafka; a push worker calls **FCM**. The push is best effort: it can be late, doubled, or dropped (battery saver, stale token).',
+          observe: 'B\'s phone shows "A: Call me".',
+          say: 'Offline users get a push, but the push is only a hint.',
+          focus: v => [v.n.kafka, v.n.push],
+          async run(s, v) {
+            await s.send(['chat', 'kafka'], 'notify B', PURPLE);
+            kaf(s, v, 'notify @88 → B'); await s.pulse(v.kaf);
+            await s.send(['kafka', 'push'], 'FCM send', PURPLE);
+            await s.flash(70, 330, '📲 A: Call me', { color: PURPLE, stroke: PURPLE }, 900);
+            who(s, v, 'B', 'notification shown', AMBER);
+          },
+        },
+        {
+          title: 'B opens the app: connect and sync',
+          text: 'B connects to **any** gateway (the LB picks ws1 this time), presence becomes `user:B → ws1`, and the app sends `{ type: "sync", conv: "c-AB", afterSeq: 41 }` → `messages.find({ conv: "c-AB", seq: { $gt: 41 } }).sort({ seq: 1 }).limit(200)`.',
+          observe: 'One indexed range read returns what B missed.',
+          say: 'On reconnect the app syncs everything after its last sequence number.',
+          focus: v => [v.n.ws1, v.pres],
+          async run(s, v) {
+            tick(s, v, '12:01:00');
+            await s.send(['userB', 'lb', 'ws1'], 'connect', AMBER);
+            await s.send(['ws1', 'presence'], 'SET user:B ws1', RED);
+            pres(s, v, 'user:A→ws1 · user:C→ws1 · user:B→ws1');
+            await s.send(['ws1', 'chat', 'msgdb'], 'seq > 41', TEAL);
+          },
+        },
+        {
+          title: 'Up to date, in order',
+          text: 'B receives `[42 "Call me"]` and acks delivered (A sees ✓✓). **Even if the push had been lost**, the same sync would run whenever B opens the app: later, but nothing is lost.',
+          observe: 'B has seq 42.',
+          focus: v => [v.n.userB],
+          async run(s, v) {
+            await s.send(['chat', 'ws1', 'lb', 'userB'], '[42]', GREEN);
+            who(s, v, 'B', 'synced · has 42 ✓', GREEN);
+            await put(s, v, 'c-AB:42', 'A', 'Call me', 'DELIVERED', '✓✓');
+          },
+        },
+      ],
+    },
+    {
+      id: 'crash', title: 'Gateway 2 crashes', sub: 'stale presence · reconnect · sync', color: RED,
+      build: (s, v) => setup(s, v, { b: 'online · ws2' }),
+      takeaway: 'Sockets live in a gateway\'s memory, so a crash disconnects everyone on it. Messages are safe in the DB; failed delivery falls back to **push**, presence **expires by TTL**, clients reconnect with **jittered backoff** and **sync**.',
+      steps: [
+        {
+          title: 'Gateway 2 dies',
+          text: 'ws2 crashes (out of memory, bad deploy). Every socket on it, including B\'s, is gone. Presence still says `user:B → ws2` until its TTL runs out.',
+          observe: 'ws2 turns red; B is disconnected.',
+          focus: v => [v.n.ws2, v.pres],
+          async run(s, v) {
+            s.tone(v.n.ws2, 'fail'); s.setSub(v.n.ws2, '✕ crashed', RED);
+            await s.shake(v.n.ws2);
+            who(s, v, 'B', 'disconnected', RED);
+          },
+        },
+        {
+          title: 'A sends; presence is stale',
+          text: 'A sends "Still there?" → stored as **seq 42** and acked. `GET user:B` still answers **"ws2"** (stale).',
+          observe: 'The message is safe; the routing info is wrong.',
+          focus: v => [v.log, v.pres],
+          async run(s, v) {
+            await s.send(['userA', 'lb', 'ws1', 'chat'], '"Still there?"', BLUE);
+            await s.send(['chat', 'msgdb'], 'seq 42', TEAL);
+            seq(s, v, 'c-AB · lastSeq 42'); await put(s, v, 'c-AB:42', 'A', 'Still there?', 'SENT', '✓');
+            await s.send(['chat', 'presence'], 'GET user:B', RED);
+            await s.send(['presence', 'chat'], '"ws2" (stale)', AMBER);
+          },
+        },
+        {
+          title: 'Delivery fails → treat B as offline',
+          text: 'The call to ws2 fails (connection refused). The Chat Service treats B as **offline**: it queues a push. Nothing is lost: the message is already stored.',
+          observe: 'Delivery bounces; a push goes out instead.',
+          say: 'If delivery to the gateway fails, we fall back to the offline path.',
+          focus: v => [v.n.ws2, v.n.push],
+          async run(s, v) {
+            await s.bounce('chat', 'ws2', 'seq 42', BLUE);
+            await s.send(['chat', 'kafka', 'push'], 'notify B', PURPLE);
+            kaf(s, v, 'notify @89 → B');
+          },
+        },
+        {
+          title: 'Presence expires',
+          text: 'No heartbeat refreshed `user:B`, so after 60 s the key **expires**. (A clean disconnect deletes it at once, only if the value is still "ws2".)',
+          observe: 'B disappears from presence.',
+          focus: v => [v.pres],
+          async run(s, v) {
+            tick(s, v, '12:00:40');
+            pres(s, v, 'user:A→ws1 · user:C→ws1'); await s.pulse(v.pres);
+          },
+        },
+        {
+          title: 'B reconnects with backoff + jitter',
+          text: 'The app retries after `random(0, min(30 s, 1 s × 2^attempt))`. **Jitter** matters: a crashed gateway had ~100 k sockets, and without it they would all reconnect in the same second. The LB sends B to ws1; presence becomes `user:B → ws1`.',
+          observe: 'B is connected again, on ws1.',
+          say: 'Clients reconnect with exponential backoff and jitter to avoid a stampede.',
+          focus: v => [v.n.ws1, v.pres],
+          async run(s, v) {
+            tick(s, v, '12:00:41');
+            await s.send(['userB', 'lb', 'ws1'], 'reconnect', AMBER);
+            await s.send(['ws1', 'presence'], 'SET user:B ws1', RED);
+            pres(s, v, 'user:A→ws1 · user:C→ws1 · user:B→ws1');
+            who(s, v, 'B', 'online · ws1', AMBER);
+          },
+        },
+        {
+          title: 'Sync: B catches up',
+          text: 'Sync after seq 41 returns `[42 "Still there?"]`. B is complete and in order, as if nothing happened.',
+          observe: 'B has seq 42; A sees ✓✓.',
+          focus: v => [v.n.userB, v.rows['c-AB:42']],
+          async run(s, v) {
+            await s.send(['ws1', 'chat', 'msgdb'], 'seq > 41', TEAL);
+            await s.send(['chat', 'ws1', 'lb', 'userB'], '[42]', GREEN);
+            who(s, v, 'B', 'back · has 42 ✓', GREEN);
+            await put(s, v, 'c-AB:42', 'A', 'Still there?', 'DELIVERED', '✓✓');
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Chat types, receipts, offline, scale.',
+      lines: [
+        ['I', 'Design a chat app like WhatsApp.'],
+        ['C', '1:1 only, or groups too? How big can groups get?'],
+        ['I', 'Both; groups up to 500 people.'],
+        ['C', 'Delivery and read receipts, presence, offline delivery, history on a new device?'],
+        ['I', 'Receipts and offline delivery yes, simple online/offline presence.'],
+        ['C', 'Scale?'],
+        ['I', '50 million daily users, about 10 million connected at peak.'],
+        ['P', 'Write: 1:1 + groups ≤ 500 · receipts · offline · 10 M open sockets.'],
+      ],
+      avoid: 'Diving into end-to-end encryption before the message path is clear.',
+    },
+    {
+      t: 'Estimate the scale', min: 3, goal: 'Connections are the unusual number.',
+      lines: [
+        ['C', '10 M concurrent sockets ÷ ~100 k per gateway ≈ **100 gateways**.'],
+        ['C', '50 M users × 40 messages/day ≈ **2 B messages/day** ≈ 23 k/s average, ~3× at peak.'],
+        ['C', 'Storage: ~200 B × 2 B ≈ **400 GB/day** → shard messages by conversation.'],
+        ['P', 'Polling 10 M users every 3 s would be 3.3 M requests/s: that is why WebSockets.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 5, goal: 'Frames, seq, client id.',
+      lines: [
+        ['C', 'WebSocket frames: `send`, `ack`, `msg`, `delivered`, `read`, `sync`, `ping`. HTTP for history and creating conversations.'],
+        ['C', '`conversations { _id, members, lastSeq }`, `messages { _id: conv:seq, conv, seq, from, clientMsgId, text }`.'],
+        ['C', 'Indexes: `{conv, seq}` for sync, unique `{conv, clientMsgId}` for dedupe.'],
+        ['I', 'Why a seq and not a timestamp?'],
+        ['C', 'Clocks drift; a per-conversation counter gives one order everyone agrees on and a cursor for sync.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Gateways, chat service, presence, offline path.',
+      lines: [
+        ['P', 'Draw: devices → LB → WS gateways → Chat Svc → Message DB; Presence (Redis); Kafka → Push for offline.'],
+        ['C', 'Gateways only hold sockets; the Chat Service dedupes, assigns seq, stores, acks and routes.'],
+        ['C', 'Presence maps user → gateway with a TTL refreshed by heartbeats.'],
+        ['C', 'Offline users get a push hint; every device syncs after its lastSeq on connect.'],
+        ['P', 'Walk "Hi": a-901 → seq 42 → ✓ → GET user:B → ws2 → B → ✓✓.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Order, duplicates, offline, crashes.',
+      lines: [
+        ['I', 'How do you keep order in a group when phones have different clocks?'],
+        ['C', 'The server seq per conversation, assigned on arrival; never client timestamps.'],
+        ['I', 'The sender\'s ack is lost and the app resends.'],
+        ['C', 'Same clientMsgId → find the stored message, ack seq 42 again; a unique index covers races.'],
+        ['I', 'The recipient\'s gateway crashes.'],
+        ['C', 'Delivery fails → push; presence expires; the client reconnects with jittered backoff and syncs after lastSeq.'],
+        ['I', 'B is offline for a day.'],
+        ['C', 'Push is only a hint; on the next open, sync by seq returns everything in order.'],
+      ],
+      avoid: 'Saying "Kafka guarantees delivery to the phone": the guarantee is store-first plus sync.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: WebSocket gateways with Redis presence, per-conversation seq, idempotent sends by clientMsgId, receipts with $max, push as a hint and sync as the guarantee.'],
+        ['C', 'Next: end-to-end encryption, media through presigned uploads, fan-out by gateway for big groups, a wide-column store at very large scale.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): 1–2 minutes, pause between paragraphs
+    summary: [
+      "For chat I'd keep **one WebSocket** per device, because polling would mean millions of empty requests a second and still deliver late. The socket is upgraded from HTTP once and stays open, so the server can push a message the moment it arrives. The sockets live on thin **gateway** servers, around a hundred thousand each, behind a load balancer, and each gateway records in **Redis presence** which user is connected to it, with a TTL refreshed by heartbeats.",
+      "When A sends a message, the phone attaches a **clientMsgId**. The Chat Service first checks that id, so a resend after a lost ack just gets the original sequence back. Then it increments the conversation's **lastSeq** in MongoDB, stores the message as, say, seq 42, and acks A, which is one tick. Every device orders by this **server sequence**, never by phone clocks, because clocks drift.",
+      "Then the service looks up B in presence, finds gateway 2, and pushes the message down B's socket. B acks delivered up to 42, we store that with `$max` so receipts only move forward, and A sees two ticks.",
+      "If B is offline, or B's gateway just crashed, delivery fails and we send a **push notification** through Kafka and FCM, but that's only a hint. The real guarantee is **sync**: whenever the app connects, it asks for everything after its last seq, which is one indexed range query. And clients reconnect with **backoff and jitter**, so a crashed gateway doesn't cause a reconnect storm.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> 1:1 and group chat, real-time delivery, offline delivery, history sync on any device, sent / delivered / read receipts, presence.</li>
+        <li><b>Non-functional:</b> &lt; ~300 ms when both are online, no lost messages, the same order on every device, ~10 M open connections.</li>
+        <li><b>Out of scope (say so):</b> calls, end-to-end encryption details, media storage (presigned uploads, a link in the message).</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Open sockets</td><td class="m">10 M ÷ 100 k</td><td>≈ 100 gateways</td></tr>
+        <tr><td>Messages</td><td class="m">50 M × 40/day</td><td>≈ 2 B/day ≈ 23 k/s</td></tr>
+        <tr><td>Storage</td><td class="m">~200 B × 2 B</td><td>≈ 400 GB/day → shard by conv</td></tr>
+        <tr><td>Polling instead</td><td class="m">10 M ÷ 3 s</td><td>≈ 3.3 M req/s, mostly empty</td></tr></table>` },
+      { h: '3 · Protocol & API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">WS /ws</td><td>Upgrade once (JWT), then frames: send · ack · msg · delivered · read · sync · ping / pong</td></tr>
+        <tr><td class="m">GET /conversations/{id}/messages?afterSeq=</td><td>history / sync over HTTP</td></tr>
+        <tr><td class="m">POST /conversations</td><td>create 1:1 or group</td></tr>
+        <tr><td class="m">POST /devices</td><td>register a push token</td></tr></table>` },
+      { h: '4 · Data', color: '#8f4fc4', html: `<pre>// conversations
+{ _id: "c-AB", members: ["A", "B"], lastSeq: 42 }
+
+// messages: _id = conv:seq
+{ _id: "c-AB:42", conv: "c-AB", seq: 42, from: "A",
+  clientMsgId: "a-901", text: "Hi", ts: … }
+// indexes { conv: 1, seq: 1 }, unique { conv: 1, clientMsgId: 1 }
+
+// receipts
+{ _id: "c-AB:B", deliveredSeq: 42, readSeq: 40 }
+
+// presence (Redis)
+SET user:B "ws2" EX 60   // refreshed by heartbeats</pre>` },
+      { h: '5 · Message path', color: '#2f6fe0', html: `<ol>
+        <li>Device → gateway → Chat Svc: dedupe by clientMsgId.</li>
+        <li><code>$inc lastSeq</code> → insert → ack (✓).</li>
+        <li>Presence → recipient gateway → frame → delivered ack → <code>$max</code> receipt (✓✓).</li>
+        <li>No socket / delivery fails → Kafka → push hint; on connect: sync <code>seq &gt; lastSeq</code>.</li></ol>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>Store first; sync by seq is the delivery guarantee; push is best effort.</li>
+        <li>Idempotent sends (clientMsgId + unique index); monotonic receipts (<code>$max</code>).</li>
+        <li>Gateway crash: presence TTL, push fallback, reconnect with exponential backoff + jitter.</li>
+        <li>Deploys drain gateways gradually so clients do not all reconnect at once.</li></ul>` },
+    ],
+    decisions: [
+      ['WebSockets', 'Server push in ~100 ms, no empty polls.', 'Long-lived connections to scale, drain and balance.'],
+      ['Thin gateways + Chat Service', 'Deploy chat logic without dropping sockets.', 'An extra hop on the hot path.'],
+      ['Per-conversation seq', 'One order for every device and a cursor for sync.', 'One counter document per conversation (hot for giant groups).'],
+      ['clientMsgId dedupe', 'Resends never create duplicates.', 'A unique index per message.'],
+      ['Presence in Redis with TTL', 'Fast routing; dead entries clean themselves.', 'Can be stale for up to the TTL.'],
+      ['Push as hint, sync as guarantee', 'Nothing lost even if pushes are dropped.', 'A late message if the push is lost and the app stays closed.'],
+    ],
+    code: [
+      { t: 'Gateway: Spring WebSocket handler with presence', code: `@Component
+class ChatSocketHandler extends TextWebSocketHandler {
+  @Override public void afterConnectionEstablished(WebSocketSession s) {
+    String user = userId(s);                                   // JWT checked once, on the upgrade
+    sessions.put(user, s);
+    redis.opsForValue().set("user:" + user, gatewayId, Duration.ofSeconds(60));   // presence
+  }
+  @Override protected void handleTextMessage(WebSocketSession s, TextMessage m) throws IOException {
+    Frame f = json.readValue(m.getPayload(), Frame.class);
+    switch (f.type()) {
+      case "send" -> chat.send(userId(s), f);                 // → Chat Service
+      case "sync" -> chat.after(f.conv(), f.afterSeq()).forEach(msg -> write(s, msg));
+      case "ping" -> { redis.expire("user:" + userId(s), Duration.ofSeconds(60)); write(s, PONG); }
+    }
+  }
+  @Override public void afterConnectionClosed(WebSocketSession s, CloseStatus st) {
+    sessions.remove(userId(s));                               // presence: delete if still ours, else TTL
+  }
+}` },
+      { t: 'Chat Service: dedupe, next seq, store', code: `public Ack send(String from, SendFrame f) {
+  Message old = mongo.findOne(query(where("conv").is(f.conv()).and("clientMsgId").is(f.clientMsgId())), Message.class);
+  if (old != null) return Ack.of(f.clientMsgId(), old.seq());   // resend after a lost ack
+
+  long seq = mongo.findAndModify(query(where("_id").is(f.conv())),
+      new Update().inc("lastSeq", 1), options().returnNew(true), Conversation.class).lastSeq();
+  mongo.insert(new Message(f.conv() + ":" + seq, f.conv(), seq, from, f.clientMsgId(), f.text()));
+  // unique { conv, clientMsgId }: a racing resend fails here → return the stored seq
+  route(f.conv(), seq);
+  return Ack.of(f.clientMsgId(), seq);                           // one tick
+}` },
+      { t: 'Routing, push fallback and receipts', code: `void deliver(String user, Message m) {
+  String gw = redis.opsForValue().get("user:" + user);
+  if (gw == null || !gateways.push(gw, user, m))              // offline, or stale presence
+    kafka.send("notify", user, Preview.of(m));                // push is only a wake-up hint
+}
+
+void delivered(String conv, String user, long upToSeq) {      // ✓✓, never moves backwards
+  mongo.upsert(query(where("_id").is(conv + ":" + user)),
+               new Update().max("deliveredSeq", upToSeq), Receipt.class);
+}` },
+      { t: 'Client: reconnect with backoff + jitter, then sync', code: `let attempt = 0;
+function connect() {
+  const ws = new WebSocket("wss://chat.example.com/ws?token=" + jwt);
+  ws.onopen = () => {
+    attempt = 0;
+    ws.send(JSON.stringify({ type: "sync", conv: "c-AB", afterSeq: lastSeq }));
+    outbox.forEach(m => ws.send(JSON.stringify(m)));        // resend unacked, same clientMsgId
+  };
+  ws.onclose = () => {
+    const cap = Math.min(30000, 1000 * 2 ** attempt++);
+    setTimeout(connect, Math.random() * cap);                // full jitter: no reconnect stampede
+  };
+}` },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    ws: { name: 'WebSockets', color: '#c47d1e' },
+    cc: { name: 'Ordering & duplicates', color: '#8f4fc4' },
+    db: { name: 'Data', color: '#13968a' },
+    sc: { name: 'Scale', color: '#2f6fe0' },
+    rr: { name: 'Failures', color: '#ce3434' },
+  },
+  followups: [
+    { g: 'ws', q: 'WebSockets, long polling or Server-Sent Events?', what: 'All can push server → client.', why: 'Chat needs both directions with tiny per-message overhead.', how: 'WebSockets; long polling as a fallback for restrictive networks. SSE is one-way (server → client) and fits feeds / notifications.', trade: 'Long-lived connections need careful scaling and draining.', flow: 'ws' },
+    { g: 'ws', q: 'How does the load balancer handle WebSockets?', what: 'It must pass the `Upgrade` handshake and keep the connection open for hours.', why: 'After `101`, the connection is pinned to one gateway.', how: 'L4 (NLB) or an L7 that supports upgrade; idle timeout above the heartbeat interval; balance by connection count.', trade: 'Rebalancing only happens when clients reconnect.', flow: 'ws' },
+    { g: 'ws', q: 'How do you authenticate a WebSocket?', what: 'Browsers cannot set custom headers on the upgrade.', why: 'The socket lives for hours; tokens expire.', how: 'Validate a JWT on the upgrade (query param or cookie, or a short-lived ticket from a REST call); re-auth or close when it expires.', trade: 'Tokens in URLs can leak into logs → use short-lived tickets.' },
+    { g: 'ws', q: 'Do you need sticky sessions?', what: 'Not per message: the socket itself is the stickiness.', why: 'All frames of a connection go to the same gateway.', how: 'Any gateway can accept a reconnect; presence says where the user is now.', trade: 'Gateways must keep no state that cannot be rebuilt.' },
+    { g: 'cc', q: 'Why not order by timestamps?', what: 'Messages can appear in the wrong order.', why: 'Phone and server clocks drift.', how: 'Server-assigned seq per conversation; timestamps only for display.', trade: 'A single sequencer per conversation.', flow: 'order' },
+    { g: 'cc', q: 'Two members post in a group at the same instant. Who is first?', what: 'Whoever reaches the counter first.', why: '`$inc` on one document is atomic, so seqs never repeat.', how: 'Per-conversation seq; all devices sort by it.', trade: 'One hot counter for very busy groups.', flow: 'order' },
+    { g: 'cc', q: 'Sender resends after a lost ack. Duplicate?', what: 'Without dedupe, the recipient sees it twice.', why: 'The client cannot know whether the first send was stored.', how: 'clientMsgId lookup + unique index `{conv, clientMsgId}` → ack the original seq.', trade: 'An extra index per message.', flow: 'dup' },
+    { g: 'db', q: 'Which database for messages at WhatsApp scale?', what: 'Billions of small writes, read by (conversation, seq) range.', why: 'Append-heavy, range reads per conversation.', how: 'Wide-column (Cassandra / ScyllaDB) partitioned by conversation, clustered by seq; MongoDB sharded by conv at smaller scale.', trade: 'Other queries (search) need a separate index.' },
+    { g: 'db', q: 'The service crashes after $inc but before the insert.', what: 'That seq is never used: a gap.', why: 'Two separate writes.', how: 'Clients tolerate gaps (sync returns what exists), or allocate seq and insert in one transaction.', trade: 'Gaps confuse naive "missing message" detection.' },
+    { g: 'db', q: 'How does a new device get history?', what: 'It has no local messages.', why: 'History lives on the server.', how: 'Paged sync from the latest N backwards, newest conversations first.', trade: 'With end-to-end encryption, history must come from another device.' },
+    { g: 'sc', q: 'How do you hold 10 million connections?', what: 'Each socket costs memory and a file descriptor.', why: 'Connections are long-lived.', how: 'About 100 gateways with non-blocking IO (Netty), tuned OS limits, thin gateways, drain slowly on deploy.', trade: 'Deploys take longer.', flow: 'ws' },
+    { g: 'sc', q: 'A 500-member group: how is a message fanned out?', what: 'One message → up to 499 deliveries.', why: 'Fan-out on write to each member\'s gateway.', how: 'Group members by gateway (presence) and send one batch per gateway; offline members get pushes asynchronously.', trade: 'Huge channels switch to fan-out on read.' },
+    { g: 'rr', q: 'Presence says B is on ws2, but ws2 is dead.', what: 'Delivery fails.', why: 'Presence is a cache with a TTL.', how: 'Treat failure as offline → push; TTL removes the entry; client reconnects and syncs.', trade: 'A few seconds of delay.', flow: 'crash' },
+    { g: 'rr', q: 'A gateway crashes with 100 k users on it.', what: 'All their sockets drop at once.', why: 'Sockets live in the gateway\'s memory.', how: 'Reconnect with exponential backoff **and jitter**, any gateway, then sync from lastSeq.', trade: 'Without jitter: a reconnect storm that can take down the next gateway.', flow: 'crash' },
+    { g: 'rr', q: 'Push is delivered twice or not at all.', what: 'Duplicate or missing notifications.', why: 'Push providers are best effort.', how: 'Push is only a hint; the data comes from sync by seq; collapse keys hide duplicates.', trade: 'Notification UX can be imperfect.', flow: 'offline' },
+    { g: 'rr', q: 'Why Kafka only for offline notifications?', what: 'Kafka could carry every message.', why: 'The online hot path should be as short as possible.', how: 'Direct routing for online users; Kafka for side work (push, search indexing, analytics).', trade: 'Two delivery paths to maintain.', flow: 'offline' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>

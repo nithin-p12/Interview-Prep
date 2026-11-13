@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-rate-limiter">
+<meta name="doc-version" content="v2.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rate Limiter · System Design · v2.0</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// Rate Limiter (distributed, in the API gateway, counters in Redis). Everything specific to this design lives here;
+// engine/app.js renders it. Basics (load balancer, gateway, Redis) are taught in 00_Core_Components.html.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+
+// Redis row colours: plenty of tokens, running low, empty.
+const ST = {
+  ok: { fill: '#f6f7fb', stroke: '#e3e6ee', color: '#203347' },
+  low: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  empty: { fill: '#fff4f4', stroke: RED, color: RED },
+};
+const fmt = (k, txt) => `${k.padEnd(11)}${txt}`;
+
+// State shown next to the components: a clock, the Redis keys, what the backend served, each client's status.
+function setup(s, v, { keys = [], clock = '10:00:00.000', served = 0, a = 'opens the app', c = 'idle' } = {}) {
+  v.clock = s.chip(15, 500, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
+  v.redisSt = s.store(880, 320, 210, 'REDIS · counters', { color: AMBER });
+  v.keys = {};
+  keys.forEach(([k, txt, st]) => {
+    s.row(v.redisSt, fmt(k, txt), { ...ST[st ?? 'ok'], now: true });
+    v.keys[k] = v.redisSt.rows[v.redisSt.rows.length - 1];
+  });
+  v.served = served;
+  v.api = s.chip(970, 268, `served ${served}`, { mono: true, color: PURPLE });
+  v.ua = s.chip(75, 156, a, { color: GREY });
+  v.uc = s.chip(75, 376, c, { color: GREY });
+  return v;
+}
+async function key(s, v, k, txt, st = 'ok') {
+  const r = v.keys[k];
+  if (!r) { v.keys[k] = await s.row(v.redisSt, fmt(k, txt), ST[st]); return; }
+  r.label.textContent = fmt(k, txt);
+  s.paintRow(r, ST[st]);
+  await s.pulse(r, 1, 1.05);
+}
+const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
+const serve = (s, v, n = 1) => { v.served += n; s.setChip(v.api, `served ${v.served}`); };
+const who = (s, v, c, txt, color = GREY) => s.setChip(c === 'C' ? v.uc : v.ua, txt, { color, stroke: color === GREY ? '#d5d9dc' : color });
+
+window.DESIGN = {
+  id: 'rate', n: 2, title: 'Rate Limiter', tagline: 'one atomic Redis script per request, shared by every gateway pod',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'Clients & edge', x0: 0, x1: 300, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'Every caller is identified by a **key**: the user id from the JWT, an API key for partners, the IP only for anonymous traffic. The load balancer spreads requests over the gateway pods.',
+      detail: 'Round robin is exactly why the limit cannot live in one pod: the same user lands on different pods.' },
+    { id: 'app', title: 'Gateway pods (the check)', x0: 300, x1: 560, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: 'Each pod runs a **rate-limit filter** before routing: build the key, run one Redis script, then **forward** or answer **429**.',
+      detail: 'Pods are stateless: they cache the rules, but the counters are shared in Redis.' },
+    { id: 'data', title: 'Limiter state', x0: 560, x1: 830, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: '**Rules** (how much each plan and route may do) are config. **Counters** (how much each key has used) live in **Redis**, in memory, shared by all pods.',
+      detail: 'Counters are disposable: losing them only resets limits, so asynchronous replication is good enough.' },
+    { id: 'async', title: 'Protected backend', x0: 830, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'What we protect. It only ever sees requests the limiter allowed, so it is sized for the **allowed** rate, not for abuse.',
+      detail: 'A rejected request costs one Redis call at the gateway and never reaches the backend.' },
+  ],
+  layersIntro: {
+    title: 'The check happens before the backend, the state lives in Redis',
+    text: 'Requests go **Client → Load Balancer → Gateway pod**. The pod runs **one atomic Lua script** in **Redis** for the caller\'s key, then **forwards** to the backend or answers **429**. Rules are cached config; a replica takes over if Redis fails. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    userA: { x: 75, y: 110, w: 130, label: 'User A', sub: 'free plan', icon: '👤', layer: 'entry' },
+    bot: { x: 75, y: 330, w: 130, label: 'Bot C', sub: 'scraper', icon: '🤖', layer: 'entry' },
+    lb: { x: 225, y: 220, w: 130, label: 'Load Balancer', sub: 'round robin', icon: '⚖️', layer: 'entry' },
+    gw1: { x: 430, y: 110, label: 'Gateway pod 1', sub: 'rate-limit filter', icon: '🛡️', layer: 'app' },
+    gw2: { x: 430, y: 330, label: 'Gateway pod 2', sub: 'rate-limit filter', icon: '🛡️', layer: 'app' },
+    rules: { x: 695, y: 70, w: 160, label: 'Limit rules', sub: 'per plan · route', icon: '📋', layer: 'data' },
+    redis: { x: 695, y: 200, w: 160, label: 'Redis primary', sub: 'counters · Lua', icon: '⚡', layer: 'data' },
+    replica: { x: 695, y: 440, w: 160, label: 'Redis replica', sub: 'async copy', icon: '⚡', layer: 'data' },
+    api: { x: 970, y: 220, w: 160, label: 'Orders API', sub: 'backend', icon: '🖥️', layer: 'async' },
+  },
+  wires: [['userA', 'lb'], ['bot', 'lb'], ['lb', 'gw1'], ['lb', 'gw2'], ['rules', 'gw1'], ['gw1', 'redis'], ['gw2', 'redis'], ['gw1', 'api'], ['gw2', 'api'], ['redis', 'replica'], ['gw2', 'replica']],
+
+  components: {
+    userA: {
+      name: 'Clients (users, partners)',
+      what: 'Call the public API. Each one is identified by a **key**: user id (from the JWT), API key, or IP only as a last resort.',
+      why: 'Limits are **per key**, so one heavy caller cannot use up everybody else\'s capacity.',
+      without: 'Limiting by IP alone punishes thousands of users behind one office or mobile NAT, and lets a bot with many IPs through.',
+      tech: 'Any HTTP client; good clients honour `Retry-After` with backoff + jitter', scale: 'Each client gets its own bucket.', fails: 'A client that ignores 429 just keeps getting cheap 429s.',
+    },
+    bot: {
+      name: 'Abusive client (bot)',
+      what: 'A scraper or buggy script sending far more than its plan allows.',
+      why: 'The reason the limiter exists: protect the backend and other users from one caller.',
+      without: 'The bot gets every request it asks for and the backend slows down or falls over for everyone.',
+      tech: 'Often rotates IPs → key by API key / account, plus WAF rules for anonymous floods', scale: 'Rejecting costs one Redis call, so even huge floods are cheap to refuse.', fails: 'Volumetric DDoS is a network-layer problem (CDN / cloud shield), not the job of this limiter.',
+    },
+    lb: {
+      name: 'Load balancer',
+      what: 'Spreads requests across gateway pods (round robin / least connections) and health-checks them.',
+      why: 'Lets the gateway scale out, which is exactly why counters cannot stay in pod memory.',
+      without: 'One gateway pod: a ceiling and a single point of failure.',
+      tech: 'AWS ALB / NGINX / Envoy', scale: 'Horizontal, managed.', fails: 'Unhealthy pods are removed by health checks.',
+      core: ['lb', 'Load balancer'],
+    },
+    gw1: {
+      name: 'Gateway pod · rate-limit filter',
+      what: 'For every request: resolve the **key** (user + route), look up the **rule** (cached), run **one Lua script** in Redis, then forward with `X-RateLimit-Remaining` or answer **429 + Retry-After**.',
+      why: 'One place in front of every service, before any business code runs.',
+      without: 'Each service re-implements limits differently, and counters in each service\'s memory are not global.',
+      tech: 'Spring Cloud Gateway `RequestRateLimiter` (Redis token bucket) / Envoy / Kong', scale: 'Stateless pods; add more behind the LB.', fails: 'Tiny Redis timeout + circuit breaker; then **fail open** (local bucket) or **fail closed** per route.',
+      core: ['gw', 'API gateway'],
+    },
+    gw2: {
+      name: 'Gateway pod 2',
+      what: 'Identical to pod 1. The next request of the same user may land here.',
+      why: 'Shows why the bucket must be **shared**: with counters in pod memory a user would get the limit once **per pod**.',
+      without: '20 pods × 5 tokens = 100 requests where the plan allows 5.',
+      tech: 'Same filter, same Redis', scale: 'Any number of pods share one bucket per key.', fails: 'Same policy as pod 1.',
+      core: ['gw', 'API gateway'],
+    },
+    rules: {
+      name: 'Limit rules (config)',
+      what: 'Limits per **plan** and **route**, e.g. free = bucket of 5, refill 0.5/s; `/login` = 5 per minute **per IP**, fail closed.',
+      why: 'Limits change with plans and abuse patterns; they must change **without a deploy**.',
+      without: 'Limits hard-coded in the gateway: every change is a release.',
+      tech: 'Config service or DB, cached in each pod and refreshed every few seconds', scale: 'Read rarely, cached everywhere.', fails: 'Pods keep the last known rules.',
+    },
+    redis: {
+      name: 'Redis primary (shared counters)',
+      what: 'One small hash per key, `rl:{user}:{route} → { tokens, ts }`, with an expiry. The **Lua script** reads, refills, takes a token and writes back **atomically**.',
+      why: 'In-memory (sub-millisecond), shared by all pods, and it runs one script at a time, so two pods can never both spend the last token.',
+      without: 'Counters in a database add a write to every API call; counters in pod memory are not global.',
+      tech: 'Redis (`EVALSHA`, or Redis Functions); Redis Cluster for scale', scale: '~50k scripts/s per primary is comfortable; shard keys with Redis Cluster beyond that.', fails: 'Down → replica promoted by Sentinel / Cluster; meanwhile the pods follow their fail-open / fail-closed policy.',
+      core: ['cache', 'Cache · Redis'],
+    },
+    replica: {
+      name: 'Redis replica',
+      what: 'An asynchronous copy of the primary, promoted automatically if the primary fails.',
+      why: 'Keeps the limiter available after a node failure.',
+      without: 'A Redis node failure means every request runs on the fallback policy until someone fixes it.',
+      tech: 'Redis Sentinel or Redis Cluster', scale: 'Not used for reads: a limiter needs the latest count.', fails: 'Async replication: after failover a few recent updates may be missing, so a few extra requests pass. Acceptable for rate limiting.',
+      core: ['cache', 'Cache · Redis'],
+    },
+    api: {
+      name: 'Backend (Orders API)',
+      what: 'The business service. It only sees requests the limiter allowed.',
+      why: 'The thing being protected: its capacity is planned for the allowed rate.',
+      without: 'Without the limiter, any single client can push it past capacity.',
+      tech: 'Spring Boot service', scale: 'Sized for plan limits × users, not for abuse.', fails: 'If the limiter fails open during an attack, the backend still needs timeouts and bulkheads.',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Check every request in Redis, forward or answer 429.',
+    points: [
+      { t: 'One atomic check', color: TEAL, d: 'The gateway runs **one Lua script** for `rl:A`: refill, take a token, write back. Nothing can run in between.' },
+      { t: 'Shared by all pods', color: BLUE, d: 'The next request lands on **another pod** but uses the **same key** in Redis, so the limit is global.' },
+      { t: 'Reject cheaply', color: RED, d: 'An empty bucket means **429 + Retry-After**. The backend never sees the request.' },
+      { t: 'Rules are config', color: AMBER, d: 'Limits per plan and route are **cached** in every pod and change without a deploy.' },
+    ],
+    stats: [['50 k', 'requests / s peak'], ['20', 'gateway pods'], ['1', 'Redis call per request'], ['< 1 ms', 'added latency']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v); v.ready = true; }
+    for (const r of [...v.redisSt.rows]) await s.unrow(v.redisSt, r);
+    v.keys = {}; v.served = 0; s.setChip(v.api, 'served 0');
+    tick(s, v, '10:00:00.000'); who(s, v, 'A', 'opens the app'); who(s, v, 'C', 'idle');
+
+    ui.say(0); ui.cap('**Check** · A calls the API; pod 1 runs one atomic script for key `rl:A`');
+    await s.send(['userA', 'lb', 'gw1'], 'GET /orders', BLUE, { ms: 440 });
+    await s.send(['gw1', 'redis'], 'EVALSHA rl:A', TEAL, { ms: 420 });
+    await key(s, v, 'rl:A', 'tokens 4 · :00.0');
+    await s.send(['redis', 'gw1'], 'allowed · 4', GREEN, { ms: 380 });
+    await s.send(['gw1', 'api'], 'forward', BLUE, { ms: 420 }); serve(s, v);
+    await s.send(['api', 'gw1', 'lb', 'userA'], '200 · remaining 4', GREEN, { ms: 380 });
+
+    ui.say(1); ui.cap('**Shared** · the next call lands on pod 2, but it updates the **same** key');
+    tick(s, v, '10:00:01.000');
+    await s.send(['userA', 'lb', 'gw2'], 'GET /orders/42', BLUE, { ms: 440 });
+    await s.send(['gw2', 'redis'], 'EVALSHA rl:A', TEAL, { ms: 420 });
+    await key(s, v, 'rl:A', 'tokens 3.5 · :01.0');
+    await s.send(['gw2', 'api'], 'forward', BLUE, { ms: 420 }); serve(s, v);
+
+    ui.say(2); ui.cap('**Reject** · Bot C has no tokens left: **429**, and the backend never sees it');
+    await key(s, v, 'rl:C', 'tokens 0.2', 'empty');
+    await s.send(['bot', 'lb', 'gw2'], 'GET #6', RED, { ms: 440 });
+    await s.send(['gw2', 'redis'], 'EVALSHA rl:C', TEAL, { ms: 420 });
+    await s.send(['redis', 'gw2'], 'denied', RED, { ms: 380 });
+    await s.send(['gw2', 'lb', 'bot'], '429 · Retry-After 2', RED, { ms: 400 });
+    who(s, v, 'C', 'throttled · 429', RED);
+
+    ui.say(3); ui.cap('**Rules** · limits per plan and route come from config, cached in each pod');
+    await s.send(['rules', 'gw1'], 'free: 5 · 0.5/s', AMBER, { ms: 500 });
+    await s.wait(1800);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'happy', title: 'Allowed: one bucket, any pod', sub: 'token bucket · shared in Redis', color: BLUE,
+      build: (s, v) => setup(s, v),
+      takeaway: 'The filter runs **one atomic script per request** on the caller\'s key. Whichever pod the request lands on, it uses **the same bucket** in Redis, so the limit is global.',
+      steps: [
+        {
+          title: 'A calls the API',
+          text: 'User A (free plan) calls `GET /orders` with a JWT. The load balancer sends it to **pod 1**. The limiter key is the **user id from the token**, not the IP: many users can share one IP behind NAT.',
+          observe: 'The request reaches gateway pod 1.',
+          focus: v => [v.n.gw1],
+          async run(s, v) { who(s, v, 'A', 'waiting…', AMBER); await s.send(['userA', 'lb', 'gw1'], 'GET /orders', BLUE); },
+        },
+        {
+          title: 'Look up the rule (cached)',
+          text: 'The pod already has the rules in memory: free plan → **bucket of 5 tokens, refill 0.5 token/s**. Rules are refreshed in the background, never read from a database per request.',
+          observe: 'The rule comes from the pod\'s cache.',
+          say: 'Limits per plan and route are config, cached in every gateway pod.',
+          focus: v => [v.n.rules],
+          async run(s) {
+            await s.send(['rules', 'gw1'], '5 tokens · 0.5/s', AMBER);
+            await s.flash(430, 62, 'cached · no DB call', { color: AMBER, stroke: AMBER }, 600);
+          },
+        },
+        {
+          title: 'One atomic Lua script',
+          text: 'The pod runs `EVALSHA tokenBucket rl:A`. Inside Redis the script **reads** tokens and timestamp, **adds** tokens for the elapsed time (capped at 5), **takes one** if available, **writes back** and sets an expiry. Redis runs a script atomically: no other command runs in the middle.',
+          observe: 'The key rl:A appears with 4 tokens (a new bucket starts full).',
+          say: 'One Lua script refills and takes a token atomically inside Redis.',
+          focus: v => [v.n.redis, v.redisSt],
+          async run(s, v) {
+            await s.send(['gw1', 'redis'], 'EVALSHA rl:A', TEAL);
+            await key(s, v, 'rl:A', 'tokens 4 · :00.0');
+          },
+        },
+        {
+          title: 'Allowed: forward with limit headers',
+          text: 'The script returns `{ allowed: 1, tokens: 4 }`. The pod forwards to the backend and adds `X-RateLimit-Limit: 5` and `X-RateLimit-Remaining: 4`, so well-behaved clients can pace themselves.',
+          observe: 'The backend serves the request and A gets 200.',
+          focus: v => [v.n.api, v.api],
+          async run(s, v) {
+            await s.send(['redis', 'gw1'], 'allowed · 4', GREEN);
+            await s.send(['gw1', 'api'], 'forward', BLUE); serve(s, v); await s.pulse(v.api);
+            await s.send(['api', 'gw1', 'lb', 'userA'], '200 · remaining 4', GREEN);
+            who(s, v, 'A', 'got orders ✓', GREEN);
+          },
+        },
+        {
+          title: 'The next call lands on pod 2',
+          text: 'One second later A calls `GET /orders/42` and round robin picks **pod 2**. If counters lived in pod memory, pod 2 would start A with a fresh 5 tokens, so with 20 pods A could make 100 requests. Here pod 2 uses the **same key** in Redis: refill 1 s × 0.5 = +0.5 → 4.5, take 1 → **3.5**.',
+          observe: 'Pod 2 updates the same rl:A row.',
+          say: 'Every pod uses the same key in Redis, so the limit is global, not per pod.',
+          focus: v => [v.n.gw2, v.keys['rl:A']],
+          async run(s, v) {
+            tick(s, v, '10:00:01.000'); who(s, v, 'A', 'waiting…', AMBER);
+            await s.send(['userA', 'lb', 'gw2'], 'GET /orders/42', BLUE);
+            await s.send(['gw2', 'redis'], 'EVALSHA rl:A', TEAL);
+            await key(s, v, 'rl:A', 'tokens 3.5 · :01.0');
+            await s.flash(695, 150, 'refill 1 s × 0.5 = +0.5', { mono: true, color: TEAL, stroke: TEAL }, 700);
+          },
+        },
+        {
+          title: 'Same answer from any pod',
+          text: 'Allowed again. The response says `X-RateLimit-Remaining: 3` (rounded down). A could keep going at 0.5 requests per second forever, or burst up to 5 after being idle for 10 seconds.',
+          observe: 'A is served a second time; the limit is shared.',
+          focus: v => [v.n.userA],
+          async run(s, v) {
+            await s.send(['redis', 'gw2'], 'allowed · 3.5', GREEN);
+            await s.send(['gw2', 'api'], 'forward', BLUE); serve(s, v);
+            await s.send(['api', 'gw2', 'lb', 'userA'], '200 · remaining 3', GREEN);
+            who(s, v, 'A', 'got order 42 ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'burst', title: 'Burst: 429 with Retry-After', sub: 'per-key buckets · backend untouched', color: RED,
+      build: (s, v) => setup(s, v, { clock: '10:05:00.000', keys: [['rl:C', 'tokens 1 · :00.0', 'low'], ['rl:A', 'tokens 5 · :04:10', 'ok']], a: 'browsing', c: 'scraping · 4 sent' }),
+      takeaway: 'An empty bucket is answered **inside Redis** with **429 + Retry-After**: one cheap Redis call, no backend work. Buckets are **per key**, so the bot cannot spend User A\'s quota.',
+      steps: [
+        {
+          title: 'C spends its last token',
+          text: 'Bot C is scraping `/products` and has **1 token** left. Request #5 runs the script: allowed, tokens → **0**. It is forwarded and answered with `X-RateLimit-Remaining: 0`.',
+          observe: 'rl:C turns red at 0 tokens; the backend serves #5.',
+          focus: v => [v.keys['rl:C']],
+          async run(s, v) {
+            await s.send(['bot', 'lb', 'gw1'], 'GET #5', RED);
+            await s.send(['gw1', 'redis'], 'EVALSHA rl:C', TEAL);
+            await key(s, v, 'rl:C', 'tokens 0 · :00.0', 'empty');
+            await s.send(['gw1', 'api'], 'forward', BLUE); serve(s, v);
+            await s.send(['api', 'gw1', 'lb', 'bot'], '200 · remaining 0', GREEN);
+          },
+        },
+        {
+          title: 'Request #6 arrives 300 ms later',
+          text: 'The script refills **0.3 s × 0.5 = 0.15** token. That is less than 1, so it **denies** and stores 0.15 tokens with the new timestamp.',
+          observe: 'The script runs, but the refill is too small.',
+          focus: v => [v.n.redis, v.keys['rl:C']],
+          async run(s, v) {
+            tick(s, v, '10:05:00.300');
+            await s.send(['bot', 'lb', 'gw2'], 'GET #6', RED);
+            await s.send(['gw2', 'redis'], 'EVALSHA rl:C', TEAL);
+            await key(s, v, 'rl:C', 'tokens 0.15 · :00.3', 'empty');
+            await s.flash(695, 150, '0.15 < 1 → deny', { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, 700);
+          },
+        },
+        {
+          title: '429 with Retry-After',
+          text: 'The pod answers **429 Too Many Requests** with `Retry-After: 2`: C needs 0.85 more token at 0.5/s = 1.7 s, rounded up to whole seconds. The backend **never sees** the request: rejecting costs one Redis call.',
+          observe: 'C gets 429; the served counter does not move.',
+          say: 'An empty bucket means 429 with Retry-After, and the backend never sees the request.',
+          focus: v => [v.n.bot, v.api],
+          async run(s, v) {
+            await s.send(['redis', 'gw2'], 'denied', RED);
+            await s.send(['gw2', 'lb', 'bot'], '429 · Retry-After 2', RED);
+            who(s, v, 'C', 'throttled · 429', RED);
+            await s.flash(970, 170, 'not touched', { color: GREY, stroke: '#c3c9ce' }, 600);
+          },
+        },
+        {
+          title: 'Meanwhile A is unaffected',
+          text: 'User A browses at the same moment. A has its **own bucket** (`rl:A`, full at 5), so the bot\'s burst changes nothing for A: take 1 → 4, allowed.',
+          observe: 'A is served normally while C is throttled.',
+          say: 'Buckets are per key, so one abusive client cannot use up anyone else\'s quota.',
+          focus: v => [v.keys['rl:A'], v.n.userA],
+          async run(s, v) {
+            tick(s, v, '10:05:00.400');
+            await s.send(['userA', 'lb', 'gw1'], 'GET /products', BLUE);
+            await s.send(['gw1', 'redis'], 'EVALSHA rl:A', TEAL);
+            await key(s, v, 'rl:A', 'tokens 4 · :00.4');
+            await s.send(['gw1', 'api'], 'forward', BLUE); serve(s, v);
+            await s.send(['api', 'gw1', 'lb', 'userA'], '200 OK', GREEN);
+            who(s, v, 'A', 'products shown ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'race', title: 'Race on the last token', sub: 'GET + SET vs one Lua script', color: AMBER,
+      build: (s, v) => setup(s, v, { clock: '10:10:00.000', keys: [['rl:A', 'tokens 1 · :00.0', 'low']], a: 'two tabs at once' }),
+      takeaway: 'Read and write as **separate commands** let two pods both spend the last token (check-then-act). **One Lua script** makes read-decide-write atomic: exactly one request passes.',
+      steps: [
+        {
+          title: 'Two requests, same millisecond',
+          text: 'A has **1 token** left and two tabs fire at once. The load balancer sends one to each pod. Exactly **one** of them may pass.',
+          observe: 'Both pods receive a request for rl:A at the same time.',
+          focus: v => [v.n.gw1, v.n.gw2],
+          async run(s) {
+            await Promise.all([s.send(['userA', 'lb', 'gw1'], 'GET #1', BLUE), s.send(['userA', 'lb', 'gw2'], 'GET #2', BLUE)]);
+          },
+        },
+        {
+          title: '❌ Both pods read 1 token',
+          text: 'Suppose the filter does `HGETALL rl:A` from Java, decides, then writes. Both pods send their read before either writes, so **both see 1 token** and both decide "allowed".',
+          observe: 'Two reads come back with tokens = 1.',
+          focus: v => [v.keys['rl:A']],
+          async run(s) {
+            await Promise.all([s.send(['gw1', 'redis'], 'HGETALL', AMBER), s.send(['gw2', 'redis'], 'HGETALL', AMBER)]);
+            await Promise.all([s.send(['redis', 'gw1'], 'tokens 1', AMBER), s.send(['redis', 'gw2'], 'tokens 1', AMBER)]);
+            await s.flash(695, 150, 'both passed the check', { color: AMBER, stroke: AMBER }, 700);
+          },
+        },
+        {
+          title: '❌ Both write 0, both forward',
+          text: 'Pod 1 writes `tokens 0`, pod 2 writes `tokens 0` too. Same value, so nobody notices, but **two requests spent one token**. Under a burst of N parallel requests, up to N slip through.',
+          observe: 'The backend serves 2 requests for 1 token.',
+          say: 'A GET then SET from the gateway is check-then-act: parallel requests can all pass.',
+          focus: v => [v.api],
+          async run(s, v) {
+            await Promise.all([s.send(['gw1', 'redis'], 'HSET 0', AMBER), s.send(['gw2', 'redis'], 'HSET 0', AMBER)]);
+            await key(s, v, 'rl:A', 'tokens 0 · :00.0', 'empty');
+            await Promise.all([s.send(['gw1', 'api'], 'forward', RED), s.send(['gw2', 'api'], 'forward', RED)]);
+            serve(s, v, 2);
+            await s.flash(970, 170, '2 served · 1 token', { color: RED, stroke: RED, fill: '#fff4f4' }, 800);
+          },
+        },
+        {
+          title: '✅ Instead: one script per request',
+          text: 'Rewind: A has 1 token. Both pods send `EVALSHA tokenBucket rl:A`. Redis executes **one script at a time**: the first takes the last token, the second runs **after** it and sees **0**.',
+          observe: 'The two scripts run one after the other.',
+          say: 'Redis runs one script at a time, so read, decide and write cannot interleave.',
+          focus: v => [v.n.redis],
+          async run(s, v) {
+            await key(s, v, 'rl:A', 'tokens 1 · :00.0', 'low');
+            await Promise.all([s.send(['gw1', 'redis'], 'EVALSHA (1)', TEAL), s.send(['gw2', 'redis'], 'EVALSHA (2)', TEAL)]);
+            await s.flash(695, 150, 'script 1 · then script 2', { color: TEAL, stroke: TEAL }, 700);
+            await key(s, v, 'rl:A', 'tokens 0 · :00.0', 'empty');
+          },
+        },
+        {
+          title: '✅ Exactly one 200, one 429',
+          text: 'Script 1 returns `allowed: 1`, script 2 returns `allowed: 0`. Pod 1 forwards, pod 2 answers **429**. `MULTI/EXEC` would not be enough: it cannot branch on a value read inside the transaction.',
+          observe: 'One request is served, the other gets 429.',
+          focus: v => [v.n.userA, v.api],
+          async run(s, v) {
+            await Promise.all([s.send(['redis', 'gw1'], 'allowed', GREEN), s.send(['redis', 'gw2'], 'denied', RED)]);
+            await s.send(['gw1', 'api'], 'forward', BLUE); serve(s, v);
+            await s.send(['gw2', 'lb', 'userA'], '429', RED);
+            who(s, v, 'A', '1 × 200 · 1 × 429 ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'window', title: 'Fixed vs sliding window', sub: 'the boundary burst · 5 per minute', color: PURPLE,
+      build: (s, v) => setup(s, v, { clock: '10:00:59.800', keys: [['fx:A:10:00', 'count 5', 'empty'], ['zs:A', '5 entries :59.0–:59.8', 'low']], a: '5 sent at :59' }),
+      takeaway: 'A **fixed window** can allow **2× the limit** across a boundary. A **sliding log** is exact but stores every request; a **sliding-window counter** (or token bucket) is the usual compromise.',
+      steps: [
+        {
+          title: 'The limit is 5 per minute',
+          text: 'Some routes are specified as "N per minute". A sent **5 requests at 10:00:59**, so the minute 10:00 is used up. Request #6 comes at **10:01:00.1**, a fraction of a second later, in a new minute.',
+          observe: 'Request #6 reaches pod 1 just after the minute changed.',
+          focus: v => [v.redisSt],
+          async run(s, v) { tick(s, v, '10:01:00.100'); await s.send(['userA', 'lb', 'gw1'], 'GET #6', BLUE); },
+        },
+        {
+          title: 'Fixed window: new minute, new counter',
+          text: '`INCR fx:A:10:01` (plus `EXPIRE … 60 NX`). Each command is atomic on its own. The new key starts at **1 ≤ 5**, so #6 is allowed.',
+          observe: 'A fresh counter appears for 10:01.',
+          focus: v => [v.keys['fx:A:10:01']],
+          async run(s, v) {
+            await s.send(['gw1', 'redis'], 'INCR fx:A:10:01', PURPLE);
+            await key(s, v, 'fx:A:10:01', 'count 1');
+            await s.send(['redis', 'gw1'], '1 ≤ 5', GREEN);
+            await s.send(['gw1', 'api'], 'forward', BLUE); serve(s, v);
+          },
+        },
+        {
+          title: 'The boundary burst',
+          text: 'A fires 4 more within the same second: counts 2, 3, 4, 5 are all allowed. That is **10 requests in about one second**, while the limit says 5 per minute. Fixed windows are cheap but allow up to **2× the limit** at every boundary.',
+          observe: 'The backend serves 10 requests in ~1 s.',
+          say: 'A fixed window is cheap but lets twice the limit through across a window boundary.',
+          focus: v => [v.keys['fx:A:10:01'], v.api],
+          async run(s, v) {
+            tick(s, v, '10:01:00.900');
+            for (let k = 2; k <= 5; k++) { await s.send(['userA', 'lb', 'gw1'], `#${k + 5}`, BLUE, { ms: 260, pulse: false }); await key(s, v, 'fx:A:10:01', `count ${k}`, k === 5 ? 'empty' : 'ok'); }
+            serve(s, v, 4);
+            who(s, v, 'A', '10 requests in ~1 s', RED);
+            await s.flash(970, 170, '2× the limit', { color: RED, stroke: RED, fill: '#fff4f4' }, 800);
+          },
+        },
+        {
+          title: 'Sliding log: count the real last 60 s',
+          text: 'A **sorted set** keeps one timestamp per request. One Lua script: `ZREMRANGEBYSCORE` drops entries older than 60 s, `ZCARD` counts the rest (**5**), and only if fewer than 5 does it `ZADD`. #6 is **denied** with `Retry-After: 59`, when the oldest entry (10:00:59.0) leaves the window.',
+          observe: 'The sliding log denies #6.',
+          focus: v => [v.keys['zs:A']],
+          async run(s, v) {
+            tick(s, v, '10:01:00.100'); who(s, v, 'A', 'sends #6', AMBER);
+            await s.send(['gw1', 'redis'], 'trim · ZCARD zs:A', PURPLE);
+            await key(s, v, 'zs:A', '5 in last 60 s', 'empty');
+            await s.send(['redis', 'gw1'], 'denied', RED);
+            await s.send(['gw1', 'lb', 'userA'], '429 · retry 59 s', RED);
+            who(s, v, 'A', '429 · retry in 59 s', RED);
+          },
+        },
+        {
+          title: 'Middle ground: sliding window counter',
+          text: 'Exact logs cost **one entry per request** (memory grows with the limit). A **sliding-window counter** keeps just two counters: `estimate = prev × (60 − t)/60 + curr`. At t = 0.1 s: 5 × 0.998 + 0 ≈ **5** → deny. Nearly exact and as cheap as a fixed window. The token bucket is the other common choice when short bursts are fine.',
+          observe: 'Two small counters give an almost exact answer.',
+          say: 'Token bucket or a sliding-window counter is the usual compromise between precision and memory.',
+          focus: v => [v.keys['sw:A']],
+          async run(s, v) {
+            await s.send(['gw1', 'redis'], 'prev + curr', PURPLE);
+            await key(s, v, 'sw:A', 'prev 5 · curr 0 ≈ 5', 'empty');
+            await s.flash(695, 150, '5 × 59.9/60 + 0 ≈ 5 → deny', { mono: true, color: PURPLE, stroke: PURPLE }, 900);
+          },
+        },
+      ],
+    },
+    {
+      id: 'fail', title: 'Redis goes down', sub: 'fail open vs fail closed · failover', color: GREY,
+      build: (s, v) => setup(s, v, { clock: '10:20:00.000', keys: [['rl:A', 'tokens 3 · 19:58', 'ok']], a: 'using the app' }),
+      takeaway: 'The limiter is on **every** request, so it needs a **tiny timeout** and a **circuit breaker**. Decide per route: **fail open** with a local bucket for normal APIs, **fail closed** for login, OTP and payments. After failover a few extra requests may pass, which is acceptable.',
+      steps: [
+        {
+          title: 'The Redis primary disappears',
+          text: 'The primary node dies (or a network partition cuts it off). Every request still needs a decision from the limiter.',
+          observe: 'Redis turns red.',
+          focus: v => [v.n.redis],
+          async run(s, v) {
+            s.tone(v.n.redis, 'fail'); s.setSub(v.n.redis, '✕ unreachable', RED);
+            await s.shake(v.n.redis);
+          },
+        },
+        {
+          title: 'The script call times out fast',
+          text: 'A calls `GET /orders`; pod 1\'s script call **times out after 20 ms**. The timeout must be tiny because the limiter sits on the critical path of every request. After a few failures the **circuit breaker opens**, so pods stop waiting on a dead Redis.',
+          observe: 'Pod 1\'s call to Redis fails.',
+          focus: v => [v.n.gw1],
+          async run(s) {
+            await s.send(['userA', 'lb', 'gw1'], 'GET /orders', BLUE);
+            await s.bounce('gw1', 'redis', 'EVALSHA', RED);
+            await s.flash(430, 62, 'timeout 20 ms · breaker open', { color: RED, stroke: RED, fill: '#fff4f4' }, 700);
+          },
+        },
+        {
+          title: 'Normal route: fail open with a local bucket',
+          text: 'For normal APIs availability matters more than precision: the pod switches to an **in-memory bucket** with its share of the limit (5 tokens ÷ 2 pods ≈ 2–3 per pod). Limits become approximate, but users are still served.',
+          observe: 'Pod 1 uses its local fallback and A is served.',
+          say: 'Normal routes fail open with a small local bucket, so a Redis outage does not take the API down.',
+          focus: v => [v.n.gw1, v.n.userA],
+          async run(s, v) {
+            s.tone(v.n.gw1, 'warn'); s.setSub(v.n.gw1, 'local bucket · 5 ÷ 2 pods', AMBER);
+            await s.send(['gw1', 'api'], 'forward', BLUE); serve(s, v);
+            await s.send(['api', 'gw1', 'lb', 'userA'], '200 OK', GREEN);
+            who(s, v, 'A', 'still served ✓', GREEN);
+          },
+        },
+        {
+          title: 'Sensitive route: fail closed',
+          text: 'For `/login`, OTP and money movement the rule says **FAIL_CLOSED**: without a reliable counter, brute-force protection matters more than availability, so the pod answers **503**.',
+          observe: 'A login attempt is rejected while the limiter is down.',
+          say: 'Login, OTP and payments fail closed: no counter, no request.',
+          focus: v => [v.n.gw2],
+          async run(s, v) {
+            await s.send(['userA', 'lb', 'gw2'], 'POST /login', BLUE);
+            await s.flash(430, 282, 'rule: FAIL_CLOSED', { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, 700);
+            await s.send(['gw2', 'lb', 'userA'], '503', RED);
+            who(s, v, 'A', 'login blocked · 503', RED);
+          },
+        },
+        {
+          title: 'The replica is promoted',
+          text: 'Sentinel (or Redis Cluster) promotes the **replica** after about 15 s. Replication is **asynchronous**, so the last few counter updates may be missing: a few extra requests can slip through. For rate limiting that is acceptable.',
+          observe: 'The replica becomes the new primary; rl:A may lag slightly.',
+          focus: v => [v.n.replica, v.keys['rl:A']],
+          async run(s, v) {
+            tick(s, v, '10:20:15.000');
+            s.tone(v.n.replica, 'ok'); s.setSub(v.n.replica, 'new primary ✓', GREEN);
+            await s.pulse(v.n.replica);
+            await key(s, v, 'rl:A', 'tokens 3 (may lag)', 'low');
+          },
+        },
+        {
+          title: 'Breaker half-open: back to Redis',
+          text: 'The circuit breaker lets a trial call through to the new primary; it succeeds, the breaker closes and pods go back to the shared buckets. Pod 1 drops its local fallback.',
+          observe: 'Pod 2 runs the script on the new primary and limits are global again.',
+          focus: v => [v.n.gw2, v.n.replica],
+          async run(s, v) {
+            tick(s, v, '10:20:30.000');
+            await s.send(['userA', 'lb', 'gw2'], 'GET /orders', BLUE);
+            await s.send(['gw2', 'replica'], 'EVALSHA rl:A', TEAL);
+            await key(s, v, 'rl:A', 'tokens 4 · 20:30');
+            await s.send(['replica', 'gw2'], 'allowed', GREEN);
+            s.tone(v.n.gw1, null); s.setSub(v.n.gw1, 'rate-limit filter');
+            await s.send(['gw2', 'api'], 'forward', BLUE); serve(s, v);
+            who(s, v, 'A', 'back to normal ✓', GREEN);
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Pin down what is limited, by which key, and how strict it must be.',
+      lines: [
+        ['I', 'Design a rate limiter for our public API.'],
+        ['C', 'Server-side, protecting our APIs, rather than a client-side throttle?'],
+        ['I', 'Server-side.'],
+        ['C', 'What do we limit by: user id, API key, IP? Different limits per plan or per endpoint?'],
+        ['I', 'Per user or API key, different per plan. Login should be limited per IP.'],
+        ['C', 'How much traffic, and how many gateway instances?'],
+        ['I', 'About 50,000 requests per second at peak, around 20 gateway pods.'],
+        ['C', 'Must limits be exact, or is a small overshoot fine? And if the limiter itself is down?'],
+        ['I', 'A small overshoot is fine. Availability matters more for normal APIs.'],
+        ['P', 'Write: server-side · per user / plan · login per IP · 50k rps · 20 pods · approximate OK.'],
+      ],
+      avoid: 'Jumping to "token bucket in Redis" before you know the key, the limits and the failure policy.',
+    },
+    {
+      t: 'Estimate the scale', min: 4, goal: 'Show the state is small and must be in memory.',
+      lines: [
+        ['C', '50k req/s → **50k limiter checks per second**, each on the critical path, so the check must cost **well under a millisecond**: in-memory, one round trip.'],
+        ['C', 'State: one small hash per active key, about **100 bytes**. 1 M active users × 2 routes ≈ **200 MB** in Redis, with expiry so idle keys disappear.'],
+        ['C', 'One Redis primary handles 50k short scripts per second; I would still use a **small Redis Cluster** for headroom and failover.'],
+        ['P', 'Each number decides something: latency → in-memory; size → Redis is plenty; rps → one cluster, sharded by key.'],
+      ],
+    },
+    {
+      t: 'API & behaviour', min: 4, goal: 'Agree on what clients see.',
+      lines: [
+        ['C', 'Allowed: forward, add `X-RateLimit-Limit`, `X-RateLimit-Remaining` (or the IETF `RateLimit` headers).'],
+        ['C', 'Limited: **429 Too Many Requests** with `Retry-After` in seconds. The request never reaches the backend.'],
+        ['C', 'Rules: `{ plan, route, capacity, refillPerSec, key: user | apiKey | ip, onLimiterDown: FAIL_OPEN | FAIL_CLOSED }`, editable via an admin API without a deploy.'],
+        ['I', 'Why not queue the request instead of a 429?'],
+        ['C', 'A limit says "slow down". Queuing holds connections and grows latency; clients should back off with `Retry-After`.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Draw where the check runs and where the state lives.',
+      lines: [
+        ['P', 'Draw: Clients → Load Balancer → Gateway pods → Backend, with Redis (primary + replica) and Rules beside the gateways.'],
+        ['C', 'The check lives in the **API gateway**, so every service is protected in one place, before any business code runs.'],
+        ['C', 'Each pod builds the key (user + route), looks up the cached rule and runs **one Lua token-bucket script** in Redis: refill for elapsed time, take a token, write back, set an expiry.'],
+        ['I', 'Why not keep the counters in each pod?'],
+        ['C', 'The load balancer spreads a user over all pods; with 20 pods a user would get the limit 20 times.'],
+        ['P', 'Walk one real request: rl:A with 5 tokens → 4, next call on another pod → 3.5.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Concurrency, algorithms and failures.',
+      lines: [
+        ['I', 'Two pods check the same user at the same moment on the last token.'],
+        ['C', 'With GET then SET from Java both could pass. The Lua script is atomic: Redis runs one script at a time, so the second sees zero.'],
+        ['I', 'Fixed window or sliding?'],
+        ['C', 'A fixed window allows twice the limit across a boundary. A sliding log is exact but stores every request. Token bucket or a sliding-window counter is the usual compromise.'],
+        ['I', 'Redis goes down.'],
+        ['C', 'Tiny timeout and a circuit breaker. Normal routes fail open with a local bucket (limit ÷ pods); login and OTP fail closed. After failover a few updates may be lost, which is fine for limits.'],
+        ['I', 'One huge customer creates a hot key.'],
+        ['C', 'Lease tokens to pods in batches, or split the key into sub-buckets, each with a share of the limit.'],
+      ],
+      avoid: 'Claiming the limiter is exact across regions or during failover: say it is approximate by design.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: one atomic Lua token-bucket script per request in Redis, keyed by user and route; cached rules; 429 + Retry-After; tiny timeout with a fail-open / fail-closed policy per route.'],
+        ['C', 'Next: Redis Cluster for scale, per-region limiters for multi-region, and dashboards of 429 rate per plan to tune limits.'],
+        ['P', 'End with the trade-off you chose: availability over exactness for normal routes.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): say it in 1–2 minutes, pause between paragraphs
+    summary: [
+      "A rate limiter controls how many requests a client can make in a period, to protect our services from abuse and keep usage fair. I put it in the **API gateway**, so every service is protected in one place before any business code runs.",
+      "For every request the gateway builds a **key**, usually the user id from the JWT plus the route, and checks a **token bucket** for it. Each key has a bucket of, say, 5 tokens that refills at 0.5 per second. A request takes a token, and if the bucket is empty we return **429 Too Many Requests** with a `Retry-After` header, so the backend never sees that request.",
+      "Because we run many gateway pods behind a load balancer, the counters can't live in pod memory, otherwise a user would get the limit once per pod. So the buckets live in **Redis**, and the check is **one Lua script** that refills, takes a token and writes back **atomically**. That matters: with a GET and then a SET from Java, two pods could both spend the last token. In Spring Cloud Gateway this is the built-in Redis `RequestRateLimiter` filter.",
+      "The limiter is on every request, so the Redis call has a **tiny timeout and a circuit breaker**. If Redis is down, normal routes **fail open** with a small local bucket, while login, OTP and payments **fail closed**. After a failover a few extra requests may pass because replication is asynchronous, which is acceptable for rate limiting.",
+      "On algorithms, a fixed window is the cheapest but lets twice the limit through at a window boundary, and a sliding log is exact but stores every request. So a token bucket or a sliding-window counter is the usual choice.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> per-key limits per plan and route; 429 + Retry-After; remaining-quota headers; change limits without a deploy.</li>
+        <li><b>Non-functional:</b> &lt; 1–2 ms added at p99, correct across all pods, highly available, memory proportional to active users.</li>
+        <li><b>Out of scope (say so):</b> network-level DDoS (CDN / shield), billing quotas per month.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Checks</td><td class="m">50k / s</td><td>one Redis script each</td></tr>
+        <tr><td>State</td><td class="m">~100 B × 2 M keys</td><td>≈ 200 MB, with expiry</td></tr>
+        <tr><td>Latency</td><td class="m">same-zone Redis</td><td>≈ 0.3–1 ms</td></tr>
+        <tr><td>Pods</td><td class="m">20</td><td>→ counters must be shared</td></tr></table>` },
+      { h: '3 · Client contract', color: '#c47d1e', html: `<table>
+        <tr><td class="m">200</td><td>X-RateLimit-Limit · X-RateLimit-Remaining</td></tr>
+        <tr><td class="m">429</td><td>Too Many Requests · Retry-After: 2</td></tr>
+        <tr><td class="m">503</td><td>limiter down on a FAIL_CLOSED route (login, OTP)</td></tr>
+        <tr><td class="m">PUT /admin/limits/{plan}</td><td>change rules; pods pick them up in seconds</td></tr></table>` },
+      { h: '4 · Keys & rules', color: '#8f4fc4', html: `<pre>// Redis hash per user + route
+rl:{userId}:{route} → { tokens: "3.5", ts: 1761213600000 }
+PEXPIRE ~ capacity / refill  // idle keys vanish
+
+// rule (config, cached in every pod)
+{ plan: "free", route: "/orders/**", key: "user",
+  capacity: 5, refillPerSec: 0.5, onLimiterDown: "FAIL_OPEN" }
+{ plan: "*", route: "/login", key: "ip",
+  limit: 5, window: "1m", onLimiterDown: "FAIL_CLOSED" }</pre>` },
+      { h: '5 · Request path', color: '#2f6fe0', html: `<ol>
+        <li>LB → gateway pod → resolve key (JWT user / API key / IP) and cached rule.</li>
+        <li><code>EVALSHA tokenBucket rl:{key}</code> → <code>{ allowed, tokens }</code> (atomic in Redis).</li>
+        <li>Allowed → forward + headers. Denied → 429 + Retry-After, backend untouched.</li></ol>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>20 ms timeout + circuit breaker on the Redis call.</li>
+        <li>FAIL_OPEN routes: local bucket (limit ÷ pods). FAIL_CLOSED routes: 503.</li>
+        <li>Redis replica + Sentinel / Cluster; async replication → a few extra requests after failover.</li>
+        <li>Use Redis <code>TIME</code> inside the script so pod clock skew does not matter.</li></ul>` },
+    ],
+    decisions: [
+      ['Limit in the API gateway', 'One place protects every service, before business code runs.', 'The gateway and Redis are now on the critical path.'],
+      ['Counters in Redis, not pod memory', 'Global limit across all pods; sub-millisecond.', 'One more dependency to run and fail over.'],
+      ['One Lua script per check', 'Read-decide-write is atomic: no check-then-act race.', 'Scripts must stay tiny; a slow script blocks Redis.'],
+      ['Token bucket', 'Allows short bursts, steady average, two fields per key.', 'Less intuitive than "N per minute" for API users.'],
+      ['Key by user / API key, IP as fallback', 'Fair per caller; NAT users are not punished together.', 'Anonymous floods need IP or WAF rules.'],
+      ['Fail open (normal) · fail closed (login, OTP)', 'A Redis outage does not take the API down; brute force stays blocked.', 'During an outage normal routes are only approximately limited.'],
+      ['Async replication', 'Fast writes, simple HA.', 'A few extra requests pass after failover.'],
+    ],
+    code: [
+      { t: 'Token bucket in Lua (runs atomically in Redis)', code: '-- KEYS[1] = rl:{user}:{route}   ARGV[1] = capacity   ARGV[2] = refill per second\nlocal cap, rate = tonumber(ARGV[1]), tonumber(ARGV[2])\nlocal t = redis.call("TIME")                       -- Redis clock: no pod clock skew\nlocal now = t[1] * 1000 + math.floor(t[2] / 1000)\n\nlocal b = redis.call("HMGET", KEYS[1], "tokens", "ts")\nlocal tokens = tonumber(b[1]) or cap              -- new key starts full\nlocal ts = tonumber(b[2]) or now\ntokens = math.min(cap, tokens + (now - ts) / 1000 * rate)\n\nlocal allowed = 0\nif tokens >= 1 then tokens = tokens - 1; allowed = 1 end\nredis.call("HSET", KEYS[1], "tokens", tokens, "ts", now)\nredis.call("PEXPIRE", KEYS[1], math.ceil(cap / rate * 1000))\nreturn { allowed, tostring(tokens) }' },
+      { t: 'Spring Cloud Gateway: built-in Redis limiter', code: 'spring:\n  cloud:\n    gateway:\n      routes:\n        - id: orders\n          uri: lb://orders-api\n          predicates: [ Path=/orders/** ]\n          filters:\n            - name: RequestRateLimiter\n              args:\n                redis-rate-limiter.replenishRate: 1    # tokens per second\n                redis-rate-limiter.burstCapacity: 10\n                redis-rate-limiter.requestedTokens: 2  # each request costs 2 → 0.5 req/s, burst 5\n                key-resolver: "#{@userKeyResolver}"\n\n// key = authenticated user, IP only for anonymous calls\n@Bean KeyResolver userKeyResolver() {\n  return ex -> ex.getPrincipal().map(Principal::getName)\n      .switchIfEmpty(Mono.just(ex.getRequest().getRemoteAddress().getAddress().getHostAddress()));\n}' },
+      { t: 'Calling the script yourself (Spring Data Redis)', code: 'RedisScript<List> bucket = RedisScript.of(new ClassPathResource("token_bucket.lua"), List.class);\n\nDecision check(String user, Rule rule) {\n  String key = "rl:" + user + ":" + rule.route();\n  List<Object> r = redis.execute(bucket, List.of(key),\n      String.valueOf(rule.capacity()), String.valueOf(rule.refillPerSec()));   // EVALSHA, cached script\n  boolean allowed = ((Long) r.get(0)) == 1L;\n  double tokens = Double.parseDouble((String) r.get(1));\n  long retryAfter = allowed ? 0 : (long) Math.ceil((1 - tokens) / rule.refillPerSec());\n  return new Decision(allowed, (long) tokens, retryAfter);   // → headers or 429 + Retry-After\n}' },
+      { t: 'Fail open or closed when Redis is down', code: 'Decision decide(String user, Rule rule) {\n  try {\n    // client timeout ~20 ms; the breaker opens after repeated failures\n    return breaker.executeSupplier(() -> check(user, rule));\n  } catch (Exception redisDown) {\n    if (rule.onLimiterDown() == FAIL_CLOSED) return Decision.unavailable();   // login, OTP → 503\n    return localBuckets                                                   // approximate\n        .computeIfAbsent(user, k -> new LocalBucket(rule.capacity() / pods(), rule.refillPerSec() / pods()))\n        .tryTake();\n  }\n}' },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    cc: { name: 'Concurrency', color: '#c47d1e' },
+    al: { name: 'Algorithms', color: '#8f4fc4' },
+    fa: { name: 'Failures', color: '#ce3434' },
+    sc: { name: 'Scale', color: '#2f6fe0' },
+    cl: { name: 'Clients', color: '#13968a' },
+    tc: { name: 'Tech choices', color: '#65727a' },
+  },
+  followups: [
+    { g: 'cc', q: 'Two gateway pods use the last token at the same time. Can both pass?', what: 'With GET then SET from Java, yes: both read 1 token and both forward.', why: 'Separate read and write commands leave a gap for the other pod (check-then-act).', how: 'Do read-decide-write in **one Lua script** (or a single `INCR` for counters). Redis executes one script at a time.', trade: 'Scripts must be short: a slow script blocks every other Redis command.', flow: 'race' },
+    { g: 'cc', q: 'Why not MULTI/EXEC instead of Lua?', what: 'MULTI/EXEC queues commands and runs them together.', why: 'You cannot branch on a value read inside the transaction, and the bucket needs "if tokens ≥ 1 then take".', how: 'Lua (`EVALSHA`) or Redis Functions. `WATCH` + MULTI works but retries under contention.', trade: 'Lua logic lives in Redis: version and test the script like code.', flow: 'race' },
+    { g: 'cc', q: 'Pods have different clocks. Does that break the bucket?', what: 'If each pod passes its own "now", skew makes refills wrong (even negative).', why: 'The refill depends on elapsed time between calls from different pods.', how: 'Read the time **inside the script** with `redis.call("TIME")`, so one clock is used for every key.', trade: 'Ties the limiter to the Redis node\'s clock (fine; it is one node per key).' },
+    { g: 'al', q: 'Token bucket vs fixed vs sliding window?', what: 'Fixed window allows 2× bursts at the boundary; sliding log is exact but stores each request.', why: 'Trade precision against memory and CPU.', how: '**Token bucket** for burst-friendly APIs; **sliding-window counter** for "N per minute" with low memory.', trade: 'None is perfect; document the behaviour for API users.', flow: 'window' },
+    { g: 'al', q: 'What about the leaky bucket?', what: 'Requests enter a queue that drains at a fixed rate.', why: 'It smooths output to a constant rate.', how: 'Good for **your own outbound calls** to a third-party API with a strict rate; for incoming APIs a 429 is better than queueing.', trade: 'Adds latency; a full queue still has to reject.' },
+    { g: 'al', q: 'Should rejected requests be queued instead of getting 429?', what: 'Queuing hides overload but holds connections and grows latency.', why: 'A rate limit says "slow down", not "wait here".', how: 'Return **429 + Retry-After** for APIs; use queues (leaky bucket) for outbound calls.', trade: 'Clients must implement backoff.', flow: 'burst' },
+    { g: 'fa', q: 'Redis is down. What does the gateway do?', what: 'Every limiter call fails or times out.', why: 'The limiter sits on the critical path.', how: 'Tight timeout + circuit breaker. **Fail open** with a local bucket (limit ÷ pods) for normal routes; **fail closed** for login / OTP.', trade: 'Fail open lets attackers through during the outage; fail closed means an outage for users.', flow: 'fail' },
+    { g: 'fa', q: 'After a Redis failover, are limits still exact?', what: 'A few requests beyond the limit may be allowed.', why: 'Replication is asynchronous; the promoted replica may miss recent updates.', how: 'Accept it (rate limiting is approximate), or use `WAIT` for critical keys.', trade: '`WAIT` adds latency to every check.', flow: 'fail' },
+    { g: 'fa', q: 'Should limiter counters go in a database?', what: 'A DB write per request adds latency and load to every API call.', why: '50k checks per second need sub-millisecond in-memory state.', how: 'Counters in Redis with expiry; only the **rules** in a DB / config.', trade: 'A total Redis loss resets counters: limits simply restart.' },
+    { g: 'sc', q: 'How do you scale to 1 million requests per second?', what: 'One Redis primary becomes the bottleneck.', why: 'Every request is one Redis round trip.', how: '**Redis Cluster** sharded by key (a script must touch keys in one hash slot), token leasing for heavy users, per-region limiters.', trade: 'Global limits across regions become approximate.' },
+    { g: 'sc', q: 'A single huge customer is a hot key. What now?', what: 'All their requests hit one Redis shard.', why: 'One key lives in one slot on one node.', how: '**Lease** tokens to pods in batches (one script call gives a pod 50 tokens), or split the key into N sub-buckets with limit ÷ N each.', trade: 'Leased-but-unused tokens and sub-buckets make bursts less precise.' },
+    { g: 'sc', q: 'How much latency does the limiter add?', what: 'One Redis round trip per request.', why: 'Same-zone Redis is well under a millisecond; the script is microseconds of CPU.', how: '`EVALSHA` (script cached), connection pooling, Redis in the same zone as the pods.', trade: 'Cross-zone Redis adds about a millisecond.' },
+    { g: 'cl', q: 'How should clients behave after a 429?', what: 'Retrying immediately makes it worse.', why: 'Synchronised retries create new bursts.', how: 'Honour `Retry-After`; exponential backoff with **jitter**; idempotency keys for retried writes.', trade: 'You cannot force bad clients, so the limiter must reject them cheaply.', flow: 'burst' },
+    { g: 'cl', q: 'Limit by IP, user or API key?', what: 'IP is the only key for anonymous traffic, but many users share one IP behind NAT.', why: 'A per-IP limit punishes a whole office; bots rotate IPs.', how: '**User id / API key** for authenticated calls; IP (plus WAF / CAPTCHA) for anonymous and login routes.', trade: 'Anonymous limits stay coarse.', flow: 'burst' },
+    { g: 'tc', q: 'Gateway limiter or a library in each service?', what: 'Both exist: Spring Cloud Gateway `RequestRateLimiter`, Resilience4j `RateLimiter`, Bucket4j.', why: 'The gateway is one place for user-facing limits; Resilience4j limits are per JVM instance.', how: 'Gateway + Redis for user-facing limits; Resilience4j to protect calls to fragile dependencies.', trade: 'Per-instance limiters are not global.' },
+    { g: 'tc', q: 'How do you change limits without a deploy?', what: 'Limits in code need a release for every change.', why: 'Plans and abuse patterns change often.', how: 'Rules in a config service, cached per pod and refreshed every few seconds; versioned with an audit log.', trade: 'For a few seconds pods may disagree about a new rule.' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>
