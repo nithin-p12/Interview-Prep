@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-group-anagrams">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>9. Group Anagrams · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public List<List<String>> groupAnagrams(String[] strs) {
+    Map<String, List<String>> groups = new HashMap<>();
+    for (String word : strs) {
+        char[] chars = word.toCharArray();
+        Arrays.sort(chars);
+        String key = new String(chars);
+        groups.putIfAbsent(key, new ArrayList<>());
+        groups.get(key).add(word);
+    }
+    return new ArrayList<>(groups.values());
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(strs){
+ const S=[],n=strs.length,groups=new Map(),gOf=[];
+ function snap(o){const p=o.p,inLoop=p!=null&&p<n,hl={};
+  for(let k=0;k<n;k++){if(p!=null&&k<p)hl[k]='done';}
+  if(inLoop)hl[p]='cur';
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:strs,hl},
+   vizx:{chars:{vals:o.chars||[],hl:o.sorted?Object.fromEntries((o.chars||[]).map((_,k)=>[k,'new'])):{}}},
+   ds:{groups:{entries:[...groups].map(([k,v])=>[k,v.slice()]),hl:o.mhl||{}}},
+   vars:[{t:'method',note:'whole call',v:[['strs',strs]]},
+         {t:'loop',note:'new each turn',v:[['word',inLoop?strs[p]:undefined],['key',inLoop&&o.key!=null?o.key:undefined]]}]});}
+
+ snap({line:[2],ann:{2:'groups = {}'},text:'A <b>HashMap</b>: key = the word’s letters <b>sorted</b>, value = the list of words with exactly those letters.'});
+ for(let p=0;p<n;p++){const w=strs[p],ch=[...w],sc=[...w].sort(),key=sc.join('');
+  snap({p,chars:ch,line:[3,4],ann:{3:`word = "${w}"`,4:`chars = [${ch.join(', ')}]`},text:`Next word: <b>"${w}"</b>. Copy its letters into a <code>char[]</code>.`});
+  snap({p,chars:sc,sorted:true,key,line:[5,6],ann:{5:`[${sc.join(', ')}]`,6:`key = "${key}"`},text:`Sort the letters → <b>key = "${key}"</b>. Every anagram of "${w}" gets this same key.`});
+  const had=groups.has(key);if(!had)groups.set(key,[]);
+  snap({p,chars:sc,sorted:true,key,mhl:{[key]:had?'hit':'new'},line:[7],ann:{7:had?'key exists → no-op':`new list for "${key}"`},
+   text:had?`Key "${key}" already has a list → putIfAbsent does nothing.`:`First word with key "${key}" → put a new empty list.`});
+  groups.get(key).push(w);
+  snap({p,chars:sc,sorted:true,key,mhl:{[key]:'new'},line:[8],ann:{8:`add("${w}")`},tone:'good',
+   text:`Add "${w}" to its group → "${key}" → [${groups.get(key).map(x=>`"${x}"`).join(', ')}].`});
+ }
+ const res=[...groups.values()].map(v=>v.slice());
+ snap({p:n,line:[10],ann:{10:`${res.length} groups`},tone:'good',result:res,text:`Return all the lists: <b>${res.length}</b> group${res.length>1?'s':''}. (HashMap order is not guaranteed — any order is accepted.)`});
+ return S;}
+
+PLAYER.start({
+ title:'9. Group Anagrams',code:CODE,run,
+ problem:{pattern:'HashMap · sorted word as key',text:'Group the words of <code>strs</code> that are anagrams of each other. Any order.',example:'["eat","tea","tan","ate","nat","bat"] → [[eat,tea,ate],[tan,nat],[bat]]'},
+ viz:{kind:'array',label:'strs',title:'grey = grouped',opts:{cw:58,top:6,ptrs:false},
+  rows:[{id:'chars',label:'chars',kind:'array',opts:{cw:36,top:6,ptrs:false}}]},
+ ds:[{id:'groups',kind:'map',decl:'Map&lt;String, List&lt;String&gt;&gt; groups',opts:{k:'key',v:'List&lt;String&gt;',cols:'64px 22px 1fr'}}],
+ input:{label:'strs =',value:'eat,tea,tan,ate,nat',presets:['eat,tea,tan,ate,nat,bat','abc,bca,cab','ab,ba,cd','a'],
+  parse(v){const a=v.split(/[\s,]+/).map(x=>x.replace(/[^a-z]/gi,'').toLowerCase()).filter(Boolean);
+   if(a.length<1||a.length>6)throw 'strs: 1 to 6 words, e.g. eat,tea,tan';if(a.some(w=>w.length>5))throw 'max 5 letters per word (so it fits)';return a;}},
+ remember:{
+  mnem:{letters:['D','L','K','A'],phrase:'Declare · Loop · Key · Add',sub:'Anagrams look the same once you sort their letters.'},
+  chunks:[
+   {t:'Declare',d:'HashMap&lt;String, List&lt;String&gt;&gt;',lines:[2]},
+   {t:'Loop',d:'for each word in strs',lines:[3]},
+   {t:'Key',d:'toCharArray, Arrays.sort, new String(chars)',lines:[4,5,6]},
+   {t:'Add',d:'putIfAbsent + get(key).add(word); return values()',lines:[7,8,10]}],
+  declare:[
+   ['Map&lt;String, List&lt;String&gt;&gt; groups','a HashMap: sorted key → all its anagrams'],
+   ['char[] chars = word.toCharArray();','Strings are immutable — sort a copy'],
+   ['String key = new String(chars);','not chars.toString() (that prints an address)']],
+  forget:[
+   '<code>new String(chars)</code> or <code>String.valueOf(chars)</code> — <b>not</b> <code>chars.toString()</code>.',
+   '<code>Arrays.sort(chars)</code> returns <b>void</b> — it sorts in place.',
+   'Return type is <code>List&lt;List&lt;String&gt;&gt;</code> → <code>new ArrayList&lt;&gt;(groups.values())</code>.',
+   'One line: <code>groups.computeIfAbsent(key, k -&gt; new ArrayList&lt;&gt;()).add(word);</code>'],
+  cx:{time:'O(n · k log k)',timeWhy:'n words, sort k letters each',space:'O(n · k)',spaceWhy:'the map stores every word',
+   rows:[['Compare every pair','O(n² · k)','O(n · k)','too slow',false],
+    ['Sorted word as key','O(n · k log k)','O(n · k)','short, easy to explain ✓',true],
+    ['int[26] count as key','O(n · k)','O(n · k)','faster for long words',false]],
+   follow:[
+    ['Avoid sorting?','Key = letter counts, e.g. <code>Arrays.toString(int[26])</code> → O(n · k).'],
+    ['With streams?','<code>Arrays.stream(strs).collect(groupingBy(w -&gt; sorted(w)))</code>, then <code>values()</code>.'],
+    ['Need a stable group order?','Use a <code>LinkedHashMap</code> — first-seen order.']]}}
+});
+</script>
+</body></html>

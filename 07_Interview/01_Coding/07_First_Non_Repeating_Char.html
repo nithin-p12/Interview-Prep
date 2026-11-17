@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-first-unique-char">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>7. First Non-Repeating Character · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int firstUniqChar(String s) {
+    int[] count = new int[26];
+    for (char c : s.toCharArray()) {
+        count[c - 'a']++;
+    }
+    for (int i = 0; i < s.length(); i++) {
+        if (count[s.charAt(i) - 'a'] == 1) {
+            return i;
+        }
+    }
+    return -1;
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(s){
+ const S=[],n=s.length,L=[...new Set(s)].sort(),cnt={};L.forEach(c=>cnt[c]=0);
+ function snap(o){const p=o.p,inLoop=p!=null&&p<n,hl={},chl={};
+  if(o.pass===1)for(let k=0;k<n;k++){if(k<p)hl[k]='done';}
+  if(o.pass===2)for(let k=0;k<n;k++){if(k<p)hl[k]=cnt[s[k]]>1?'dim':'';}
+  if(inLoop)hl[p]=o.tone==='good'?'hit':o.tone==='bad'?'bad':'cur';
+  if(inLoop)chl[L.indexOf(s[p])]=o.pass===1?'new':(cnt[s[p]]===1?'hit':'bad');
+  const ptrs=o.pass===1?{c:inLoop?p:null}:{i:o.pass===2&&inLoop?p:null};
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:[...s],hl,ptrs},
+   ds:{count:{vals:L.map(c=>cnt[c]),ix:L,hl:chl}},
+   vars:[{t:'method',note:'whole call',v:[['s',s]]},
+         {t:'loop 1',note:'counting',v:[['c',o.pass===1&&inLoop?s[p]:undefined]]},
+         {t:'loop 2',note:'finding',v:[['i',o.pass===2&&inLoop?p:undefined],['s.charAt(i)',o.pass===2&&inLoop?s[p]:undefined]]}]});}
+
+ snap({line:[2],ann:{2:'count = [0 × 26]'},text:'<b>int[26]</b>: one counter per letter. Only the letters of s are drawn (the others stay 0).'});
+ for(let k=0;k<n;k++){const c=s[k];cnt[c]++;
+  snap({pass:1,p:k,line:[3,4],ann:{3:`c = '${c}'`,4:`count['${c}'] = ${cnt[c]}`},text:`<b>Pass 1</b> (count): '${c}' → count['${c}'] = <b>${cnt[c]}</b>.`});
+ }
+ snap({pass:2,p:null,line:[6],ann:{6:'counts are ready'},text:'All letters are counted. <b>Pass 2</b> walks s again <b>in order</b>, so the first count of 1 wins.'});
+ for(let i=0;i<n;i++){const c=s[i],v=cnt[c];
+  snap({pass:2,p:i,line:[6],ann:{6:`i = ${i}`},text:`i = ${i} → letter <b>'${c}'</b>.`});
+  if(v===1){
+   snap({pass:2,p:i,line:[7,8],ann:{7:`count['${c}'] == 1 → true`,8:`return ${i}`},tone:'good',result:i,text:`'${c}' appears exactly <b>once</b> → it is the first unique letter. Return <b>${i}</b>.`});
+   return S;}
+  snap({pass:2,p:i,line:[7],ann:{7:`count['${c}'] = ${v} → false`},tone:'bad',text:`'${c}' appears <b>${v}</b> times → not unique, keep walking.`});
+ }
+ snap({pass:2,p:n,line:[11],ann:{11:'return -1'},tone:'bad',result:-1,text:'Every letter repeats → return <b>−1</b>.'});
+ return S;}
+
+PLAYER.start({
+ title:'7. First Non-Repeating Character',code:CODE,run,
+ problem:{pattern:'Count first, then scan in order',text:'Return the <b>index</b> of the first character in <code>s</code> that appears only once, or −1. Lowercase a–z.',example:'"leetcode" → 0 · "aabb" → −1'},
+ viz:{kind:'array',title:'s — grey = counted · faded = repeats',opts:{cw:44,top:6,ptrColors:{c:'#9333EA',i:'#F97316'}}},
+ ds:[{id:'count',kind:'array',decl:'int[] count = new int[26]',note:'index = letter − ‘a’',opts:{cw:42,top:6,ptrs:false}}],
+ input:{label:'s =',value:'swiss',presets:['leetcode','aabb','abcab','z'],
+  parse(v){v=v.trim();if(!/^[a-z]+$/.test(v))throw 'lowercase letters a–z only';if(v.length>9)throw 'max 9 letters (so it fits)';return v;}},
+ remember:{
+  mnem:{letters:['D','C','S','N'],phrase:'Declare · Count · Scan · None',sub:'Two passes: count everything, then walk s in order and stop at the first 1.'},
+  chunks:[
+   {t:'Declare',d:'int[] count = new int[26]',lines:[2]},
+   {t:'Count',d:'for each char c: count[c − \'a\']++',lines:[3,4,5]},
+   {t:'Scan',d:'for i in order: count == 1 → return i',lines:[6,7,8,9,10]},
+   {t:'None',d:'nothing unique → return −1',lines:[11]}],
+  declare:[
+   ['int[] count = new int[26];','how often each letter appears'],
+   ['for (char c : s.toCharArray())','pass 1 only needs the letters'],
+   ['for (int i = 0; i &lt; s.length(); i++)','pass 2 needs the index to return it']],
+  forget:[
+   'Pass 2 walks <b>s</b>, not the count array — the order of s decides “first”.',
+   'Return the <b>index</b> i, not the character.',
+   'Return <b>−1</b> when every letter repeats.',
+   'Any characters? Use <code>LinkedHashMap&lt;Character, Integer&gt;</code> or a <code>HashMap</code> + second pass.'],
+  cx:{time:'O(n)',timeWhy:'two passes over s',space:'O(1)',spaceWhy:'26 counters, whatever n is',
+   rows:[['For each char, count again','O(n²)','O(1)','nested loops',false],
+    ['HashMap counts + 2nd pass','O(n)','O(k)','any characters',false],
+    ['int[26] + 2nd pass','O(n)','O(1)','fastest for a–z ✓',true]],
+   follow:[
+    ['Stream of characters (one by one)?','Keep counts + a queue of candidates; pop the head while its count &gt; 1.'],
+    ['Return the character instead?','Same code, <code>return s.charAt(i)</code> and a sentinel like <code>\'_\'</code>.'],
+    ['Java 8 one-liner?','<code>groupingBy(c -&gt; c, LinkedHashMap::new, counting())</code>, then the first entry with value 1.']]}}
+});
+</script>
+</body></html>

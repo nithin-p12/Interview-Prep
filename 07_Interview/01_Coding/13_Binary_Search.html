@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-binary-search">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>13. Binary Search · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int search(int[] nums, int target) {
+    int lo = 0, hi = nums.length - 1;
+    while (lo <= hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (nums[mid] == target) {
+            return mid;
+        } else if (nums[mid] < target) {
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return -1;
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run({nums,target}){
+ const S=[],n=nums.length;let lo=0,hi=n-1;
+ function snap(o){const hl={};for(let k=0;k<n;k++)if(k<lo||k>hi)hl[k]='dim';
+  if(o.mid!=null)hl[o.mid]=o.found?'hit':'cur';
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:nums,hl,ptrs:{lo:lo<n&&lo<=hi?lo:null,mid:o.mid??null,hi:hi>=0&&lo<=hi?hi:null},win:lo<=hi?[lo,hi]:null,winLabel:'search space'},
+   vars:[{t:'method',note:'whole call',v:[['target',target],['lo',lo],['hi',hi]]},
+         {t:'loop',note:'new each turn',v:[['mid',o.mid],['nums[mid]',o.mid!=null?nums[o.mid]:undefined]]}]});}
+
+ snap({line:[2],ann:{2:`lo = 0, hi = ${n-1}`},text:`The whole sorted array is the <b>search space</b>: lo = 0, hi = ${n-1}. Looking for <b>${target}</b>.`});
+ while(lo<=hi){const mid=lo+Math.floor((hi-lo)/2),v=nums[mid];
+  snap({mid,line:[3,4],ann:{3:`${lo} <= ${hi} → true`,4:`mid = ${mid}`},text:`Look in the <b>middle</b>: mid = ${lo} + (${hi} − ${lo}) / 2 = <b>${mid}</b> → nums[mid] = ${v}.`});
+  if(v===target){
+   snap({mid,found:true,line:[5,6],ann:{5:`${v} == ${target} → true`,6:`return ${mid}`},tone:'good',result:mid,text:`nums[${mid}] = ${v} is the target → return <b>${mid}</b>.`});
+   return S;}
+  if(v<target){lo=mid+1;
+   snap({mid,line:[7,8],ann:{7:`${v} < ${target} → true`,8:`lo = ${lo}`},text:`${v} &lt; ${target} → the target can only be on the <b>right</b>. Throw away the left half: lo = ${lo}.`});}
+  else{hi=mid-1;
+   snap({mid,line:[9,10],ann:{10:`hi = ${hi}`},text:`${v} &gt; ${target} → the target can only be on the <b>left</b>. Throw away the right half: hi = ${hi}.`});}
+ }
+ snap({line:[3,13],ann:{3:`${lo} <= ${hi} → false`,13:'return -1'},tone:'bad',result:-1,text:`lo (${lo}) passed hi (${hi}) → the search space is empty. ${target} is not in the array → <b>−1</b>.`});
+ return S;}
+
+PLAYER.start({
+ title:'13. Binary Search',code:CODE,run,
+ problem:{pattern:'Halve the search space',text:'<code>nums</code> is sorted. Return the index of <code>target</code>, or −1. Must be O(log n).',example:'[-1, 0, 3, 5, 9, 12], 9 → 4'},
+ viz:{kind:'array',title:'nums — blue box = still possible · faded = thrown away',opts:{cw:48,ptrColors:{lo:'#16A34A',mid:'#F97316',hi:'#9333EA'}}},
+ ds:[],dsNote:'No collection needed — three ints (<code>lo</code>, <code>mid</code>, <code>hi</code>) mark the part of the array that can still hold the target.<br>That is why the space is <b>O(1)</b>.',
+ input:{label:'nums | target =',value:'1,3,5,7,9,11 | 7',presets:['-1,0,3,5,9,12 | 9','2,4,6,8 | 5','1,3,5,7,9 | 1','5 | 5'],
+  parse(v){const [a,b]=v.split('|');const nums=(a||'').match(/-?\d+/g)?.map(Number)||[],t=parseInt(b,10);
+   if(nums.length<1||nums.length>9)throw 'nums: 1 to 9 numbers, e.g. 1,3,5,7 | 5';if(isNaN(t))throw 'add the target after a |, e.g. 1,3,5,7 | 5';
+   if(nums.some((x,i)=>i&&x<nums[i-1]))throw 'nums must be sorted (ascending)';return {nums,target:t};}},
+ remember:{
+  mnem:{letters:['B','M','C','N'],phrase:'Bounds · Mid · Compare · Not-found',sub:'lo ≤ hi, mid in the middle, throw half away every turn.'},
+  chunks:[
+   {t:'Bounds',d:'lo = 0, hi = n − 1, while (lo &lt;= hi)',lines:[2,3]},
+   {t:'Mid',d:'mid = lo + (hi − lo) / 2',lines:[4]},
+   {t:'Compare',d:'== → return mid · &lt; → lo = mid + 1 · &gt; → hi = mid − 1',lines:[5,6,7,8,9,10,11]},
+   {t:'Not-found',d:'loop ends → return −1',lines:[13]}],
+  declare:[
+   ['int lo = 0, hi = nums.length - 1;','both ends are inclusive'],
+   ['while (lo &lt;= hi)','&lt;= so a 1-element space is still checked'],
+   ['int mid = lo + (hi - lo) / 2;','no int overflow (unlike (lo + hi) / 2)']],
+  forget:[
+   '<code>lo &lt;= hi</code>, not <code>&lt;</code> — or you skip the last candidate ([5], 5 → wrong −1).',
+   '<code>lo = mid + 1</code> / <code>hi = mid − 1</code> — without ±1 it can loop forever.',
+   '<code>lo + (hi − lo) / 2</code> avoids overflow for huge arrays.',
+   'Only works on a <b>sorted</b> array.'],
+  cx:{time:'O(log n)',timeWhy:'the search space halves every turn',space:'O(1)',spaceWhy:'three ints (iterative)',
+   rows:[['Linear scan','O(n)','O(1)','ignores that it is sorted',false],
+    ['Recursive binary search','O(log n)','O(log n)','call stack',false],
+    ['Iterative binary search','O(log n)','O(1)','the standard answer ✓',true]],
+   follow:[
+    ['First / last position of a duplicate?','On a match don’t return: save mid and keep going left (hi = mid − 1) or right (lo = mid + 1).'],
+    ['Insert position (not found)?','Return <b>lo</b> after the loop — it is where target would go.'],
+    ['In the JDK?','<code>Arrays.binarySearch(nums, target)</code> → returns −(insertion point) − 1 when missing.']]}}
+});
+</script>
+</body></html>

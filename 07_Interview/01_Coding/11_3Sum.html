@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-3sum">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>11. 3Sum · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public List<List<Integer>> threeSum(int[] nums) {
+    Arrays.sort(nums);
+    List<List<Integer>> result = new ArrayList<>();
+    for (int i = 0; i < nums.length - 2; i++) {
+        if (i > 0 && nums[i] == nums[i - 1]) continue;
+        int lo = i + 1, hi = nums.length - 1;
+        while (lo < hi) {
+            int sum = nums[i] + nums[lo] + nums[hi];
+            if (sum < 0) lo++;
+            else if (sum > 0) hi--;
+            else {
+                result.add(List.of(nums[i], nums[lo], nums[hi]));
+                lo++;
+                while (lo < hi && nums[lo] == nums[lo - 1]) lo++;
+                hi--;
+            }
+        }
+    }
+    return result;
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(input){
+ const S=[],a=input.slice(),n=a.length,res=[];let sorted=false,lo=null,hi=null;
+ const T=t=>'['+t.join(',')+']';
+ function snap(o){const i=o.i,inLoop=i!=null&&i<n-2,hl={};
+  if(inLoop){hl[i]=o.skip?'dim':'cur';if(lo!=null&&hi!=null&&lo<hi){hl[lo]=o.hit?'hit':'in';hl[hi]=o.hit?'hit':'in';}if(o.hit)hl[i]='hit';}
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:a.slice(),hl,ptrs:{i:inLoop?i:null,lo:inLoop&&lo!=null&&lo<n?lo:null,hi:inLoop&&hi!=null&&hi>=0?hi:null}},
+   ds:{result:{items:res.map(t=>({id:T(t),v:T(t)})),hl:o.rhl||{}}},
+   vars:[{t:'loop',note:'outer, for i',v:[['i',inLoop?i:undefined],['nums[i]',inLoop?a[i]:undefined]]},
+         {t:'pointers',note:'two-pointer scan',v:[['lo',inLoop&&lo!=null?lo:undefined],['hi',inLoop&&hi!=null?hi:undefined],['sum',o.sum]]}]});}
+
+ snap({line:[2],ann:{2:`sort [${a.join(', ')}]`},text:'Sort first. Then for a fixed <b>nums[i]</b>, the other two can be found with <b>two pointers</b> moving inward.'});
+ a.sort((x,y)=>x-y);sorted=true;
+ snap({line:[3],ann:{2:`[${a.join(', ')}]`,3:'result = []'},text:`Sorted: <b>[${a.join(', ')}]</b>. Empty <b>result</b> list for the triplets.`});
+ for(let i=0;i<n-2;i++){lo=null;hi=null;
+  if(i>0&&a[i]===a[i-1]){
+   snap({i,skip:true,line:[4,5],ann:{4:`i = ${i} → skip`},text:`nums[${i}] = ${a[i]} is the same as the previous one → <b>skip</b>, or we would add the same triplet twice.`});
+   continue;}
+  lo=i+1;hi=n-1;
+  snap({i,line:[4,6],ann:{4:`i = ${i}`,6:`lo = ${lo}, hi = ${hi}`},text:`Fix <b>nums[${i}] = ${a[i]}</b>. Now find two numbers that add up to <b>${-a[i]}</b>: lo starts right after i, hi at the end.`});
+  while(lo<hi){const sum=a[i]+a[lo]+a[hi];
+   snap({i,sum,line:[7,8],ann:{8:`${a[i]} + ${a[lo]} + ${a[hi]} = ${sum}`},text:`sum = ${a[i]} + ${a[lo]} + ${a[hi]} = <b>${sum}</b>.`});
+   if(sum<0){lo++;
+    snap({i,sum,line:[9],ann:{9:`lo = ${lo}`},text:`${sum} &lt; 0 → too small. Move <b>lo</b> right to a bigger number.`});}
+   else if(sum>0){hi--;
+    snap({i,sum,line:[10],ann:{10:`hi = ${hi}`},text:`${sum} &gt; 0 → too big. Move <b>hi</b> left to a smaller number.`});}
+   else{const t=[a[i],a[lo],a[hi]];res.push(t);
+    snap({i,sum,hit:true,rhl:{[T(t)]:'new'},line:[11,12],ann:{11:`add ${T(t)}`},tone:'good',text:`sum = 0 → found <b>${T(t)}</b> and added it to result.`});
+    lo++;while(lo<hi&&a[lo]===a[lo-1])lo++;hi--;
+    snap({i,sum,line:[13,14,15],ann:{13:`lo = ${lo}`,15:`hi = ${hi}`},text:`Move both pointers inward. lo also skips equal numbers so the same triplet is not added again.`});}
+  }
+  snap({i,line:[7],ann:{7:`${lo} < ${hi} → false`},text:`lo and hi met → done with nums[${i}] = ${a[i]}.`});
+ }
+ lo=hi=null;
+ snap({line:[19],ann:{19:`${res.length} triplet${res.length===1?'':'s'}`},tone:'good',result:res.map(t=>t.slice()),text:res.length?`Return <b>${res.length}</b> unique triplet${res.length>1?'s':''} that sum to 0.`:'No triplet sums to 0 → return an empty list.'});
+ return S;}
+
+PLAYER.start({
+ title:'11. 3Sum',code:CODE,run,
+ problem:{pattern:'Sort + two pointers',text:'Return all <b>unique</b> triplets <code>[a, b, c]</code> in <code>nums</code> with a + b + c = 0.',example:'[-1, 0, 1, 2, -1, -4] → [[-1, -1, 2], [-1, 0, 1]]'},
+ viz:{kind:'array',title:'nums (sorted) — fixed i + lo / hi moving inward',opts:{cw:46,top:6,ptrColors:{i:'#F97316',lo:'#16A34A',hi:'#9333EA'}}},
+ ds:[{id:'result',kind:'arraylist',decl:'List&lt;List&lt;Integer&gt;&gt; result',note:'unique triplets',opts:{iw:96}}],
+ input:{label:'nums =',value:'-1,0,1,2,-1',presets:['-1,0,1,2,-1,-4','-2,0,1,1,2','0,0,0,0','1,2,-2,-1'],
+  parse(v){const a=v.match(/-?\d+/g)?.map(Number)||[];if(a.length<3||a.length>7)throw 'nums: 3 to 7 numbers, e.g. -1,0,1,2,-1,-4';return a;}},
+ remember:{
+  mnem:{letters:['S','F','P','D'],phrase:'Sort · Fix · Pointers · Dedupe',sub:'Fix one number, then it is Two Sum on a sorted array.'},
+  chunks:[
+   {t:'Sort',d:'Arrays.sort + empty result list',lines:[2,3]},
+   {t:'Fix',d:'for i, skip a nums[i] equal to the previous one',lines:[4,5]},
+   {t:'Pointers',d:'lo = i+1, hi = n−1; sum &lt; 0 → lo++, &gt; 0 → hi−−',lines:[6,7,8,9,10]},
+   {t:'Dedupe',d:'sum == 0 → add, move both, skip equal lo values',lines:[11,12,13,14,15,16,19]}],
+  declare:[
+   ['List&lt;List&lt;Integer&gt;&gt; result','the triplets (values, not indices)'],
+   ['int lo = i + 1, hi = nums.length - 1;','new pair of pointers for each i'],
+   ['int sum = nums[i] + nums[lo] + nums[hi];','decides which pointer moves']],
+  forget:[
+   '<b>Sort first</b> — two pointers only work on a sorted array.',
+   'Skip duplicates <b>twice</b>: equal nums[i] (continue) and equal lo after a match.',
+   'Loop i only to <code>n − 2</code>; lo starts at <b>i + 1</b>, not 0.',
+   'After a match move <b>both</b> pointers, or the loop never ends.'],
+  cx:{time:'O(n²)',timeWhy:'n values of i × one O(n) two-pointer scan',space:'O(1)',spaceWhy:'extra, besides the output (sort may use O(log n))',
+   rows:[['Three loops','O(n³)','O(1)','+ a Set to dedupe',false],
+    ['Fix i + HashSet (Two Sum)','O(n²)','O(n)','dedupe is harder',false],
+    ['Sort + two pointers','O(n²)','O(1)','dedupe by skipping ✓',true]],
+   follow:[
+    ['Early stop?','Once <code>nums[i] &gt; 0</code>, every later sum is &gt; 0 → <code>break</code>.'],
+    ['3Sum closest to a target?','Same scan; keep the sum with the smallest <code>|sum − target|</code>.'],
+    ['4Sum?','One more outer loop (fix two numbers) → O(n³).']]}}
+});
+</script>
+</body></html>

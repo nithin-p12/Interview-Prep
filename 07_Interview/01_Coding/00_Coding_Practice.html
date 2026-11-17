@@ -2,9 +2,9 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="doc-id" content="code-hub">
-<meta name="doc-version" content="v1.0">
+<meta name="doc-version" content="v1.1">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Coding Practice · Interview Prep · v1.0</title>
+<title>Coding Practice · Interview Prep · v1.1</title>
 <link rel="stylesheet" href="../../_shared/design-tokens.css">
 <link rel="stylesheet" href="../../_shared/deck.css">
 <style>
@@ -38,21 +38,21 @@ a.pr.done{background:var(--success-bg)}a.pr.done em{background:var(--success);co
 </header>
 <main class="wrap">
  <div class="intro"><h1>Coding Practice — 22 problems</h1>
-  <p>Every problem: <b>Overview</b> animation → <b>Step by step</b> (minimum loop, your own input) → <b>Remember</b> (vars to declare + 4-chunk shortcut) → <b>Complexity</b>.</p>
+  <p>Every problem has 2 screens: <b>▶ Run it</b> (code · visual · structures · variables, Debug or Auto, your own input) → <b>📌 Remember it</b> (4-chunk shortcut, what to declare, traps, time &amp; space, follow-ups).</p>
   <div class="how"><span>Map / List / Stack / Queue shown live</span><span>Java code, line highlighted</span><a href="99_Viz_Styles_Lab.html" style="font-size:12px;font-weight:800;border-radius:999px;padding:2px 10px;border:1.5px solid var(--indigo);color:var(--indigo-dk);text-decoration:none">🧪 Viz styles lab</a><a href="00_Structures_Gallery.html" style="font-size:12px;font-weight:800;border-radius:999px;padding:2px 10px;border:1.5px solid var(--purple);background:var(--purple);color:#fff;text-decoration:none">★ Watch first: data structures gallery</a></div></div>
  <div class="groups" id="groups"></div>
 </main>
 <script>
 // [title, file or null] — file = built page in this folder
 const G=[
- ['Arrays & Hashing','#3B82F6','#EEF5FF','#1D4ED8',[['Two Sum','01_Two_Sum.html'],['Best Time to Buy and Sell Stock','02_Best_Time_Buy_Sell_Stock.html'],['Contains Duplicate'],['Product of Array Except Self'],["Maximum Subarray (Kadane's)"]]],
- ['Strings','#9333EA','#F7F0FF','#7E22CE',[['Valid Anagram'],['First Non-Repeating Character'],['Longest Substring Without Repeating Characters','08_Longest_Substring_No_Repeat.html'],['Group Anagrams']]],
- ['Two Pointers & Sliding Window','#F97316','#FFF6EC','#C2410C',[['Move Zeroes'],['3Sum'],['Container With Most Water']]],
- ['Searching & Sorting','#22C55E','#EFFCF3','#15803D',[['Binary Search'],['Search in Rotated Sorted Array'],['Merge Intervals']]],
- ['Stack & Queue','#EF4444','#FFF1F1','#B91C1C',[['Valid Parentheses'],['Next Greater Element']]],
- ['Linked List','#14B8A6','#F0FDFA','#0F766E',[['Reverse a Linked List']]],
- ['Trees & Graphs','#6366F1','#EEF2FF','#4338CA',[['Maximum Depth of Binary Tree'],['Number of Islands'],['Word Search']]],
- ['Dynamic Programming','#EC4899','#FDF2F8','#BE185D',[['Climbing Stairs']]]];
+ ['Arrays & Hashing','#3B82F6','#EEF5FF','#1D4ED8',[['Two Sum','01_Two_Sum.html'],['Best Time to Buy and Sell Stock','02_Best_Time_Buy_Sell_Stock.html'],['Contains Duplicate','03_Contains_Duplicate.html'],['Product of Array Except Self','04_Product_Except_Self.html'],["Maximum Subarray (Kadane's)",'05_Maximum_Subarray.html']]],
+ ['Strings','#9333EA','#F7F0FF','#7E22CE',[['Valid Anagram','06_Valid_Anagram.html'],['First Non-Repeating Character','07_First_Non_Repeating_Char.html'],['Longest Substring Without Repeating Characters','08_Longest_Substring_No_Repeat.html'],['Group Anagrams','09_Group_Anagrams.html']]],
+ ['Two Pointers & Sliding Window','#F97316','#FFF6EC','#C2410C',[['Move Zeroes','10_Move_Zeroes.html'],['3Sum','11_3Sum.html'],['Container With Most Water','12_Container_Most_Water.html']]],
+ ['Searching & Sorting','#22C55E','#EFFCF3','#15803D',[['Binary Search','13_Binary_Search.html'],['Search in Rotated Sorted Array','14_Search_Rotated_Array.html'],['Merge Intervals','15_Merge_Intervals.html']]],
+ ['Stack & Queue','#EF4444','#FFF1F1','#B91C1C',[['Valid Parentheses','16_Valid_Parentheses.html'],['Next Greater Element','17_Next_Greater_Element.html']]],
+ ['Linked List','#14B8A6','#F0FDFA','#0F766E',[['Reverse a Linked List','18_Reverse_Linked_List.html']]],
+ ['Trees & Graphs','#6366F1','#EEF2FF','#4338CA',[['Maximum Depth of Binary Tree','19_Max_Depth_Binary_Tree.html'],['Number of Islands','20_Number_of_Islands.html'],['Word Search','21_Word_Search.html']]],
+ ['Dynamic Programming','#EC4899','#FDF2F8','#BE185D',[['Climbing Stairs','22_Climbing_Stairs.html']]]];
 let done;try{done=new Set(JSON.parse(localStorage.getItem('prep-done')||'[]'));}catch(e){done=new Set();}
 let n=0,built=0,fin=0;
 document.getElementById('groups').innerHTML=G.map(([name,c,bg,dk,items])=>`<div class="grp" style="--c:${c};--bg:${bg};--dk:${dk}"><h3><span>${items.length}</span>${name}</h3>${items.map(([t,f])=>{n++;

@@ -66,7 +66,7 @@ window.PREP=(function(){
   {n:6,id:'msg',name:'Messaging',col:'teal',logo:'apachekafka',hub:'06_Messaging/00_Messaging.html',desc:'Kafka end to end',items:[
    ['Kafka','partitions, consumer groups, offsets, guarantees','todo']]},
   {n:7,id:'extra',name:'Interview Extras',col:'indigo',logo:'git',hub:'07_Interview/00_Interview.html',desc:'coding round, Git',items:[
-   ['Coding practice — 22 problems','Run it (code · visual · structures · variables) + Remember it · 3 of 22 built','new','07_Interview/01_Coding/00_Coding_Practice.html'],
+   ['Coding practice — 22 problems','Run it (code · visual · structures · variables) + Remember it · 22 of 22 built','new','07_Interview/01_Coding/00_Coding_Practice.html'],
    ['Question bank — real interview questions','concept-wise cards · company filter · tap to reveal the spoken answer','new','07_Interview/02_Questions/00_Question_Bank.html'],
    ['Java coding round','Streams / String / Collections problems','todo'],
    ['Git essentials','branching, rebase vs merge','todo']]}];

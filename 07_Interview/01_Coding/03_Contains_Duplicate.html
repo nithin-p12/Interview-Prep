@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-contains-duplicate">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3. Contains Duplicate · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public boolean containsDuplicate(int[] nums) {
+    Set<Integer> seen = new HashSet<>();
+    for (int num : nums) {
+        if (seen.contains(num)) {
+            return true;
+        }
+        seen.add(num);
+    }
+    return false;
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(nums){
+ const S=[],seen=[];
+ function snap(o){const i=o.i,inLoop=i!=null&&i<nums.length,hl={};
+  for(let k=0;k<nums.length;k++){if(inLoop&&k<i||!inLoop&&i!=null)hl[k]='in';}
+  if(inLoop)hl[i]='cur';(o.hit||[]).forEach(k=>hl[k]='bad');
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:nums,hl,ptrs:{num:inLoop?i:null}},
+   ds:{seen:{items:seen.map(v=>({id:'v'+v,v})),hl:o.shl||{},probe:o.probe}},
+   vars:[{t:'method',note:'whole call',v:[['nums',nums]]},
+         {t:'loop',note:'new each turn',v:[['num',inLoop?nums[i]:undefined]]}]});}
+
+ snap({line:[2],ann:{2:'seen = {}'},text:'Create an empty <b>HashSet</b>. It remembers every number we already walked past.'});
+ for(let i=0;i<nums.length;i++){const x=nums[i];
+  snap({i,line:[3],ann:{3:`num = ${x}`},text:`<b>for</b> loop: next number is <b>${x}</b> (index ${i}).`});
+  if(seen.includes(x)){const j=nums.indexOf(x);
+   snap({i,hit:[j,i],shl:{[x]:'bad'},line:[4],ann:{4:`contains(${x}) → true`},tone:'bad',probe:{t:`seen.contains(${x})`,r:'true',ok:false},
+    text:`<b>${x}</b> is already in the set (we saw it at index ${j}) → duplicate!`});
+   snap({i,hit:[j,i],shl:{[x]:'bad'},line:[5],ann:{5:'return true'},tone:'good',result:true,
+    text:`Return <b>true</b> right away — no need to look at the rest.`});
+   return S;}
+  snap({i,line:[4],ann:{4:`contains(${x}) → false`},probe:{t:`seen.contains(${x})`,r:'false',ok:true},text:`<b>${x}</b> is not in the set → first time we see it.`});
+  seen.push(x);
+  snap({i,shl:{[x]:'new'},line:[7],ann:{7:`add(${x})`},probe:{t:`seen.add(${x})`,r:'true',ok:null},text:`Remember it: <b>seen.add(${x})</b>.`});
+ }
+ snap({i:nums.length,line:[9],ann:{9:'return false'},tone:'good',result:false,text:'The loop ended and every number was new → <b>no duplicate</b>, return <b>false</b>.'});
+ return S;}
+
+PLAYER.start({
+ title:'3. Contains Duplicate',code:CODE,run,
+ problem:{pattern:'HashSet · seen before?',text:'Return <b>true</b> if any value appears <b>at least twice</b> in <code>nums</code>, otherwise false.',example:'[1, 2, 3, 1] → true'},
+ viz:{kind:'array',title:'nums — light blue = already in the set',opts:{cw:50,ptrColors:{num:'#F97316'}}},
+ ds:[{id:'seen',kind:'set',decl:'Set&lt;Integer&gt; seen',note:'numbers already walked past'}],
+ input:{label:'nums =',value:'3,1,4,1',presets:['1,2,3,1','1,2,3,4','5,5','7,3,9,2,3'],
+  parse(v){const a=v.match(/-?\d+/g)?.map(Number)||[];if(a.length<1||a.length>8)throw 'nums: 1 to 8 numbers, e.g. 1,2,3,1';return a;}},
+ remember:{
+  mnem:{letters:['D','L','C','A'],phrase:'Declare · Loop · Check · Add',sub:'“Have I seen you?” → yes: true · no: remember you.'},
+  chunks:[
+   {t:'Declare',d:'an empty HashSet&lt;Integer&gt;',lines:[2]},
+   {t:'Loop',d:'for each num in nums',lines:[3]},
+   {t:'Check',d:'set has num? → return true',lines:[4,5,6]},
+   {t:'Add',d:'else add num; after the loop return false',lines:[7,9]}],
+  declare:[
+   ['Set&lt;Integer&gt; seen = new HashSet&lt;&gt;();','O(1) “have I seen it?” lookups'],
+   ['for (int num : nums)','we only need values, not indices']],
+  forget:[
+   'Return <b>true</b> on a duplicate — the method is <code>boolean</code>, not the number.',
+   '<b>Check before add</b>, or every number “finds” itself.',
+   'Shortcut: <code>if (!seen.add(num)) return true;</code> — <code>add</code> returns false when it is already there.',
+   'Don’t forget <code>return false</code> after the loop.'],
+  cx:{time:'O(n)',timeWhy:'one pass; contains / add are O(1) on average',space:'O(n)',spaceWhy:'the set can hold every number',
+   rows:[['Two loops (every pair)','O(n²)','O(1)','too slow for big n',false],
+    ['Sort, compare neighbours','O(n log n)','O(1)*','changes the input (*sort space)',false],
+    ['HashSet, one pass','O(n)','O(n)','stops at the first duplicate ✓',true]],
+   follow:[
+    ['Duplicate within k positions (II)?','Keep only the last k numbers in the set: after add, remove <code>nums[i − k]</code> when i ≥ k.'],
+    ['Can’t use extra memory?','Sort first (<code>Arrays.sort</code>), then check <code>nums[i] == nums[i − 1]</code>.'],
+    ['One-liner with streams?','<code>Arrays.stream(nums).distinct().count() &lt; nums.length</code> — but it never stops early.']]}}
+});
+</script>
+</body></html>

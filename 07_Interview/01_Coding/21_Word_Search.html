@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-word-search">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>21. Word Search · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public boolean exist(char[][] board, String word) {
+    for (int r = 0; r < board.length; r++) {
+        for (int c = 0; c < board[0].length; c++) {
+            if (dfs(board, word, r, c, 0)) return true;
+        }
+    }
+    return false;
+}
+private boolean dfs(char[][] board, String word, int r, int c, int k) {
+    if (k == word.length()) return true;
+    if (r < 0 || r >= board.length) return false;
+    if (c < 0 || c >= board[0].length) return false;
+    if (board[r][c] != word.charAt(k)) return false;
+    char saved = board[r][c];
+    board[r][c] = '#';
+    boolean found = dfs(board, word, r + 1, c, k + 1)
+            || dfs(board, word, r - 1, c, k + 1)
+            || dfs(board, word, r, c + 1, k + 1)
+            || dfs(board, word, r, c - 1, k + 1);
+    board[r][c] = saved;
+    return found;
+}`;
+
+// The real algorithm (DFS + backtracking). After every line that matters we save a snapshot (= one step).
+function run({rows,word}){
+ const S=[],b=rows.map(r=>[...r]),R=b.length,C=b[0].length,frames=[];let fid=0,scan=null,tried=0;
+ const DIRS=[[1,0,16],[-1,0,17],[0,1,18],[0,-1,19]];
+ function snap(o){const hl={};
+  for(let r=0;r<R;r++)for(let c=0;c<C;c++)if(b[r][c]==='#')hl[r+','+c]='path';
+  if(o.at)hl[o.at]=(hl[o.at]?hl[o.at]+' ':'')+(o.bad?'bad':'cur');
+  if(o.found)Object.keys(hl).forEach(k=>hl[k]='seen');
+  const top=frames[frames.length-1],k=top?top.k:null,whl={};
+  if(k!=null)for(let i=0;i<word.length;i++){if(i<k)whl[i]='hit';else if(i===k)whl[i]=o.bad?'bad':'cur';}
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{cells:b.map(r=>r.slice()),hl},
+   vizx:{calls:{items:frames.map(f=>({id:f.id,v:`dfs(${f.r},${f.c},${f.k})`})),hl:top?{[top.id]:o.bad?'bad':'cur'}:{}}},
+   ds:{word:{vals:[...word],hl:whl}},
+   vars:[{t:'loop',note:'the scan',v:[['r',scan?scan[0]:undefined],['c',scan?scan[1]:undefined]]},
+         {t:'this call',note:'top dfs frame',v:[['r',top?top.r:undefined],['c',top?top.c:undefined],['k',top?top.k:undefined]]}]});}
+ function dfs(r,c,k,line){
+  if(k===word.length){const f={id:'f'+(++fid),r,c,k};frames.push(f);
+   snap({found:true,line:[line,10],ann:{10:`k = ${k} → true`},tone:'good',text:`k = ${k} = word.length() → all letters matched. <b>true</b> travels back up the stack.`});
+   frames.pop();return true;}
+  if(r<0||r>=R||c<0||c>=C)return false;
+  if(b[r][c]!==word[k]){if(b[r][c]==='#')return false;
+   const f={id:'f'+(++fid),r,c,k};frames.push(f);tried++;
+   snap({at:r+','+c,bad:true,line:[line,13],ann:{13:`'${b[r][c]}' != '${word[k]}'`},tone:'bad',text:`dfs(${r}, ${c}, ${k}): the cell is <b>'${b[r][c]}'</b> but we need <b>'${word[k]}'</b> → false.`});
+   frames.pop();return false;}
+  const f={id:'f'+(++fid),r,c,k};frames.push(f);const saved=b[r][c];b[r][c]='#';
+  snap({at:r+','+c,line:[line,14,15],ann:{14:`saved = '${saved}'`,15:`board[${r}][${c}] = '#'`},tone:'good',
+   text:`dfs(${r}, ${c}, ${k}): '${saved}' matches word[${k}] → mark it <b>'#'</b> so this path can’t use it again, then try down, up, right, left.`});
+  let found=false;
+  for(const [dr,dc,ln] of DIRS){if(dfs(r+dr,c+dc,k+1,ln)){found=true;break;}}
+  b[r][c]=saved;
+  snap({at:r+','+c,found,line:[20,21],ann:{20:`board[${r}][${c}] = '${saved}'`,21:`return ${found}`},tone:found?'good':'bad',
+   text:found?`Put '${saved}' back and return <b>true</b>.`:`No neighbour continues the word → <b>backtrack</b>: restore '${saved}' and return false.`});
+  frames.pop();return found;}
+
+ snap({line:[2,3],ann:{},text:`Try every cell as the start of <b>"${word}"</b>. Each try is a DFS that walks to neighbours letter by letter.`});
+ let skip=0;
+ for(let r=0;r<R;r++)for(let c=0;c<C;c++){scan=[r,c];
+  if(b[r][c]!==word[0]){skip++;continue;}
+  snap({at:r+','+c,line:[3,4],ann:{4:`dfs(${r}, ${c}, 0)`},text:`${skip?`(${skip} cell${skip>1?'s':''} skipped — they are not '${word[0]}'.) `:''}Start at (${r}, ${c}) = '${b[r][c]}'.`});skip=0;
+  if(dfs(r,c,0,4)){
+   snap({found:true,line:[4],ann:{4:'return true'},tone:'good',result:true,text:`The word is on the board (the green path). Return <b>true</b>.`});return S;}
+ }
+ scan=null;
+ snap({line:[7],ann:{7:'return false'},tone:'bad',result:false,text:`No start cell worked → <b>"${word}"</b> is not on the board. Return <b>false</b>.`});
+ return S;}
+
+PLAYER.start({
+ title:'21. Word Search',code:CODE,run,
+ problem:{pattern:'Grid DFS + backtracking',text:'Can <code>word</code> be spelled by walking up / down / left / right on <code>board</code>, using each cell once?',example:'ABCE · SFCS · ADEE, "ABCCED" → true'},
+ viz:{kind:'grid',title:'purple = current path (marked #) · red = wrong letter',opts:{},side:true,
+  rows:[{id:'calls',label:'',kind:'stack',opts:{sm:true,w:118}}]},
+ ds:[{id:'word',kind:'array',decl:'String word',note:'green = matched · orange = word[k]',opts:{cw:40,top:6,ptrs:false}}],
+ input:{label:'board | word =',value:'ABCE,SFCS,ADEE|ABFS',presets:['ABCE,SFCS,ADEE|SEE','AB,CD|ACDB','AB,CD|ABA','AA|AAA'],
+  parse(v){const [a,w]=v.split('|').map(x=>(x||'').trim().toUpperCase());const rows=(a||'').split(/[\s,]+/).filter(Boolean);
+   if(!rows.length||rows.length>3)throw '1 to 3 rows, e.g. ABCE,SFCS,ADEE|SEE';if(rows.some(r=>!/^[A-Z]+$/.test(r)||r.length!==rows[0].length))throw 'rows of letters, all the same length';
+   if(rows[0].length>4)throw 'max 4 columns (so it fits)';if(!w||!/^[A-Z]+$/.test(w))throw 'add the word after a |, e.g. ABCE,SFCS,ADEE|SEE';if(w.length>5)throw 'max 5 letters in the word';return {rows,word:w};}},
+ remember:{
+  mnem:{letters:['S','B','M','U'],phrase:'Scan · Base · Mark · Undo',sub:'Mark the cell, explore 4 ways, then put the letter back.'},
+  chunks:[
+   {t:'Scan',d:'every cell is a possible start',lines:[2,3,4,5,6,7]},
+   {t:'Base',d:'k == length → true; out of bounds / wrong letter → false',lines:[10,9,11,12,13]},
+   {t:'Mark',d:'saved = cell, cell = \'#\', try 4 neighbours with k + 1',lines:[14,15,16,17,18,19]},
+   {t:'Undo',d:'cell = saved; return found',lines:[20,21]}],
+  declare:[
+   ['dfs(board, word, r, c, k)','k = index of the letter we need now'],
+   ['char saved = board[r][c];','to restore it when backtracking'],
+   ['boolean found = dfs(...) || ...','|| stops at the first path that works']],
+  forget:[
+   'Check <code>k == word.length()</code> <b>first</b> — before the bounds check.',
+   '<b>Restore</b> the cell after the 4 calls — other paths may need it.',
+   'Mark with <code>\'#\'</code> (or a <code>visited[][]</code>) so a path can’t reuse a cell.',
+   'Same cell twice in one word ("ABCB") must fail.'],
+  cx:{time:'O(R·C·3^L)',timeWhy:'each start, then ≤ 3 new directions per letter (L = word length)',space:'O(L)',spaceWhy:'recursion depth = word length',
+   rows:[['DFS + visited[][]','O(R·C·3^L)','O(R·C)','extra matrix',false],
+    ['DFS, mark in place with #','O(R·C·3^L)','O(L)','backtracking ✓',true]],
+   follow:[
+    ['Many words (Word Search II)?','Put all words in a <b>Trie</b> and walk the board once, following trie children.'],
+    ['Prune early?','If the board lacks enough of some letter in word → return false before the DFS.'],
+    ['Why not BFS?','A path must not reuse cells; DFS + undo tracks one path at a time.']]}}
+});
+</script>
+</body></html>

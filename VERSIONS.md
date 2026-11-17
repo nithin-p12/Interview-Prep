@@ -49,13 +49,32 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `sd-search` | Search System | v2.0 | `03_System_Design/02_SD_Simulator/10_Search_System.html` |
 | System Design | `sd-video` | Video Streaming | v2.0 | `03_System_Design/02_SD_Simulator/11_Video_Streaming.html` |
 | System Design | `sd-distributed-cache` | Distributed Cache | v2.0 | `03_System_Design/02_SD_Simulator/12_Distributed_Cache.html` |
-| Interview Extras | `code-hub` | Coding Practice hub (22 problems) | v1.0 | `07_Interview/01_Coding/00_Coding_Practice.html` |
+| Interview Extras | `code-hub` | Coding Practice hub (22 problems) | v1.1 | `07_Interview/01_Coding/00_Coding_Practice.html` |
 | Interview Extras | `question-bank` | Interview Question Bank (concept-wise, company filter) | v1.0 | `07_Interview/02_Questions/00_Question_Bank.html` |
-| Interview Extras | `code-structures` | Data structures gallery (watch first) | v1.0 | `07_Interview/01_Coding/00_Structures_Gallery.html` |
-| Interview Extras | `code-longest-substring` | 8. Longest Substring Without Repeating Characters | v2.0 | `07_Interview/01_Coding/08_Longest_Substring_No_Repeat.html` |
+| Interview Extras | `code-structures` | Data structures gallery (watch first) | v1.1 | `07_Interview/01_Coding/00_Structures_Gallery.html` |
+| Interview Extras | `code-longest-substring` | 8. Longest Substring Without Repeating Characters | v2.1 | `07_Interview/01_Coding/08_Longest_Substring_No_Repeat.html` |
 | Interview Extras | `code-viz-lab` | Visualization styles lab (A Story · B Debugger · C Dry-run table) | v1.0 | `07_Interview/01_Coding/99_Viz_Styles_Lab.html` |
-| Interview Extras | `code-two-sum` | 1. Two Sum | v2.0 | `07_Interview/01_Coding/01_Two_Sum.html` |
-| Interview Extras | `code-stock` | 2. Best Time to Buy & Sell Stock | v2.0 | `07_Interview/01_Coding/02_Best_Time_Buy_Sell_Stock.html` |
+| Interview Extras | `code-two-sum` | 1. Two Sum | v2.1 | `07_Interview/01_Coding/01_Two_Sum.html` |
+| Interview Extras | `code-stock` | 2. Best Time to Buy & Sell Stock | v2.1 | `07_Interview/01_Coding/02_Best_Time_Buy_Sell_Stock.html` |
+| Interview Extras | `code-contains-duplicate` | 3. Contains Duplicate | v1.0 | `07_Interview/01_Coding/03_Contains_Duplicate.html` |
+| Interview Extras | `code-product-except-self` | 4. Product of Array Except Self | v1.0 | `07_Interview/01_Coding/04_Product_Except_Self.html` |
+| Interview Extras | `code-max-subarray` | 5. Maximum Subarray (Kadane’s) | v1.0 | `07_Interview/01_Coding/05_Maximum_Subarray.html` |
+| Interview Extras | `code-valid-anagram` | 6. Valid Anagram | v1.0 | `07_Interview/01_Coding/06_Valid_Anagram.html` |
+| Interview Extras | `code-first-unique-char` | 7. First Non-Repeating Character | v1.0 | `07_Interview/01_Coding/07_First_Non_Repeating_Char.html` |
+| Interview Extras | `code-group-anagrams` | 9. Group Anagrams | v1.0 | `07_Interview/01_Coding/09_Group_Anagrams.html` |
+| Interview Extras | `code-move-zeroes` | 10. Move Zeroes | v1.0 | `07_Interview/01_Coding/10_Move_Zeroes.html` |
+| Interview Extras | `code-3sum` | 11. 3Sum | v1.0 | `07_Interview/01_Coding/11_3Sum.html` |
+| Interview Extras | `code-container-water` | 12. Container With Most Water | v1.0 | `07_Interview/01_Coding/12_Container_Most_Water.html` |
+| Interview Extras | `code-binary-search` | 13. Binary Search | v1.0 | `07_Interview/01_Coding/13_Binary_Search.html` |
+| Interview Extras | `code-search-rotated` | 14. Search in Rotated Sorted Array | v1.0 | `07_Interview/01_Coding/14_Search_Rotated_Array.html` |
+| Interview Extras | `code-merge-intervals` | 15. Merge Intervals | v1.0 | `07_Interview/01_Coding/15_Merge_Intervals.html` |
+| Interview Extras | `code-valid-parentheses` | 16. Valid Parentheses | v1.0 | `07_Interview/01_Coding/16_Valid_Parentheses.html` |
+| Interview Extras | `code-next-greater` | 17. Next Greater Element | v1.0 | `07_Interview/01_Coding/17_Next_Greater_Element.html` |
+| Interview Extras | `code-reverse-list` | 18. Reverse a Linked List | v1.0 | `07_Interview/01_Coding/18_Reverse_Linked_List.html` |
+| Interview Extras | `code-max-depth` | 19. Maximum Depth of Binary Tree | v1.0 | `07_Interview/01_Coding/19_Max_Depth_Binary_Tree.html` |
+| Interview Extras | `code-islands` | 20. Number of Islands | v1.0 | `07_Interview/01_Coding/20_Number_of_Islands.html` |
+| Interview Extras | `code-word-search` | 21. Word Search | v1.0 | `07_Interview/01_Coding/21_Word_Search.html` |
+| Interview Extras | `code-climbing-stairs` | 22. Climbing Stairs | v1.0 | `07_Interview/01_Coding/22_Climbing_Stairs.html` |
 | Spring | `spring-startup` | Spring Boot Startup Flow | v2.0 | `04_Spring/01_Spring_Boot_Startup_Flow.html` |
 | Design system & templates | `design-system` | Design System | v1.0 | `_design_system/00_Design_System.html` |
 | Design system & templates | `tpl-capabilities` | Capabilities template | v1.0 | `_templates/Capabilities.html` |
@@ -387,31 +406,150 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v1.0 | 2026-11-16 | 22 problems in 8 groups, built/completed status. Shared trace engine in `07_Interview/01_Coding/engine/`. | current file |
+| v1.1 | 2026-11-17 | All 22 problem pages linked (READY); intro describes the 2 screens (Run it · Remember it). | current file |
+| v1.0 | 2026-11-16 | 22 problems in 8 groups, built/completed status. Shared trace engine in `07_Interview/01_Coding/engine/`. | tag `code-hub/v1.0` |
 
 **1. Two Sum** · `code-two-sum`
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v2.0 | 2026-11-16 | Rebuilt as 2 screens: Run it (problem strip + Code · Visualize · Data structures · Variables, Debug/Auto) and Remember it (4-chunk shortcut, declaration lines, chunked code, traps, time & space, follow-ups). | current file |
+| v2.1 | 2026-11-17 | Engine update (player.js / ds.js / ds.css): return value shown in the Visualize header (no more wrapping toolbar), code font auto-fits code + inline values, chunk badges are numbers, input box grows with its text, stack top label no longer overflows. | current file |
+| v2.0 | 2026-11-16 | Rebuilt as 2 screens: Run it (problem strip + Code · Visualize · Data structures · Variables, Debug/Auto) and Remember it (4-chunk shortcut, declaration lines, chunked code, traps, time & space, follow-ups). | tag `code-two-sum/v2.0` |
 | v1.0 | 2026-11-16 | Looping overview (array + HashMap live), step-by-step on the minimum loop with own input + Java line highlight, vars/approach/D·L·C·S chunks, Big-O race + follow-ups. | `_archive/07_Interview/01_Coding/01_Two_Sum_v1.html` |
 
 **2. Best Time to Buy & Sell Stock** · `code-stock`
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v2.0 | 2026-11-16 | Rebuilt as 2 screens: Run it (problem strip + Code · Visualize · Data structures · Variables, Debug/Auto) and Remember it (4-chunk shortcut, declaration lines, chunked code, traps, time & space, follow-ups). | current file |
+| v2.1 | 2026-11-17 | Engine update (player.js / ds.js / ds.css): return value shown in the Visualize header (no more wrapping toolbar), code font auto-fits code + inline values, chunk badges are numbers, input box grows with its text, stack top label no longer overflows. Shorter inline value on the maxProfit line. | current file |
+| v2.0 | 2026-11-16 | Rebuilt as 2 screens: Run it (problem strip + Code · Visualize · Data structures · Variables, Debug/Auto) and Remember it (4-chunk shortcut, declaration lines, chunked code, traps, time & space, follow-ups). | tag `code-stock/v2.0` |
 | v1.0 | 2026-11-16 | Price bar chart with buy/day pointers, step-by-step 4-day minimum loop, D·L·B·S chunks, Big-O race + follow-ups. | `_archive/07_Interview/01_Coding/02_Best_Time_Buy_Sell_Stock_v1.html` |
 
 **Data structures gallery** · `code-structures`
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v1.0 | 2026-11-16 | 11 structures (Array, ArrayList, LinkedList, Queue, Stack, HashMap, HashSet, TreeMap, TreeSet, binary tree, 2D grid) with clickable operations, Big-O and demos. Engine `engine/ds.js`. | current file |
+| v1.1 | 2026-11-17 | + Intervals (number line, sort + merge demo). Engine additions used by the new problem pages: intervals view, Visualize rows (extra views below / beside), array index labels + no-pointer rows, small stack, map column widths, ArrayList item width. | current file |
+| v1.0 | 2026-11-16 | 11 structures (Array, ArrayList, LinkedList, Queue, Stack, HashMap, HashSet, TreeMap, TreeSet, binary tree, 2D grid) with clickable operations, Big-O and demos. Engine `engine/ds.js`. | tag `code-structures/v1.0` |
 
 **8. Longest Substring Without Repeating Characters** · `code-longest-substring`
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v2.0 | 2026-11-16 | Added screen 2 · Remember it; compact variables (scope label left); problem strip. | current file |
+| v2.1 | 2026-11-17 | Engine update (player.js / ds.js / ds.css): return value shown in the Visualize header (no more wrapping toolbar), code font auto-fits code + inline values, chunk badges are numbers, input box grows with its text, stack top label no longer overflows. | current file |
+| v2.0 | 2026-11-16 | Added screen 2 · Remember it; compact variables (scope label left); problem strip. | tag `code-longest-substring/v2.0` |
 | v1.0 | 2026-11-16 | First page on the 4-block player (Code · Visualize · Data structures · Variables), 🐞 Debug / ▶ Auto modes, inline values on code lines, own input + presets. | this conversation, superseded |
+
+**3. Contains Duplicate** · `code-contains-duplicate`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (array + live HashSet, Debug/Auto, own input + 4 presets) and Remember it (D·L·C·A chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**4. Product of Array Except Self** · `code-product-except-self`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (nums with left/right window, int[] answer filled in two passes, Debug/Auto, own input + 4 presets) and Remember it (D·L·R·R chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**5. Maximum Subarray (Kadane’s)** · `code-max-subarray`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (current-run window + best cells, two ints as the whole state, Debug/Auto, own input + 4 presets) and Remember it (S·L·E·B chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**6. Valid Anagram** · `code-valid-anagram`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (s and t as two rows, int[26] count with letter labels, +1/−1 then zero-check, Debug/Auto, own input + 4 presets) and Remember it (L·C·B·Z chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**7. First Non-Repeating Character** · `code-first-unique-char`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (s with pass-1 / pass-2 pointers, int[26] count with letter labels, Debug/Auto, own input + 4 presets) and Remember it (D·C·S·N chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**9. Group Anagrams** · `code-group-anagrams`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (strs + the current word’s char[] before/after sort, live HashMap (sorted key → words), Debug/Auto, own input + 4 presets) and Remember it (D·L·K·A chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**10. Move Zeroes** · `code-move-zeroes`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (read / write pointers swapping in place, settled non-zeros window, Debug/Auto, own input + 4 presets) and Remember it (W·R·C·S chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**11. 3Sum** · `code-3sum`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (sorted nums with i / lo / hi pointers, result list of triplets, duplicate skips, Debug/Auto, own input + 4 presets) and Remember it (S·F·P·D chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**12. Container With Most Water** · `code-container-water`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (heights as walls, container window between left / right, move-the-shorter-wall steps, Debug/Auto, own input + 4 presets) and Remember it (E·A·B·M chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**13. Binary Search** · `code-binary-search`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (lo / mid / hi pointers, search-space window shrinking by half, Debug/Auto, own input + 4 presets) and Remember it (B·M·C·N chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**14. Search in Rotated Sorted Array** · `code-search-rotated`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (rotated array as bars, lo / mid / hi with the sorted half lit up, Debug/Auto, own input + 4 presets) and Remember it (B·M·S·K chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**15. Merge Intervals** · `code-merge-intervals`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (new intervals view: one row per interval on a number line, sort then grow the last; List of merged int[], Debug/Auto, own input + 4 presets) and Remember it (S·L·N·G chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**16. Valid Parentheses** · `code-valid-parentheses`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (s with matched pairs in green, ArrayDeque stack of expected closers drawn as a stack, Debug/Auto, own input + 4 presets) and Remember it (D·L·P·C chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**17. Next Greater Element** · `code-next-greater`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (nums + answer rows, monotonic Deque of waiting indices drawn as a stack, Debug/Auto, own input + 4 presets) and Remember it (D·L·P·W chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**18. Reverse a Linked List** · `code-reverse-list`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (nodes with next arrows flipping in place, prev / curr / next pointers, Debug/Auto, own input + 4 presets) and Remember it (P·S·F·M chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**19. Maximum Depth of Binary Tree** · `code-max-depth`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (recursive DFS: tree with current / waiting / done nodes and each node’s depth, call stack of maxDepth frames beside it, Debug/Auto, own level-order input + 4 presets) and Remember it (B·L·R·C chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**20. Number of Islands** · `code-islands`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (grid DFS that sinks each island in place, call stack of sink(r, c) frames beside the grid, Debug/Auto, own grid input + 4 presets) and Remember it (S·C·B·D chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**21. Word Search** · `code-word-search`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (board grid with the current path marked #, wrong letters in red, restore on backtrack; call stack of dfs(r, c, k) beside it; word with matched letters, Debug/Auto, own input + 4 presets) and Remember it (S·B·M·U chunks, declarations, traps, time & space, follow-ups). | current file |
+
+**22. Climbing Stairs** · `code-climbing-stairs`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-17 | 2 screens on the shared player: Run it (bottom-up DP: int[] ways as growing bars, the two added values boxed, Debug/Auto, own n + 4 presets) and Remember it (B·T·S·R chunks, declarations, traps, time & space with the O(1) two-variable version, follow-ups). | current file |

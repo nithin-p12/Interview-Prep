@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-product-except-self">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4. Product of Array Except Self · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int[] productExceptSelf(int[] nums) {
+    int n = nums.length;
+    int[] answer = new int[n];
+    answer[0] = 1;
+    for (int i = 1; i < n; i++) {
+        answer[i] = answer[i - 1] * nums[i - 1];
+    }
+    int suffix = 1;
+    for (int i = n - 1; i >= 0; i--) {
+        answer[i] *= suffix;
+        suffix *= nums[i];
+    }
+    return answer;
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(nums){
+ const S=[],n=nums.length,ans=new Array(n).fill(0);let suffix;
+ function snap(o){const i=o.i,inLoop=i!=null&&i>=0&&i<n,hl={},ahl={};
+  if(inLoop)hl[i]='cur';
+  if(o.left&&inLoop)for(let k=0;k<i;k++)hl[k]='in';
+  if(o.right&&inLoop)for(let k=i+1;k<n;k++)hl[k]='in';
+  if(o.right&&inLoop)for(let k=i+1;k<n;k++)ahl[k]='hit';
+  if(inLoop)ahl[i]=o.chg?(o.right?'hit':'new'):'cur';
+  const win=o.left&&inLoop&&i>0?[0,i-1]:o.right&&inLoop&&i<n-1?[i+1,n-1]:null;
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:nums,hl,ptrs:{i:inLoop?i:null},win,winLabel:o.left?'left of i':'right of i'},
+   ds:{answer:{vals:ans.slice(),hl:o.done?Object.fromEntries(ans.map((_,k)=>[k,'hit'])):ahl,ptrs:{i:inLoop?i:null}}},
+   vars:[{t:'method',note:'whole call',v:[['n',n],['suffix',suffix]]},
+         {t:'loop',note:'new each turn',v:[['i',inLoop?i:undefined],['nums[i]',inLoop?nums[i]:undefined]]}]});}
+
+ snap({line:[2,3],ann:{2:`n = ${n}`,3:`answer = [${ans.join(', ')}]`},text:`<b>n = ${n}</b>. Make the output array <b>answer</b> (all 0). We will fill it in two passes, without division.`});
+ ans[0]=1;
+ snap({i:0,left:true,chg:true,line:[4],ann:{4:'answer[0] = 1'},text:'Nothing is left of index 0, so its <b>left product is 1</b>.'});
+ for(let i=1;i<n;i++){
+  snap({i,left:true,line:[5],ann:{5:`i = ${i}`},text:`<b>Pass 1 (left → right)</b>: i = ${i}.`});
+  const old=ans[i-1];ans[i]=ans[i-1]*nums[i-1];
+  snap({i,left:true,chg:true,line:[6],ann:{6:`${old} * ${nums[i-1]} = ${ans[i]}`},
+   text:`answer[${i}] = answer[${i-1}] × nums[${i-1}] = ${old} × ${nums[i-1]} = <b>${ans[i]}</b> → the product of everything <b>left</b> of i.`});
+ }
+ suffix=1;
+ snap({line:[8],ann:{8:'suffix = 1'},text:'Now <b>answer[i]</b> = product of the left side. <b>suffix = 1</b> will carry the product of the <b>right</b> side.'});
+ for(let i=n-1;i>=0;i--){
+  snap({i,right:true,line:[9],ann:{9:`i = ${i}`},text:`<b>Pass 2 (right → left)</b>: i = ${i}. suffix = product of everything right of i = <b>${suffix}</b>.`});
+  const old=ans[i];ans[i]*=suffix;
+  snap({i,right:true,chg:true,line:[10],ann:{10:`${old} * ${suffix} = ${ans[i]}`},tone:'good',
+   text:`answer[${i}] = left (${old}) × right (${suffix}) = <b>${ans[i]}</b> — final value for index ${i}.`});
+  const os=suffix;suffix*=nums[i];
+  snap({i,right:true,line:[11],ann:{11:`suffix = ${os} * ${nums[i]} = ${suffix}`},text:`Include nums[${i}] in the right product: <b>suffix = ${suffix}</b> (used by i = ${i-1}).`});
+ }
+ snap({done:true,line:[13],ann:{13:`return [${ans.join(', ')}]`},tone:'good',result:ans.slice(),text:'Every slot is left product × right product. Return <b>answer</b>.'});
+ return S;}
+
+PLAYER.start({
+ title:'4. Product of Array Except Self',code:CODE,run,
+ problem:{pattern:'Prefix × suffix · no division',text:'Return <code>answer</code> where <code>answer[i]</code> = product of all <b>other</b> numbers. No division, O(n).',example:'[1, 2, 3, 4] → [24, 12, 8, 6]'},
+ viz:{kind:'array',title:'nums — blue box = the side being multiplied',opts:{cw:50,ptrColors:{i:'#F97316'}}},
+ ds:[{id:'answer',kind:'array',decl:'int[] answer',note:'blue = left product · green = final',opts:{cw:44,ptrColors:{i:'#F97316'}}}],
+ input:{label:'nums =',value:'1,2,3,4',presets:['2,3,4,5','-1,1,0,-3,3','4,0,5','3,2'],
+  parse(v){const a=v.match(/-?\d+/g)?.map(Number)||[];if(a.length<2||a.length>6)throw 'nums: 2 to 6 numbers, e.g. 1,2,3,4';if(a.some(x=>Math.abs(x)>20))throw 'keep numbers between -20 and 20';return a;}},
+ remember:{
+  mnem:{letters:['D','L','R','R'],phrase:'Declare · Left · Right · Return',sub:'answer[i] = (product of the left) × (product of the right).'},
+  chunks:[
+   {t:'Declare',d:'n, answer = new int[n], answer[0] = 1',lines:[2,3,4]},
+   {t:'Left',d:'i = 1..n−1: answer[i] = answer[i−1] × nums[i−1]',lines:[5,6,7]},
+   {t:'Right',d:'suffix = 1; i = n−1..0: answer[i] *= suffix, suffix *= nums[i]',lines:[8,9,10,11,12]},
+   {t:'Return',d:'return answer',lines:[13]}],
+  declare:[
+   ['int[] answer = new int[n];','the output also stores the left products'],
+   ['answer[0] = 1;','nothing is left of index 0'],
+   ['int suffix = 1;','running product of the right side']],
+  forget:[
+   '<b>No division</b> — total / nums[i] breaks on a 0.',
+   'Pass 1 starts at <b>i = 1</b> and uses <code>nums[i − 1]</code>, not <code>nums[i]</code>.',
+   'In pass 2, multiply <code>answer[i] *= suffix</code> <b>before</b> <code>suffix *= nums[i]</code>.',
+   'The output array doesn’t count as extra space → <b>O(1)</b> extra.'],
+  cx:{time:'O(n)',timeWhy:'two passes over the array',space:'O(1)',spaceWhy:'only suffix; answer is the required output',
+   rows:[['Two loops (multiply all others)','O(n²)','O(1)','too slow',false],
+    ['Total product ÷ nums[i]','O(n)','O(1)','not allowed; breaks on 0',false],
+    ['left[] and right[] arrays','O(n)','O(n)','easy to explain first',false],
+    ['answer as left[] + suffix int','O(n)','O(1)','the expected answer ✓',true]],
+   follow:[
+    ['If division were allowed?','Count zeros: 2+ zeros → all 0; 1 zero → only that slot gets the product of the rest; else total / nums[i].'],
+    ['Explain it with two arrays first?','left[i] = product before i, right[i] = product after i, answer = left × right — then merge right into one int.'],
+    ['Overflow?','Use <code>long</code> or the problem guarantees it fits in int.']]}}
+});
+</script>
+</body></html>

@@ -111,7 +111,8 @@ E · Under the hood
 ====================================================================
 7. INTERVIEW EXTRAS  (folder 07_Interview — to be created)
 ====================================================================
-[NEW]  01 Coding Practice — 07_Interview/01_Coding/ (hub + engine/; built: 01 Two Sum, 02 Best Time to Buy & Sell Stock; 20 TO DO)
+[NEW]  01 Coding Practice — 07_Interview/01_Coding/ (hub + engine/ + structures gallery; all 22 problems built on the
+          2-screen player: Run it · Remember it)
 [TODO] 01 Java coding round — Streams / String / Collections problems
 [TODO] 02 Git essentials
 
@@ -179,3 +180,11 @@ CHANGE LOG
             01 Two Sum + 02 Stock still on the old algo.js engine → rebuild on the player. 99_Viz_Styles_Lab = style comparison.
 2026-11-16  Coding pages = 2 screens (Run it · Remember it). 01 Two Sum, 02 Stock, 08 Longest Substring rebuilt on
             engine/player.js; old v1 pages + engine/algo.* moved to _archive/07_Interview/01_Coding/. All fit 1365×650.
+2026-11-17  Coding Practice: the remaining 19 problem pages (03–07, 09–22) built on engine/player.js — 22 of 22 READY.
+            Each: Run it (code + inline values, Visualize, Data structures, Variables by scope; Debug/Auto, own input +
+            4 presets) and Remember it (4-letter shortcut, declarations, traps, time & space table, follow-ups).
+2026-11-17  Coding engine: intervals view (number line), Visualize rows (extra views below or beside, e.g. call stack next
+            to a tree/grid), array index labels + no-pointer rows, small stack, map column widths, ArrayList item width;
+            code font auto-fits code + inline values, return badge moved to the Visualize header, number-only chunk
+            badges, input grows with its text. Gallery v1.1 (+ Intervals); 01/02/08 → v2.1; hub v1.1.
+            Verified headless at 1365×650: every preset, every step, both modes + Remember it → 0 JS errors, 0 overflow.

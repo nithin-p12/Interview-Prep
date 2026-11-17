@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-search-rotated">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>14. Search in Rotated Sorted Array · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int search(int[] nums, int target) {
+    int lo = 0, hi = nums.length - 1;
+    while (lo <= hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (nums[mid] == target) return mid;
+        if (nums[lo] <= nums[mid]) {
+            if (nums[lo] <= target && target < nums[mid]) {
+                hi = mid - 1;
+            } else {
+                lo = mid + 1;
+            }
+        } else {
+            if (nums[mid] < target && target <= nums[hi]) {
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+    }
+    return -1;
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run({nums,target}){
+ const S=[],n=nums.length;let lo=0,hi=n-1;
+ function snap(o){const hl={};for(let k=0;k<n;k++)if(k<lo||k>hi)hl[k]='dim';
+  if(o.half)for(let k=o.half[0];k<=o.half[1];k++)if(!hl[k])hl[k]='in';
+  if(o.mid!=null&&o.mid>=lo&&o.mid<=hi||o.found)hl[o.mid]=o.found?'hit':'cur';
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:nums,hl,ptrs:{lo:lo<=hi?lo:null,mid:o.mid??null,hi:lo<=hi?hi:null},win:lo<=hi?[lo,hi]:null,winLabel:'search space'},
+   vars:[{t:'method',note:'whole call',v:[['target',target],['lo',lo],['hi',hi]]},
+         {t:'loop',note:'new each turn',v:[['mid',o.mid],['nums[mid]',o.mid!=null?nums[o.mid]:undefined]]}]});}
+
+ snap({line:[2],ann:{2:`lo = 0, hi = ${n-1}`},text:`A sorted array was <b>rotated</b>, so it has one “cliff”. Still binary search: one half around mid is <b>always sorted</b>. Target = <b>${target}</b>.`});
+ while(lo<=hi){const mid=lo+Math.floor((hi-lo)/2),v=nums[mid];
+  snap({mid,line:[3,4],ann:{4:`mid = ${mid}`},text:`mid = <b>${mid}</b> → nums[mid] = ${v}.`});
+  if(v===target){snap({mid,found:true,line:[5],ann:{5:`return ${mid}`},tone:'good',result:mid,text:`nums[${mid}] = ${v} is the target → return <b>${mid}</b>.`});return S;}
+  if(nums[lo]<=v){
+   const inL=nums[lo]<=target&&target<v;
+   snap({mid,half:[lo,mid],line:[5,6],ann:{5:`${v} != ${target}`,6:`${nums[lo]} <= ${v} → left sorted`},text:`Not found yet. nums[lo] = ${nums[lo]} ≤ ${v} → the <b>left half</b> [${lo}..${mid}] is sorted (light blue).`});
+   if(inL){hi=mid-1;snap({mid,line:[7,8],ann:{7:'true',8:`hi = ${hi}`},text:`${target} lies inside the sorted left half (${nums[lo]}..${v}) → keep the left: <b>hi = ${hi}</b>.`});}
+   else{const ol=lo;lo=mid+1;snap({mid,line:[7,10],ann:{7:'false',10:`lo = ${lo}`},text:`${target} is <b>not</b> in the sorted left half → it can only be on the right: <b>lo = ${lo}</b>.`});}
+  }else{
+   const inR=v<target&&target<=nums[hi];
+   snap({mid,half:[mid,hi],line:[5,12],ann:{5:`${v} != ${target}`,12:`${nums[lo]} > ${v} → right sorted`},text:`Not found yet. nums[lo] = ${nums[lo]} &gt; ${v} → the cliff is on the left, so the <b>right half</b> [${mid}..${hi}] is sorted (light blue).`});
+   if(inR){lo=mid+1;snap({mid,line:[13,14],ann:{13:'true',14:`lo = ${lo}`},text:`${target} lies inside the sorted right half (${v}..${nums[hi]}) → keep the right: <b>lo = ${lo}</b>.`});}
+   else{const oh=hi;hi=mid-1;snap({mid,line:[13,16],ann:{13:'false',16:`hi = ${hi}`},text:`${target} is <b>not</b> in the sorted right half → it can only be on the left: <b>hi = ${hi}</b>.`});}
+  }
+ }
+ snap({line:[3,20],ann:{3:`${lo} <= ${hi} → false`,20:'return -1'},tone:'bad',result:-1,text:`The search space is empty → ${target} is not in the array → <b>−1</b>.`});
+ return S;}
+
+PLAYER.start({
+ title:'14. Search in Rotated Sorted Array',code:CODE,run,
+ problem:{pattern:'Binary search · find the sorted half',text:'A sorted array of <b>distinct</b> numbers was rotated. Return the index of <code>target</code>, or −1, in O(log n).',example:'[4, 5, 6, 7, 0, 1, 2], 0 → 4'},
+ viz:{kind:'array',title:'nums as bars — light blue = the sorted half',opts:{cw:44,bars:true,barH:70,ptrColors:{lo:'#16A34A',mid:'#F97316',hi:'#9333EA'}}},
+ ds:[],dsNote:'No collection needed — <code>lo</code>, <code>mid</code>, <code>hi</code> are the whole state.<br>Space <b>O(1)</b>, time <b>O(log n)</b>.',
+ input:{label:'nums | target =',value:'4,5,6,7,0,1,2 | 0',presets:['4,5,6,7,0,1,2 | 3','6,7,1,2,3,4,5 | 6','1 | 0','3,1 | 1'],
+  parse(v){const [a,b]=v.split('|');const nums=(a||'').match(/-?\d+/g)?.map(Number)||[],t=parseInt(b,10);
+   if(nums.length<1||nums.length>9)throw 'nums: 1 to 9 numbers, e.g. 4,5,6,7,0,1,2 | 0';if(isNaN(t))throw 'add the target after a |, e.g. 4,5,6,7,0,1,2 | 0';
+   if(new Set(nums).size!==nums.length)throw 'numbers must be distinct';
+   const drops=nums.filter((x,i)=>i&&x<nums[i-1]).length;if(drops>1||drops===1&&nums[nums.length-1]>nums[0])throw 'must be a rotated sorted array, e.g. 4,5,6,7,0,1,2';return {nums,target:t};}},
+ remember:{
+  mnem:{letters:['B','M','S','K'],phrase:'Bounds · Mid · Sorted-half · Keep',sub:'One half is always sorted — check if target is in it, keep that half or the other.'},
+  chunks:[
+   {t:'Bounds',d:'lo = 0, hi = n − 1, while (lo &lt;= hi)',lines:[2,3]},
+   {t:'Mid',d:'mid; nums[mid] == target → return mid',lines:[4,5]},
+   {t:'Sorted-half',d:'nums[lo] &lt;= nums[mid] → left sorted, else right sorted',lines:[6,12]},
+   {t:'Keep',d:'target in the sorted half? keep it, else the other',lines:[8,7,9,10,11,13,14,15,16,17,20]}],
+  declare:[
+   ['int lo = 0, hi = nums.length - 1;','inclusive search space'],
+   ['int mid = lo + (hi - lo) / 2;','no overflow'],
+   ['nums[lo] &lt;= nums[mid]','true → the left half has no cliff']],
+  forget:[
+   '<code>nums[lo] &lt;= nums[mid]</code> needs <b>&lt;=</b> (lo == mid is a 1-number half).',
+   'Range-check only the <b>sorted</b> half; otherwise go to the other one.',
+   'Mind the ends: <code>lo &lt;= t &lt; mid</code> and <code>mid &lt; t &lt;= hi</code>.',
+   'Same ±1 moves as plain binary search.'],
+  cx:{time:'O(log n)',timeWhy:'half is thrown away every turn',space:'O(1)',spaceWhy:'three ints',
+   rows:[['Linear scan','O(n)','O(1)','ignores the order',false],
+    ['Find the pivot, then binary search','O(log n)','O(1)','two passes',false],
+    ['One pass, pick the sorted half','O(log n)','O(1)','the expected answer ✓',true]],
+   follow:[
+    ['With duplicates (II)?','If nums[lo] == nums[mid] == nums[hi] you can’t tell → lo++, hi−− (worst case O(n)).'],
+    ['Find the minimum (the pivot)?','Binary search: nums[mid] &gt; nums[hi] → lo = mid + 1, else hi = mid.'],
+    ['How many times was it rotated?','The index of the minimum.']]}}
+});
+</script>
+</body></html>

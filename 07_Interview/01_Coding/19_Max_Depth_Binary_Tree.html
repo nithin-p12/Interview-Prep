@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-max-depth">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>19. Maximum Depth of Binary Tree · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int maxDepth(TreeNode root) {
+    if (root == null) {
+        return 0;
+    }
+    int left = maxDepth(root.left);
+    int right = maxDepth(root.right);
+    return 1 + Math.max(left, right);
+}`;
+
+// level order with null → {id:{v,l,r}}
+function build(arr){const nodes={};if(!arr.length||arr[0]===null)return {nodes,root:null};
+ const mk=k=>{nodes['t'+k]={v:arr[k],l:null,r:null};return 't'+k;};
+ const root=mk(0),q=[root];let k=1;
+ while(q.length&&k<arr.length){const p=q.shift();
+  if(k<arr.length){if(arr[k]!==null){nodes[p].l=mk(k);q.push(nodes[p].l);}k++;}
+  if(k<arr.length){if(arr[k]!==null){nodes[p].r=mk(k);q.push(nodes[p].r);}k++;}}
+ return {nodes,root};}
+
+// The real algorithm (recursive DFS). After every line that matters we save a snapshot (= one step).
+function run(arr){
+ const S=[],{nodes,root}=build(arr),depth={},frames=[];let fid=0;
+ function snap(o){const hl={};Object.keys(depth).forEach(id=>hl[id]='done');
+  frames.forEach(f=>{if(f.node&&!(f.node in depth))hl[f.node]='in';});
+  const top=frames[frames.length-1];if(top&&top.node)hl[top.node]=o.ret?'hit':'cur';
+  const tn={};Object.keys(nodes).forEach(id=>tn[id]={v:nodes[id].v,l:nodes[id].l,r:nodes[id].r,label:id in depth?`d=${depth[id]}`:null});
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{nodes:tn,root,hl},
+   vizx:{calls:{items:frames.map(f=>({id:f.id,v:`maxDepth(${f.node?nodes[f.node].v:'null'})`})),hl:top?{[top.id]:o.ret?'hit':'cur'}:{}}},
+   vars:[{t:'this call',note:'top frame',v:[['root',top?(top.node?nodes[top.node].v:null):undefined],['left',top?top.left:undefined],['right',top?top.right:undefined]]}]});}
+
+ function call(id,from){const f={id:'f'+(++fid),node:id,left:undefined,right:undefined};frames.push(f);const nm=id?nodes[id].v:'null';
+  if(id===null){
+   snap({line:[2,3],ann:{2:'root == null',3:'return 0'},ret:true,text:`${from}: the child is <b>null</b> → depth <b>0</b>. This call returns at once.`});
+   frames.pop();return 0;}
+  snap({line:[2],ann:{2:`root = ${nm}, not null`},text:`<b>maxDepth(${nm})</b> starts — a new frame on the call stack.`});
+  snap({line:[5],ann:{5:`maxDepth(${nm}.left)`},text:`First ask the <b>left</b> subtree of ${nm} for its depth (go down).`});
+  f.left=call(nodes[id].l,`maxDepth(${nm}.left)`);
+  snap({line:[5],ann:{5:`left = ${f.left}`},text:`Back in maxDepth(${nm}): <b>left = ${f.left}</b>. Now the <b>right</b> subtree.`});
+  f.right=call(nodes[id].r,`maxDepth(${nm}.right)`);
+  snap({line:[6],ann:{6:`right = ${f.right}`},text:`Back in maxDepth(${nm}): <b>right = ${f.right}</b>.`});
+  const d=1+Math.max(f.left,f.right);depth[id]=d;
+  snap({line:[7],ann:{7:`1 + max(${f.left}, ${f.right}) = ${d}`},ret:true,tone:'good',text:`Depth of ${nm} = 1 (itself) + the deeper side = <b>${d}</b>. Return it to the caller and pop this frame.`});
+  frames.pop();return d;}
+
+ const ans=call(root,'maxDepth(root)');
+ snap({line:[7],ann:{7:`return ${ans}`},tone:'good',result:ans,text:`The first call returned → the tree is <b>${ans}</b> level${ans===1?'':'s'} deep.`});
+ return S;}
+
+PLAYER.start({
+ title:'19. Maximum Depth of Binary Tree',code:CODE,run,
+ problem:{pattern:'Recursive DFS · 1 + max(left, right)',text:'Return the number of nodes on the longest path from the root down to a leaf.',example:'[3, 9, 20, null, null, 15, 7] → 3'},
+ viz:{kind:'tree',title:'orange = current call · blue = waiting · grey = done (d = depth)',opts:{dx:56,dy:56},side:true,
+  rows:[{id:'calls',label:'',kind:'stack',opts:{sm:true,w:150}}]},
+ ds:[],dsNote:'<b>TreeNode</b>: <code>val</code>, <code>left</code>, <code>right</code>.<br>The recursion lives on the <b>call stack</b> (next to the tree) → <b>O(h)</b> space.',
+ input:{label:'tree =',value:'3,9,20,null,null,15,7',presets:['1,2,3,4,5','1,null,2','5','1,2,null,3'],
+  parse(v){const a=v.split(/[\s,]+/).filter(Boolean).map(x=>/^null$/i.test(x)?null:Number(x));if(!a.length||a.length>9)throw 'level order, 1 to 9 values, e.g. 3,9,20,null,null,15,7';
+   if(a.some(x=>x!==null&&isNaN(x)))throw 'numbers or null only';const t=build(a);let h=0;(function d(id,k){if(!id)return;h=Math.max(h,k);d(t.nodes[id].l,k+1);d(t.nodes[id].r,k+1);})(t.root,1);
+   if(h>4)throw 'max 4 levels (so it fits)';return a;}},
+ remember:{
+  mnem:{letters:['B','L','R','C'],phrase:'Base · Left · Right · Combine',sub:'Trust the recursion: ask both children, add 1 for yourself.'},
+  chunks:[
+   {t:'Base',d:'root == null → return 0',lines:[2,3,4]},
+   {t:'Left',d:'int left = maxDepth(root.left)',lines:[5]},
+   {t:'Right',d:'int right = maxDepth(root.right)',lines:[6]},
+   {t:'Combine',d:'return 1 + Math.max(left, right)',lines:[7]}],
+  declare:[
+   ['if (root == null) return 0;','the base case stops the recursion'],
+   ['int left = maxDepth(root.left);','depth of the left subtree'],
+   ['int right = maxDepth(root.right);','depth of the right subtree']],
+  forget:[
+   'Base case returns <b>0</b> for null (not 1) — a leaf is then 1 + max(0, 0) = 1.',
+   'Don’t forget the <b>+ 1</b> for the current node.',
+   'Max, not sum — depth is the <b>longer</b> path.',
+   'A very deep (skewed) tree can cause <code>StackOverflowError</code> → use BFS.'],
+  cx:{time:'O(n)',timeWhy:'every node is visited once',space:'O(h)',spaceWhy:'call stack = tree height (n if skewed, log n if balanced)',
+   rows:[['Recursive DFS','O(n)','O(h)','3 lines ✓',true],
+    ['BFS with a queue, count levels','O(n)','O(w)','w = widest level; no recursion',false],
+    ['Iterative DFS, stack of (node, depth)','O(n)','O(h)','no recursion limit',false]],
+   follow:[
+    ['Without recursion?','BFS: <code>Queue&lt;TreeNode&gt;</code>, process one level per round (<code>size = q.size()</code>), depth++ per level.'],
+    ['Minimum depth?','Careful: a node with one child is not a leaf → use the non-null side.'],
+    ['Is the tree balanced?','Return −1 when |left − right| &gt; 1, otherwise the depth.']]}}
+});
+</script>
+</body></html>

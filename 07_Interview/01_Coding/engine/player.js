@@ -3,19 +3,20 @@
    Load after ds.js. A problem page calls PLAYER.start(cfg):
      cfg = { title, sub, code,
              problem: {text, example, pattern},                 // strip on top of screen 1
-             viz: {kind, opts, title},                          // block 2 (the input picture)
+             viz: {kind, opts, title, label?, rows?:[{id, label, kind, opts}], side?},   // block 2 (rows = extra views below, or beside with side:true; step.vizx[id])
              ds:  [{id, kind, decl, note, opts}], dsNote,       // block 3 (dsNote when no structure)
              input: {label, value, presets:[…], parse(str) → input (throw 'message' if bad)},
              run(input) → steps,
              remember: { mnem:{letters, phrase, sub}, chunks:[{t, d, lines}], declare:[['Java declaration line', 'why']],
                          forget:[html], cx:{time,timeWhy,space,spaceWhy, rows:[[approach,time,space,note,best]], follow:[[q,a]]} } }
-     step  = { line:[n…], ann:{n:'inline value'}, text, tone:'bad'|'good'|'', viz:{…}, ds:{id:{…}}, vars:[{t,note,v:[[name,value]]}], result }
+     step  = { line:[n…], ann:{n:'inline value'}, text, tone:'bad'|'good'|'', viz:{…}, vizx:{rowId:{…}}, ds:{id:{…}}, vars:[{t,note,v:[[name,value]]}], result, resLabel ('return' by default) }
    Screen 1 · Run it: 🐞 Debug (Step over: F8 / → / Space, ← back) or ▶ Auto.
    Screen 2 · Remember it: shortcut, variables to declare, code in 4 chunks, traps, time & space, follow-ups.
    ===================================================================== */
 const PLAYER=(function(){
  const store={get(k,d){try{return localStorage.getItem(k)??d;}catch(e){return d;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
  const CK=['#3B82F6','#9333EA','#F97316','#16A34A'];
+ const vzRow=(label,o,attr)=>`<div class="vzr">${label?`<span class="vzl" style="--vzt:${((o||{}).top??24)+12}px">${label}</span>`:''}<div ${attr}></div></div>`;
  function start(cfg){
   const R=cfg.remember,P=cfg.problem;
   document.body.innerHTML=`
@@ -31,11 +32,10 @@ const PLAYER=(function(){
     <button class="btn" data-a="restart" title="Back to the first step">↺ Restart</button><span class="n" id="n"></span><span class="kbd" id="hint"></span>
     <span class="grow"></span>
     <label>${cfg.input.label}</label><input class="in" id="inp" value="${cfg.input.value}"><button class="btn" data-a="run">Run</button>
-    ${(cfg.input.presets||[]).map(p=>`<button class="btn pre" data-p="${p}">${p}</button>`).join('')}
-    <span id="res"></span></div>
+    ${(cfg.input.presets||[]).map(p=>`<button class="btn pre" data-p="${p}">${p}</button>`).join('')}</div>
    <main class="grid4">
     <section class="blk b-code"><h3><span>1</span>Code</h3><div id="code"></div></section>
-    <section class="blk b-viz"><h3><span>2</span>Visualize${cfg.viz.title?` <em>· ${cfg.viz.title}</em>`:''}</h3><div class="in"><div class="vizbox"><div id="viz"></div></div><div class="caption" id="cap"></div></div></section>
+    <section class="blk b-viz"><h3><span>2</span>Visualize${cfg.viz.title?` <em>· ${cfg.viz.title}</em>`:''}<span id="res"></span></h3><div class="in"><div class="vizbox${cfg.viz.side?' side':''}">${cfg.viz.rows?vzRow(cfg.viz.label,cfg.viz.opts,'id="viz"')+cfg.viz.rows.map(r=>vzRow(r.label,r.opts,`data-vx="${r.id}"`)).join(''):'<div id="viz"></div>'}</div><div class="caption" id="cap"></div></div></section>
     <div class="b-low${cfg.ds.length?'':' nods'}">
      <section class="blk b-ds"><h3><span>3</span>Data structures</h3><div class="in" id="dsl">${cfg.ds.length?cfg.ds.map(d=>`<div class="dsitem"><div class="dt">${d.decl}${d.note?`<small>${d.note}</small>`:''}</div><div data-ds="${d.id}"></div></div>`).join(''):`<div class="dsitem nods">${cfg.dsNote||'No extra data structure.'}</div>`}</div></section>
      <section class="blk b-var"><h3><span>4</span>Variables</h3><div class="in" id="vl"></div></section>
@@ -67,14 +67,17 @@ const PLAYER=(function(){
   // ---------------- screen 1: the player
   const code=DS.code($('code'),cfg.code),viz=DS.make(cfg.viz.kind,$('viz'),cfg.viz.opts),vars=DS.vars($('vl'));
   const views={};cfg.ds.forEach(d=>views[d.id]=DS.make(d.kind,document.querySelector(`[data-ds="${d.id}"]`),d.opts));
+  const vx={};(cfg.viz.rows||[]).forEach(r=>vx[r.id]=DS.make(r.kind,document.querySelector(`[data-vx="${r.id}"]`),r.opts));
+  const annMax=()=>{const m={};steps.forEach(st=>Object.entries(st.ann||{}).forEach(([l,t])=>{if(!m[l]||String(t).length>m[l].length)m[l]=String(t);}));return m;};
+  const fitCode=()=>code.fit(4,annMax());
   let steps=cfg.run(cfg.input.parse(cfg.input.value)),i=0,timer=null,speed=1,mode=store.get('code-player-mode','debug'),screen='run';
   function draw(){const s=steps[i];
-   code.set(s.line,s.ann||{});viz.set(s.viz||{});
+   code.set(s.line,s.ann||{});viz.set(s.viz||{});Object.keys(vx).forEach(id=>vx[id].set((s.vizx||{})[id]||{}));
    Object.keys(views).forEach(id=>views[id].set((s.ds||{})[id]||{}));
    vars.set(s.vars||[]);
    const cap=$('cap');cap.className='caption'+(s.tone?' '+s.tone:'');cap.innerHTML=s.text||'';
    $('n').textContent=`step ${i+1} / ${steps.length}`;
-   $('res').innerHTML=s.result!=null?`<span class="result">return ${DS.show(s.result)}</span>`:'';
+   $('res').innerHTML=s.result!=null?`<span class="result">${s.resLabel??'return'} ${DS.show(s.result)}</span>`:'';
    document.querySelector('[data-a=back]').disabled=i===0;document.querySelector('[data-a=step]').disabled=i===steps.length-1;}
   const go=n=>{i=Math.max(0,Math.min(steps.length-1,n));draw();};
   function stop(){clearTimeout(timer);timer=null;document.querySelector('[data-a=play]').textContent='▶ Play';}
@@ -86,7 +89,7 @@ const PLAYER=(function(){
    $('hint').textContent=m==='debug'?'F8 / → step · ← back':'';
    if(m==='auto'&&screen==='run'){if(i>=steps.length-1)go(0);play();}else stop();}
   function rerun(str){let inp;try{inp=cfg.input.parse(str);}catch(e){$('cap').className='caption bad';$('cap').innerHTML='⚠ '+e;return;}
-   stop();$('inp').value=str;steps=cfg.run(inp);vars.reset();go(0);if(mode==='auto')play();}
+   stop();$('inp').value=str;$('inp').dispatchEvent(new Event('input'));steps=cfg.run(inp);vars.reset();fitCode();go(0);if(mode==='auto')play();}
   $('mode').onclick=e=>{const b=e.target.closest('[data-m]');if(b)setMode(b.dataset.m);};
   document.querySelector('.pbar').addEventListener('click',e=>{const b=e.target.closest('[data-a],[data-p]');if(!b)return;
    if(b.dataset.p){rerun(b.dataset.p);return;}
@@ -96,26 +99,31 @@ const PLAYER=(function(){
    if(a==='play'){if(timer)stop();else{if(i>=steps.length-1)go(0);play();}}
    if(a==='run')rerun($('inp').value);});
   $('inp').addEventListener('keydown',e=>{if(e.key==='Enter')rerun($('inp').value);});
+  const sizeInp=()=>{const el=$('inp');el.style.width=Math.max(150,Math.min(250,el.value.length*8.3+26))+'px';};$('inp').addEventListener('input',sizeInp);sizeInp();
   $('spd').onclick=e=>{const b=e.target.closest('button');if(!b)return;speed=+b.dataset.v;$('spd').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));if(timer)play();};
   document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||screen!=='run')return;
    if(e.key==='F8'||e.key==='ArrowRight'||e.key===' '){e.preventDefault();stop();go(i+1);}
    if(e.key==='ArrowLeft'){e.preventDefault();stop();go(i-1);}});
   const showP=on=>{$('pstrip').classList.toggle('mini',!on);$('hidep').textContent=on?'hide':'show problem';store.set('code-problem-strip',on?'1':'0');};
-  $('hidep').onclick=()=>showP($('pstrip').classList.contains('mini'));showP(store.get('code-problem-strip','1')==='1');
+  $('hidep').onclick=()=>{showP($('pstrip').classList.contains('mini'));fitCode();};showP(store.get('code-problem-strip','1')==='1');
 
   // ---------------- screen 2: remember
   const rc=DS.code($('rcode'),cfg.code),rows=[...$('rcode').children];
   R.chunks.forEach((c,ci)=>c.lines.forEach((n,j)=>{const r=rows[n-1];if(!r)return;r.classList.add('ck');r.style.setProperty('--ck',CK[ci]);
-   if(j===0)r.lastChild.insertAdjacentHTML('beforebegin',`<span class="cbg">${ci+1} ${c.t}</span>`);}));
+   if(j===0)r.lastChild.insertAdjacentHTML('beforebegin',`<span class="cbg" title="${c.t}">${ci+1}</span>`);}));
   document.querySelector('.chunks').onclick=e=>{const c=e.target.closest('.chunk');if(!c)return;const on=!c.classList.contains('on');
    document.querySelectorAll('.chunk').forEach(x=>x.classList.toggle('on',x===c&&on));rc.set(on?R.chunks[+c.dataset.c].lines:[]);
    rows.forEach((r,k)=>r.classList.toggle('dim',on&&!R.chunks[+c.dataset.c].lines.includes(k+1)));};
 
   // ---------------- screens
   function setScreen(s){screen=s;document.querySelectorAll('#scr button').forEach(b=>b.classList.toggle('on',b.dataset.s===s));
-   $('s-run').classList.toggle('on',s==='run');$('s-rem').classList.toggle('on',s==='rem');$('mode').style.visibility=s==='run'?'':'hidden';
+   $('s-run').classList.toggle('on',s==='run');$('s-rem').classList.toggle('on',s==='rem');if(s==='rem')fitRem();else fitCode();$('mode').style.visibility=s==='run'?'':'hidden';
    try{history.replaceState(null,'','#'+s);}catch(e){}if(s!=='run')stop();else if(mode==='auto'&&!timer&&i<steps.length-1)play();}
   $('scr').onclick=e=>{const b=e.target.closest('[data-s]');if(b)setScreen(b.dataset.s);};
+  function fitRem(){const g=document.querySelector('.rem3'),h=$('rcode'),col=h.closest('.col');g.style.gridTemplateColumns='';
+   if(!rc.fit(2)){g.style.gridTemplateColumns='minmax(0,.9fr) minmax(0,1.45fr) minmax(0,.9fr)';rc.fit(2);}
+   let fs=parseFloat(getComputedStyle(h).fontSize);while(col.scrollHeight>col.clientHeight+1&&fs>11){fs-=.5;h.style.fontSize=fs+'px';}}
+  addEventListener('resize',()=>screen==='rem'?fitRem():fitCode());
   draw();setScreen(location.hash==='#rem'?'rem':'run');setMode(mode);}
  return {start};
 })();

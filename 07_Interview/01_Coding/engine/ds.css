@@ -254,3 +254,53 @@ table.cxt tr.best td{background:var(--success-bg)}
 .b-low.nods{grid-template-columns:minmax(0,.62fr) minmax(0,1.38fr)}
 .rem3{gap:10px;padding:10px 18px 10px}
 .vgroup h5{display:block}
+/* ---------- fit fixes (engine v1.1) ---------- */
+.codev .src{flex:none}
+.codev .cbg{flex:none}
+.codev .ann{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:12px}
+.codev.fitting .ann{display:none}
+.codev.fitting.annfit .ann{display:inline;flex:none;overflow:visible}
+.codev.fitting.annfit .ann:empty{display:none}
+.codev.fitting>div{width:max-content}
+.result{display:inline-block;line-height:1.35;padding:1px 11px}
+.ds-arraylist .it{width:var(--iw,48px)}
+.ds-arraylist .ixrow span{width:var(--iw,48px)}
+#res{display:inline-flex;align-items:center;margin-left:auto;flex:none;width:auto;height:auto;background:none;border-radius:0}
+.b-viz>h3{min-height:22px}
+.blk>h3 #res .result{display:inline-block;width:auto;height:auto;border-radius:8px;background:var(--success-bg);color:#166534;text-transform:none;letter-spacing:0;font-size:13.5px;line-height:1.25;padding:0 10px;margin:0}
+.blk>h3 em{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
+.result{white-space:nowrap}
+.codev .cbg{min-width:18px;text-align:center;padding:0 5px}
+/* ---------- intervals (number line: label | bar) ---------- */
+.ds-iv{padding:0 4px}
+.ds-iv .ivs{position:relative;background:repeating-linear-gradient(90deg,var(--line) 0 1px,transparent 1px var(--u,24px)) var(--lw,64px) 0/calc(100% - var(--lw,64px) - 7px) 100% no-repeat}
+.ds-iv .iv{position:absolute;left:0;right:0;height:28px;transition:top .45s ease}
+.ds-iv .ivl{position:absolute;left:0;top:4px;font-size:13px;color:var(--ink);white-space:nowrap}
+.ds-iv .ivb{position:absolute;top:5px;height:18px;border:2px solid var(--teal);background:#CCFBF1;border-radius:6px;transition:left .45s ease,width .45s ease,background .3s,border-color .3s,box-shadow .3s}
+.ds-iv .iv.cur .ivb{border-color:var(--orange);background:var(--orange-bg);box-shadow:0 0 0 3px var(--orange-lt)}
+.ds-iv .iv.cur .ivl{color:var(--orange-dk)}
+.ds-iv .iv.hit .ivb{border-color:var(--success);background:var(--success-bg)}
+.ds-iv .iv.new .ivb{border-color:var(--blue);background:var(--blue-bg);box-shadow:0 0 0 3px var(--blue-lt)}
+.ds-iv .iv.done{opacity:.4}
+.ds-iv .iv.bad .ivb{border-color:var(--danger);background:var(--danger-bg)}
+.ds-iv .axis{position:relative;height:18px;border-top:2px solid var(--line-strong);margin:4px 0 0 var(--lw,64px)}
+.ds-iv .axis span{position:absolute;top:2px;transform:translateX(-50%);font-size:11px;color:var(--faint);font-weight:700}
+
+/* ---------- Visualize with extra rows (viz.rows) ---------- */
+.vzr{display:flex;align-items:flex-start;gap:10px}
+.vzr+.vzr{margin-top:2px;border-top:1px dashed var(--line);padding-top:4px}
+.vzl{flex:none;min-width:22px;padding-top:var(--vzt,32px);font-family:var(--font-mono);font-size:13px;font-weight:800;color:var(--purple-dk);white-space:nowrap}
+.ds-map .th,.ds-map .mrow{grid-template-columns:var(--mcols,1fr 26px 1fr)}
+.ds.ds-iv .iv{background:transparent!important;border:0!important;box-shadow:none!important;color:inherit}
+.ds-stack .stk{display:flex;gap:10px;align-items:flex-start}
+.ds-stack .it.top::after{content:none}
+.ds-stack .toplbl{padding-top:20px;font-family:var(--font-sans);font-size:12px;font-weight:800;color:var(--orange-dk);white-space:nowrap}
+.ds-stack.sm .col{gap:3px;padding:5px 8px 7px;min-height:40px}
+.ds-stack.sm .it{height:28px;font-size:14.5px}
+.ds-stack.sm .toplbl{padding-top:11px}
+.ds-stack .col{width:var(--sw,120px)}
+.ds-stack.sm .it{font-size:13.5px}
+.tnode.in{border-color:var(--blue);background:var(--blue-bg)}
+.vizbox.side{display:flex;gap:14px;align-items:flex-start}
+.vizbox.side .vzr+.vzr{border-top:0;border-left:1px dashed var(--line);margin:0;padding:0 0 0 14px}
+.ds-grid .g{padding:3px}

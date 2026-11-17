@@ -2,9 +2,9 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="doc-id" content="code-stock">
-<meta name="doc-version" content="v2.0">
+<meta name="doc-version" content="v2.1">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>2. Best Time to Buy &amp; Sell Stock · Coding Practice · v2.0</title>
+<title>2. Best Time to Buy &amp; Sell Stock · Coding Practice · v2.1</title>
 <link rel="stylesheet" href="../../_shared/design-tokens.css">
 <link rel="stylesheet" href="engine/ds.css">
 </head>
@@ -50,7 +50,7 @@ function run(prices){
   }else{
    snap({d,line:[5],ann:{5:`${p} < ${mp} → false`},range:[buy,d],text:`Is ${p} cheaper than ${mp}? <b>No</b> → try selling today.`});
    const diff=p-minPrice,old=maxProfit;maxProfit=Math.max(maxProfit,diff);if(maxProfit>old){bb=buy;bs=d;}
-   snap({d,diff,line:[8],ann:{8:`max(${old}, ${p} - ${minPrice}) = ${maxProfit}`},range:[buy,d],tone:maxProfit>old?'good':'',
+   snap({d,diff,line:[8],ann:{8:`max(${old}, ${diff}) = ${maxProfit}`},range:[buy,d],tone:maxProfit>old?'good':'',
     text:`Profit if I sell today = ${p} − ${minPrice} = <b>${diff}</b>. ${maxProfit>old?`Better → <b>maxProfit = ${maxProfit}</b> 🏆`:`Not better than ${old} → keep it.`}`});
   }});
  snap({final:true,line:[11],ann:{11:`return ${maxProfit}`},tone:'good',result:maxProfit,

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-merge-intervals">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>15. Merge Intervals · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int[][] merge(int[][] intervals) {
+    Arrays.sort(intervals, Comparator.comparingInt(a -> a[0]));
+    List<int[]> merged = new ArrayList<>();
+    int[] last = null;
+    for (int[] cur : intervals) {
+        if (last == null || last[1] < cur[0]) {
+            last = cur;
+            merged.add(last);
+        } else {
+            last[1] = Math.max(last[1], cur[1]);
+        }
+    }
+    return merged.toArray(new int[0][]);
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(input){
+ const S=[],iv=input.map((p,k)=>({id:'v'+k,lo:p[0],hi:p[1]}));let order=iv.slice(),merged=[],last=null;
+ const lo=Math.min(...iv.map(x=>x.lo)),hi=Math.max(...iv.map(x=>x.hi));
+ const L=x=>`[${x.lo},${x.hi}]`;
+ function snap(o){const hl={};
+  order.forEach((x,k)=>{if(o.c!=null&&k<o.c&&!merged.includes(x))hl[x.id]='done';});
+  merged.forEach(x=>hl[x.id]=x===last?'new':'hit');
+  if(o.c!=null&&o.c<order.length&&!o.end)hl[order[o.c].id]='cur';
+  const cur=o.c!=null&&o.c<order.length?order[o.c]:null;
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{items:order.map(x=>({id:x.id,lo:x.lo,hi:x.hi})),hl,axis:[lo,hi]},
+   ds:{merged:{items:merged.map(x=>({id:x.id,v:L(x)})),hl:o.mhl||{}}},
+   vars:[{t:'method',note:'whole call',v:[['last',last?[last.lo,last.hi]:null],['merged.size()',merged.length]]},
+         {t:'loop',note:'new each turn',v:[['cur',cur&&!o.end?[cur.lo,cur.hi]:undefined]]}]});}
+
+ snap({line:[2],ann:{},text:`Input: ${iv.map(L).join(' ')}. Overlaps are only easy to see when the intervals are <b>sorted by start</b>.`});
+ order=iv.slice().sort((a,b)=>a.lo-b.lo);
+ snap({line:[3,4],ann:{3:'merged = []',4:'last = null'},text:`Sorted by start. <b>merged</b> is empty and <b>last</b> (the interval we may still grow) is null.`});
+ order.forEach((cur,c)=>{
+  snap({c,line:[5],ann:{5:`cur = ${L(cur)}`},text:`Next interval: <b>${L(cur)}</b>.`});
+  if(last===null||last.hi<cur.lo){
+   snap({c,line:[6],ann:{6:last===null?'last == null → true':`${last.hi} < ${cur.lo} → true`},
+    text:last===null?'Nothing merged yet → start a new group.':`last ends at ${last.hi}, cur starts at ${cur.lo} → <b>gap</b>, no overlap → start a new group.`});
+   last=cur;merged.push(cur);
+   snap({c,mhl:{[cur.id]:'new'},line:[7,8],ann:{8:`add ${L(cur)}`},tone:'good',text:`<b>last = cur</b> and add it to merged (merged keeps a <b>reference</b> to the same int[]).`});
+  }else{
+   snap({c,line:[6],ann:{6:`${last.hi} < ${cur.lo} → false`},text:`last ends at ${last.hi} ≥ cur start ${cur.lo} → they <b>overlap</b>.`});
+   const old=last.hi;last.hi=Math.max(last.hi,cur.hi);
+   snap({c,mhl:{[last.id]:'new'},line:[10],ann:{10:`last[1] = ${last.hi}`},tone:'good',
+    text:last.hi>old?`Stretch last to the further end → <b>[${last.lo},${last.hi}]</b> (the change shows in merged too).`:`cur sits inside last → last stays <b>[${last.lo},${last.hi}]</b>.`});
+  }
+ });
+ const res=merged.map(x=>[x.lo,x.hi]);
+ snap({c:order.length,end:true,line:[13],ann:{13:`${res.length} intervals`},tone:'good',result:res,text:`Convert the list to <code>int[][]</code> and return <b>${res.length}</b> merged interval${res.length>1?'s':''}.`});
+ return S;}
+
+PLAYER.start({
+ title:'15. Merge Intervals',code:CODE,run,
+ problem:{pattern:'Sort by start + grow the last',text:'Merge all overlapping intervals and return the non-overlapping result.',example:'[[1,3],[2,6],[8,10],[15,18]] → [[1,6],[8,10],[15,18]]'},
+ viz:{kind:'intervals',title:'intervals on a number line — green = in merged',opts:{rowH:28}},
+ ds:[{id:'merged',kind:'arraylist',decl:'List&lt;int[]&gt; merged',note:'the answer, grown in place',opts:{iw:74}}],
+ input:{label:'intervals =',value:'8,10|1,3|2,6|15,18',presets:['1,4|4,5','1,4|0,4','2,3|1,10|4,5','6,8|1,9|2,4'],
+  parse(v){const parts=v.split('|').map(p=>p.match(/-?\d+/g)?.map(Number)||[]);
+   if(parts.length<1||parts.length>5)throw '1 to 5 intervals, e.g. 1,3|2,6|8,10';
+   if(parts.some(p=>p.length!==2||p[0]>p[1]))throw 'each interval is start,end with start ≤ end, e.g. 1,3|2,6';
+   if(parts.some(p=>p[0]<0||p[1]>20))throw 'keep numbers between 0 and 20';return parts;}},
+ remember:{
+  mnem:{letters:['S','L','N','G'],phrase:'Sort · Last · New · Grow',sub:'Sorted by start, an overlap can only be with the last merged interval.'},
+  chunks:[
+   {t:'Sort',d:'Arrays.sort by start (comparingInt)',lines:[2]},
+   {t:'Last',d:'merged list + last = null, loop over cur',lines:[3,4,5]},
+   {t:'New',d:'last == null or last[1] &lt; cur[0] → last = cur, add',lines:[6,7,8]},
+   {t:'Grow',d:'else last[1] = max(last[1], cur[1]); toArray',lines:[10,13]}],
+  declare:[
+   ['List&lt;int[]&gt; merged = new ArrayList&lt;&gt;();','size unknown → a list, not an array'],
+   ['int[] last = null;','the merged interval we may still grow'],
+   ['merged.toArray(new int[0][])','List&lt;int[]&gt; → int[][]']],
+  forget:[
+   '<b>Sort by start first</b> — otherwise overlaps are not neighbours.',
+   'Overlap test is <code>last[1] &lt; cur[0]</code> → new group ([1,4],[4,5] touch → merge).',
+   'Use <b>max</b> for the new end — [1,10] then [2,3] must stay [1,10].',
+   'Comparator: <code>comparingInt(a -&gt; a[0])</code>; <code>a[0] − b[0]</code> can overflow.'],
+  cx:{time:'O(n log n)',timeWhy:'the sort; the merge pass is O(n)',space:'O(n)',spaceWhy:'the merged list (sort uses O(log n))',
+   rows:[['Compare every pair, repeat','O(n²)','O(n)','merge until nothing changes',false],
+    ['Sort + one pass','O(n log n)','O(n)','grow the last interval ✓',true]],
+   follow:[
+    ['Insert one new interval (sorted input)?','Add all ending before it, merge the overlapping ones, add the rest → O(n).'],
+    ['Minimum meeting rooms?','Sort starts and ends (or a min-heap of end times); count overlaps at the same time.'],
+    ['Do two intervals overlap?','<code>a[0] &lt;= b[1] &amp;&amp; b[0] &lt;= a[1]</code>.']]}}
+});
+</script>
+</body></html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-climbing-stairs">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>22. Climbing Stairs · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int climbStairs(int n) {
+    if (n <= 2) {
+        return n;
+    }
+    int[] ways = new int[n + 1];
+    ways[1] = 1;
+    ways[2] = 2;
+    for (int i = 3; i <= n; i++) {
+        ways[i] = ways[i - 1] + ways[i - 2];
+    }
+    return ways[n];
+}`;
+
+// The real algorithm (bottom-up DP). After every line that matters we save a snapshot (= one step).
+function run(n){
+ const S=[];let ways=null;
+ function snap(o){const i=o.i,hl={};
+  if(ways){for(let k=1;k<ways.length;k++)if(ways[k])hl[k]='in';if(o.set!=null)hl[o.set]='new';if(o.done)hl[n]='hit';if(i!=null&&o.set==null&&!o.done)hl[i]='cur';hl[0]='dim';}
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:ways?{vals:ways.slice(),hl,ptrs:{i:i!=null&&i<=n&&!o.done?i:null},win:o.win||null,winLabel:'ways[i − 1] + ways[i − 2]'}:{vals:[],hl:{}},
+   vars:[{t:'method',note:'whole call',v:[['n',n]]},
+         {t:'loop',note:'new each turn',v:[['i',i!=null&&!o.done?i:undefined],['ways[i]',i!=null&&ways&&!o.done&&o.set!=null?ways[i]:undefined]]}]});}
+
+ if(n<=2){
+  snap({line:[2,3],ann:{2:`${n} <= 2 → true`,3:`return ${n}`},tone:'good',result:n,text:n===1?'1 step → only one way: (1).':'2 steps → two ways: (1 + 1) or (2).'});
+  return S;}
+ snap({line:[2],ann:{2:`${n} <= 2 → false`},text:`n = ${n} → build the answer from smaller stairs.`});
+ ways=new Array(n+1).fill(0);
+ snap({line:[5],ann:{5:`int[${n+1}]`},text:`<b>ways[i]</b> = number of ways to reach step i. Index 0 is not used.`});
+ ways[1]=1;ways[2]=2;
+ snap({set:2,line:[6,7],ann:{6:'ways[1] = 1',7:'ways[2] = 2'},text:'Base cases: step 1 → <b>1</b> way (1). Step 2 → <b>2</b> ways (1 + 1, 2).'});
+ for(let i=3;i<=n;i++){
+  snap({i,win:[i-2,i-1],line:[8],ann:{8:`i = ${i}`},text:`To stand on step <b>${i}</b>, the last move came from step ${i-1} (a 1-step) or step ${i-2} (a 2-step).`});
+  ways[i]=ways[i-1]+ways[i-2];
+  snap({i,set:i,win:[i-2,i-1],line:[9],ann:{9:`${ways[i-1]} + ${ways[i-2]} = ${ways[i]}`},tone:'good',text:`ways[${i}] = ways[${i-1}] + ways[${i-2}] = ${ways[i-1]} + ${ways[i-2]} = <b>${ways[i]}</b>.`});
+ }
+ snap({i:n,done:true,line:[11],ann:{11:`return ${ways[n]}`},tone:'good',result:ways[n],text:`<b>${ways[n]}</b> ways to climb ${n} steps. (It is the Fibonacci sequence!)`});
+ return S;}
+
+PLAYER.start({
+ title:'22. Climbing Stairs',code:CODE,run,
+ problem:{pattern:'DP · ways[i] = ways[i−1] + ways[i−2]',text:'You climb 1 or 2 steps at a time. In how many distinct ways can you reach the top of <code>n</code> steps?',example:'n = 3 → 3 (1+1+1, 1+2, 2+1)'},
+ viz:{kind:'array',title:'int[] ways as bars — blue box = the two values being added',opts:{cw:42,bars:true,barH:80,ptrColors:{i:'#F97316'}}},
+ ds:[],dsNote:'The DP table <code>int[] ways</code> is drawn in Visualize.<br>Each value only needs the <b>two before it</b> → it can shrink to two ints, <b>O(1)</b> space.',
+ input:{label:'n =',value:'5',presets:['3','1','7','10'],
+  parse(v){const n=parseInt(v,10);if(isNaN(n)||n<1||n>10)throw 'n: 1 to 10';return n;}},
+ remember:{
+  mnem:{letters:['B','T','S','R'],phrase:'Base · Table · Sum · Return',sub:'The last move was a 1-step or a 2-step → add those two counts.'},
+  chunks:[
+   {t:'Base',d:'n &lt;= 2 → return n',lines:[2,3,4]},
+   {t:'Table',d:'int[] ways = new int[n + 1]; ways[1] = 1, ways[2] = 2',lines:[5,6,7]},
+   {t:'Sum',d:'for i = 3..n: ways[i] = ways[i−1] + ways[i−2]',lines:[8,9,10]},
+   {t:'Return',d:'return ways[n]',lines:[11]}],
+  declare:[
+   ['int[] ways = new int[n + 1];','n + 1 so ways[n] exists'],
+   ['ways[1] = 1; ways[2] = 2;','the two base cases'],
+   ['for (int i = 3; i &lt;= n; i++)','&lt;= n — step n is the answer']],
+  forget:[
+   'Guard <b>n &lt;= 2</b> first, or <code>ways[2]</code> is out of bounds for n = 1.',
+   'Size <b>n + 1</b> and loop with <b>i &lt;= n</b>.',
+   'Plain recursion <code>f(n−1) + f(n−2)</code> is O(2ⁿ) — memoize or go bottom-up.',
+   'Large n overflows int (n = 46+) → use <code>long</code>.'],
+  cx:{time:'O(n)',timeWhy:'one loop from 3 to n',space:'O(n)',spaceWhy:'the ways array (O(1) with two ints)',
+   rows:[['Plain recursion','O(2ⁿ)','O(n)','recomputes the same steps',false],
+    ['Recursion + memo (HashMap / int[])','O(n)','O(n)','top-down DP',false],
+    ['Bottom-up array','O(n)','O(n)','easy to explain ✓',true],
+    ['Two variables','O(n)','O(1)','<code>c = a + b; a = b; b = c;</code>',false]],
+   follow:[
+    ['O(1) space?','Keep <code>prev2 = 1, prev1 = 2</code>; each step <code>cur = prev1 + prev2</code>, then shift.'],
+    ['Steps of 1, 2 or 3?','<code>ways[i] = ways[i−1] + ways[i−2] + ways[i−3]</code>.'],
+    ['Min cost climbing stairs?','<code>dp[i] = cost[i] + min(dp[i−1], dp[i−2])</code>.']]}}
+});
+</script>
+</body></html>

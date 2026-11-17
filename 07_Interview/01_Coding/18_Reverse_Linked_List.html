@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-reverse-list">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>18. Reverse a Linked List · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public ListNode reverseList(ListNode head) {
+    ListNode prev = null;
+    ListNode curr = head;
+    while (curr != null) {
+        ListNode next = curr.next;
+        curr.next = prev;
+        prev = curr;
+        curr = next;
+    }
+    return prev;
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(vals){
+ const S=[],nodes=vals.map((v,k)=>({id:'n'+k,v,next:k+1<vals.length?'n'+(k+1):null}));
+ const byId=id=>nodes.find(x=>x.id===id),V=id=>id==null?'null':byId(id).v;
+ let prev=null,curr=nodes.length?'n0':null,next;const flipped=new Set();
+ function snap(o){const hl={};nodes.forEach(x=>{if(flipped.has(x.id))hl[x.id]='hit';});
+  if(curr&&!o.done&&!flipped.has(curr))hl[curr]='cur';
+  const ptrs=o.done?{'new head':prev}:{prev,curr,...(o.showNext?{next}:{})};
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{nodes:nodes.map(x=>({id:x.id,v:x.v,next:x.next})),ptrs,hl},
+   vars:[{t:'method',note:'whole call',v:[['prev',V(prev)],['curr',V(curr)]]},
+         {t:'loop',note:'new each turn',v:[['next',o.showNext?V(next):undefined]]}]});}
+
+ snap({line:[2,3],ann:{2:'prev = null',3:`curr = ${V(curr)}`},text:'<b>prev</b> = the part already reversed (empty), <b>curr</b> = the node we work on (starts at head).'});
+ while(curr!=null){
+  const c=byId(curr);next=c.next;
+  snap({showNext:true,line:[4,5],ann:{4:'curr != null',5:`next = ${V(next)}`},text:`Save <b>next = ${V(next)}</b> first — after the next line we lose the way forward.`});
+  c.next=prev;flipped.add(curr);
+  snap({showNext:true,flip:curr,line:[6],ann:{6:`${c.v}.next = ${V(prev)}`},tone:'good',text:`Flip the arrow: <b>${c.v}.next = ${V(prev)}</b> (purple = reversed).`});
+  prev=curr;curr=next;
+  snap({showNext:true,line:[7,8],ann:{7:`prev = ${V(prev)}`,8:`curr = ${V(curr)}`},text:`Step forward: <b>prev = ${V(prev)}</b>, <b>curr = ${V(curr)}</b>.`});
+ }
+ snap({done:true,line:[4,10],ann:{4:'curr == null',10:`return ${V(prev)}`},tone:'good',result:(()=>{const out=[];let id=prev;while(id){out.push(byId(id).v);id=byId(id).next;}return out;})(),
+  text:`curr is null → every arrow is flipped. <b>prev</b> (${V(prev)}) is the new head.`});
+ return S;}
+
+PLAYER.start({
+ title:'18. Reverse a Linked List',code:CODE,run,
+ problem:{pattern:'Three pointers · prev / curr / next',text:'Reverse a singly linked list and return the new head.',example:'1 → 2 → 3 → 4 → null  ⇒  4 → 3 → 2 → 1 → null'},
+ viz:{kind:'linked',title:'nodes stay in place — only the next arrows flip',opts:{ptrColors:{prev:'#9333EA',curr:'#F97316',next:'#0EA5E9','new head':'#16A34A'}}},
+ ds:[],dsNote:'<b>ListNode</b>: <code>val</code> + <code>next</code> (the list is drawn in Visualize).<br>Three pointers re-wire the nodes → <b>O(1)</b> space.',
+ input:{label:'list =',value:'1,2,3,4',presets:['1,2,3,4,5','1,2','7','5,4,3'],
+  parse(v){const a=v.match(/-?\d+/g)?.map(Number)||[];if(a.length<1||a.length>5)throw 'list: 1 to 5 numbers, e.g. 1,2,3,4';return a;}},
+ remember:{
+  mnem:{letters:['P','S','F','M'],phrase:'Pointers · Save · Flip · Move',sub:'Save next, flip the arrow, move both forward. Return prev.'},
+  chunks:[
+   {t:'Pointers',d:'prev = null, curr = head, while curr != null',lines:[2,3,4]},
+   {t:'Save',d:'ListNode next = curr.next',lines:[5]},
+   {t:'Flip',d:'curr.next = prev',lines:[6]},
+   {t:'Move',d:'prev = curr, curr = next; return prev',lines:[7,8,10]}],
+  declare:[
+   ['ListNode prev = null;','the reversed part (new tail points to null)'],
+   ['ListNode curr = head;','the node being flipped'],
+   ['ListNode next = curr.next;','saved before the flip, inside the loop']],
+  forget:[
+   'Save <code>next</code> <b>before</b> <code>curr.next = prev</code>, or the rest of the list is lost.',
+   'Return <b>prev</b>, not curr (curr is null at the end) and not head.',
+   'Order of the last two lines: <code>prev = curr</code> first, then <code>curr = next</code>.',
+   'Empty list (head == null) works: the loop never runs, return null.'],
+  cx:{time:'O(n)',timeWhy:'each node is visited once',space:'O(1)',spaceWhy:'three pointers (iterative)',
+   rows:[['Copy values to a list, rebuild','O(n)','O(n)','extra memory',false],
+    ['Recursive','O(n)','O(n)','call stack, can overflow',false],
+    ['Iterative, three pointers','O(n)','O(1)','the expected answer ✓',true]],
+   follow:[
+    ['Recursive version?','<code>newHead = reverse(head.next); head.next.next = head; head.next = null; return newHead;</code>'],
+    ['Reverse only positions m..n?','Walk to m − 1, reverse n − m + 1 nodes the same way, reconnect both ends.'],
+    ['Is it a palindrome?','Find the middle (slow/fast), reverse the 2nd half, compare.']]}}
+});
+</script>
+</body></html>

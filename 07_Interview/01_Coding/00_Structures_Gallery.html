@@ -2,9 +2,9 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="doc-id" content="code-structures">
-<meta name="doc-version" content="v1.0">
+<meta name="doc-version" content="v1.1">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Data Structures Gallery · Coding Practice · v1.0</title>
+<title>Data Structures Gallery · Coding Practice · v1.1</title>
 <link rel="stylesheet" href="../../_shared/design-tokens.css">
 <link rel="stylesheet" href="engine/ds.css">
 <style>
@@ -151,7 +151,17 @@ const ITEMS=[
   view:m=>{const G=[['1','1','0','0','0'],['1','1','0','0','1'],['0','0','1','0','1'],['0','0','0','1','1']];const hl={};
    ORDER.slice(0,m.k).forEach(([r,c],j)=>hl[r+','+c]=j===m.k-1?'seen cur':'seen');return {cells:G,hl};},
   ops:[['flood fill: next cell','O(rows×cols)',m=>{if(m.k>=ORDER.length)return `// done → ${ISL} islands`;m.k++;const [r,c,isl,first]=ORDER[m.k-1];return first?`// new land (${r},${c}) not visited → island #${isl}, start DFS`:`// spread to neighbour (${r},${c}) of island #${isl}`;}]],
-  demo:[0,0,0,0,0,0,0,0,0]}];
+  demo:[0,0,0,0,0,0,0,0,0]},
+ {name:'Intervals',sub:'[start, end] pairs on a number line · sort by start, then merge',kind:'intervals',opts:{},
+  decl:'int[][] intervals = {{8, 10}, {1, 3}, {2, 6}, {15, 18}};',use:'<b>Merge Intervals</b>, meeting rooms, insert interval: sort by start, then only the <b>last</b> merged interval can overlap the next one.',
+  init:()=>({iv:[[8,10],[1,3],[2,6],[15,18]].map((p,k)=>({id:'v'+k,lo:p[0],hi:p[1]})),k:0,merged:[],gone:[],last:null,cur:null,sorted:false}),
+  view:m=>{const hl={};m.gone.forEach(id=>hl[id]='done');m.merged.forEach(x=>hl[x.id]=x===m.last?'new':'hit');if(m.cur&&!m.gone.includes(m.cur)&&!m.merged.some(x=>x.id===m.cur))hl[m.cur]='cur';
+   return {items:m.iv.map(x=>({id:x.id,lo:x.lo,hi:x.hi})),hl,axis:[0,18]};},
+  ops:[['sort by start','O(n log n)',m=>{m.iv=m.iv.slice().sort((a,b)=>a.lo-b.lo);m.sorted=true;m.k=0;m.merged=[];m.gone=[];m.last=null;m.cur=null;return 'Arrays.sort(intervals, Comparator.comparingInt(a -> a[0]));';}],
+   ['merge next','O(1)',m=>{if(!m.sorted)return '// sort by start first!';if(m.k>=m.iv.length)return `// done → ${m.merged.map(x=>`[${x.lo},${x.hi}]`).join(' ')}`;
+    const cur=m.iv[m.k++];m.cur=cur.id;if(!m.last||m.last.hi<cur.lo){m.last=cur;m.merged.push(cur);return `// [${cur.lo},${cur.hi}] starts after last ends → new interval`;}
+    m.last.hi=Math.max(m.last.hi,cur.hi);m.gone.push(cur.id);return `last[1] = max(last[1], ${cur.hi})   // overlap → [${m.last.lo},${m.last.hi}]`;}]],
+  demo:[0,1,1,1,1,1]}];
 // grid visit order (DFS per island) for the 2D grid demo
 const ORDER=[],ISL=(()=>{const G=['11000','11001','00101','00011'].map(r=>[...r]),seen=new Set();let n=0;
  for(let r=0;r<4;r++)for(let c=0;c<5;c++)if(G[r][c]==='1'&&!seen.has(r+','+c)){n++;let first=true;

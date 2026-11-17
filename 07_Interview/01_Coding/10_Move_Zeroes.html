@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-move-zeroes">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>10. Move Zeroes · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public void moveZeroes(int[] nums) {
+    int write = 0;
+    for (int read = 0; read < nums.length; read++) {
+        if (nums[read] != 0) {
+            int temp = nums[write];
+            nums[write] = nums[read];
+            nums[read] = temp;
+            write++;
+        }
+    }
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(input){
+ const S=[],a=input.slice(),n=a.length;let write=0;
+ function snap(o){const r=o.r,inLoop=r!=null&&r<n,hl={};
+  for(let k=0;k<write;k++)hl[k]='hit';
+  if(inLoop)hl[r]=o.zero?'dim':'cur';
+  if(o.end)for(let k=write;k<n;k++)hl[k]='dim';
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.end?a.slice():undefined,resLabel:'void · nums =',
+   viz:{vals:a.slice(),hl,ptrs:{write:write<n?write:null,read:inLoop?r:null},win:write>0?[0,write-1]:null,winLabel:'non-zeros, in order'},
+   vars:[{t:'method',note:'whole call',v:[['nums',a.slice()],['write',write]]},
+         {t:'loop',note:'new each turn',v:[['read',inLoop?r:undefined],['nums[read]',inLoop?a[r]:undefined]]},
+         {t:'block',note:'inside the if',v:[['temp',o.temp]]}]});}
+
+ snap({line:[2],ann:{2:'write = 0'},text:'<b>write</b> = where the next non-zero number should go. <b>read</b> will scan every slot.'});
+ for(let r=0;r<n;r++){
+  snap({r,line:[3],ann:{3:`read = ${r}`},text:`<b>for</b> loop: read = ${r} → nums[${r}] = <b>${a[r]}</b>.`});
+  if(a[r]===0){
+   snap({r,zero:true,line:[4],ann:{4:'0 != 0 → false'},text:'It is a <b>0</b> → skip it. <b>write</b> stays, so the next non-zero will land on this zero’s spot.'});
+   continue;}
+  snap({r,line:[4],ann:{4:`${a[r]} != 0 → true`},text:`<b>${a[r]}</b> is not zero → move it to index <b>write = ${write}</b>.`});
+  const temp=a[write];a[write]=a[r];a[r]=temp;
+  snap({r,temp,line:[5,6,7],ann:{5:`temp = ${temp}`,6:`nums[${write}] = ${a[write]}`,7:`nums[${r}] = ${temp}`},tone:r!==write?'good':'',
+   text:r===write?`read = write = ${r} → swap with itself (nothing moves).`:`Swap nums[${write}] ↔ nums[${r}] → the <b>${a[write]}</b> jumps left, the <b>0</b> goes right.`});
+  write++;
+  snap({r,temp,line:[8],ann:{8:`write = ${write}`},text:`<b>write++</b> → next non-zero goes to index ${write}.`});
+ }
+ snap({r:n,end:true,line:[11],ann:{11:`[${a.join(', ')}]`},tone:'good',text:`Done, <b>in place</b>: non-zeros keep their order, zeros end up at the back → <b>[${a.join(', ')}]</b>.`});
+ return S;}
+
+PLAYER.start({
+ title:'10. Move Zeroes',code:CODE,run,
+ problem:{pattern:'Two pointers · read / write',text:'Move all 0s to the end of <code>nums</code> <b>in place</b>, keeping the order of the other numbers.',example:'[0, 1, 0, 3, 12] → [1, 3, 12, 0, 0]'},
+ viz:{kind:'array',title:'nums — green = settled non-zeros',opts:{cw:48,ptrColors:{write:'#16A34A',read:'#F97316'}}},
+ ds:[],dsNote:'No extra structure — it is done <b>in place</b> with two int pointers: <code>write</code> (next slot for a non-zero) and <code>read</code> (scanner).<br>That is why the space is <b>O(1)</b>.',
+ input:{label:'nums =',value:'0,1,0,3,12',presets:['4,0,5,0,0,6','0,0,1','1,2,3','0'],
+  parse(v){const a=v.match(/-?\d+/g)?.map(Number)||[];if(a.length<1||a.length>8)throw 'nums: 1 to 8 numbers, e.g. 0,1,0,3,12';return a;}},
+ remember:{
+  mnem:{letters:['W','R','C','S'],phrase:'Write · Read · Check · Swap',sub:'read finds non-zeros, write says where they go.'},
+  chunks:[
+   {t:'Write',d:'int write = 0',lines:[2]},
+   {t:'Read',d:'for read = 0..n−1',lines:[3]},
+   {t:'Check',d:'nums[read] != 0?',lines:[4]},
+   {t:'Swap',d:'swap nums[write] ↔ nums[read], write++',lines:[5,6,7,8]}],
+  declare:[
+   ['int write = 0;','next index for a non-zero'],
+   ['for (int read = 0; read &lt; nums.length; read++)','scans every slot once'],
+   ['int temp = nums[write];','holds a value during the swap']],
+  forget:[
+   'It is <b>void</b> — change <code>nums</code> in place, don’t return a new array.',
+   '<b>write++ only</b> inside the if (only after a non-zero).',
+   'Swap (not just copy), so the zeros travel to the back in the same pass.',
+   'Order of the non-zeros must not change → never sort.'],
+  cx:{time:'O(n)',timeWhy:'read visits every slot once',space:'O(1)',spaceWhy:'two ints, in place',
+   rows:[['New array: non-zeros, then zeros','O(n)','O(n)','not in place',false],
+    ['Copy non-zeros, fill the rest with 0','O(n)','O(1)','two passes',false],
+    ['Swap with read / write','O(n)','O(1)','one pass ✓',true]],
+   follow:[
+    ['Fewer writes?','Swap only when <code>read != write</code>.'],
+    ['Remove a value instead (Remove Element)?','Same pattern: copy <code>nums[read]</code> to <code>nums[write++]</code> when it is not the value; return write.'],
+    ['Remove duplicates from a sorted array?','Same two pointers: write a number only if it differs from <code>nums[write − 1]</code>.']]}}
+});
+</script>
+</body></html>

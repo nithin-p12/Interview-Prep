@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-valid-anagram">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>6. Valid Anagram · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public boolean isAnagram(String s, String t) {
+    if (s.length() != t.length()) {
+        return false;
+    }
+    int[] count = new int[26];
+    for (int i = 0; i < s.length(); i++) {
+        count[s.charAt(i) - 'a']++;
+        count[t.charAt(i) - 'a']--;
+    }
+    for (int c : count) {
+        if (c != 0) {
+            return false;
+        }
+    }
+    return true;
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run({s,t}){
+ const S=[],L=[...new Set(s+t)].sort(),cnt={};L.forEach(c=>cnt[c]=0);let made=false;
+ function snap(o){const i=o.i,inLoop=i!=null&&i<s.length&&i<t.length,sh={},th={};
+  for(let k=0;k<s.length;k++)if(i!=null&&k<i)sh[k]='done';for(let k=0;k<t.length;k++)if(i!=null&&k<i)th[k]='done';
+  if(inLoop){sh[i]=o.side==='t'?'done':'cur';th[i]=o.side==='t'?'cur':'';}
+  const chl={};if(o.ch)chl[L.indexOf(o.ch)]=o.chc;if(o.scan!=null)chl[o.scan]=cnt[L[o.scan]]!==0?'bad':'hit';
+  if(o.ok)L.forEach((_,k)=>chl[k]='hit');
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:[...s],hl:sh,ptrs:{i:inLoop?i:null}},vizx:{t:{vals:[...t],hl:th}},
+   ds:{count:made?{vals:L.map(c=>cnt[c]),ix:L,hl:chl,ptrs:{c:o.scan!=null?o.scan:null}}:{}},
+   vars:[{t:'method',note:'whole call',v:[['s',s],['t',t]]},
+         {t:'loop 1',note:'counting',v:[['i',inLoop?i:undefined]]},
+         {t:'loop 2',note:'checking',v:[['c',o.scan!=null?cnt[L[o.scan]]:undefined]]}]});}
+
+ if(s.length!==t.length){
+  snap({line:[2],ann:{2:`${s.length} != ${t.length} → true`},tone:'bad',text:`Lengths differ (${s.length} vs ${t.length}) → they can’t use the same letters.`});
+  snap({line:[3],ann:{3:'return false'},tone:'bad',result:false,text:'Return <b>false</b> right away — no counting needed.'});
+  return S;}
+ snap({line:[2],ann:{2:`${s.length} != ${t.length} → false`},text:`Same length (${s.length}) → keep going.`});
+ made=true;
+ snap({line:[5],ann:{5:'count = [0 × 26]'},text:`<b>int[26]</b>, one counter per letter a–z, all 0. Only the letters that appear are drawn (the others stay 0).`});
+ for(let i=0;i<s.length;i++){
+  snap({i,line:[6],ann:{6:`i = ${i}`},text:`<b>for</b> loop: i = ${i} → s has <b>'${s[i]}'</b>, t has <b>'${t[i]}'</b>.`});
+  cnt[s[i]]++;
+  snap({i,ch:s[i],chc:'new',line:[7],ann:{7:`count['${s[i]}'] = ${cnt[s[i]]}`},text:`A letter from <b>s</b> → <b>+1</b>: count['${s[i]}'] = ${cnt[s[i]]}.`});
+  cnt[t[i]]--;
+  snap({i,side:'t',ch:t[i],chc:'cur',line:[8],ann:{8:`count['${t[i]}'] = ${cnt[t[i]]}`},text:`A letter from <b>t</b> → <b>−1</b>: count['${t[i]}'] = ${cnt[t[i]]}.`});
+ }
+ const n=s.length;
+ for(let k=0;k<L.length;k++){const v=cnt[L[k]];
+  snap({i:n,scan:k,line:[10],ann:{10:`c = ${v}  ('${L[k]}')`},text:`Check every counter: '${L[k]}' → <b>${v}</b>.`});
+  if(v!==0){
+   snap({i:n,scan:k,line:[11,12],ann:{11:`${v} != 0 → true`,12:'return false'},tone:'bad',result:false,
+    text:`count['${L[k]}'] = ${v} ≠ 0 → '${L[k]}' appears a different number of times in s and t. Return <b>false</b>.`});
+   return S;}
+  snap({i:n,scan:k,line:[11],ann:{11:`${v} != 0 → false`},text:`'${L[k]}' is balanced (0) → next counter.`});
+ }
+ snap({i:n,ok:true,line:[15],ann:{15:'return true'},tone:'good',result:true,text:'Every counter is 0 → same letters, same counts. Return <b>true</b>.'});
+ return S;}
+
+PLAYER.start({
+ title:'6. Valid Anagram',code:CODE,run,
+ problem:{pattern:'int[26] count · +1 / −1',text:'Return <b>true</b> if <code>t</code> uses exactly the same letters as <code>s</code> (same counts). Lowercase a–z.',example:'"anagram", "nagaram" → true'},
+ viz:{kind:'array',label:'s',title:'grey = already counted',opts:{cw:42,top:6,ptrColors:{i:'#F97316'}},
+  rows:[{id:'t',label:'t',kind:'array',opts:{cw:42,top:6,ptrs:false}}]},
+ ds:[{id:'count',kind:'array',decl:'int[] count = new int[26]',note:'index = letter − ‘a’',opts:{cw:40,top:6,ptrColors:{c:'#9333EA'}}}],
+ input:{label:'s | t =',value:'race | care',presets:['anagram | nagaram','rat | car','ab | abc','aab | abb'],
+  parse(v){const [a,b]=v.split('|').map(x=>(x||'').trim());if(!a||!b)throw 'type two words: s | t';
+   if(!/^[a-z]+$/.test(a+b))throw 'lowercase letters a–z only';if(a.length>8||b.length>8)throw 'max 8 letters each (so it fits)';return {s:a,t:b};}},
+ remember:{
+  mnem:{letters:['L','C','B','Z'],phrase:'Length · Count · Balance · Zero-check',sub:'s adds +1, t takes −1 — an anagram leaves every counter at 0.'},
+  chunks:[
+   {t:'Length',d:'different lengths → return false',lines:[2,3,4]},
+   {t:'Count',d:'int[] count = new int[26]',lines:[5]},
+   {t:'Balance',d:'one loop: count[s.charAt(i) − \'a\']++, count[t.charAt(i) − \'a\']−−',lines:[6,7,8,9]},
+   {t:'Zero-check',d:'any counter ≠ 0 → false, else true',lines:[10,11,12,13,14,15]}],
+  declare:[
+   ['int[] count = new int[26];','one counter per letter a–z'],
+   ['s.charAt(i) - \'a\'','turns a letter into an index 0..25'],
+   ['for (int c : count)','the second loop only reads counters']],
+  forget:[
+   'Do the <b>length check first</b> — otherwise <code>t.charAt(i)</code> can go out of bounds.',
+   'Subtract <code>\'a\'</code> to get the index: <code>\'c\' − \'a\' = 2</code>.',
+   'One loop does both: <b>+1 for s</b>, <b>−1 for t</b>.',
+   'Unicode / any characters? Use a <code>HashMap&lt;Character, Integer&gt;</code> instead of int[26].'],
+  cx:{time:'O(n)',timeWhy:'one pass over both strings + 26 checks',space:'O(1)',spaceWhy:'26 counters, whatever n is',
+   rows:[['Sort both, compare','O(n log n)','O(n)','toCharArray + Arrays.sort',false],
+    ['HashMap counts','O(n)','O(k)','works for any characters',false],
+    ['int[26] counts','O(n)','O(1)','fastest for a–z ✓',true]],
+   follow:[
+    ['Unicode input?','<code>Map&lt;Character, Integer&gt;</code> with <code>merge(c, 1, Integer::sum)</code>; subtract for t.'],
+    ['Group many words by anagram?','That is #9 Group Anagrams: use the sorted word (or the count array) as a map key.'],
+    ['Return early?','In the t step, if a counter goes below 0 you can return false at once.']]}}
+});
+</script>
+</body></html>
