@@ -111,6 +111,7 @@ E · Under the hood
 ====================================================================
 7. INTERVIEW EXTRAS  (folder 07_Interview — to be created)
 ====================================================================
+[NEW]  01 Coding Practice — 07_Interview/01_Coding/ (hub + engine/; built: 01 Two Sum, 02 Best Time to Buy & Sell Stock; 20 TO DO)
 [TODO] 01 Java coding round — Streams / String / Collections problems
 [TODO] 02 Git essentials
 
@@ -171,3 +172,10 @@ CHANGE LOG
 2026-11-13  Distributed Cache rebuilt as its own page (v2.0): consistent hashing taught here (mod N vs ring + vnodes), delete-on-write, versioned sets, eviction, failover, hot keys.
 2026-11-13  All 12 designs now have their own pages; the archived all-in-one simulator is history only.
 2026-11-13  Ticket Booking and File Upload (v2.3): Core Components links and 4-paragraph spoken interview answers, matching the other designs.
+2026-11-16  Coding Practice: hub (22 problems), shared trace engine (array/bars, Map/Set/List/Stack/Queue panels,
+            variables, fly animation, Java line highlight), pages 01 Two Sum + 02 Best Time to Buy & Sell Stock.
+2026-11-16  Coding Practice v2 direction: engine/ds.js (11 animated structure views) + engine/player.js (4 blocks: Code,
+            Visualize, Data structures, Variables; Debug/Auto). New: 00_Structures_Gallery.html, 08 Longest Substring.
+            01 Two Sum + 02 Stock still on the old algo.js engine → rebuild on the player. 99_Viz_Styles_Lab = style comparison.
+2026-11-16  Coding pages = 2 screens (Run it · Remember it). 01 Two Sum, 02 Stock, 08 Longest Substring rebuilt on
+            engine/player.js; old v1 pages + engine/algo.* moved to _archive/07_Interview/01_Coding/. All fit 1365×650.

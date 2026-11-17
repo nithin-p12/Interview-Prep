@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-stock">
+<meta name="doc-version" content="v2.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2. Best Time to Buy &amp; Sell Stock · Coding Practice · v2.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int maxProfit(int[] prices) {
+    int minPrice = Integer.MAX_VALUE;
+    int maxProfit = 0;
+    for (int price : prices) {
+        if (price < minPrice) {
+            minPrice = price;
+        } else {
+            maxProfit = Math.max(maxProfit, price - minPrice);
+        }
+    }
+    return maxProfit;
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(prices){
+ const S=[],MAX=2147483647;let minPrice=MAX,maxProfit=0,buy=-1,bb=-1,bs=-1;
+ function snap(o){const d=o.d,n=prices.length,inLoop=d!=null&&d<n,hl={};
+  prices.forEach((_,k)=>{if(inLoop&&k>d)hl[k]='dim';});
+  if(buy>=0)hl[buy]='hit';if(inLoop)hl[d]='cur';
+  if(o.final&&bb>=0){hl[bb]='hit';hl[bs]='hit';}
+  const ptrs=o.final?(bb>=0?{buy:bb,sell:bs}:{}):{buy:buy>=0?buy:null,day:inLoop?d:null};
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:prices,hl,ptrs,win:o.range||(o.final&&bb>=0?[bb,bs]:null),winLabel:o.final?'best trade':'profit if I sell today'},
+   vars:[{t:'method',note:'whole call',v:[['prices',prices],['minPrice',minPrice],['maxProfit',maxProfit,o.result!=null?'res':'']]},
+         {t:'loop',note:'new each turn',v:[['price',inLoop?prices[d]:undefined]]},
+         {t:'expr',v:[['price - minPrice',o.diff]]}]});}
+
+ snap({line:[2,3],ann:{2:'minPrice = MAX',3:'maxProfit = 0'},text:'Start with <b>minPrice = MAX</b> (nothing bought yet) and <b>maxProfit = 0</b> (not trading is allowed, so the answer is never negative).'});
+ prices.forEach((p,d)=>{
+  snap({d,line:[4],ann:{4:`price = ${p}`},text:`<b>for</b> loop: day ${d}, price = <b>${p}</b>.`});
+  const mp=minPrice===MAX?'MAX':minPrice;
+  if(p<minPrice){
+   snap({d,line:[5],ann:{5:`${p} < ${mp} → true`},text:`Is ${p} cheaper than minPrice (${mp})? <b>Yes</b> → best day to buy so far.`});
+   minPrice=p;buy=d;
+   snap({d,line:[6],ann:{6:`minPrice = ${p}`},tone:'good',text:`<b>minPrice = ${p}</b> (day ${d}). The green <b>buy</b> pointer jumps here.`});
+  }else{
+   snap({d,line:[5],ann:{5:`${p} < ${mp} → false`},range:[buy,d],text:`Is ${p} cheaper than ${mp}? <b>No</b> → try selling today.`});
+   const diff=p-minPrice,old=maxProfit;maxProfit=Math.max(maxProfit,diff);if(maxProfit>old){bb=buy;bs=d;}
+   snap({d,diff,line:[8],ann:{8:`max(${old}, ${p} - ${minPrice}) = ${maxProfit}`},range:[buy,d],tone:maxProfit>old?'good':'',
+    text:`Profit if I sell today = ${p} − ${minPrice} = <b>${diff}</b>. ${maxProfit>old?`Better → <b>maxProfit = ${maxProfit}</b> 🏆`:`Not better than ${old} → keep it.`}`});
+  }});
+ snap({final:true,line:[11],ann:{11:`return ${maxProfit}`},tone:'good',result:maxProfit,
+  text:bb>=0?`Done: buy on day ${bb} at ${prices[bb]}, sell on day ${bs} at ${prices[bs]} → <b>${maxProfit}</b>.`:'Prices only went down → no profitable trade, return <b>0</b>.'});
+ return S;}
+
+PLAYER.start({
+ title:'2. Best Time to Buy & Sell Stock',code:CODE,run,
+ problem:{pattern:'Running minimum · one pass',text:'Buy on one day, sell on a <b>later</b> day. Return the max profit, or 0.',example:'[7, 1, 5, 3, 6, 4] → 5 (buy 1, sell 6)'},
+ viz:{kind:'array',title:'prices per day — green = cheapest day so far',opts:{cw:48,bars:true,barH:80,ptrColors:{buy:'#16A34A',day:'#F97316',sell:'#16A34A'}}},
+ ds:[],dsNote:'No collection needed here — the whole state is <b>two ints</b>, <code>minPrice</code> and <code>maxProfit</code> (see Variables).<br>That is why the space is <b>O(1)</b>.',
+ input:{label:'prices =',value:'3,1,4,2',presets:['7,1,5,3,6,4','7,6,4,3,1','2,4,1','1,2,3,4'],
+  parse(v){const a=v.match(/-?\d+/g)?.map(Number)||[];if(a.length<2||a.length>10)throw 'prices: 2 to 10 numbers, e.g. 7,1,5,3,6,4';if(a.some(x=>x<0))throw 'prices cannot be negative';return a;}},
+ remember:{
+  mnem:{letters:['D','L','B','S'],phrase:'Declare · Loop · Buy-low · Sell-check',sub:'Lowest so far, best so far — you can only sell after you buy.'},
+  chunks:[
+   {t:'Declare',d:'minPrice = MAX_VALUE, maxProfit = 0',lines:[2,3]},
+   {t:'Loop',d:'for each price, left → right (= time order)',lines:[4]},
+   {t:'Buy-low',d:'cheaper than minPrice? → minPrice = price',lines:[5,6]},
+   {t:'Sell-check',d:'else maxProfit = max(maxProfit, price − minPrice); return it',lines:[7,8,11]}],
+  declare:[
+   ['int minPrice = Integer.MAX_VALUE;','cheapest buy price so far'],
+   ['int maxProfit = 0;','best profit so far (0 = don’t trade)'],
+   ['for (int price : prices)','today’s price = the sell candidate']],
+  forget:[
+   '<b>maxProfit starts at 0</b>, not Integer.MIN_VALUE — no good trade means answer 0.',
+   '<b>minPrice starts at MAX_VALUE</b> (or <code>prices[0]</code> and loop from day 1).',
+   'Don\'t take global min and global max — the max can come <b>before</b> the min ([7, 1] → 0).',
+   'No array or map needed: two ints are the whole state.'],
+  cx:{time:'O(n)',timeWhy:'every day is visited once',space:'O(1)',spaceWhy:'only minPrice and maxProfit, whatever n is',
+   rows:[['Every buy/sell pair','O(n²)','O(1)','two loops, sell day j &gt; i',false],
+    ['One pass, running minimum','O(n)','O(1)','keeps the best buy day while walking ✓',true]],
+   follow:[
+    ['Unlimited transactions (Stock II)?','Add every rise: <code>profit += max(0, p[i] − p[i−1])</code>. O(n), O(1).'],
+    ['Return the buy and sell days?','Save the buy day when minPrice changes; when maxProfit improves, save (buyDay, today).'],
+    ['At most k trades / fee / cooldown?','Dynamic programming with "holding" and "not holding" states per day.'],
+    ['How is it related to Kadane (#5)?','It is max subarray on the daily differences p[i] − p[i−1].']]}}
+});
+</script>
+</body></html>

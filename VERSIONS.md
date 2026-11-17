@@ -49,6 +49,13 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `sd-search` | Search System | v2.0 | `03_System_Design/02_SD_Simulator/10_Search_System.html` |
 | System Design | `sd-video` | Video Streaming | v2.0 | `03_System_Design/02_SD_Simulator/11_Video_Streaming.html` |
 | System Design | `sd-distributed-cache` | Distributed Cache | v2.0 | `03_System_Design/02_SD_Simulator/12_Distributed_Cache.html` |
+| Interview Extras | `code-hub` | Coding Practice hub (22 problems) | v1.0 | `07_Interview/01_Coding/00_Coding_Practice.html` |
+| Interview Extras | `question-bank` | Interview Question Bank (concept-wise, company filter) | v1.0 | `07_Interview/02_Questions/00_Question_Bank.html` |
+| Interview Extras | `code-structures` | Data structures gallery (watch first) | v1.0 | `07_Interview/01_Coding/00_Structures_Gallery.html` |
+| Interview Extras | `code-longest-substring` | 8. Longest Substring Without Repeating Characters | v2.0 | `07_Interview/01_Coding/08_Longest_Substring_No_Repeat.html` |
+| Interview Extras | `code-viz-lab` | Visualization styles lab (A Story · B Debugger · C Dry-run table) | v1.0 | `07_Interview/01_Coding/99_Viz_Styles_Lab.html` |
+| Interview Extras | `code-two-sum` | 1. Two Sum | v2.0 | `07_Interview/01_Coding/01_Two_Sum.html` |
+| Interview Extras | `code-stock` | 2. Best Time to Buy & Sell Stock | v2.0 | `07_Interview/01_Coding/02_Best_Time_Buy_Sell_Stock.html` |
 | Spring | `spring-startup` | Spring Boot Startup Flow | v2.0 | `04_Spring/01_Spring_Boot_Startup_Flow.html` |
 | Design system & templates | `design-system` | Design System | v1.0 | `_design_system/00_Design_System.html` |
 | Design system & templates | `tpl-capabilities` | Capabilities template | v1.0 | `_templates/Capabilities.html` |
@@ -367,3 +374,44 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | Version | Date | What it has | Where |
 |---|---|---|---|
 | v1 | 2026-10-20 | Rejected templates (archived). | `_archive/_templates/` |
+
+### Interview Extras
+
+**Interview Question Bank** · `question-bank`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-16 | Real interview questions deduped into concept groups; collapsed cards → spoken answer on click; category pills (multi-select), 🏢 company labels + company filter, ⊕/⊖ expand all, search. Answers in `data/*.js`. | current file |
+
+**Coding Practice hub** · `code-hub`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-16 | 22 problems in 8 groups, built/completed status. Shared trace engine in `07_Interview/01_Coding/engine/`. | current file |
+
+**1. Two Sum** · `code-two-sum`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v2.0 | 2026-11-16 | Rebuilt as 2 screens: Run it (problem strip + Code · Visualize · Data structures · Variables, Debug/Auto) and Remember it (4-chunk shortcut, declaration lines, chunked code, traps, time & space, follow-ups). | current file |
+| v1.0 | 2026-11-16 | Looping overview (array + HashMap live), step-by-step on the minimum loop with own input + Java line highlight, vars/approach/D·L·C·S chunks, Big-O race + follow-ups. | `_archive/07_Interview/01_Coding/01_Two_Sum_v1.html` |
+
+**2. Best Time to Buy & Sell Stock** · `code-stock`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v2.0 | 2026-11-16 | Rebuilt as 2 screens: Run it (problem strip + Code · Visualize · Data structures · Variables, Debug/Auto) and Remember it (4-chunk shortcut, declaration lines, chunked code, traps, time & space, follow-ups). | current file |
+| v1.0 | 2026-11-16 | Price bar chart with buy/day pointers, step-by-step 4-day minimum loop, D·L·B·S chunks, Big-O race + follow-ups. | `_archive/07_Interview/01_Coding/02_Best_Time_Buy_Sell_Stock_v1.html` |
+
+**Data structures gallery** · `code-structures`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-16 | 11 structures (Array, ArrayList, LinkedList, Queue, Stack, HashMap, HashSet, TreeMap, TreeSet, binary tree, 2D grid) with clickable operations, Big-O and demos. Engine `engine/ds.js`. | current file |
+
+**8. Longest Substring Without Repeating Characters** · `code-longest-substring`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v2.0 | 2026-11-16 | Added screen 2 · Remember it; compact variables (scope label left); problem strip. | current file |
+| v1.0 | 2026-11-16 | First page on the 4-block player (Code · Visualize · Data structures · Variables), 🐞 Debug / ▶ Auto modes, inline values on code lines, own input + presets. | this conversation, superseded |

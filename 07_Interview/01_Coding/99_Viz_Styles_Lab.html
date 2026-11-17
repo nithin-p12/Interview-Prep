@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-viz-lab">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viz Styles Lab · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:var(--text);font-family:var(--font-sans);font-size:15px}
+header{height:54px;display:flex;align-items:center;gap:14px;padding:0 24px;border-bottom:1px solid var(--line)}
+header a{font-weight:800;color:var(--indigo-dk);text-decoration:none;font-size:14px}
+header h1{margin:0;font-size:17px;color:var(--ink)}
+header .q{color:var(--muted);font-size:13.5px}
+main{max-width:1240px;margin:0 auto;padding:12px 24px}
+.tabs{display:flex;gap:8px;margin-bottom:10px}
+.tabs button{font:inherit;font-weight:800;font-size:14px;padding:7px 16px;border-radius:999px;border:2px solid var(--line-strong);background:#fff;cursor:pointer;color:var(--text)}
+.tabs button small{font-weight:600;color:var(--muted);margin-left:4px}
+.tabs button.on{background:var(--ink);border-color:var(--ink);color:#fff}.tabs button.on small{color:#CBD5E1}
+.ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.btn{font:inherit;font-weight:700;font-size:14px;padding:6px 14px;border-radius:9px;border:1.5px solid var(--line-strong);background:#fff;cursor:pointer;color:var(--text)}
+.btn.p{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn:disabled{opacity:.4;cursor:default}
+.ctl .n{font-weight:800;color:var(--muted);font-size:13px;min-width:80px}
+.ctl input{font:inherit;font-family:var(--font-mono);font-size:14px;padding:5px 9px;border:1.5px solid var(--line-strong);border-radius:8px;width:130px}
+.ctl .sp{margin-left:auto;display:flex;gap:6px;align-items:center;font-size:13px;color:var(--muted);font-weight:700}
+.seg{display:inline-flex;border:1.5px solid var(--line-strong);border-radius:9px;overflow:hidden}
+.seg button{font:inherit;font-size:13px;font-weight:700;padding:5px 10px;border:0;background:#fff;cursor:pointer}
+.seg button.on{background:var(--ink);color:#fff}
+.view{display:none}.view.on{display:block}
+.cap{font-size:18px;line-height:1.45;color:var(--ink);background:var(--subtle);border-left:6px solid var(--blue);border-radius:10px;padding:10px 16px;min-height:52px}
+.cap.bad{border-left-color:var(--danger);background:#FEF2F2}.cap.good{border-left-color:var(--success);background:#F0FDF4}
+
+/* ============ A · STORY ============ */
+.story{display:grid;grid-template-columns:1fr 210px;gap:22px;align-items:start;margin:18px 0 18px}
+.strip{position:relative;height:150px;margin-left:10px}
+.win{position:absolute;top:14px;height:84px;border:3px solid var(--blue);background:rgba(59,130,246,.10);border-radius:16px;transition:left .5s ease,width .5s ease,border-color .3s}
+.win.bad{border-color:var(--danger);background:rgba(239,68,68,.08)}
+.win span{position:absolute;top:-22px;left:8px;font-size:12px;font-weight:800;color:var(--blue-dk);white-space:nowrap}
+.tile{position:absolute;top:24px;width:64px;height:64px;display:grid;place-items:center;border-radius:12px;border:2px solid var(--line-strong);background:#fff;font-family:var(--font-mono);font-size:30px;font-weight:800;color:var(--ink);transition:all .35s}
+.tile i{position:absolute;bottom:-21px;font-style:normal;font-size:12px;color:var(--faint);font-weight:700}
+.tile.past{opacity:.3}.tile.future{color:var(--faint);border-style:dashed}
+.tile.cur{border-color:var(--orange);box-shadow:0 0 0 4px var(--orange-lt);transform:translateY(-4px)}
+.tile.clash{border-color:var(--danger);background:var(--danger-bg);color:var(--danger)}
+.ptr{position:absolute;font-size:13px;font-weight:800;color:#fff;border-radius:7px;padding:1px 8px;transition:left .5s ease;white-space:nowrap}
+.ptr::before{content:'';position:absolute;top:-6px;left:50%;margin-left:-6px;border:6px solid transparent;border-top:0;border-bottom-color:inherit}
+.ptr.r{top:112px;background:var(--orange);border-bottom-color:var(--orange)}
+.ptr.l{top:112px;background:var(--success);border-bottom-color:var(--success)}
+.best{border:2.5px solid var(--amber);border-radius:16px;background:var(--amber-bg);padding:10px;text-align:center}
+.best small{font-size:12px;font-weight:800;color:var(--amber-dk);letter-spacing:.5px;text-transform:uppercase}
+.best b{display:block;font-size:46px;line-height:1.1;font-family:var(--font-mono);color:var(--ink)}
+.best span{font-size:13px;color:var(--muted)}
+.best.up{animation:bump .5s}
+@keyframes bump{40%{transform:scale(1.12);background:#FDE68A}}
+.basket{display:flex;align-items:center;gap:14px;margin:0 0 16px 10px}
+.basket .lb{font-size:13px;font-weight:800;color:var(--muted);width:120px;line-height:1.3}
+.basket .lb code{font-size:12px;color:var(--purple-dk)}
+.bag{display:flex;gap:8px;min-height:58px;align-items:center;flex:1;border:2px dashed var(--purple-lt);border-radius:14px;padding:6px 12px;background:var(--purple-bg)}
+.chip{width:46px;height:46px;display:grid;place-items:center;border-radius:50%;background:#fff;border:2.5px solid var(--purple);font-family:var(--font-mono);font-size:22px;font-weight:800;color:var(--purple-dk);animation:in .4s}
+.chip.clash{border-color:var(--danger);background:var(--danger-bg);color:var(--danger);animation:shake .4s}
+.chip.out{animation:out .4s forwards}
+.bag .empty{color:var(--faint);font-family:var(--font-mono)}
+@keyframes in{from{transform:scale(.3) translateY(-30px);opacity:0}}
+@keyframes out{to{transform:scale(.3) translateY(30px);opacity:0}}
+@keyframes shake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+
+/* ============ B · DEBUGGER ============ */
+.dbg{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:18px;margin-bottom:12px}
+.code{background:#1E1E1E;border-radius:12px;padding:10px 0;font-family:var(--font-mono);font-size:14.5px;line-height:1.7;color:#D4D4D4;overflow:auto}
+.code div{padding:0 14px;white-space:pre;transition:background .25s}
+.code div em{font-style:normal;color:#6B7280;display:inline-block;width:26px}
+.code div.on{background:#3F3F46;box-shadow:inset 4px 0 0 #FACC15}
+.code .k{color:#569CD6}.code .t{color:#4EC9B0}.code .c{color:#6A9955}.code .nu{color:#B5CEA8}
+.watch{border:1.5px solid var(--line-strong);border-radius:12px;overflow:hidden;align-self:start}
+.watch h3{margin:0;font-size:13px;background:var(--subtle);padding:7px 12px;border-bottom:1px solid var(--line);color:var(--muted);letter-spacing:.4px;text-transform:uppercase}
+.watch .row{display:grid;grid-template-columns:90px 1fr;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line);font-family:var(--font-mono);font-size:15px;transition:background .3s}
+.watch .row:last-child{border-bottom:0}
+.watch .row b{color:var(--purple-dk)}
+.watch .row.chg{background:#FEF9C3}
+.mini{display:flex;gap:4px;font-family:var(--font-mono);font-size:16px;font-weight:800}
+.mini span{width:24px;text-align:center;border-radius:5px}
+.mini span.in{background:var(--blue-bg);color:var(--blue-dk)}.mini span.cur{outline:2px solid var(--orange)}
+
+/* ============ C · DRY-RUN TABLE ============ */
+.dry{width:100%;border-collapse:collapse;font-size:15px;margin-bottom:12px}
+.dry th{background:var(--subtle);color:var(--ink);font-size:13px;text-align:left;padding:7px 10px;border:1px solid var(--line)}
+.dry th small{display:block;font-weight:600;color:var(--muted);font-family:var(--font-mono);font-size:11.5px}
+.dry td{padding:7px 10px;border:1px solid var(--line);font-family:var(--font-mono)}
+.dry tr.cur td{background:var(--warning-bg)}
+.dry tr.new td{animation:rowin .4s}
+.dry td.x{color:var(--danger);font-weight:800}.dry td.ok{color:var(--success);font-weight:800}
+.dry td.bst{font-weight:800}.dry td.bst.up{color:var(--success)}
+@keyframes rowin{from{opacity:0;transform:translateY(-6px)}}
+.hint{font-size:13px;color:var(--muted);margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+ <a href="00_Coding_Practice.html">← Coding</a>
+ <h1>Visualization lab — pick the style that clicks</h1>
+ <span class="q">Longest Substring Without Repeating Characters · uses <b>for</b> + <b>while</b> + <b>HashSet</b></span>
+</header>
+<main>
+ <div class="tabs" id="tabs">
+  <button data-v="A">A · Story <small>pictures only</small></button>
+  <button data-v="B">B · Debugger <small>code + variables</small></button>
+  <button data-v="C">C · Dry-run table <small>like on paper</small></button>
+ </div>
+ <div class="ctl">
+  <button class="btn" id="back">◀ Back</button><button class="btn p" id="next">Next ▶</button><button class="btn" id="play">▶ Play</button><button class="btn" id="reset">↺</button>
+  <span class="n" id="n"></span>
+  <span class="sp">input s = <input id="inp" value="abcb" maxlength="10"><button class="btn" id="go">Run</button>
+   speed <span class="seg" id="spd"><button data-v="0.5" class="on">slow</button><button data-v="1">normal</button><button data-v="2">fast</button></span></span>
+ </div>
+
+ <!-- A -->
+ <section class="view" id="vA">
+  <div class="story"><div class="strip" id="strip"></div>
+   <div class="best" id="bestA"><small>🏆 best so far</small><b id="bestN">0</b><span id="curLen">window length 0</span></div></div>
+  <div class="basket"><div class="lb">Basket<br><code>HashSet window</code></div><div class="bag" id="bag"></div></div>
+  <div class="cap" id="capA"></div>
+ </section>
+
+ <!-- B -->
+ <section class="view" id="vB">
+  <div class="dbg"><div class="code" id="code"></div>
+   <div class="watch"><h3>Variables (watch)</h3><div id="watch"></div></div></div>
+  <div class="cap" id="capB"></div>
+ </section>
+
+ <!-- C -->
+ <section class="view" id="vC">
+  <table class="dry"><thead><tr><th>right<small>for loop</small></th><th>c<small>s[right]</small></th><th>in window?</th><th>while removes<small>left++ each time</small></th><th>left</th><th>window</th><th>length<small>right−left+1</small></th><th>best</th></tr></thead><tbody id="rows"></tbody></table>
+  <div class="cap" id="capC"></div>
+  <div class="hint">One row = one turn of the <b>for</b> loop. The "while removes" cell fills in while the <b>while</b> loop is shrinking the window.</div>
+ </section>
+</main>
+
+<script>
+const CODE=[
+ ['<span class="k">public int</span> lengthOfLongestSubstring(<span class="t">String</span> s) {'],
+ ['    <span class="t">Set</span>&lt;<span class="t">Character</span>&gt; window = <span class="k">new</span> <span class="t">HashSet</span>&lt;&gt;();'],
+ ['    <span class="k">int</span> left = <span class="nu">0</span>, best = <span class="nu">0</span>;'],
+ ['    <span class="k">for</span> (<span class="k">int</span> right = <span class="nu">0</span>; right &lt; s.length(); right++) {'],
+ ['        <span class="k">char</span> c = s.charAt(right);'],
+ ['        <span class="k">while</span> (window.contains(c)) {'],
+ ['            window.remove(s.charAt(left));'],
+ ['            left++;'],
+ ['        }'],
+ ['        window.add(c);'],
+ ['        best = Math.max(best, right - left + <span class="nu">1</span>);'],
+ ['    }'],
+ ['    <span class="k">return</span> best;'],
+ ['}']];
+
+// ---- one list of steps, shared by all three views
+function trace(s){
+ const F=[];let set=[],left=0,best=0;
+ const snap=o=>F.push({left,set:[...set],best,right:-1,...o});
+ snap({line:[2,3],kind:'start',text:'Start: the window (basket) is empty. <b>left = 0</b>, <b>best = 0</b>.'});
+ for(let r=0;r<s.length;r++){const c=s[r];
+  snap({right:r,c,line:[4,5],kind:'read',text:`<b>for</b>: right = ${r} → read <b>'${c}'</b>. Is it already in the basket?`});
+  while(set.includes(c)){
+   snap({right:r,c,line:[6],kind:'clash',text:`<b>while</b>: '${c}' is already in the basket → duplicate! Throw out the leftmost letter.`});
+   const d=s[left];set=set.filter(x=>x!==d);left++;
+   snap({right:r,c,line:[7,8],kind:'remove',removed:d,text:`Removed <b>'${d}'</b>, left moves to <b>${left}</b>. Check again…`});
+  }
+  const old=best;set.push(c);best=Math.max(best,r-left+1);
+  snap({right:r,c,line:[10,11],kind:'add',added:c,up:best>old,text:`No duplicate → add <b>'${c}'</b>. Window "<b>${s.slice(left,r+1)}</b>" has length ${r-left+1}${best>old?` → new best <b>${best}</b> 🏆`:` (best stays ${best})`}.`});
+ }
+ snap({right:s.length,line:[13],kind:'done',text:`Loop finished → <b>return ${best}</b>.`});
+ return F;}
+
+let S='abcb',F=trace(S),i=0,timer=null,speed=0.5,view='A';
+const $=id=>document.getElementById(id);
+const capClass=k=>k==='clash'||k==='remove'?'cap bad':k==='add'||k==='done'?'cap good':'cap';
+
+// ---- A · story: persistent tiles so the window and pointers glide
+const W=74;let tiles=[],winEl,rEl,lEl,chips=new Map();
+function buildA(){const st=$('strip');st.innerHTML='';st.style.width=(S.length*W)+'px';
+ winEl=document.createElement('div');winEl.className='win';winEl.innerHTML='<span>window</span>';st.appendChild(winEl);
+ tiles=[...S].map((ch,k)=>{const t=document.createElement('div');t.className='tile';t.style.left=(k*W)+'px';t.innerHTML=`${ch}<i>${k}</i>`;st.appendChild(t);return t;});
+ rEl=document.createElement('div');rEl.className='ptr r';rEl.textContent='right';st.appendChild(rEl);
+ lEl=document.createElement('div');lEl.className='ptr l';lEl.textContent='left';st.appendChild(lEl);
+ $('bag').innerHTML='';chips=new Map();}
+function drawA(f,prev){
+ const r=Math.min(f.right,S.length-1),hi=f.kind==='done'?S.length-1:r,lo=f.left;
+ const inWin=k=>k>=lo&&k<=hi&&(k<r||f.kind==='add'||f.kind==='done');
+ tiles.forEach((t,k)=>{t.className='tile'+(k<lo?' past':k>Math.max(r,-1)&&f.kind!=='done'?' future':'')+(k===r&&f.kind!=='done'?' cur':'')
+  +((f.kind==='clash')&&(k===r||(k<r&&k>=lo&&S[k]===f.c))?' clash':'');});
+ const wl=f.kind==='done'?lo:lo,wr=(f.kind==='add'||f.kind==='done')?hi:r-1,n=Math.max(0,wr-wl+1);
+ winEl.style.left=(wl*W-7)+'px';winEl.style.width=(n?n*W+4:0)+'px';winEl.style.opacity=n?1:0;winEl.classList.toggle('bad',f.kind==='clash');
+ const show=(el,k)=>{el.style.opacity=k>=0&&k<S.length?1:0;el.style.left=(k*W+32-el.offsetWidth/2)+'px';};
+ show(rEl,f.kind==='done'?-1:r);show(lEl,f.kind==='start'?0:lo);
+ lEl.style.top=(lo===r&&f.kind!=='done')?'138px':'112px';
+ // basket chips: add / remove with animation
+ const bag=$('bag');bag.querySelector('.empty')?.remove();
+ for(const [ch,el] of chips)if(!f.set.includes(ch)){chips.delete(ch);el.classList.add('out');setTimeout(()=>el.remove(),380);}
+ f.set.forEach(ch=>{if(!chips.has(ch)){const el=document.createElement('div');el.className='chip';el.textContent=ch;bag.appendChild(el);chips.set(ch,el);}});
+ chips.forEach((el,ch)=>el.classList.toggle('clash',f.kind==='clash'&&ch===f.c));
+ if(!f.set.length&&!bag.querySelector('.chip:not(.out)'))bag.insertAdjacentHTML('beforeend','<span class="empty">{ } empty</span>');
+ $('bestN').textContent=f.best;$('curLen').textContent=`window length ${f.set.length}`;
+ const b=$('bestA');b.classList.remove('up');if(f.up){void b.offsetWidth;b.classList.add('up');}
+ $('capA').className=capClass(f.kind);$('capA').innerHTML=f.text;}
+
+// ---- B · debugger
+function drawB(f,prev){
+ $('code').innerHTML=CODE.map(([h],k)=>`<div class="${f.line.includes(k+1)?'on':''}"><em>${k+1}</em>${h}</div>`).join('');
+ const r=f.right,c=r>=0&&r<S.length?`'${S[r]}'`:'—';
+ const vals=f2=>{const rr=f2.right;return {s:`"${S}"`,right:rr<0?'—':rr>=S.length?`${S.length} (end)`:rr,c:rr>=0&&rr<S.length?`'${S[rr]}'`:'—',left:f2.left,window:'{'+f2.set.map(x=>`'${x}'`).join(', ')+'}',best:f2.best};};
+ const v=vals(f),pv=prev?vals(prev):v;
+ const mini=`<div class="mini">${[...S].map((ch,k)=>`<span class="${k>=f.left&&f.set.includes(ch)&&k<=Math.min(r,S.length-1)?'in':''} ${k===r?'cur':''}">${ch}</span>`).join('')}</div>`;
+ $('watch').innerHTML=Object.entries(v).map(([k,x])=>`<div class="row ${pv[k]!==x?'chg':''}"><b>${k}</b><span>${x}</span></div>`).join('')+`<div class="row"><b>picture</b>${mini}</div>`;
+ $('capB').className=capClass(f.kind);$('capB').innerHTML=`<b>line ${f.line.join(', ')}</b> · `+f.text;}
+
+// ---- C · dry-run table (one row per for-iteration, built from steps 0..i)
+function drawC(f){
+ const rows=[];let last=null;
+ for(let k=0;k<=i;k++){const g=F[k];if(g.kind==='read'){last={r:g.right,c:g.c,dup:false,rem:[],left:g.left,win:'',len:'',best:g.best,up:false,done:false};rows.push(last);}
+  if(!last)continue;
+  if(g.kind==='clash')last.dup=true;
+  if(g.kind==='remove'){last.rem.push(g.removed);last.left=g.left;}
+  if(g.kind==='add'){last.done=true;last.win=S.slice(g.left,g.right+1);last.len=g.right-g.left+1;last.best=g.best;last.up=g.up;}}
+ $('rows').innerHTML=rows.map((x,k)=>`<tr class="${k===rows.length-1&&f.kind!=='done'?'cur':''} ${k===rows.length-1&&f.kind==='read'?'new':''}">
+  <td>${x.r}</td><td>'${x.c}'</td><td class="${x.dup?'x':(x.done?'ok':'')}">${x.dup?'yes → shrink':x.done?'no':'…'}</td>
+  <td class="x">${x.rem.map(ch=>`'${ch}'`).join(', ')}</td><td>${x.left}</td><td>${x.win?`"${x.win}"`:''}</td><td>${x.len}</td><td class="bst ${x.up?'up':''}">${x.done?x.best+(x.up?' ↑':''):''}</td></tr>`).join('')
+  +(f.kind==='done'?`<tr><td colspan="8" style="font-family:var(--font-sans);font-weight:800;color:var(--success)">return ${f.best}</td></tr>`:'');
+ $('capC').className=capClass(f.kind);$('capC').innerHTML=f.text;}
+
+function draw(){const f=F[i],p=F[i-1];
+ if(view==='A')drawA(f,p);if(view==='B')drawB(f,p);if(view==='C')drawC(f);
+ $('n').textContent=`step ${i+1} / ${F.length}`;$('back').disabled=i===0;$('next').disabled=i===F.length-1;}
+function stop(){clearTimeout(timer);timer=null;$('play').textContent='▶ Play';}
+function play(){$('play').textContent='⏸ Pause';const tick=()=>{if(i>=F.length-1){stop();return;}i++;draw();timer=setTimeout(tick,1500/speed);};timer=setTimeout(tick,600/speed);}
+$('next').onclick=()=>{stop();if(i<F.length-1){i++;draw();}};
+$('back').onclick=()=>{stop();if(i>0){i--;if(view==='A')buildA(),replayA();else draw();}};
+$('reset').onclick=()=>{stop();i=0;buildA();draw();};
+$('play').onclick=()=>{if(timer){stop();return;}if(i>=F.length-1){i=0;buildA();draw();}play();};
+$('go').onclick=()=>{const v=$('inp').value.replace(/\s/g,'').slice(0,10);if(!v)return;S=v;F=trace(S);i=0;stop();buildA();draw();};
+$('spd').onclick=e=>{const b=e.target.closest('button');if(!b)return;speed=+b.dataset.v;$('spd').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));};
+// going back in A: rebuild silently up to step i (no fly-in noise)
+function replayA(){const keep=i;chips=new Map();$('bag').innerHTML='';F[keep].set.forEach(ch=>{const el=document.createElement('div');el.className='chip';el.style.animation='none';el.textContent=ch;$('bag').appendChild(el);chips.set(ch,el);});draw();}
+function setView(v){view=v;try{localStorage.setItem('viz-lab-view',v);}catch(e){}
+ document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+ document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on',s.id==='v'+v));
+ if(v==='A'){buildA();replayA();}else draw();}
+$('tabs').onclick=e=>{const b=e.target.closest('button');if(b)setView(b.dataset.v);};
+let start='A';try{start=localStorage.getItem('viz-lab-view')||'A';}catch(e){}
+setView(start);
+</script>
+</body></html>
