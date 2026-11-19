@@ -3,619 +3,1000 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="sd-url-shortener">
-<meta name="doc-version" content="v2.2">
+<meta name="doc-version" content="v6.0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>URL Shortener · System Design · v2.2</title>
-<link rel="stylesheet" href="engine/sd.css">
+<title>URL Shortener · System Design · v6.0</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:#ffffff;color:#0f172a}
+
+/* ---------- header ---------- */
+header{height:64px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.brand .logo{flex-shrink:0}
+.brand .txt{min-width:0}
+.brand .t{font-size:16px;font-weight:800;white-space:nowrap;display:flex;align-items:baseline;gap:10px}
+.brand .t a{font-size:11.5px;font-weight:600;color:#0b5cff;text-decoration:none}
+.brand .t a:hover{text-decoration:underline}
+.brand .s{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrls{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.seg{display:flex;align-items:center;background:#f1f5f9;border-radius:10px;padding:3px;gap:2px}
+.seg .lbl{font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;padding:0 6px 0 7px}
+.seg button{border:0;background:transparent;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#475569;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.seg button:hover{color:#0f172a}
+.seg button.on{background:#fff;color:#0b5cff;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.btn{border:1px solid #e2e8f0;background:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#334155;padding:7px 12px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f8fafc}
+
+/* ---------- main / svg ---------- */
+main{position:relative;height:calc(100vh - 64px - 78px)}
+#dia{display:block;width:100%;height:100%;user-select:none}
+.hint{position:absolute;left:12px;bottom:8px;font-size:11px;color:#64748b;background:rgba(255,255,255,.85);padding:3px 8px;border-radius:6px;pointer-events:none}
+.zl{font-size:13px;font-weight:800;letter-spacing:1.2px;fill:#334155}
+.nl{font:11px ui-monospace,Consolas,monospace;fill:#64748b}
+.edge{fill:none;stroke:#94a3b8;stroke-width:2;stroke-dasharray:6 7}
+.edge.hot{stroke-dasharray:none;stroke-width:3}
+.elbl{font-size:11px;font-weight:600;fill:#64748b;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.node{cursor:pointer}
+.node .card{transition:filter .2s,stroke-width .2s;filter:drop-shadow(0 1px 3px rgba(15,23,42,.08))}
+.node:hover .card{filter:drop-shadow(0 4px 10px rgba(15,23,42,.18))}
+.node.active .card{stroke-width:3.5;filter:drop-shadow(0 0 14px rgba(11,92,255,.55))}
+.nlab{font-size:14px;font-weight:700;fill:#0f172a;text-anchor:middle}
+.nsub{font-size:11px;fill:#64748b;text-anchor:middle}
+.tag text{font-size:10.5px;font-weight:700;fill:#fff;text-anchor:middle}
+.ptag{font-size:10.5px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3.5px;stroke-linejoin:round;text-anchor:middle}
+
+/* ---------- legend popover ---------- */
+.ibtn{width:34px;padding:7px 0;text-align:center;font-size:14px;line-height:1}
+.ibtn.on{background:#eef4ff;border-color:#cfe0ff;color:#0b5cff}
+#legendPop{position:fixed;top:70px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 44px rgba(15,23,42,.2),0 3px 10px rgba(15,23,42,.08);padding:12px 14px;z-index:7;display:none}
+#legendPop.open{display:block}
+#legendPop:before{content:"";position:absolute;top:-6px;right:var(--arrow,20px);width:10px;height:10px;background:#fff;border-left:1px solid #e5e7eb;border-top:1px solid #e5e7eb;transform:rotate(45deg)}
+.lgh{font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8;margin:2px 0 8px}
+.lgk{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+.lgk span{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569}
+.lgk i{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.06),0 0 7px var(--c);background:var(--c)}
+.lgs{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:10px}
+.lgs b{display:block;font-size:16px;font-weight:800;color:#0f172a;line-height:1.15}
+.lgs span{font-size:11px;color:#475569}
+.lgn{font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:8px}
+
+/* ---------- footer ---------- */
+footer{height:78px;background:#fff;border-top:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+#badge{flex-shrink:0;min-width:52px;height:44px;padding:0 8px;border-radius:12px;background:#0b5cff;color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+#badge.live{background:#16a34a;letter-spacing:1px}
+.fmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.frow{display:flex;align-items:center;gap:8px;min-width:0}
+#ftitle{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{flex-shrink:0;font:600 11px ui-monospace,Consolas,monospace;color:#0b5cff;background:#eef4ff;border:1px solid #cfe0ff;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill:empty{display:none}
+.grow{flex:1}
+#dots{display:flex;gap:3px;flex-shrink:0}
+#dots i{display:block;width:18px;height:4px;border-radius:2px;background:#e2e8f0}
+#dots i.on{background:#0b5cff}
+#ftext{font-size:12.5px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{display:flex;gap:8px;flex-shrink:0}
+.stat{width:78px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:6px 8px}
+.stat b{display:block;font-size:18px;line-height:1.1}
+.stat span{font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#64748b;white-space:nowrap}
+
+/* ---------- drawer ---------- */
+#drawer{position:fixed;right:14px;top:76px;bottom:90px;width:380px;max-width:calc(100vw - 28px);background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.22),0 4px 14px rgba(15,23,42,.08);transform:translateX(420px);transition:transform .35s ease;display:flex;flex-direction:column;overflow:hidden;z-index:5}
+#drawer.open{transform:translateX(0)}
+.dh{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #e5e7eb}
+.dh .dl{width:52px;height:52px;border-radius:12px;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dh h3{margin:0;font-size:16px}
+.dh p{margin:2px 0 0;font-size:12px;color:#475569}
+.dh button{margin-left:auto;align-self:flex-start;border:0;background:rgba(255,255,255,.7);border-radius:8px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#334155}
+.db{padding:14px 16px 18px;overflow:auto;font-size:13px;line-height:1.5;color:#334155}
+.db h4{margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.db ul{margin:0;padding-left:18px}
+.db li{margin:3px 0}
+.db pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.db code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px}
+.core-link{display:inline-block;margin-top:14px;font-size:12.5px;font-weight:600;color:#0b5cff;text-decoration:none;background:#eef4ff;border:1px solid #cfe0ff;padding:6px 10px;border-radius:9px}
+.core-link:hover{text-decoration:underline}
+
+/* ---------- header nav + view tabs ---------- */
+.brand .s{display:flex;align-items:center;gap:6px}
+.brand .s .sub{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.brand .nav{display:flex;align-items:center;gap:1px;flex-shrink:0}
+.brand .nav a,.brand .nav span{font-size:11.5px;font-weight:700;color:#0b5cff;text-decoration:none;padding:0 4px;border-radius:5px;line-height:16px}
+.brand .nav a:hover{background:#eef4ff}
+.brand .nav span.off{color:#cbd5e1;cursor:default}
+.brand .nav a.hub{color:#64748b;font-weight:600}
+body:not(.v-flow) .flowonly{display:none}
+body:not(.v-flow) main,body:not(.v-flow) footer,body:not(.v-flow) #drawer,body:not(.v-flow) #legendPop{display:none}
+body.v-flow #reader{display:none}
+
+/* ---------- reading panel (tabs 2-4) ---------- */
+#reader{position:relative;height:calc(100vh - 64px);overflow:auto;background:#f8fafc;scroll-behavior:smooth}
+.rd{max-width:1120px;margin:0 auto;padding:18px 20px 40px}
+.rd-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:12px}
+.rd-head h2{margin:0;font-size:20px;font-weight:800}
+.rd-head p{margin:4px 0 0;font-size:13px;color:#64748b;max-width:760px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.rcard{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.05);padding:14px 16px;margin-bottom:12px;font-size:13.5px;line-height:1.55;color:#334155}
+.rcard code,.fu code,.rd td code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px;color:#0f172a}
+.rcard h3{margin:0 0 6px;font-size:15px;color:#0f172a}
+/* explain */
+.timebar{position:sticky;top:0;z-index:2;display:flex;gap:4px;background:#f8fafc;padding:6px 0 10px}
+.timebar button{min-width:126px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:6px 8px;text-align:left;cursor:pointer;font:inherit;border-top:3px solid var(--c)}
+.timebar button:hover{background:#f1f5f9}
+.timebar b{display:block;font-size:12px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timebar span{font-size:11px;color:#64748b}
+.stage{border-left:4px solid var(--c);scroll-margin-top:70px}
+.stage-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.stage-h .sn{width:24px;height:24px;border-radius:50%;background:var(--c);color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center}
+.stage-h .mn{font-size:11px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:999px;padding:1px 8px}
+.goal{margin:2px 0 10px;color:#64748b}
+.msg{display:flex;gap:10px;margin:6px 0;align-items:flex-start}
+.msg .who{flex-shrink:0;width:88px;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding-top:3px}
+.msg p{margin:0;flex:1;padding:6px 10px;border-radius:10px}
+.msg.iv .who{color:#7c3aed}.msg.iv p{background:#f5f3ff}
+.msg.you .who{color:#0b5cff}.msg.you p{background:#eef4ff}
+.msg.tip .who{color:#a16207}.msg.tip p{background:#fefce8;font-style:italic}
+.avoid{margin:10px 0 0;padding:8px 12px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+/* answer */
+.jump{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.jump button,.chips button{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:4px 11px;font:600 12px "Segoe UI",system-ui,sans-serif;color:#475569;cursor:pointer}
+.jump button:hover,.chips button:hover{border-color:#cbd5e1;color:#0f172a}
+.pitch{border-left:4px solid #0b5cff;scroll-margin-top:56px}
+.pitch p{margin:0 0 8px}.pitch p:last-child{margin:0}
+.ans-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.ans-grid .rcard{margin:0}
+.ans{border-top:4px solid var(--c);scroll-margin-top:56px}
+.ans ul,.ans ol{margin:0;padding-left:20px}.ans li{margin:3px 0}
+.ans table{border-collapse:collapse;width:100%;font-size:13px}
+.ans td,.ans th{border-bottom:1px solid #f1f5f9;padding:5px 8px;text-align:left;vertical-align:top}
+.ans th{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8}
+.ans .m{font:12px ui-monospace,Consolas,monospace;white-space:nowrap;color:#0f172a}
+.ans pre,.codeblk pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.code-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;scroll-margin-top:56px}
+.codeblk{margin:0}
+.codeblk h3{font-size:13px}
+/* follow-ups */
+.chips{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.chips button small{color:#94a3b8;font-weight:700;margin-left:2px}
+.chips button.on{background:var(--c,#0b5cff);border-color:var(--c,#0b5cff);color:#fff}
+.chips button.on small{color:rgba(255,255,255,.8)}
+.fu{padding:0;border-left:4px solid var(--c)}
+.fu summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px}
+.fu summary::-webkit-details-marker{display:none}
+.fu summary:after{content:"▸";margin-left:auto;color:#94a3b8;transition:transform .2s}
+.fu[open] summary:after{transform:rotate(90deg)}
+.fu-g{flex-shrink:0;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border-radius:999px;padding:2px 9px}
+.fu-q{font-size:14px;font-weight:700;color:#0f172a}
+.fu-body{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:0 16px 14px}
+.fu-body > div > b{display:block;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8;margin-bottom:2px}
+.fu-body p{margin:0}
+.fu-body .say{grid-column:1/-1;background:#eef4ff;border-radius:10px;padding:8px 12px}
+.fu-body .say > b{color:#0b5cff}
+.watch{grid-column:1/-1;justify-self:start;border:0;background:#0b5cff;color:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;padding:7px 14px;border-radius:9px;cursor:pointer}
+.watch:hover{background:#0a4fe0}
+</style>
 </head>
-<body>
-<script src="engine/scene.js"></script>
-<script src="engine/player.js"></script>
+<body class="v-flow">
+<header>
+  <div class="brand">
+    <svg class="logo" width="34" height="34" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#0b5cff"/><path d="M20 28l8-8M18 22l-3 3a5 5 0 0 0 7 7l3-3M30 26l3-3a5 5 0 0 0-7-7l-3 3" stroke="#fff" stroke-width="3.2" fill="none" stroke-linecap="round"/></svg>
+    <div class="txt">
+      <div class="t">URL Shortener</div>
+      <div class="s"><span class="nav" id="dNav"></span><span class="sub">Create · redirect with cache-aside (hit / miss) · alias race · viral stampede · crash gaps &amp; expiry · async click analytics</span></div>
+    </div>
+  </div>
+  <div class="ctrls">
+    <div class="seg" id="viewSeg">
+      <button data-view="flow" class="on" title="Animated data flow">Data flow</button>
+      <button data-view="explain" title="How to explain it, stage by stage">Explain</button>
+      <button data-view="answer" title="Interview-ready answer">Answer</button>
+      <button data-view="followups" title="Follow-up questions">Follow-ups</button>
+    </div>
+    <div class="seg flowonly" id="scSeg"><span class="lbl">Scenario</span>
+      <button data-sc="create" title="Create a short URL (POST /urls)">Create</button>
+      <button data-sc="hit" title="Redirect served from Redis (+ async click analytics)">Hit</button>
+      <button data-sc="miss" title="Redirect: Redis miss, MongoDB, cache fill">Miss</button>
+      <button data-sc="alias" title="Two users race for the same custom alias">Alias</button>
+      <button data-sc="stampede" title="Viral link: hot key expires, single-flight lock, TTL jitter">Viral</button>
+      <button data-sc="failures" title="Crash leaves ID gaps · expired link → 410 Gone · TTL index cleanup">Expiry</button>
+      <button data-sc="live" title="Live mixed traffic">Live</button>
+    </div>
+    <div class="seg flowonly" id="spSeg"><span class="lbl">Speed</span>
+      <button data-sp="0.5">0.5x</button><button data-sp="1" class="on">1x</button><button data-sp="2">2x</button>
+    </div>
+    <button class="btn flowonly" id="pauseBtn">⏸ Pause</button>
+    <button class="btn flowonly" id="replayBtn">↻ Replay</button>
+    <button class="btn ibtn flowonly" id="legendBtn" title="Legend &amp; scale (L)" aria-haspopup="dialog" aria-expanded="false">ⓘ</button>
+  </div>
+</header>
+
+<main>
+  <svg id="dia" viewBox="0 0 1600 600" preserveAspectRatio="xMidYMid meet"></svg>
+  <div class="hint">Click any component for details · Space pause · 1 2 3 speed · R replay · L legend</div>
+</main>
+
+<footer>
+  <div id="badge">1/1</div>
+  <div class="fmid">
+    <div class="frow"><span id="ftitle"></span><span id="fproto" class="pill"></span><span class="grow"></span><div id="dots"></div></div>
+    <div id="ftext"></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="stReq">0</b><span>Requests</span></div>
+    <div class="stat"><b id="stHit">0</b><span>Cache hits</span></div>
+    <div class="stat"><b id="stEvt">0</b><span>Events</span></div>
+    <div class="stat"><b id="stRes">0</b><span>Responses</span></div>
+  </div>
+</footer>
+
+<section id="reader" aria-live="polite"></section>
+
+<div id="legendPop" role="dialog" aria-label="Legend and scale">
+  <div class="lgh">PACKETS</div>
+  <div class="lgk" id="lgKinds"></div>
+  <div class="lgh">SCALE (FROM THE FULL DESIGN)</div>
+  <div class="lgs">
+    <div><b>100 M</b><span>new links / month</span></div>
+    <div><b>~4k/s</b><span>redirects (40k peak)</span></div>
+    <div><b>100 : 1</b><span>reads : writes</span></div>
+    <div><b>62⁷</b><span>≈ 3.5 T codes</span></div>
+  </div>
+  <div class="lgn">Dashed edges crawl in the request direction · solid = packet in transit</div>
+</div>
+
+<aside id="drawer" aria-hidden="true">
+  <div class="dh" id="dHead"><div class="dl" id="dLogo"></div><div><h3 id="dTitle"></h3><p id="dTag"></p></div><button id="dClose" title="Close (Esc)">×</button></div>
+  <div class="db" id="dBody"></div>
+</aside>
+
 <script src="engine/catalog.js"></script>
 <script>
-// URL Shortener (TinyURL / bit.ly). Everything specific to this design lives here; engine/app.js renders it.
-const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
-const LONG = 'shop.ex/sale';
+'use strict';
+// =====================================================================
+// URL Shortener · Data Flow (v3): nodes grouped by app role; no infra containers, no CDN/DNS hops. Self-contained: no engine/, no external URLs.
+// Content comes from 01_URL_Shortener.html: ID blocks + Base62, MongoDB (_id = code), Redis cache-aside,
+// 302 redirects, Kafka click-events -> analytics in batches, alias race via unique _id (E11000 -> 409).
+// =====================================================================
 
-// State shown next to the components: the counter, the pod's ID block, the urls collection, the cache.
-function setup(s, v, { pod = 'block: empty', counter = 1000001, db = [], cache = [] } = {}) {
-  v.idc = s.chip(752, 62, `counter next = ${counter}`, { anchor: 'start', mono: true, color: AMBER });
-  v.pod = s.chip(445, 92, pod, { mono: true, color: TEAL });
-  v.db = s.store(752, 226, 150, 'URLS  (_id = code)', { color: AMBER });
-  v.cache = s.store(752, 432, 150, 'REDIS', { color: AMBER });
-  for (const r of db) s.row(v.db, r, { now: true });
-  for (const r of cache) s.row(v.cache, r, { now: true });
-  return v;
+const NS = 'http://www.w3.org/2000/svg';
+const KIND = { request: '#2563eb', response: '#16a34a', event: '#f97316', error: '#dc2626' };
+const PAL = {
+  client: ['#eef0ff', '#818cf8'], lb: ['#efe8ff', '#7c3aed'],
+  shortener: ['#fff9db', '#e0b400'], redirect: ['#e3f4f2', '#0d9488'], idgen: ['#f0f9e8', '#84cc16'], mongo: ['#e6f6ea', '#34a853'],
+  redis: ['#fff1f2', '#dc2626'], kafka: ['#fff0e0', '#f59e0b'], consumer: ['#ffffff', '#db2777'], clickhouse: ['#e0f7fc', '#22b5e6'],
+};
+// zone tints: [fill, stroke]
+const ZT = {
+  client: ['#fed7aa', '#fb923c', '#9a3412'], entry: ['#ddd6fe', '#8b5cf6', '#5b21b6'], app: ['#bfdbfe', '#3b82f6', '#1e3a8a'],
+  data: ['#e5e7eb', '#9ca3af', '#374151'], async: ['#ffe4e6', '#fb7185', '#9f1239'],
+};
+
+// ---------------- logos (48x48 inline SVG) ----------------
+const cube = (badge) => `<path d="M24 5l17 9.5v19L24 43 7 33.5v-19z" fill="#326ce5"/><path d="M24 24l17-9.5v19L24 43z" fill="#2557c4"/><path d="M24 5l17 9.5L24 24 7 14.5z" fill="#6f9cf0"/>${badge}`;
+const LOGO = {
+  client: `<circle cx="24" cy="15" r="8.5" fill="#6366f1"/><path d="M7 43c0-10 7.6-16 17-16s17 6 17 16z" fill="#6366f1"/>`,
+  lb: `<path d="M24 3l21 21-21 21L3 24z" fill="#8b5cf6"/><path d="M12 24h9l8-7h5M21 24l8 7h5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M32 14l3 3-3 3M32 28l3 3-3 3" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  shortener: cube(`<circle cx="37" cy="37" r="8.5" fill="#e0b400" stroke="#fff" stroke-width="2"/><path d="M37 32.5v9M32.5 37h9" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>`),
+  redirect: cube(`<circle cx="37" cy="37" r="8.5" fill="#2fa89a" stroke="#fff" stroke-width="2"/><path d="M33 40v-1.5a4 4 0 0 1 4-4h4.5M39 32l2.5 2.5L39 37" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`),
+  idgen: `<rect x="4" y="8" width="40" height="32" rx="8" fill="#65a30d"/><text x="24" y="29.5" text-anchor="middle" font-size="14" font-weight="800" fill="#fff" font-family="Consolas,monospace">#1k</text>`,
+  mongo: `<path d="M24 3c8 9 12 17 12 24.5 0 8.5-5.2 13.5-10.6 15.5h-2.8C17.2 41 12 36 12 27.5 12 20 16 12 24 3z" fill="#13aa52"/><path d="M24 9v37" stroke="#0b6b33" stroke-width="2"/>`,
+  redis: `<path d="M5 31l19 8 19-8-19-8z" fill="#a41e11"/><path d="M5 24l19 8 19-8-19-8z" fill="#d82c20"/><path d="M5 17l19 8 19-8-19-8z" fill="#ff4438"/><path d="M24 12.5l1.6 3.1 3.4.4-2.5 2.2.7 3.3-3.2-1.7-3 1.7.6-3.3-2.5-2.2 3.4-.4z" fill="#fff"/>`,
+  kafka: `<g stroke="#231f20" stroke-width="2.4" fill="none"><path d="M24 11v26M24 24l12-7M24 24l12 7"/></g><g fill="#fff" stroke="#231f20" stroke-width="2.8"><circle cx="24" cy="8" r="4.5"/><circle cx="24" cy="40" r="4.5"/><circle cx="24" cy="24" r="5.5"/><circle cx="37" cy="16" r="4"/><circle cx="37" cy="32" r="4"/></g>`,
+  consumer: `<circle cx="24" cy="24" r="15.5" fill="none" stroke="#db2777" stroke-width="7" stroke-dasharray="6.08 6.08"/><circle cx="24" cy="24" r="12.5" fill="#ec4899"/><circle cx="24" cy="24" r="5" fill="#fff"/>`,
+  clickhouse: `<rect x="4" y="4" width="40" height="40" rx="8" fill="#161616"/><g fill="#facc15"><rect x="10" y="11" width="4" height="26"/><rect x="17" y="11" width="4" height="26"/><rect x="24" y="11" width="4" height="26"/><rect x="31" y="11" width="4" height="26"/><rect x="38" y="20" width="3.5" height="8"/></g>`,
+};
+
+// ---------------- topology ----------------
+const NODES = {
+  client: { x: 100, y: 310, label: 'Client', sub: 'browser · mobile app' },
+  lb: { x: 318, y: 310, label: 'Load Balancer', sub: 'L7 · TLS · routes by path', replicas: 2 },
+  shortener: { x: 545, y: 190, label: 'Shortener API', sub: 'POST /urls · write', replicas: 3 },
+  idgen: { x: 785, y: 104, label: 'ID Range Service', sub: 'blocks of 1,000 IDs', replicas: 2 },
+  redirect: { x: 545, y: 440, label: 'Redirect Service', sub: 'GET /{code} · read', replicas: 6 },
+  mongo: { x: 1022, y: 190, label: 'MongoDB', sub: 'urls · _id = code', replicas: 3 },
+  redis: { x: 1022, y: 480, label: 'Redis Cache', sub: 'url:{code} · TTL 24h', replicas: 3 },
+  kafka: { x: 1252, y: 335, label: 'Kafka', sub: 'topic click-events', replicas: 3 },
+  consumer: { x: 1480, y: 335, label: 'Analytics Worker', sub: '@KafkaListener batch', replicas: 3 },
+  clickhouse: { x: 1480, y: 120, label: 'ClickHouse', sub: 'clicks_daily', replicas: 2 },
+};
+// grouped by developer role, not by infrastructure
+const ZONES = [
+  { x: 8, y: 8, w: 186, h: 584, t: 'client', label: 'CLIENT', cap: 'sho.rt users' },
+  { x: 206, y: 8, w: 224, h: 584, t: 'entry', label: 'ENTRY', cap: 'one front door' },
+  { x: 442, y: 8, w: 478, h: 584, t: 'app', label: 'APP SERVICES', cap: 'Spring Boot · stateless', dash: true },
+  { x: 932, y: 8, w: 180, h: 584, t: 'data', label: 'DATA', cap: 'truth + cache', dash: true },
+  { x: 1124, y: 8, w: 468, h: 584, t: 'async', label: 'ASYNC ANALYTICS', cap: 'off the redirect path', dash: true },
+];
+// [from, to, protocol label]; the path direction is the request direction (dashes crawl that way).
+const EDGE_DEFS = [
+  ['client', 'lb', 'HTTPS 443'],
+  ['lb', 'shortener', 'POST /urls'], ['lb', 'redirect', 'GET /{code}'],
+  ['shortener', 'idgen', 'reserve block'], ['shortener', 'mongo', 'insertOne'],
+  ['redirect', 'redis', 'GET · SETEX'], ['redirect', 'mongo', 'findById'], ['redirect', 'kafka', 'produce click'],
+  ['kafka', 'consumer', 'poll batch'], ['consumer', 'clickhouse', 'INSERT batch'],
+];
+
+// ---------------- drawer content ----------------
+const INFO = {
+  client: {
+    tag: 'Browsers, apps and API clients',
+    desc: 'A few users <b>create</b> links; far more <b>click</b> them (about 100 clicks per link). Both traffic patterns start here, and the client decides how often clicks reach us: a browser caches a <b>301</b> forever but re-asks on a <b>302</b>.',
+    points: ['Reads ≈ 100× writes: design the read path first', 'Only two endpoints matter: <code>POST /urls</code> and <code>GET /{code}</code>', 'Clients retry on timeouts, so <code>POST /urls</code> carries an <code>Idempotency-Key</code>', 'We answer <b>302</b>, so every click comes back to us (analytics, expiry, deletion)'],
+    code: `# create
+curl -X POST https://sho.rt/urls \\
+  -H 'Content-Type: application/json' \\
+  -H 'Idempotency-Key: 7f1c2e' \\
+  -d '{"longUrl":"https://shop.ex/sale?utm=spring"}'
+# -> 201 {"shortUrl":"https://sho.rt/4c93"}
+
+# click
+curl -i https://sho.rt/4c93
+# HTTP/2 302
+# location: https://shop.ex/sale?utm=spring
+# cache-control: private, max-age=0`,
+  },
+  lb: {
+    tag: 'L7 load balancer / API gateway · entry point',
+    desc: 'Single entry point for <code>sho.rt</code>. Terminates TLS, rate-limits creates and routes by path: <code>/urls</code> to the Shortener (write path), everything else (<code>/{code}</code>) to the Redirect Service (read path).',
+    points: ['Write and read paths scale independently (reads ≈ 100×)', 'Only instances passing <code>/actuator/health/readiness</code> receive traffic', 'Rate limit on <code>POST /urls</code> per client: stops spam and phishing bursts', '<b>Why no CDN?</b> An edge-cached 302 would skip the click count and ignore per-link expiry or deletion, so redirects always reach us. A CDN only helps for static assets (landing page, JS/CSS).'],
+    code: `# Spring Cloud Gateway: application.yml
+spring:
+  cloud:
+    gateway:
+      routes:
+      - id: create                     # write path
+        uri: lb://shortener
+        predicates: [ Path=/urls/** ]
+        filters:
+        - name: RequestRateLimiter     # per-client cap on creates
+          args:
+            redis-rate-limiter.replenishRate: 5
+            redis-rate-limiter.burstCapacity: 20
+      - id: redirect                   # read path (everything else)
+        uri: lb://redirect
+        predicates: [ Path=/{code} ]`,
+  },
+  shortener: {
+    tag: 'Spring Boot · write path · 3 instances',
+    desc: 'Validates the long URL, takes the next ID from its <b>in-memory block</b>, Base62-encodes it and inserts <code>code → URL</code> into MongoDB. Custom aliases are inserted the same way.',
+    points: ['~40 creates/s on average (peak ~400): two or three instances', 'ID from the instance\'s block: no network call per create', 'Base62(1000001) = <code>4c93</code>; 62⁷ ≈ 3.5 trillion codes', 'E11000 on insert → <b>409 Conflict</b> (alias taken)', 'A crash loses the rest of the block: harmless gaps'],
+    code: `@PostMapping("/urls")
+ResponseEntity<ShortUrl> create(@Valid @RequestBody CreateUrl req) {
+  String code = req.alias() != null
+      ? req.alias()
+      : Base62.encode(idBlock.next());      // 1000001 -> "4c93"
+  try {
+    urls.insert(new UrlDoc(code, req.longUrl(), owner(), now(), req.expiresAt()));
+  } catch (DuplicateKeyException e) {         // E11000
+    throw new ResponseStatusException(CONFLICT, "alias taken");
+  }
+  URI link = URI.create("https://sho.rt/" + code);
+  return ResponseEntity.created(link).body(new ShortUrl(link));
 }
-const SEED = { pod: 'next 1000003 / 1001000', counter: 1001001, db: [`4c93 → ${LONG}`, '4c94 → blog.ex/post'] };
-const rowOf = (st, prefix) => st.rows.find(r => r.label.textContent.startsWith(prefix));
 
-window.DESIGN = {
-  id: 'url', n: 1, title: 'URL Shortener', tagline: 'TinyURL / bit.ly: unique short codes, millisecond redirects',
-  viewBox: [1100, 520],
-
-  // ---------------- architecture ----------------
-  layers: [
-    { id: 'entry', title: 'Entry', x0: 0, x1: 340, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
-      why: 'One front door. Spreads traffic over many identical pods, terminates TLS and sends **writes** and **reads** to different services.',
-      detail: 'Clients only ever know one hostname (`sho.rt`). Everything behind it can scale, fail and be redeployed without the client noticing.' },
-    { id: 'app', title: 'Services', x0: 340, x1: 552, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
-      why: 'Stateless business logic, split into a **write** service and a **read** service because their load differs ~100×.',
-      detail: 'Stateless means any pod can serve any request, so we add or kill pods freely. All state lives one layer to the right.' },
-    { id: 'data', title: 'Data & IDs', x0: 552, x1: 914, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
-      why: 'Where state lives: **unique ID allocation**, the **durable** code → URL mapping, and a **cache** for hot codes.',
-      detail: 'Each store has one job: the counter guarantees uniqueness, MongoDB guarantees durability, Redis guarantees speed.' },
-    { id: 'async', title: 'Async', x0: 914, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
-      why: 'Work the user must **not wait for**. Click events are queued and counted later, so analytics can never slow down or break a redirect.',
-      detail: 'A queue between the hot path and analytics absorbs bursts and lets each side fail independently.' },
-  ],
-  layersIntro: {
-    title: 'Four layers, each with one job',
-    text: 'Read the diagram left to right: requests **enter**, are handled by **stateless services**, which read and write **state**, and push slow work to the **async** side. Click a layer or a component to see why it exists and what breaks without it.',
+static String encode(long id) {               // alphabet 0-9 a-z A-Z
+  StringBuilder sb = new StringBuilder();
+  do { sb.append(ABC.charAt((int) (id % 62))); id /= 62; } while (id > 0);
+  return sb.reverse().toString();
+}`,
   },
-  nodes: {
-    client: { x: 80, y: 260, w: 140, label: 'Client', sub: 'browser / app', icon: '👤', layer: 'entry' },
-    lb: { x: 250, y: 260, w: 150, label: 'Load Balancer', sub: 'L7 · routes by path', icon: '⚖️', layer: 'entry' },
-    shortener: { x: 445, y: 140, label: 'Shortener API', sub: 'POST /urls · write', icon: '✏️', layer: 'app' },
-    redirect: { x: 445, y: 385, label: 'Redirect Service', sub: 'GET /{code} · read', icon: '↪️', layer: 'app' },
-    idgen: { x: 655, y: 62, label: 'ID Range Service', sub: 'hands out ID blocks', icon: '🔑', layer: 'data' },
-    mongo: { x: 655, y: 260, label: 'MongoDB', sub: 'urls · source of truth', icon: '🍃', layer: 'data' },
-    redis: { x: 655, y: 455, label: 'Redis cache', sub: 'hot codes · TTL', icon: '⚡', layer: 'data' },
-    analytics: { x: 1005, y: 150, w: 160, label: 'Analytics', sub: 'click counts', icon: '📊', layer: 'async' },
-    kafka: { x: 1005, y: 385, w: 160, label: 'Kafka', sub: 'click-events', icon: '📨', layer: 'async' },
+  idgen: {
+    tag: 'Hands out blocks of 1,000 IDs',
+    desc: 'Owns one counter document. Each call does a single atomic <code>$inc</code> of 1,000 and returns the old value, so every Shortener instance gets a disjoint block and codes are <b>unique by construction</b>.',
+    points: ['Called once per 1,000 links per instance: almost no load', 'No collision check and no per-URL coordination', 'Backed by the replicated database; instances keep using their current block if it is briefly down', 'Alternatives: DB sequence, Redis INCRBY, ZooKeeper'],
+    code: `// counters: { _id: "url", next: 1001001 }
+Document c = counters.findOneAndUpdate(
+    eq("_id", "url"),
+    inc("next", 1000),
+    new FindOneAndUpdateOptions()
+        .upsert(true)
+        .returnDocument(ReturnDocument.BEFORE));
+long from = c.getLong("next");      // this instance owns [from, from + 999]`,
   },
-  wires: [['client', 'lb'], ['lb', 'shortener'], ['lb', 'redirect'], ['shortener', 'idgen'], ['shortener', 'mongo'], ['redirect', 'redis'], ['redirect', 'mongo'], ['redirect', 'kafka'], ['kafka', 'analytics']],
-
-  components: {
-    client: {
-      what: 'Browsers, mobile apps and API clients. A few users **create** links; far more **click** them (about 100 clicks per link).',
-      why: 'Both traffic patterns start here, and the client decides how often clicks reach us: a browser caches a **301** forever but re-asks on a **302**.',
-      without: 'Not optional, but a design detail matters: answer with 301 and repeat clicks never reach you, so you lose analytics and cannot expire the link.',
-      tech: 'Any HTTP client', scale: 'Not ours to scale; plan for reads ≈ 100× writes.', fails: 'Clients retry on timeouts, so a create should be safe to retry (idempotency key).',
-    },
-    lb: {
-      name: 'Load Balancer (L7)',
-      what: 'Single entry point for `sho.rt`. Terminates TLS, health-checks pods, and routes by path: `POST /urls` → Shortener, `GET /{code}` → Redirect.',
-      why: 'Spreads load over many **stateless** pods and lets the write path and the read path scale **independently**.',
-      without: 'Clients would need to know every pod, one pod would take all traffic, and a dead pod would keep receiving requests.',
-      tech: 'AWS ALB / NGINX / Envoy, often behind a CDN or edge network', scale: 'Managed or horizontal; redundant across availability zones.', fails: 'Health checks drop bad pods; DNS fails over between LBs.',
-    },
-    shortener: {
-      name: 'Shortener API (write path)',
-      what: 'Validates the long URL, takes the next ID from its **in-memory block**, Base62-encodes it and inserts `code → URL` into MongoDB.',
-      why: 'Keeps all write rules (validation, ID allocation, custom aliases, abuse checks, rate limits) in one place, away from the latency-critical read path.',
-      without: 'Reads and writes share one service: a burst of creates or a slow URL safety check would slow down every redirect.',
-      tech: 'Spring Boot, stateless pods', scale: '~40 writes/s on average: two or three pods. Add pods freely; each reserves its own ID block.', fails: 'A crash loses the unused part of its ID block, leaving harmless gaps in the ID sequence.',
-    },
-    redirect: {
-      name: 'Redirect Service (read path)',
-      what: 'Looks up the code (Redis first, MongoDB on a miss), answers **302** with `Location`, then emits a click event without waiting.',
-      why: 'Reads are ~100× writes and every millisecond is user-visible. A small dedicated service can be scaled and tuned (pools, timeouts) just for this.',
-      without: 'The busiest path would compete with writes for threads and DB connections, and you could not scale reads on their own.',
-      tech: 'Spring WebFlux / Netty / Go: anything fast and non-blocking', scale: 'Most pods live here; autoscale on requests per second.', fails: 'Redis down → read MongoDB (behind a circuit breaker). Kafka down → drop click events, never fail the redirect.',
-    },
-    idgen: {
-      name: 'ID Range Service',
-      what: 'Owns one counter. Hands out **blocks** of 1,000 IDs with one atomic increment (`next += 1000`).',
-      why: 'Makes every short code **unique by construction**: no collision check, and pods never coordinate per URL.',
-      without: 'You hash or randomise codes and must check the database on every create, retrying on clashes, which gets slower as the table fills.',
-      tech: 'MongoDB `findOneAndUpdate` + `$inc` (or a DB sequence, Redis `INCRBY`, ZooKeeper)', scale: 'Called once per 1,000 links per pod: almost no load. Give busy pods bigger blocks.', fails: 'Pods keep creating links from their current block; it runs on the replicated database.',
-    },
-    mongo: {
-      name: 'MongoDB (source of truth)',
-      what: 'One document per code: `{ _id: code, longUrl, owner, createdAt, expiresAt }`, plus a TTL index on `expiresAt`.',
-      why: 'Durable storage of every mapping. Using the code as `_id` gives a single primary-key lookup **and** uniqueness for free (aliases too).',
-      without: 'Links would live only in a cache and vanish on eviction or restart.',
-      tech: 'MongoDB replica set (DynamoDB / Cassandra fit equally: it is a key → value lookup)', scale: '~600 GB per year: shard by hashed `_id`. Redis absorbs most reads.', fails: 'Primary failover pauses writes for a few seconds; cached redirects keep working.',
-    },
-    redis: {
-      name: 'Redis cache',
-      what: 'Keeps `url:{code} → longUrl` for hot codes, with a TTL; LRU evicts cold codes.',
-      why: 'Turns the hot path into one in-memory lookup (~1 ms) and shields MongoDB. Clicks follow a power law, so a small cache serves most traffic.',
-      without: 'Every click hits the database: 4k–40k reads/s on MongoDB, higher latency and a much bigger database bill.',
-      tech: 'Redis cluster or primary + replicas, `maxmemory-policy allkeys-lru`', scale: 'Memory for the hot links only; add shards.', fails: 'Down → reads fall through to MongoDB. A viral key expiring → stampede, unless single-flight.',
-    },
-    kafka: {
-      name: 'Kafka (click-events)',
-      what: 'Durable buffer of click events `{code, ts, country, referrer}`, partitioned by code.',
-      why: 'Decouples analytics from redirects: the redirect returns at once, bursts are absorbed, and analytics processes at its own pace.',
-      without: 'Every click would wait for an analytics write, and an analytics outage would break redirects.',
-      tech: 'Kafka (or Kinesis / Pub/Sub)', scale: 'More partitions and consumers.', fails: 'Down → the redirect drops or briefly buffers events and counts a metric. Redelivery → counts are at-least-once.',
-    },
-    analytics: {
-      name: 'Analytics',
-      what: 'Consumes click events in **batches** and stores aggregates per code, day, country and referrer.',
-      why: 'Creators want click stats. Aggregating in batches turns thousands of tiny writes into a few big ones and keeps dashboards fast.',
-      without: 'No click stats, or expensive per-click writes on the hot path.',
-      tech: 'Kafka consumer → ClickHouse / Druid, or MongoDB / Redis counters', scale: 'Batch size and number of consumers.', fails: 'Lag only delays the dashboards; redirects are unaffected.',
-    },
+  redirect: {
+    tag: 'Spring WebFlux · read path · 6 instances',
+    desc: 'The hot path. Looks up the code with <b>cache-aside</b> (Redis first, MongoDB on a miss), answers <b>302</b> with <code>Location</code>, then publishes a click event without waiting.',
+    points: ['~4k redirects/s average, ~40k at peak: most instances live here', '302, not 301: browsers would cache a 301 forever', '<code>Cache-Control: private, max-age=0</code>: no browser or CDN caching, every click is counted', 'Redis down → circuit breaker, read MongoDB', 'Kafka down → drop the click event with a metric, never fail the redirect', 'Viral key expired → single-flight lock, TTL jitter'],
+    code: `@GetMapping("/{code}")
+Mono<ResponseEntity<Void>> go(@PathVariable String code, ServerHttpRequest req) {
+  return redis.opsForValue().get("url:" + code)                 // GET url:4c93
+      .switchIfEmpty(Mono.defer(() -> repo.findById(code)        // miss -> MongoDB
+          .filter(u -> !u.expired())                             // else 410 Gone
+          .map(UrlDoc::longUrl)
+          .flatMap(url -> redis.opsForValue()
+              .set("url:" + code, url, ttlWithJitter())          // SET ... EX 86400
+              .thenReturn(url))))
+      .doOnNext(url -> clicks.publishAsync(code, req))           // never blocks
+      .map(url -> ResponseEntity.status(FOUND)
+          .location(URI.create(url))
+          .header(CACHE_CONTROL, "private, max-age=0").<Void>build());
+}`,
   },
+  mongo: {
+    tag: 'Source of truth · replica set',
+    desc: 'One document per code: <code>{ _id: code, longUrl, owner, createdAt, expiresAt }</code>. Using the code as <code>_id</code> gives a single primary-key lookup <b>and</b> uniqueness for free, aliases included.',
+    points: ['Writes with <code>w: "majority"</code>: survive a primary failover', 'TTL index on <code>expiresAt</code> deletes expired links (~every 60 s)', '~600 GB/year → shard by hashed <code>_id</code>', 'Redis absorbs most reads; failover pauses only writes for a few seconds'],
+    code: `// urls: the short code IS the primary key
+{ _id: "4c93", longUrl: "https://shop.ex/sale?utm=spring",
+  owner: "A", createdAt: ISODate("2026-11-19T10:00:00Z"), expiresAt: null }
 
-  // ---------------- 1 · overview loop ----------------
-  intro: {
-    headline: 'Long URL in, short code out. Code in, 302 out.',
-    points: [
-      { t: 'Create', color: BLUE, d: 'Shortener takes a unique ID from its reserved block, Base62-encodes it (1000001 → `4c93`) and stores code → URL.' },
-      { t: 'First click', color: TEAL, d: 'Redirect Service checks Redis, misses, reads MongoDB, fills the cache and answers **302**.' },
-      { t: 'Every next click', color: GREEN, d: 'Served straight from Redis in ~1 ms. MongoDB is not touched.' },
-      { t: 'Analytics', color: PURPLE, d: 'After answering, each redirect drops a click event on Kafka; Analytics counts them in batches.' },
+db.urls.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })   // TTL
+sh.shardCollection("sho.urls", { _id: "hashed" })                  // later
+
+db.urls.insertOne({ _id: "sale", longUrl: "...", owner: "C" })
+// E11000 duplicate key error collection: sho.urls index: _id_`,
+  },
+  redis: {
+    tag: 'Hot codes in memory · ~1 ms',
+    desc: 'Keeps <code>url:{code} → longUrl</code> for hot codes with a TTL; LRU evicts cold ones. Clicks follow a power law, so a small cache serves most traffic and shields MongoDB.',
+    points: ['Hit rates above 90% are normal', 'TTL 24 h + random jitter so hot keys never expire together', '<code>maxmemory-policy allkeys-lru</code>', 'Viral key expiry → single-flight lock <code>SET lock NX PX</code>', 'On delete: remove the document <b>and</b> <code>DEL url:{code}</code>'],
+    code: `GET url:4c93                                  # hit -> "https://shop.ex/sale?utm=spring"
+GET url:4c94                                  # miss -> (nil)
+SET url:4c94 "https://blog.ex/post" EX 86400  # fill after the miss (+ jitter)
+SET lock:4c94 1 NX PX 3000                    # single-flight for viral keys
+CONFIG SET maxmemory-policy allkeys-lru`,
+  },
+  kafka: {
+    tag: 'Topic click-events · 12 partitions · RF 3',
+    desc: 'Durable buffer of click events <code>{code, ts, country, referrer}</code>, partitioned by code. Decouples analytics from redirects: the redirect returns at once and bursts are absorbed.',
+    points: ['Key = code → per-code ordering within a partition', 'Producer never blocks a redirect (max.block.ms small, async send)', 'Kafka down → drop the event and count a metric', 'Consumers are at-least-once: counts are approximate unless deduped'],
+    code: `props.put(ProducerConfig.ACKS_CONFIG, "1");
+props.put(ProducerConfig.LINGER_MS_CONFIG, 5);
+props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, 50);   // never stall a redirect
+
+kafka.send("click-events", code,                      // key -> partition
+           new ClickEvent(code, now(), country, referrer))
+     .whenComplete((r, ex) -> {
+       if (ex != null) droppedClicks.increment();     // best-effort analytics
+     });`,
+  },
+  consumer: {
+    tag: 'Kafka consumer group "analytics"',
+    desc: 'Consumes click events in <b>batches</b>, aggregates per code, day and country, and writes the totals in one insert. Thousands of tiny writes become a few big ones.',
+    points: ['Batch listener, up to 500 records per poll', 'Offsets committed after the insert succeeds', 'Lag only delays dashboards; redirects are unaffected', 'Scale with partitions and consumers'],
+    code: `@KafkaListener(topics = "click-events", groupId = "analytics",
+               batch = "true")                      // max.poll.records=500
+void onBatch(List<ClickEvent> events) {
+  Map<Key, Long> counts = events.stream().collect(
+      groupingBy(e -> new Key(e.code(), e.day(), e.country()), counting()));
+  clickhouse.insertBatch("clicks_daily", counts);   // one INSERT per batch
+}                                                   // then commit offsets`,
+  },
+  clickhouse: {
+    tag: 'Columnar store for click stats',
+    desc: 'Stores aggregated clicks per code, day and country. Serves <code>GET /urls/{code}/stats</code> and creator dashboards. MongoDB or Redis counters also work at smaller scale.',
+    points: ['SummingMergeTree merges rows with the same key', 'One batch insert per poll, not per click', 'Dashboards read aggregates in milliseconds'],
+    code: `CREATE TABLE clicks_daily (
+  code    String,
+  day     Date,
+  country LowCardinality(String),
+  clicks  UInt64
+) ENGINE = SummingMergeTree(clicks)
+ORDER BY (code, day, country);
+
+SELECT day, sum(clicks) FROM clicks_daily
+WHERE code = '4c93' GROUP BY day ORDER BY day;`,
+  },
+};
+
+// building blocks taught once in 00_Core_Components.html (same "#id/what" links as the engine pages)
+const CORE = {
+  lb: ['lb', 'Load balancer'], mongo: ['db', 'DB scaling'], redis: ['cache', 'Cache · Redis'],
+  kafka: ['kafka', 'Queue · Kafka'], consumer: ['kafka', 'Queue · Kafka'],
+};
+
+// ---------------- scenarios ----------------
+const hop = (from, to, kind, tag, title, proto, text, extra) => Object.assign({ type: 'hop', from, to, kind, tag, title, proto, text }, extra || {});
+const node = (id, tag, title, proto, text, extra) => Object.assign({ type: 'node', id, tag, title, proto, text }, extra || {});
+const GREEN = '#16a34a', RED = '#dc2626';
+
+function analytics(code) {
+  return [
+    hop('redirect', 'kafka', 'event', 'click ' + code, 'Produce click event', 'Kafka · TCP 9092', `Async send to click-events with key "${code}" (acks=1, linger.ms=5); the redirect does not wait for it.`),
+    node('kafka', 'p7 · offset++', 'Append to partition', 'murmur2(key) % 12', `The key "${code}" hashes to one partition, so all clicks of one code stay in order.`, { dur: 1.0 }),
+    hop('kafka', 'consumer', 'event', 'poll ≤ 500', 'Consumer polls a batch', 'Kafka fetch · batch', 'The analytics consumer group polls up to 500 events at a time.'),
+    node('consumer', 'Σ per code/day', 'Aggregate the batch', 'groupingBy code, day, country', 'Thousands of click events become a handful of counter rows.', { dur: 1.0 }),
+    hop('consumer', 'clickhouse', 'event', 'INSERT batch', 'Write aggregates', 'HTTP :8123 · INSERT', 'One INSERT per batch into clicks_daily; offsets are committed afterwards.'),
+    node('clickhouse', '+1 click', 'Stats updated', 'SummingMergeTree', 'Dashboards and GET /urls/{code}/stats read the new totals.', { dur: 0.8 }),
+  ];
+}
+
+const SCEN = {
+  create: {
+    name: 'Create short URL',
+    steps: [
+      hop('client', 'lb', 'request', 'POST /urls', 'POST /urls over HTTPS', 'HTTPS · TCP 443 · TLS 1.3', `Body {"longUrl":"https://shop.ex/sale?utm=spring"} plus an Idempotency-Key header, so a timed-out retry cannot create two links.`),
+      node('lb', '/urls → shortener', 'Route: /urls → Shortener API', 'L7 · path rule · rate limit', 'TLS ends here, the per-client rate limit on creates passes, and the Path=/urls/** route picks a healthy Shortener instance.'),
+      hop('lb', 'shortener', 'request', 'POST /urls', 'Request reaches a Shortener instance', 'HTTP/1.1 · :8080', 'Spring MVC maps @PostMapping("/urls") and binds the JSON to a @Valid CreateUrlRequest (http/https only, ≤ 2 KB).'),
+      node('shortener', 'block empty', 'Validate, then check the ID block', 'Spring Boot · write path', 'The URL passes validation and a Safe-Browsing check; this instance just started, so its in-memory ID block is empty.'),
+      hop('shortener', 'idgen', 'request', 'reserve 1000', 'Reserve a block of 1,000 IDs', 'HTTP · POST /blocks?size=1000', 'One call per 1,000 links per instance, not per URL, so the ID Range Service never sits on the hot path.'),
+      node('idgen', '$inc +1000', 'Atomic $inc on the counter', 'findOneAndUpdate · $inc', 'findOneAndUpdate({_id:"url"}, {$inc:{next:1000}}) is atomic on the Mongo primary: no two instances ever get the same block.'),
+      hop('idgen', 'shortener', 'response', '1000001–1001000', 'Block granted', '200 OK · {from, to}', 'The instance now owns IDs 1000001–1001000 in an AtomicLong; its next 999 creates need no network call for an ID.'),
+      node('shortener', '1000001 → 4c93', 'Base62 encode: 1000001 → 4c93', 'alphabet 0-9 a-z A-Z', '1000001 = 4·62³ + 12·62² + 9·62 + 3 → "4c93". Seven chars give 62⁷ ≈ 3.5 trillion codes, no collision check needed.'),
+      hop('shortener', 'mongo', 'request', 'insertOne 4c93', 'Insert code → URL', 'Mongo wire · TCP 27017 · w:majority', 'insertOne({_id:"4c93", longUrl, owner, createdAt, expiresAt}) with writeConcern majority, so it survives a failover.'),
+      node('mongo', '_id unique', 'The code is the _id', 'primary key · TTL index', 'Redirects become one primary-key lookup, duplicates fail atomically with E11000, and a TTL index on expiresAt deletes dead links.'),
+      hop('mongo', 'shortener', 'response', 'ack', 'Write acknowledged', '{ acknowledged: true }', 'The primary acknowledges once 2 of the 3 replica-set members have the write, typically 2–5 ms.'),
+      hop('shortener', 'lb', 'response', '201 Created', '201 Created', 'HTTP 201 · Location', 'Response: 201 Created, Location: https://sho.rt/4c93, body {"shortUrl":"https://sho.rt/4c93"}, Cache-Control: no-store.'),
+      hop('lb', 'client', 'response', 'sho.rt/4c93', 'Short link delivered', 'HTTPS · 201', 'The user copies sho.rt/4c93. Total cost: one insert, plus one ID-block call per 1,000 links on this instance.'),
     ],
-    stats: [['100 M', 'new links / month'], ['~4 k/s', 'redirects (avg)'], ['100 : 1', 'reads : writes'], ['7 chars', '≈ 3.5 trillion codes']],
   },
-  async overview(s, v, ui) {
-    if (!v.ready) { setup(s, v); v.ready = true; v.clicks = 0; }
-    for (const r of [...v.db.rows]) await s.unrow(v.db, r);
-    for (const r of [...v.cache.rows]) await s.unrow(v.cache, r);
-    s.setChip(v.pod, 'block: empty');
-    s.setSub(v.n.analytics, 'click counts');
-    v.clicks = 0;
-
-    ui.say(0); ui.cap('**Create** · the client sends `POST /urls` with the long URL');
-    await s.send(['client', 'lb', 'shortener'], 'POST /urls', BLUE, { ms: 480 });
-    ui.cap('The pod has no IDs left, so it reserves a **block of 1,000** with one atomic `$inc`');
-    await s.send(['shortener', 'idgen'], '$inc +1000', BLUE, { ms: 480 });
-    s.setChip(v.idc, 'counter next = 1001001');
-    await s.send(['idgen', 'shortener'], '1000001–1001000', BLUE, { ms: 480 });
-    s.setChip(v.pod, 'next 1000001 / 1001000');
-    ui.cap('ID **1000001** → Base62 → **4c93**, stored with `_id = "4c93"`');
-    await s.flash(445, 205, '1000001 → base62 → 4c93', { mono: true, color: BLUE, stroke: BLUE }, 700);
-    s.setChip(v.pod, 'next 1000002 / 1001000');
-    await s.send(['shortener', 'mongo'], 'insert 4c93', BLUE, { ms: 480 });
-    await s.row(v.db, `4c93 → ${LONG}`);
-    await s.send(['shortener', 'lb', 'client'], '201 sho.rt/4c93', GREEN, { ms: 480 });
-
-    ui.say(1); ui.cap('**First click** · `GET /4c93` goes to the read path');
-    await s.send(['client', 'lb', 'redirect'], 'GET /4c93', TEAL, { ms: 480 });
-    ui.cap('Redis first: **miss**');
-    await s.send(['redirect', 'redis'], 'GET url:4c93', TEAL, { ms: 440 });
-    await s.flash(655, 410, 'miss', { color: RED, stroke: RED, fill: '#fff4f4' }, 350);
-    ui.cap('Read MongoDB by primary key, then fill Redis with a TTL');
-    await s.send(['redirect', 'mongo'], 'findById 4c93', TEAL, { ms: 440 });
-    await s.send(['mongo', 'redirect'], LONG, TEAL, { ms: 440 });
-    await s.send(['redirect', 'redis'], 'SET EX 86400', TEAL, { ms: 440 });
-    await s.row(v.cache, 'url:4c93 · TTL 24h');
-    ui.cap('Answer **302 Found** with `Location: https://shop.ex/sale`');
-    const click = async () => { await s.send(['redirect', 'kafka'], 'click 4c93', PURPLE, { ms: 420 }); v.clicks++; s.setSub(v.n.kafka, `${v.clicks} event${v.clicks > 1 ? 's' : ''} queued`); };
-    await s.send(['redirect', 'lb', 'client'], '302 Location', TEAL, { ms: 480 });
-    const firstClick = click();
-
-    ui.say(2); ui.cap('**Next clicks** · Redis **hit**, ~1 ms, MongoDB is not touched');
-    const hit = async delay => {
-      await s.wait(delay);
-      await s.send(['client', 'lb', 'redirect'], 'GET /4c93', GREEN, { ms: 420 });
-      await s.send(['redirect', 'redis'], 'GET', GREEN, { ms: 360 });
-      await s.send(['redis', 'redirect'], 'hit ✓', GREEN, { ms: 360 });
-      await s.send(['redirect', 'lb', 'client'], '302', GREEN, { ms: 420 });
-      await click();
-    };
-    await Promise.all([firstClick, hit(0), hit(900), hit(1800)]);
-
-    ui.say(3); ui.cap('**Analytics** · Kafka buffers click events; Analytics counts them in **batches**, off the hot path');
-    await s.send(['kafka', 'analytics'], `batch ×${v.clicks}`, PURPLE, { ms: 620 });
-    s.setSub(v.n.kafka, 'lag 0');
-    s.setSub(v.n.analytics, `4c93 · ${v.clicks} clicks`, GREEN);
-    await s.pulse(v.n.analytics);
-    await s.wait(2200);
-    ui.say(-1); ui.cap('');
-    await s.wait(500);
+  hit: {
+    name: 'Redirect (cache hit)',
+    steps: [
+      hop('client', 'lb', 'request', 'GET /4c93', 'GET /4c93', 'HTTPS · 443 · HTTP/2', 'A visitor taps sho.rt/4c93 in a post (Referer: https://t.co/). This is the hot path: ~4k req/s average, ~40k at peak.'),
+      node('lb', '/{code} → redirect', 'Route: /{code} → Redirect Service', 'L7 · path rule', 'The catch-all route targets the 6 Redirect instances: the read path scales on its own, independent of the 3 write instances. No CDN in front: every click must reach us.'),
+      hop('lb', 'redirect', 'request', 'GET /4c93', 'Request reaches a Redirect instance', 'HTTP/1.1 · :8080', 'Spring WebFlux @GetMapping("/{code}") on Netty validates the code against [0-9a-zA-Z]{1,16} before touching any store.'),
+      hop('redirect', 'redis', 'request', 'GET url:4c93', 'Cache-aside: ask Redis first', 'RESP · TCP 6379', 'Lettuce sends GET url:4c93 on a pooled connection with a 50 ms timeout, wrapped in a circuit breaker.'),
+      node('redis', 'HIT ✓', 'Decision: cache HIT', '~1 ms · in-memory', 'The key exists (TTL ≈ 23 h left): Redis answers in ~1 ms and MongoDB is not touched. Clicks follow a power law, so >90% hit.', { tagColor: GREEN, stat: 'hit' }),
+      hop('redis', 'redirect', 'response', 'shop.ex/sale', 'Long URL returned', 'RESP bulk string', 'Redis returns "https://shop.ex/sale?utm=spring"; the Redirect instance itself keeps no state, so any instance could have served this.'),
+      node('redirect', '302, not 301', 'Build 302 Found', '302 + Location', 'A 301 is cached forever by browsers, so repeat clicks would never reach us: no stats, and no way to expire or delete the link.'),
+      { type: 'fork', title: 'Async: publish click event', proto: 'Kafka · fire-and-forget', text: 'In parallel: send("click-events", key "4c93", {code, ts, country, referrer}) → analytics worker → ClickHouse. The visitor never waits.', steps: analytics('4c93') },
+      hop('redirect', 'lb', 'response', '302 Found', '302 Found', 'HTTP 302 · Location', 'Location: https://shop.ex/sale?utm=spring, Cache-Control: private, max-age=0, empty body: a few hundred bytes in total.'),
+      hop('lb', 'client', 'response', '302 → shop.ex', 'Redirect delivered', 'HTTPS · 302', 'Our side took ~5 ms with a cache hit; the browser now follows Location to the merchant site.'),
+      node('client', '→ shop.ex/sale', 'Browser follows Location', 'GET https://shop.ex/sale', 'The next request goes to shop.ex, not to us. Because it was a 302, the next click on sho.rt/4c93 is counted again.'),
+    ],
   },
+  miss: {
+    name: 'Redirect (cache miss)',
+    steps: [
+      hop('client', 'lb', 'request', 'GET /4c94', 'First click on a fresh link', 'HTTPS · 443 · HTTP/2', 'sho.rt/4c94 was created a minute ago and has never been clicked.'),
+      hop('lb', 'redirect', 'request', 'GET /4c94', 'Routed to a Redirect instance', 'HTTP/1.1 · :8080', 'The catch-all /{code} route picks one of the 6 Redirect instances; WebFlux handles it on a Netty event-loop thread.'),
+      hop('redirect', 'redis', 'request', 'GET url:4c94', 'Cache-aside: ask Redis first', 'RESP · TCP 6379', 'GET url:4c94 with a 50 ms timeout; if Redis were down, the circuit breaker would send us straight to MongoDB.'),
+      node('redis', 'MISS ✕', 'Decision: cache MISS', 'nil · key absent', 'Nobody has clicked 4c94 yet, so the key is not in Redis. With cache-aside the service, not Redis, loads the value.', { tagColor: RED }),
+      hop('redis', 'redirect', 'response', 'nil', 'Redis returns nil', 'RESP null bulk', 'A nil reply in ~1 ms. For a viral key the instance would first take SET lock:4c94 1 NX PX 3000 so only one request hits Mongo.'),
+      hop('redirect', 'mongo', 'request', 'findById 4c94', 'Fall back to MongoDB', 'Mongo wire · TCP 27017', 'findById("4c94") is a single _id index lookup on the replica set (readPreference primaryPreferred), typically 1–3 ms.'),
+      node('mongo', 'expiresAt ok', 'Primary-key hit + expiry check', '_id index · expiresAt', 'The doc exists; the service checks expiresAt itself (the TTL monitor runs only ~every 60 s) and would answer 410 Gone if past.'),
+      hop('mongo', 'redirect', 'response', 'blog.ex/post', 'Document returned', 'BSON · { _id, longUrl }', 'MongoDB returns {_id:"4c94", longUrl:"https://blog.ex/post", expiresAt:null}, projected to the fields the redirect needs.'),
+      hop('redirect', 'redis', 'request', 'SET EX 86400', 'Fill the cache with a TTL', 'SET … EX 86400', 'SET url:4c94 "https://blog.ex/post" EX 86400 (+ random jitter) so hot keys never expire together; allkeys-lru drops cold ones.'),
+      hop('redis', 'redirect', 'response', 'OK', 'Cache filled', 'RESP +OK', 'From now on every click on 4c94 is a ~1 ms cache hit, until the TTL runs out or LRU evicts the key.'),
+      { type: 'fork', title: 'Async: publish click event', proto: 'Kafka · fire-and-forget', text: 'In parallel: the click goes to click-events with key "4c94". A Kafka outage only drops this metric, never the redirect.', steps: analytics('4c94') },
+      hop('redirect', 'lb', 'response', '302 Found', '302 Found', 'HTTP 302 · Location', 'Location: https://blog.ex/post and Cache-Control: private, max-age=0; ~5–10 ms on our side even with the miss.'),
+      hop('lb', 'client', 'response', '302 → blog.ex', 'Redirect delivered', 'HTTPS · 302', 'The browser follows Location to blog.ex; the next visitor of sho.rt/4c94 is served straight from Redis.'),
+    ],
+  },
+  alias: {
+    name: 'Custom alias race',
+    steps: [
+      hop('client', 'lb', 'request', null, 'Two users want sho.rt/sale', 'POST /urls ×2', 'User A and User C both POST {"longUrl": …, "alias": "sale"} within the same millisecond.', { count: 2, tags: ['A: alias=sale', 'C: alias=sale'] }),
+      node('lb', 'inst-1 · inst-2', 'Round-robin to two instances', 'L7 · round robin', 'The load balancer sends them to two different Shortener instances: no shared memory, so a JVM lock or synchronized block cannot help.'),
+      hop('lb', 'shortener', 'request', null, 'Each instance handles one request', 'HTTP/1.1 · :8080', 'Both instances validate the URL, see an alias, skip the ID block and use "sale" as the code.', { count: 2, tags: ['A', 'C'] }),
+      node('shortener', 'just insert', 'Don\'t check, just insert', 'unique _id decides', 'findOne({_id:"sale"}) then insert would let both see "free". Instead each instance simply inserts and lets MongoDB decide.'),
+      hop('shortener', 'mongo', 'request', 'A: insert _id:sale', 'A\'s insert arrives first', 'insertOne · w:majority', 'insertOne({_id:"sale", longUrl, owner:"A"}): the alias is the primary key, exactly like a generated code.'),
+      node('mongo', 'A ✓', 'A takes the _id', '_id unique index', 'The unique _id index entry for "sale" is written atomically; A now owns sho.rt/sale.', { tagColor: GREEN }),
+      hop('mongo', 'shortener', 'response', 'ack A', 'A acknowledged', '{ acknowledged: true }', 'The write is majority-acknowledged, so a failover cannot hand "sale" to anyone else afterwards.'),
+      hop('shortener', 'mongo', 'request', 'C: insert _id:sale', 'C\'s insert, microseconds later', 'insertOne · w:majority', 'insertOne({_id:"sale", owner:"C"}) targets the same unique index entry.'),
+      node('mongo', 'E11000', 'Duplicate key: E11000', 'E11000 duplicate key error', 'MongoDB rejects the second write atomically: no lock, no read, no race window, whatever the timing.', { tagColor: RED }),
+      hop('mongo', 'shortener', 'error', 'E11000', 'Error returned to the instance', 'WriteError code 11000', 'The driver raises MongoWriteException code 11000, which Spring Data translates to DuplicateKeyException.'),
+      node('shortener', '→ 409', 'Map E11000 to 409 Conflict', '@ExceptionHandler', 'A handler turns DuplicateKeyException into 409 Conflict {"error":"alias taken"}; no retries, no locks.', { tagColor: RED }),
+      hop('shortener', 'lb', 'response', null, '201 for A, 409 for C', 'HTTP 201 · HTTP 409', 'A gets 201 Created with Location: https://sho.rt/sale; C gets 409 Conflict. Neither is cached (Cache-Control: no-store).', { count: 2, kinds: ['response', 'error'], tags: ['201 A', '409 C'] }),
+      hop('lb', 'client', 'response', null, 'Responses delivered', 'HTTPS · 201 / 409', 'User A sees the short link; User C sees "alias taken" and can pick another one.', { count: 2, kinds: ['response', 'error'], tags: ['201 sho.rt/sale', '409 taken'] }),
+      node('client', 'A ✓ · C ✕', 'One alias, one owner', 'reserve an alias format', 'Aliases share the code namespace, so reserve a format (e.g. ≥ 8 chars) that generated 7-char codes never produce.'),
+    ],
+  },
+  // Ported from the old page's "Viral link stampede" flow: herd vs single-flight, then TTL jitter + early refresh.
+  stampede: {
+    name: 'Viral link stampede',
+    steps: [
+      node('redis', 'TTL 0 · expired', 'A viral link\'s cache entry expires', 'url:4c93 · TTL → 0', 'Link 4c93 is on the front page: thousands of clicks per second, all served from Redis. Then its TTL reaches zero and the key disappears.', { tagColor: RED }),
+      hop('client', 'lb', 'request', null, 'Clicks keep pouring in', 'HTTPS · 443 · ×thousands/s', 'Four packets stand in for thousands of concurrent GET /4c93 requests arriving in the same few milliseconds.', { count: 4, tags: ['GET /4c93', 'GET /4c93', 'GET /4c93', 'GET /4c93'] }),
+      hop('lb', 'redirect', 'request', null, 'Spread over the Redirect instances', 'HTTP/1.1 · :8080', 'The catch-all /{code} route fans them out over the 6 Redirect instances; each one handles its requests independently.', { count: 4, tags: ['GET /4c93', '', '', ''] }),
+      hop('redirect', 'redis', 'request', null, 'Everyone asks Redis', 'RESP · GET url:4c93', 'Every request runs GET url:4c93 at the same instant, just after the key expired.', { count: 4, tags: ['GET url:4c93', '', '', ''] }),
+      node('redis', 'MISS ×4', 'All of them miss', 'nil · key absent', 'Every in-flight request misses at once. Without protection, all of them would now query MongoDB for the same document.', { tagColor: RED }),
+      hop('redis', 'redirect', 'response', null, 'nil for everyone', 'RESP null bulk', 'Four nil replies in ~1 ms: the cache gave no answer to any of them.', { count: 4, kinds: ['error', 'error', 'error', 'error'], tags: ['nil', '', '', ''] }),
+      node('redirect', 'herd ⚠', '❌ Without protection: a thundering herd', 'cache stampede', 'All of them would query MongoDB for the same document: a spike of identical queries, latency explodes (CPU 100%, p99 2 s) and the database can fall over. This is a cache stampede.', { tagColor: RED }),
+      hop('redirect', 'redis', 'request', null, '✅ Fix 1: single-flight lock', 'SET lock:4c93 1 NX PX 3000', 'On a miss, each request first tries SET lock:4c93 1 NX PX 3000: NX means only one of them can create the key, PX 3000 frees it if the holder dies.', { count: 4, tags: ['SET lock NX', '', '', ''] }),
+      node('redis', 'lock → #1 only', 'Only one request gets the lock', 'NX: first writer wins', 'Redis is single-threaded per key, so exactly one SET NX succeeds; the other three get nil and must not touch MongoDB.', { tagColor: GREEN }),
+      hop('redis', 'redirect', 'response', null, 'One OK, three nil', 'RESP +OK · null bulk', 'Request #1 holds the lock; requests #2–#4 wait a few milliseconds and will re-read Redis.', { count: 4, kinds: ['response', 'error', 'error', 'error'], tags: ['OK #1', 'nil', 'nil', 'nil'] }),
+      node('redirect', '3 waiting…', 'The others wait, they do not query', 'sleep ~20 ms · retry GET', 'Requests #2–#4 back off briefly instead of piling onto the database: waiting adds a few milliseconds, never a stampede.', { tagColor: '#d97706' }),
+      hop('redirect', 'mongo', 'request', 'find 4c93 (only #1)', 'One database read', 'Mongo wire · findById', 'Only the lock holder runs findById("4c93"): one database query instead of thousands.'),
+      hop('mongo', 'redirect', 'response', 'shop.ex/sale', 'Document returned', 'BSON · { _id, longUrl }', 'MongoDB answers in a couple of milliseconds; it never noticed the viral burst.'),
+      hop('redirect', 'redis', 'request', 'SET EX 86400±10%', 'Rebuild the entry with a jittered TTL', 'SET url:4c93 … EX 86400±jitter', 'SET url:4c93 "https://shop.ex/sale?utm=spring" with 24 h ± 10% jitter, then DEL lock:4c93.'),
+      hop('redis', 'redirect', 'response', 'OK', 'Cache rebuilt', 'RESP +OK', 'The hot key is back in Redis after a single database read.'),
+      hop('redirect', 'redis', 'request', null, 'Waiters re-read Redis', 'RESP · GET url:4c93', 'Requests #2–#4 retry GET url:4c93 after their short wait.', { count: 3, tags: ['retry GET', '', ''] }),
+      node('redis', 'HIT ×3 ✓', 'Retries → cache hit ✓', '~1 ms · in-memory', 'All the waiters now hit the freshly rebuilt key; MongoDB saw one query for the whole burst.', { tagColor: GREEN, stat: 'hit' }),
+      hop('redis', 'redirect', 'response', null, 'Long URL for everyone', 'RESP bulk string', 'Each waiting request gets "https://shop.ex/sale?utm=spring".', { count: 3, tags: ['shop.ex/sale', '', ''] }),
+      hop('redirect', 'lb', 'response', null, '302 Found ×4', 'HTTP 302 · Location', 'All four requests answer 302 with Location and Cache-Control: private, max-age=0.', { count: 4, tags: ['302', '', '', ''] }),
+      hop('lb', 'client', 'response', null, 'Redirects delivered', 'HTTPS · 302', 'Users see at most a few extra milliseconds of latency during the rebuild.', { count: 4, tags: ['302 → shop.ex', '', '', ''] }),
+      node('redis', 'TTL 24h ±10%', '✅ Fix 2: jitter and early refresh', 'jittered TTL · refresh at < 10%', 'Random jitter keeps many keys from expiring together, and hot keys are refreshed early (in the background once the TTL drops below ~10%). For the very hottest links, a small in-process cache absorbs traffic before it even reaches Redis.', { tagColor: GREEN, dur: 3 }),
+    ],
+  },
+  // Ported from the old page's "Crash gaps & expiry" flow: lost ID blocks leave gaps, expired links answer 410, a TTL index cleans up.
+  failures: {
+    name: 'Crash gaps & expiry',
+    steps: [
+      node('shortener', 'crashed ✕', 'A Shortener instance crashes', 'lost: 1000003…1001000', 'The instance that owned block 1000001–1001000 crashes after using two IDs. The other 998 IDs are lost with it: no one will ever hand them out again.', { tagColor: RED }),
+      node('shortener', 'new · block empty', 'A replacement instance starts', 'Kubernetes restart · readiness', 'Kubernetes starts a replacement instance. It has no ID block yet, so its first create must reserve one.', { tagColor: '#d97706' }),
+      hop('shortener', 'idgen', 'request', 'reserve 1000', 'The new instance reserves a new block', 'HTTP · POST /blocks?size=1000', 'Exactly the same call as at any start-up: one request for the next 1,000 IDs.'),
+      node('idgen', 'next = 1002001', 'The counter moves on', 'findOneAndUpdate · $inc 1000', 'The atomic $inc moves the counter from 1001001 to 1002001. It never goes back to hand out the lost IDs.'),
+      hop('idgen', 'shortener', 'response', '1001001–1002000', 'Block granted', '200 OK · {from, to}', 'The new instance owns 1001001–1002000; IDs 1000003–1001000 are simply skipped.'),
+      node('shortener', 'gap ✓ harmless', 'Gaps from crashed instances are harmless', 'unique ≠ contiguous', 'Codes only need to be unique, not contiguous. Bigger blocks mean bigger gaps after a crash, and that is fine.', { tagColor: GREEN }),
+      hop('client', 'lb', 'request', 'GET /old1', 'Someone opens an expired link', 'HTTPS · 443', 'User B opens sho.rt/old1, whose expiresAt was yesterday.'),
+      hop('lb', 'redirect', 'request', 'GET /old1', 'Routed to a Redirect instance', 'HTTP/1.1 · :8080', 'The catch-all /{code} route, exactly like any other click.'),
+      hop('redirect', 'redis', 'request', 'GET url:old1', 'Cache-aside: ask Redis first', 'RESP · TCP 6379', 'GET url:old1: cache TTLs never outlive the link, so an expired link is never served from Redis.'),
+      node('redis', 'MISS ✕', 'Cache miss', 'nil · key absent', 'The key expired from Redis no later than the link itself.', { tagColor: RED }),
+      hop('redis', 'redirect', 'response', 'nil', 'Redis returns nil', 'RESP null bulk', 'Fall back to the source of truth.'),
+      hop('redirect', 'mongo', 'request', 'findById old1', 'Read MongoDB', 'Mongo wire · TCP 27017', 'findById("old1"): a single primary-key lookup.'),
+      node('mongo', 'expired 1d ago', 'The document still exists', 'TTL monitor runs ~every 60 s', 'MongoDB still has the document, because TTL cleanup runs in the background; expiresAt is in the past.', { tagColor: '#d97706' }),
+      hop('mongo', 'redirect', 'response', 'expired doc', 'Expired document returned', 'BSON · { _id, longUrl, expiresAt }', 'The document comes back with expiresAt = yesterday.'),
+      node('redirect', '→ 410 Gone', 'The service checks expiresAt itself', 'u.expired() → 410', 'The Redirect Service checks expiresAt on every miss and answers 410 Gone, even though the document still exists. Nothing is cached.', { tagColor: RED }),
+      hop('redirect', 'lb', 'error', '410 Gone', '410 Gone', 'HTTP 410', 'The service answers 410 Gone, not 404: the link existed but is no longer available.'),
+      hop('lb', 'client', 'error', '410 Gone', 'User sees "link expired"', 'HTTPS · 410', 'The service returns 410 even though the document still exists.'),
+      node('mongo', 'TTL index ✓', 'The TTL index deletes it', '{ expiresAt: 1 }, expireAfterSeconds: 0', 'A TTL index makes MongoDB delete expired documents by itself (its background task runs about every 60 s). No cron job to write or operate.', { tagColor: GREEN, dur: 3 }),
+    ],
+  },
+};
+const LIVE_MIX = [['hit', 0.5], ['miss', 0.2], ['create', 0.2], ['alias', 0.1]];
 
-  // ---------------- 3 · flows ----------------
-  flows: [
-    {
-      id: 'create', title: 'Create a short URL', sub: 'ID block → Base62 → insert', color: BLUE,
-      build: (s, v) => setup(s, v),
-      takeaway: 'Unique IDs (reserved in blocks) + Base62 = short codes with **no collision checks**. A create costs one insert, plus one ID-block call per 1,000 links.',
-      steps: [
-        {
-          title: 'User submits a long URL',
-          text: 'User A pastes `https://shop.ex/sale?utm=…` and clicks Shorten. The client sends **POST /urls** with the long URL, and optionally a custom alias and an expiry date.',
-          observe: 'The request reaches the load balancer.',
-          say: 'Creating a link is one POST with the long URL; it returns the short URL.',
-          focus: v => [v.n.client, v.n.lb],
-          async run(s) { await s.send(['client', 'lb'], 'POST /urls', BLUE); },
-        },
-        {
-          title: 'The load balancer routes writes to the Shortener',
-          text: 'The L7 load balancer routes by path: **POST /urls** goes to the Shortener API (write path), **GET /{code}** goes to the Redirect Service (read path). Splitting them lets the read side grow ~100× bigger without dragging the write side along.',
-          observe: 'The request goes up to the write path, not down to the read path.',
-          say: 'I split the read and write paths because reads outnumber writes about 100 to 1.',
-          focus: v => [v.n.shortener],
-          async run(s) { await s.send(['lb', 'shortener'], 'POST /urls', BLUE); },
-        },
-        {
-          title: 'No IDs left in the pod → reserve a block',
-          text: 'Each Shortener pod keeps a **block of 1,000 IDs** in memory. This pod just started, so its block is empty. The ID Range Service does one atomic `$inc` of 1,000 on its counter and returns **1000001–1001000**. Two pods can never receive the same block.',
-          observe: 'The counter jumps by 1,000 and the pod now owns IDs 1000001 to 1001000.',
-          say: 'Unique IDs come from blocks reserved with one atomic increment, so pods never coordinate per URL.',
-          focus: v => [v.n.idgen, v.idc, v.pod],
-          async run(s, v) {
-            await s.send(['shortener', 'idgen'], '$inc +1000', BLUE);
-            s.setChip(v.idc, 'counter next = 1001001'); await s.pulse(v.idc);
-            await s.send(['idgen', 'shortener'], '1000001–1001000', BLUE);
-            s.setChip(v.pod, 'next 1000001 / 1001000'); await s.pulse(v.pod);
-          },
-        },
-        {
-          title: 'Take the next ID and Base62-encode it',
-          text: 'The pod takes **1000001** from memory (no network call) and writes it in base 62 with the alphabet `0-9 a-z A-Z`: 1000001 = 4·62³ + 12·62² + 9·62 + 3 → **"4c93"**. Seven Base62 characters give 62⁷ ≈ **3.5 trillion** codes: centuries at 100 M links a month.',
-          observe: 'The number 1000001 becomes the code 4c93.',
-          say: 'Base62 of a unique number gives a short code that needs no collision check.',
-          focus: v => [v.pod, v.enc],
-          async run(s, v) {
-            v.enc = s.chip(445, 205, '1000001 → base62 → 4c93', { mono: true, color: BLUE, stroke: BLUE });
-            await s.pop(v.enc, 300);
-            s.setChip(v.pod, 'next 1000002 / 1001000'); await s.pulse(v.pod);
-          },
-        },
-        {
-          title: 'Store code → long URL in MongoDB',
-          text: 'Insert `{ _id: "4c93", longUrl, owner, createdAt, expiresAt }`. The code **is the primary key**, so a redirect is a single index lookup, and the unique `_id` is a free safety net against duplicate codes.',
-          observe: 'A row for 4c93 appears in the urls collection.',
-          say: 'MongoDB stores code → URL with the code as _id, which also guarantees uniqueness.',
-          focus: v => [v.n.mongo, v.db],
-          async run(s, v) {
-            await s.send(['shortener', 'mongo'], 'insert 4c93', BLUE);
-            await s.row(v.db, `4c93 → ${LONG}`);
-          },
-        },
-        {
-          title: 'Return the short link',
-          text: 'The Shortener answers **201 Created** with `https://sho.rt/4c93`. Total cost: one insert, plus one call to the ID Range Service per 1,000 links.',
-          observe: 'The 201 travels back to the user.',
-          focus: v => [v.n.client],
-          async run(s, v) {
-            if (v.enc) await s.fade(v.enc, 0, 250);
-            await s.send(['shortener', 'lb', 'client'], '201 sho.rt/4c93', GREEN);
-            await s.flash(80, 210, '✓ sho.rt/4c93', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 700);
-          },
-        },
-        {
-          title: 'The next create skips the ID service',
-          text: 'User B shortens another URL. The pod already owns a block, so it takes **1000002 → "4c94"** straight from memory and inserts it. The ID Range Service is called only once per 1,000 links, so it is never a bottleneck.',
-          observe: 'No packet goes to the ID Range Service this time.',
-          say: 'The ID service is called once per thousand links, so it is not a bottleneck.',
-          focus: v => [v.pod, v.db],
-          async run(s, v) {
-            await s.send(['client', 'lb', 'shortener'], 'POST /urls', BLUE);
-            await s.flash(445, 205, '1000002 → base62 → 4c94', { mono: true, color: BLUE, stroke: BLUE }, 500);
-            s.setChip(v.pod, 'next 1000003 / 1001000'); await s.pulse(v.pod);
-            await s.send(['shortener', 'mongo'], 'insert 4c94', BLUE);
-            await s.row(v.db, '4c94 → blog.ex/post');
-            await s.send(['shortener', 'lb', 'client'], '201 sho.rt/4c94', GREEN);
-          },
-        },
-      ],
-    },
-    {
-      id: 'redirect', title: 'Redirect: miss, then hit', sub: 'cache-aside · 302', color: TEAL,
-      build: (s, v) => setup(s, v, SEED),
-      takeaway: 'Cache-aside on Redis makes the hot path one in-memory lookup; MongoDB is read only on a miss. **302** keeps every click visible to us.',
-      steps: [
-        {
-          title: 'A user clicks sho.rt/4c93',
-          text: 'User B clicks the short link. The browser sends **GET /4c93** and the load balancer routes it to the Redirect Service. This is the hot path: ~4,000 requests/s on average, ten times that at peaks.',
-          observe: 'The GET goes down to the Redirect Service, not to the Shortener.',
-          say: 'Redirects are the hot path, so they get their own service with a cache in front of the database.',
-          focus: v => [v.n.redirect],
-          async run(s) { await s.send(['client', 'lb', 'redirect'], 'GET /4c93', TEAL); },
-        },
-        {
-          title: 'Ask Redis first: cache miss',
-          text: 'Cache-aside: the service asks Redis for `url:4c93`. Nobody has clicked this link yet, so the key is not there. **Cache miss.**',
-          observe: 'Redis answers nil: a miss.',
-          focus: v => [v.n.redis, v.cache],
-          async run(s) {
-            await s.send(['redirect', 'redis'], 'GET url:4c93', TEAL);
-            await s.flash(655, 410, 'miss', { color: RED, stroke: RED, fill: '#fff4f4' }, 400);
-            await s.send(['redis', 'redirect'], 'nil', GREY);
-          },
-        },
-        {
-          title: 'Fall back to MongoDB',
-          text: 'On a miss the service reads the source of truth: `findById("4c93")`, a primary-key lookup of a few milliseconds. It also checks `expiresAt`: an expired link would get **410 Gone**.',
-          observe: 'MongoDB returns the long URL for 4c93.',
-          focus: v => [v.n.mongo, v.db.rows[0]],
-          async run(s, v) {
-            await s.send(['redirect', 'mongo'], 'findById 4c93', TEAL);
-            s.paintRow(v.db.rows[0], { fill: '#e8f6f4', stroke: TEAL }); await s.pulse(v.db.rows[0], 1, 1.05);
-            await s.send(['mongo', 'redirect'], LONG, TEAL);
-          },
-        },
-        {
-          title: 'Fill the cache, with a TTL',
-          text: 'Before answering, the service writes the result to Redis: `SET url:4c93 <longUrl> EX 86400`. The TTL (plus a little random jitter) bounds memory and staleness, and LRU eviction drops cold links.',
-          observe: 'A url:4c93 entry appears in Redis.',
-          focus: v => [v.n.redis, v.cache],
-          async run(s, v) {
-            await s.send(['redirect', 'redis'], 'SET EX 86400', TEAL);
-            await s.row(v.cache, 'url:4c93 · TTL 24h');
-          },
-        },
-        {
-          title: 'Answer 302 with a Location header',
-          text: 'The service returns **302 Found** with `Location: https://shop.ex/sale…` and the browser follows it. Why not 301? A **301** is cached by the browser, so repeat clicks never reach us: no analytics, and we could never expire or change the link.',
-          observe: 'The 302 goes back and the browser jumps to the long URL.',
-          say: 'I return 302, not 301, so every click reaches us for analytics and expiry.',
-          focus: v => [v.n.client],
-          async run(s) {
-            await s.send(['redirect', 'lb', 'client'], '302 Location', TEAL);
-            await s.flash(80, 210, `→ ${LONG}`, { color: TEAL, stroke: TEAL }, 600);
-          },
-        },
-        {
-          title: 'Next click: cache hit',
-          text: 'User C clicks the same link a minute later. Redis has `url:4c93`, so the service answers in **~1 ms** without touching MongoDB. A few popular links get most clicks, so hit rates above 90% are normal.',
-          observe: 'Redis answers directly; nothing goes to MongoDB.',
-          say: 'With cache-aside, a hot link costs one Redis lookup per click.',
-          focus: v => [v.n.redis, v.n.redirect],
-          async run(s) {
-            await s.send(['client', 'lb', 'redirect'], 'GET /4c93', GREEN);
-            await s.send(['redirect', 'redis'], 'GET url:4c93', GREEN);
-            await s.flash(655, 410, 'hit ✓', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 350);
-            await s.send(['redis', 'redirect'], LONG, GREEN);
-            await s.send(['redirect', 'lb', 'client'], '302', GREEN);
-            await s.flash(80, 210, '~1 ms', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 700);
-          },
-        },
-      ],
-    },
-    {
-      id: 'analytics', title: 'Click analytics', sub: 'async via Kafka', color: PURPLE,
-      build: (s, v) => setup(s, v, { ...SEED, cache: ['url:4c93 · TTL 24h'] }),
-      takeaway: 'Analytics is **off the redirect path**: Kafka absorbs bursts, the consumer aggregates in batches, and a Kafka outage costs a few clicks, never a redirect.',
-      steps: [
-        {
-          title: 'Answer first, then emit the click',
-          text: 'The redirect is answered first. Then the service publishes a small event `{code, ts, country, referrer}` to the **click-events** topic, asynchronously. The user never waits for analytics.',
-          observe: 'The 302 reaches the user before the click event reaches Kafka.',
-          say: 'Analytics is fire-and-forget into Kafka, after the redirect is answered.',
-          focus: v => [v.n.kafka],
-          async run(s, v) {
-            await s.send(['client', 'lb', 'redirect'], 'GET /4c93', TEAL, { ms: 460 });
-            await s.send(['redirect', 'lb', 'client'], '302', TEAL, { ms: 460 });
-            await s.send(['redirect', 'kafka'], 'click 4c93', PURPLE);
-            s.setSub(v.n.kafka, '1 event queued', PURPLE);
-          },
-        },
-        {
-          title: 'Kafka absorbs the burst',
-          text: 'Clicks come in bursts (a link goes viral). Kafka stores them durably, **partitioned by code**, so the consumer can work at its own pace. Redirect latency is unaffected even if analytics falls behind.',
-          observe: 'More click events pile up in Kafka.',
-          focus: v => [v.n.kafka],
-          async run(s, v) {
-            for (let k = 2; k <= 5; k++) {
-              await s.send(['redirect', 'kafka'], 'click 4c93', PURPLE, { ms: 360, pulse: false });
-              s.setSub(v.n.kafka, `${k} events queued`, PURPLE);
-            }
-            await s.pulse(v.n.kafka);
-          },
-        },
-        {
-          title: 'Analytics consumes in batches',
-          text: 'The analytics consumer reads a **batch** of events, aggregates counts per code, day and country, and writes the totals in one go (ClickHouse, or MongoDB / Redis counters). Thousands of tiny writes become a few big ones.',
-          observe: 'One batch moves to Analytics and its counter updates.',
-          say: 'The consumer aggregates in batches, so analytics writes stay cheap.',
-          focus: v => [v.n.analytics],
-          async run(s, v) {
-            await s.send(['kafka', 'analytics'], 'batch ×5', PURPLE);
-            s.setSub(v.n.kafka, 'lag 0');
-            s.setSub(v.n.analytics, '4c93 · 5 clicks', GREEN);
-            await s.pulse(v.n.analytics);
-          },
-        },
-        {
-          title: 'Kafka down? Redirects still work',
-          text: 'If Kafka is unavailable, the publish fails, but the redirect was already answered. The service buffers briefly in memory, then **drops the event and counts a metric**. Losing a few clicks is acceptable; failing redirects is not.',
-          observe: 'The click event bounces, yet the user still gets the 302.',
-          say: 'Analytics is best-effort: a Kafka outage must never break redirects.',
-          focus: v => [v.n.kafka, v.n.client],
-          async run(s, v) {
-            s.tone(v.n.kafka, 'fail'); s.setSub(v.n.kafka, 'unavailable ✕', RED);
-            await s.shake(v.n.kafka);
-            await s.send(['client', 'lb', 'redirect'], 'GET /4c93', TEAL, { ms: 460 });
-            await s.send(['redirect', 'lb', 'client'], '302', GREEN, { ms: 460 });
-            await s.bounce('redirect', 'kafka', 'click 4c93', PURPLE);
-            await s.flash(800, 350, 'dropped · metric++', { color: RED, stroke: RED, fill: '#fff4f4' }, 800);
-          },
-        },
-      ],
-    },
-    {
-      id: 'alias', title: 'Custom alias race', sub: 'unique _id vs check-then-insert', color: AMBER,
-      build: (s, v) => setup(s, v, SEED),
-      takeaway: 'Let the database decide races: make the alias the **unique `_id`** and just insert. Never check-then-insert.',
-      steps: [
-        {
-          title: 'Two users ask for the same alias',
-          text: 'User A and User C both want `sho.rt/sale`. Their requests arrive at the same moment and land on two different Shortener pods.',
-          observe: 'Two POSTs with alias=sale race to the Shortener.',
-          focus: v => [v.n.shortener],
-          async run(s) {
-            await Promise.all([
-              s.send(['client', 'lb', 'shortener'], 'A: alias=sale', BLUE),
-              s.wait(260).then(() => s.send(['client', 'lb', 'shortener'], 'C: alias=sale', AMBER)),
-            ]);
-          },
-        },
-        {
-          title: '❌ The wrong way: check, then insert',
-          text: 'A naive service first runs `findOne({ alias: "sale" })`, sees nothing, then inserts. Both pods check **before** either inserts, both see "free", and both write. Now one alias has two owners: a check-then-act is never atomic.',
-          observe: 'Both checks say "free" and both rows get written: the race window.',
-          focus: v => [v.db],
-          async run(s, v) {
-            await Promise.all([
-              s.send(['shortener', 'mongo'], 'find sale?', BLUE, { ms: 460 }),
-              s.wait(200).then(() => s.send(['shortener', 'mongo'], 'find sale?', AMBER, { ms: 460 })),
-            ]);
-            await s.flash(830, 200, 'free · free', { color: AMBER, stroke: AMBER }, 400);
-            await Promise.all([
-              s.send(['shortener', 'mongo'], 'insert', BLUE, { ms: 420, pulse: false }),
-              s.wait(150).then(() => s.send(['shortener', 'mongo'], 'insert', AMBER, { ms: 420, pulse: false })),
-            ]);
-            const bad = { fill: '#fff4f4', stroke: RED, color: RED };
-            v.badA = await s.row(v.db, 'sale → owner A', bad);
-            v.badC = await s.row(v.db, 'sale → owner C', bad);
-            await s.shake(v.db);
-          },
-        },
-        {
-          title: '✅ The right way: the alias is the _id',
-          text: 'Make the alias the document `_id` (or give it a unique index) and **just insert**. MongoDB enforces uniqueness atomically: the first insert wins, the second fails with duplicate-key error **E11000**. No lock, no check.',
-          observe: 'One insert succeeds; the other bounces with E11000.',
-          say: 'The alias is the primary key, so the database decides the race atomically.',
-          focus: v => [v.db],
-          async run(s, v) {
-            await s.unrow(v.db, v.badC); await s.unrow(v.db, v.badA);
-            await Promise.all([
-              s.send(['shortener', 'mongo'], 'insert _id:sale', BLUE).then(() => s.row(v.db, 'sale → owner A', { fill: '#f1f9ee', stroke: GREEN })),
-              s.wait(240).then(() => s.bounce('shortener', 'mongo', 'insert _id:sale', AMBER)),
-            ]);
-            await s.flash(830, 330, 'E11000 duplicate key', { color: RED, stroke: RED, fill: '#fff4f4', mono: true }, 700);
-          },
-        },
-        {
-          title: 'Winner gets 201, loser gets 409',
-          text: 'The Shortener maps E11000 to **409 Conflict** ("alias taken"). Generated codes and aliases share one namespace, so reserve a format for aliases (for example a minimum length) that generated codes can never produce.',
-          observe: 'A gets 201, C gets 409.',
-          focus: v => [v.n.client],
-          async run(s) {
-            await Promise.all([
-              s.send(['shortener', 'lb', 'client'], '201 sho.rt/sale', GREEN),
-              s.wait(320).then(() => s.send(['shortener', 'lb', 'client'], '409 alias taken', RED)),
-            ]);
-          },
-        },
-      ],
-    },
-    {
-      id: 'stampede', title: 'Viral link stampede', sub: 'herd vs single-flight', color: RED,
-      build: (s, v) => setup(s, v, { ...SEED, cache: ['url:4c93 · TTL 3s'] }),
-      takeaway: 'Hot keys need protection: **single-flight** on a miss, **TTL jitter**, and **early refresh**. One database read per expiry instead of thousands.',
-      steps: [
-        {
-          title: "A viral link's cache entry expires",
-          text: 'Link 4c93 is on the front page: thousands of clicks per second, all served from Redis. Then its TTL reaches zero and the key disappears.',
-          observe: 'The url:4c93 entry vanishes from Redis.',
-          focus: v => [v.n.redis, v.cache],
-          async run(s, v) {
-            const r = v.cache.rows[0];
-            for (const t of [2, 1, 0]) { r.label.textContent = `url:4c93 · TTL ${t}s`; await s.wait(350); }
-            s.paintRow(r, { fill: '#fff4f4', stroke: RED, color: RED });
-            await s.unrow(v.cache, r);
-          },
-        },
-        {
-          title: '❌ Without protection: a thundering herd',
-          text: 'Every in-flight request misses at the same instant, and **all of them** query MongoDB for the same document. The database gets a spike of identical queries, latency explodes, and it can fall over. This is a **cache stampede**.',
-          observe: 'A stream of identical queries hits MongoDB, and it turns red.',
-          focus: v => [v.n.mongo],
-          async run(s, v) {
-            await Promise.all([0, 1, 2, 3, 4, 5, 6].map(k => s.wait(k * 110).then(() => s.send(['redirect', 'mongo'], 'find 4c93', RED, { ms: 420, pulse: false }))));
-            s.tone(v.n.mongo, 'fail'); s.setSub(v.n.mongo, 'CPU 100% · p99 2 s', RED);
-            await s.shake(v.n.mongo);
-          },
-        },
-        {
-          title: '✅ Fix 1: single-flight lock',
-          text: 'On a miss, a request first tries `SET lock:4c93 1 NX PX 3000`. Only **one** request gets the lock and reads MongoDB; the others wait a few milliseconds and re-read Redis. One database query instead of thousands.',
-          observe: 'Only one request goes to MongoDB; the others wait at the service, then hit the cache.',
-          say: 'I protect hot keys with a single-flight lock, so a miss causes one database read, not thousands.',
-          focus: v => [v.n.redirect, v.wait],
-          async run(s, v) {
-            s.tone(v.n.mongo, null); s.setSub(v.n.mongo, 'urls · source of truth');
-            v.wait = s.chip(445, 434, '6 requests waiting…', { color: AMBER, stroke: AMBER, fill: '#fdf6ea' });
-            await s.pop(v.wait, 250);
-            await s.send(['redirect', 'redis'], 'SET lock NX', TEAL);
-            await s.flash(655, 410, 'lock ✓', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 300);
-            await s.send(['redirect', 'mongo'], 'find 4c93', TEAL);
-            await s.send(['mongo', 'redirect'], LONG, TEAL);
-            await s.send(['redirect', 'redis'], 'SET url:4c93', TEAL);
-            await s.row(v.cache, 'url:4c93 · TTL 24h');
-            s.setChip(v.wait, '6 retried → cache hit ✓', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' });
-            await s.pulse(v.wait);
-          },
-        },
-        {
-          title: '✅ Fix 2: jitter and early refresh',
-          text: 'Add **random jitter** to TTLs so many keys do not expire together, and **refresh hot keys early** (in the background once the TTL drops below ~10%). For the very hottest links, a small in-process cache or a CDN absorbs traffic before it even reaches Redis.',
-          observe: 'The hot key gets a jittered TTL and is refreshed before it expires.',
-          focus: v => [v.cache],
-          async run(s, v) {
-            if (v.wait) await s.fade(v.wait, 0, 250);
-            const r = v.cache.rows[0];
-            r.label.textContent = 'url:4c93 · TTL 24h ±10%';
-            s.paintRow(r, { fill: '#f1f9ee', stroke: GREEN });
-            await s.pulse(r, 1, 1.05);
-            await s.flash(830, 492, 'refresh when TTL < 10%', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 800);
-          },
-        },
-      ],
-    },
-    {
-      id: 'failures', title: 'Crash gaps & expiry', sub: 'ID gaps · 410 Gone · TTL index', color: GREY,
-      build: (s, v) => setup(s, v, { ...SEED, db: [...SEED.db, 'old1 → expired 1d ago'] }),
-      takeaway: 'Lost ID blocks only leave **gaps** (codes must be unique, not contiguous). Expired links answer **410**, and a TTL index cleans them up.',
-      steps: [
-        {
-          title: 'A Shortener pod crashes',
-          text: 'The pod that owned block 1000001–1001000 crashes after using two IDs. The other **998 IDs are lost** with it: no one will ever hand them out again.',
-          observe: 'The pod goes red and its block is gone.',
-          focus: v => [v.n.shortener, v.pod],
-          async run(s, v) {
-            s.tone(v.n.shortener, 'fail'); s.setSub(v.n.shortener, 'pod crashed ✕', RED);
-            await s.shake(v.n.shortener);
-            s.setChip(v.pod, 'lost: 1000003…1001000', { color: RED, stroke: RED, fill: '#fff4f4' });
-            await s.pulse(v.pod);
-          },
-        },
-        {
-          title: 'The new pod reserves a new block',
-          text: 'Kubernetes starts a replacement pod. Its block is empty, so it reserves **1001001–1002000**. IDs 1000003–1001000 are simply skipped. That is fine: codes only need to be **unique**, not contiguous.',
-          observe: 'The counter moves on; the gap is never filled.',
-          say: 'Gaps from crashed pods are harmless; uniqueness is all we need.',
-          focus: v => [v.pod, v.idc],
-          async run(s, v) {
-            s.tone(v.n.shortener, null); s.setSub(v.n.shortener, 'new pod · POST /urls');
-            s.setChip(v.pod, 'block: empty', { color: TEAL, stroke: '#d5d9dc', fill: '#fff' });
-            await s.pulse(v.n.shortener);
-            await s.send(['shortener', 'idgen'], '$inc +1000', BLUE);
-            s.setChip(v.idc, 'counter next = 1002001'); await s.pulse(v.idc);
-            await s.send(['idgen', 'shortener'], '1001001–1002000', BLUE);
-            s.setChip(v.pod, 'next 1001001 / 1002000'); await s.pulse(v.pod);
-          },
-        },
-        {
-          title: 'Someone opens an expired link',
-          text: 'User B opens `sho.rt/old1`, whose `expiresAt` was yesterday. Redis misses (cache TTLs never outlive the link). MongoDB still has the document, because TTL cleanup runs in the background, so the service **checks `expiresAt` itself** and answers **410 Gone**.',
-          observe: 'The service returns 410 even though the document still exists.',
-          focus: v => [rowOf(v.db, 'old1'), v.n.client],
-          async run(s, v) {
-            await s.send(['client', 'lb', 'redirect'], 'GET /old1', TEAL);
-            await s.send(['redirect', 'redis'], 'GET url:old1', TEAL, { ms: 420 });
-            await s.flash(655, 410, 'miss', { color: RED, stroke: RED, fill: '#fff4f4' }, 300);
-            await s.send(['redirect', 'mongo'], 'findById old1', TEAL);
-            const r = rowOf(v.db, 'old1');
-            s.paintRow(r, { fill: '#fdf6ea', stroke: AMBER, color: AMBER }); await s.pulse(r, 1, 1.05);
-            await s.send(['mongo', 'redirect'], 'expired', AMBER);
-            await s.send(['redirect', 'lb', 'client'], '410 Gone', RED);
-          },
-        },
-        {
-          title: 'The TTL index deletes it',
-          text: 'A TTL index `{ expiresAt: 1 }, { expireAfterSeconds: 0 }` makes MongoDB delete expired documents by itself (its background task runs about every 60 s). No cron job to write or operate.',
-          observe: 'The old1 row disappears from MongoDB.',
-          focus: v => [v.db],
-          async run(s, v) {
-            await s.flash(830, 200, 'TTL monitor', { color: AMBER, stroke: AMBER }, 400);
-            await s.unrow(v.db, rowOf(v.db, 'old1'));
-          },
-        },
-      ],
-    },
-  ],
+// =====================================================================
+// rendering
+// =====================================================================
+const svg = document.getElementById('dia');
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const box = id => { const n = NODES[id]; return { l: n.x - 75, r: n.x + 75, t: n.y - 56, b: n.y + 56 }; };
 
-  // ---------------- 4 · how to explain ----------------
+function edgePath(a, b) {
+  const A = NODES[a], B = NODES[b], dx = B.x - A.x, dy = B.y - A.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const s = Math.sign(dx) || 1, x1 = A.x + 75 * s, x2 = B.x - 75 * s, mx = (x1 + x2) / 2;
+    return { d: `M${x1} ${A.y} C${mx} ${A.y} ${mx} ${B.y} ${x2} ${B.y}`, horiz: true };
+  }
+  const s = Math.sign(dy) || 1, y1 = A.y + 56 * s, y2 = B.y - 56 * s, my = (y1 + y2) / 2;
+  return { d: `M${A.x} ${y1} C${A.x} ${my} ${B.x} ${my} ${B.x} ${y2}`, horiz: false };
+}
+
+function buildSvg() {
+  let s = `<defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#eef1f5"/></pattern>
+    <filter id="glow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect id="bg" x="-2000" y="-1200" width="5600" height="3000" fill="url(#grid)"/>`;
+  // zones: grouped by developer role (solid = outside our code, dashed = our backend)
+  for (const z of ZONES) {
+    const [f, st, lc] = ZT[z.t];
+    s += `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="18" fill="${f}" stroke="${st}" stroke-width="1.6"${z.dash ? ' stroke-dasharray="7 5"' : ''}/>`;
+    s += `<text class="zl" x="${z.x + 16}" y="${z.y + 24}" style="fill:${lc}">${esc(z.label)}</text>`;
+    if (z.cap) s += `<text class="nl" x="${z.x + 16}" y="${z.y + 41}" style="fill:${lc};opacity:.75">${esc(z.cap)}</text>`;
+  }
+  // edges + labels
+  s += '<g id="edges">';
+  EDGE_DEFS.forEach(([a, b], i) => { s += `<path class="edge" id="e${i}" d="${edgePath(a, b).d}"/>`; });
+  s += '</g><g id="elabels"></g><g id="ripples"></g><g id="nodes">';
+  // nodes
+  for (const [id, n] of Object.entries(NODES)) {
+    const [bg, st] = PAL[id];
+    let dots = '';
+    const r = n.replicas || 0;
+    for (let k = 0; k < r; k++) dots += `<circle cx="${75 + (k - (r - 1) / 2) * 10}" cy="104" r="3.2" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>`;
+    s += `<g class="node" data-id="${id}" transform="translate(${n.x - 75},${n.y - 56})">
+      <rect class="sel" x="-6" y="-6" width="162" height="124" rx="18" fill="none" stroke="#0b5cff" stroke-width="2" stroke-dasharray="6 5" opacity="0"/>
+      <rect class="card" width="150" height="112" rx="14" fill="${bg}" stroke="${st}" stroke-width="1.6"/>
+      <rect x="49" y="8" width="52" height="52" rx="12" fill="#fff" opacity=".85"/>
+      <g transform="translate(52.9,11.9) scale(.92)">${LOGO[id]}</g>
+      <text class="nlab" x="75" y="78">${esc(n.label)}</text>
+      <text class="nsub" x="75" y="95">${esc(n.sub)}</text>${dots}
+      <g class="tag" style="display:none"><rect y="-11" height="20" rx="10"/><text y="3.5"></text></g>
+    </g>`;
+  }
+  s += '</g><g id="packets"></g>';
+  svg.innerHTML = s;
+}
+buildSvg();
+
+const EDGES = EDGE_DEFS.map(([a, b, label], i) => {
+  const el = document.getElementById('e' + i);
+  return { a, b, label, el, len: el.getTotalLength(), hot: 0, horiz: edgePath(a, b).horiz };
+});
+// protocol labels at the path midpoint: above horizontal edges, right of vertical ones
+(function labels() {
+  const g = document.getElementById('elabels');
+  for (const e of EDGES) {
+    const p = e.el.getPointAtLength(e.len / 2);
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('class', 'elbl');
+    if (e.horiz) { t.setAttribute('x', p.x); t.setAttribute('y', p.y - 8); t.setAttribute('text-anchor', 'middle'); }
+    else { t.setAttribute('x', p.x + 8); t.setAttribute('y', p.y + 4); }
+    t.textContent = e.label;
+    g.appendChild(t);
+  }
+})();
+const NODE_EL = {};
+document.querySelectorAll('.node').forEach(g => { NODE_EL[g.dataset.id] = { g, act: 0, tagTok: 0 }; });
+
+// =====================================================================
+// engine: one rAF loop, own timer queue, everything scaled by speed
+// =====================================================================
+let speed = 1, paused = false, GEN = 0, current = 'hit', view = 'flow';
+let timers = [], packets = [], ripples = [], dashOffset = 0, flows = 0;
+const stats = { req: 0, hit: 0, evt: 0, res: 0 };
+const STAT_EL = { req: document.getElementById('stReq'), hit: document.getElementById('stHit'), evt: document.getElementById('stEvt'), res: document.getElementById('stRes') };
+
+function wait(sec, cb) { timers.push({ t: sec, cb, gen: GEN }); }
+const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function bump(k, n = 1) { stats[k] += n; STAT_EL[k].textContent = stats[k]; }
+
+function findEdge(from, to) {
+  for (const e of EDGES) {
+    if (e.a === from && e.b === to) return { e, rev: false };
+    if (e.a === to && e.b === from) return { e, rev: true };
+  }
+  throw new Error('no edge ' + from + ' -> ' + to);
+}
+function heat(e, color) { e.hot++; e.el.classList.add('hot'); e.el.style.stroke = color; }
+function cool(e) { e.hot = Math.max(0, e.hot - 1); if (!e.hot) { e.el.classList.remove('hot'); e.el.style.stroke = ''; } }
+
+function activate(id, sec) {
+  const n = NODE_EL[id]; n.act++; n.g.classList.add('active');
+  wait(sec, () => { n.act = Math.max(0, n.act - 1); if (!n.act) n.g.classList.remove('active'); });
+}
+function ripple(id) {
+  const b = box(id), el = document.createElementNS(NS, 'rect');
+  el.setAttribute('rx', 16); el.setAttribute('fill', 'none'); el.setAttribute('stroke', PAL[id][1]); el.setAttribute('stroke-width', 2.5);
+  document.getElementById('ripples').appendChild(el);
+  ripples.push({ el, b, age: 0 });
+}
+function showTag(id, text, color, sec) {
+  const n = NODE_EL[id], tag = n.g.querySelector('.tag'), r = tag.querySelector('rect'), t = tag.querySelector('text');
+  const w = Math.max(34, text.length * 6.3 + 16);
+  t.textContent = text; r.setAttribute('width', w); r.setAttribute('x', 152 - w); r.setAttribute('fill', color);
+  t.setAttribute('x', 152 - w / 2); tag.setAttribute('transform', 'translate(0,0)');
+  tag.style.display = '';
+  const tok = ++n.tagTok;
+  wait(sec, () => { if (n.tagTok === tok) tag.style.display = 'none'; });
+}
+
+function spawn(from, to, kind, tag, onArrive) {
+  const { e, rev } = findEdge(from, to), color = KIND[kind];
+  const g = document.createElementNS(NS, 'g');
+  const trail = [];
+  for (let i = 0; i < 6; i++) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('r', 6 - i * 0.8); c.setAttribute('fill', color); c.setAttribute('opacity', (0.35 - i * 0.05).toFixed(2));
+    c.style.display = 'none'; g.appendChild(c); trail.push(c);
+  }
+  const head = document.createElementNS(NS, 'circle');
+  head.setAttribute('r', 7.5); head.setAttribute('fill', color); head.setAttribute('stroke', '#fff'); head.setAttribute('stroke-width', 2); head.setAttribute('filter', 'url(#glow)');
+  g.appendChild(head);
+  let txt = null;
+  if (tag) { txt = document.createElementNS(NS, 'text'); txt.setAttribute('class', 'ptag'); txt.setAttribute('fill', color); txt.textContent = tag; g.appendChild(txt); }
+  document.getElementById('packets').appendChild(g);
+  heat(e, color);
+  if (from === 'client' && kind === 'request') bump('req');
+  const p = { e, rev, kind, to, dist: 0, hist: [], g, head, trail, txt, onArrive };
+  packets.push(p);
+  place(p, 0);
+}
+function place(p, t) {
+  const { e } = p, len = e.len;
+  let s = ease(t) * len; if (p.rev) s = len - s;
+  const a = e.el.getPointAtLength(s);
+  const b = s + 1 <= len ? e.el.getPointAtLength(s + 1) : e.el.getPointAtLength(s - 1);
+  let tx = b.x - a.x, ty = b.y - a.y; if (s + 1 > len) { tx = -tx; ty = -ty; }
+  const m = Math.hypot(tx, ty) || 1, off = p.rev ? -6 : 6;
+  const x = a.x + (-ty / m) * off, y = a.y + (tx / m) * off;
+  p.hist.unshift([x, y]); if (p.hist.length > 24) p.hist.pop();
+  p.head.setAttribute('cx', x); p.head.setAttribute('cy', y);
+  p.trail.forEach((c, i) => {
+    const h = p.hist[(i + 1) * 3];
+    if (h) { c.style.display = ''; c.setAttribute('cx', h[0]); c.setAttribute('cy', h[1]); } else c.style.display = 'none';
+  });
+  if (p.txt) { p.txt.setAttribute('x', x); p.txt.setAttribute('y', y - 13); }
+}
+function arrive(p) {
+  p.g.remove(); cool(p.e);
+  activate(p.to, 0.45); ripple(p.to);
+  if (p.to === 'kafka' && p.kind === 'event') bump('evt');
+  if (p.to === 'client' && (p.kind === 'response' || p.kind === 'error')) bump('res');
+  p.onArrive && p.onArrive();
+}
+
+function update(k) {
+  dashOffset -= 40 * k;
+  for (const e of EDGES) if (!e.hot) e.el.style.strokeDashoffset = dashOffset;
+  // timers
+  for (const tm of timers) tm.t -= k;
+  const due = timers.filter(tm => tm.t <= 0);
+  if (due.length) { timers = timers.filter(tm => tm.t > 0); due.forEach(tm => { if (tm.gen === GEN) tm.cb(); }); }
+  // packets
+  const done = [];
+  for (const p of packets) {
+    p.dist += 260 * k;
+    const t = Math.min(1, p.dist / p.e.len);
+    place(p, t);
+    if (t >= 1) done.push(p);
+  }
+  if (done.length) { packets = packets.filter(p => !done.includes(p)); done.forEach(arrive); }
+  // ripples: grow ~14px and fade over 0.5s
+  ripples = ripples.filter(r => {
+    r.age += k;
+    const q = r.age / 0.5;
+    if (q >= 1) { r.el.remove(); return false; }
+    const g = 14 * q;
+    r.el.setAttribute('x', r.b.l - g); r.el.setAttribute('y', r.b.t - g);
+    r.el.setAttribute('width', 150 + 2 * g); r.el.setAttribute('height', 112 + 2 * g);
+    r.el.setAttribute('opacity', (1 - q).toFixed(3));
+    return true;
+  });
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused && view === 'flow') update(dt * speed);
+  requestAnimationFrame(frame);
+}
+
+// ---------------- step runner ----------------
+// o.footer: top-level scenario (updates footer, reading pauses); o.fast: live mode (short pauses, no packet tags)
+function runFlow(steps, o) {
+  let i = 0;
+  const next = () => {
+    if (i >= steps.length) { o.done && o.done(); return; }
+    const st = steps[i];
+    if (o.footer) showStep(i, steps.length, st);
+    i++;
+    exec(st, o, next);
+  };
+  next();
+}
+function exec(st, o, next) {
+  if (st.type === 'hop') {
+    const n = st.count || 1; let got = 0;
+    for (let k = 0; k < n; k++) {
+      const kind = st.kinds ? st.kinds[k] : st.kind;
+      const tag = o.fast ? null : (st.tags ? st.tags[k] : st.tag);
+      const fire = () => spawn(st.from, st.to, kind, tag, () => { if (++got === n) wait(o.footer ? 1.1 : 0.08, next); });
+      if (k) wait(k * 0.25, fire); else fire();
+    }
+  } else if (st.type === 'node') {
+    const d = o.fast ? Math.max(0.25, (st.dur || 2.2) * 0.3) : (o.footer ? (st.dur || 2.4) : (st.dur || 1));
+    activate(st.id, d); ripple(st.id);
+    if (st.tag) showTag(st.id, st.tag, st.tagColor || '#0b5cff', d + (o.fast ? 0.15 : 0.6));
+    if (st.stat === 'hit') bump('hit');
+    wait(d, next);
+  } else if (st.type === 'fork') {
+    runFlow(st.steps, { fast: o.fast });
+    wait(o.footer ? 2.0 : 0.05, next);
+  }
+}
+
+// ---------------- footer ----------------
+const badge = document.getElementById('badge'), fTitle = document.getElementById('ftitle'), fProto = document.getElementById('fproto'), fText = document.getElementById('ftext'), dotsEl = document.getElementById('dots');
+function buildDots(n) { dotsEl.innerHTML = '<i></i>'.repeat(n); }
+function showStep(i, total, st) {
+  badge.className = ''; badge.textContent = `${i + 1}/${total}`;
+  fTitle.textContent = st.title; fProto.textContent = st.proto || '';
+  fText.textContent = st.text || ''; fText.title = st.text || '';
+  [...dotsEl.children].forEach((d, k) => d.classList.toggle('on', k <= i));
+}
+
+// ---------------- scenarios / live ----------------
+function reset() {
+  GEN++;
+  timers = [];
+  packets.forEach(p => p.g.remove()); packets = [];
+  ripples.forEach(r => r.el.remove()); ripples = [];
+  EDGES.forEach(e => { e.hot = 0; e.el.classList.remove('hot'); e.el.style.stroke = ''; });
+  Object.values(NODE_EL).forEach(n => { n.act = 0; n.g.classList.remove('active'); n.g.querySelector('.tag').style.display = 'none'; });
+  flows = 0;
+  for (const k in stats) { stats[k] = 0; STAT_EL[k].textContent = 0; }
+}
+function start(id) {
+  current = id;
+  document.querySelectorAll('#scSeg button').forEach(b => b.classList.toggle('on', b.dataset.sc === id));
+  reset();
+  if (id === 'live') startLive(); else runMain(id);
+}
+function runMain(id) {
+  const steps = SCEN[id].steps;
+  buildDots(steps.length);
+  runFlow(steps, {
+    footer: true,
+    done: () => {
+      badge.className = ''; badge.textContent = '✓';
+      fTitle.textContent = '✓ Journey complete'; fProto.textContent = SCEN[id].name;
+      fText.textContent = 'Looping in 2.5 s · press R to replay now, or pick another scenario.'; fText.title = '';
+      wait(2.5, () => runMain(id));
+    },
+  });
+}
+function pickMix() {
+  let r = Math.random();
+  for (const [id, w] of LIVE_MIX) { if ((r -= w) <= 0) return id; }
+  return 'hit';
+}
+function startLive() {
+  dotsEl.innerHTML = '';
+  badge.className = 'live'; badge.textContent = 'LIVE';
+  fTitle.textContent = 'Live mixed traffic'; fProto.textContent = '50% hit · 20% miss · 20% create · 10% alias';
+  const tick = () => {
+    if (flows < 14) {
+      const id = pickMix(); flows++;
+      runFlow(SCEN[id].steps, { fast: true, done: () => { flows--; } });
+    }
+    wait(0.55 + Math.random() * 0.6, tick);
+  };
+  const info = () => {
+    const hr = Math.round(100 * stats.hit / Math.max(1, stats.req));
+    fText.textContent = `${flows} flows and ${packets.length} packets in flight · creates, cache hits/misses and alias races share the same instances, cache and topic · hits/requests ≈ ${hr}%`;
+    fText.title = '';
+    wait(0.5, info);
+  };
+  tick(); info();
+}
+
+// ---------------- drawer ----------------
+const drawer = document.getElementById('drawer');
+let selected = null;
+function openDrawer(id) {
+  const n = NODES[id], inf = INFO[id], [bg, st] = PAL[id];
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = id; NODE_EL[id].g.querySelector('.sel').setAttribute('opacity', 1);
+  document.getElementById('dHead').style.background = bg;
+  document.getElementById('dHead').style.borderBottomColor = st;
+  document.getElementById('dLogo').innerHTML = `<svg width="44" height="44" viewBox="0 0 48 48">${LOGO[id]}</svg>`;
+  document.getElementById('dTitle').textContent = n.label;
+  document.getElementById('dTag').textContent = inf.tag;
+  const body = document.getElementById('dBody');
+  const core = CORE[id];
+  body.innerHTML = `<div>${inf.desc}</div><h4>Key points</h4><ul>${inf.points.map(p => `<li>${p}</li>`).join('')}</ul><h4>Example</h4><pre></pre>`
+    + (core ? `<a class="core-link" href="00_Core_Components.html#${core[0]}/what">🧩 Basics: ${esc(core[1])} in Core Components →</a>` : '');
+  body.querySelector('pre').textContent = inf.code;
+  body.scrollTop = 0;
+  drawer.classList.add('open'); drawer.setAttribute('aria-hidden', 'false');
+}
+function closeDrawer() {
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = null; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true');
+}
+svg.addEventListener('click', ev => {
+  const g = ev.target.closest('.node');
+  if (g) openDrawer(g.dataset.id); else closeDrawer();
+});
+document.getElementById('dClose').onclick = closeDrawer;
+
+// ---------------- legend popover ----------------
+const legendPop = document.getElementById('legendPop'), legendBtn = document.getElementById('legendBtn');
+document.getElementById('lgKinds').innerHTML = Object.entries(KIND).map(([k, c]) => `<span><i style="--c:${c}"></i>${k}</span>`).join('');
+const legendOpen = () => legendPop.classList.contains('open');
+function setLegend(open) {
+  if (open) {   // point the little arrow at the button
+    const r = legendBtn.getBoundingClientRect();
+    legendPop.style.setProperty('--arrow', Math.max(12, window.innerWidth - 16 - (r.left + r.width / 2) - 6) + 'px');
+  }
+  legendPop.classList.toggle('open', open);
+  legendBtn.classList.toggle('on', open);
+  legendBtn.setAttribute('aria-expanded', open);
+}
+legendBtn.addEventListener('click', () => setLegend(!legendOpen()));
+document.addEventListener('mousedown', ev => {
+  if (legendOpen() && !legendPop.contains(ev.target) && !legendBtn.contains(ev.target)) setLegend(false);
+});
+
+// ---------------- controls ----------------
+function setSpeed(v) { speed = v; document.querySelectorAll('#spSeg button').forEach(b => b.classList.toggle('on', +b.dataset.sp === v)); }
+function togglePause() { paused = !paused; document.getElementById('pauseBtn').textContent = paused ? '▶ Play' : '⏸ Pause'; }
+document.querySelectorAll('header button').forEach(b => b.addEventListener('click', () => b.blur()));
+document.querySelectorAll('#scSeg button').forEach(b => b.onclick = () => start(b.dataset.sc));
+document.querySelectorAll('#spSeg button').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp));
+document.getElementById('pauseBtn').onclick = togglePause;
+document.getElementById('replayBtn').onclick = () => start(current);
+document.addEventListener('keydown', ev => {
+  if (ev.target.closest && ev.target.closest('input,textarea')) return;
+  if (view !== 'flow' || ev.ctrlKey || ev.metaKey || ev.altKey) return;   // shortcuts drive the Data flow tab only
+  if (ev.code === 'Space') { ev.preventDefault(); togglePause(); }
+  else if (ev.key === '1') setSpeed(0.5);
+  else if (ev.key === '2') setSpeed(1);
+  else if (ev.key === '3') setSpeed(2);
+  else if (ev.key === 'r' || ev.key === 'R') start(current);
+  else if (ev.key === 'l' || ev.key === 'L') setLegend(!legendOpen());
+  else if (ev.key === 'Escape') { if (legendOpen()) setLegend(false); else closeDrawer(); }
+});
+
+
+// ====================================================================
+// interview content: copied verbatim from 01_URL_Shortener.html (v2.2)
+// ====================================================================
+const CONTENT = {
   explain: [
     {
       t: 'Clarify requirements', min: 5, goal: 'Pin down features and scale before drawing anything.',
@@ -773,7 +1154,100 @@ window.DESIGN = {
     { g: 'tc', q: 'Why MongoDB and not Cassandra or DynamoDB?', what: 'All of them handle key → value lookups well.', why: 'The access pattern is a simple get by key.', how: 'MongoDB fits the existing stack and gives TTL indexes and a unique `_id`; a wide-column/KV store scales writes more easily.', trade: 'Pick by team skills and scale: the design stays the same.' },
   ],
 };
+
+// =====================================================================
+// reading tabs: How to explain · Interview answer · Follow-ups (self-contained renderers)
+// =====================================================================
+const reader = document.getElementById('reader');
+// **bold** and `code` in plain-text content (same rules as engine/app.js)
+const rich = s => esc(s).replace(/"/g, '&quot;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+// old flow ids -> scenarios on the Data flow tab
+const FLOW_TO_SC = { create: 'create', redirect: 'miss', analytics: 'hit', alias: 'alias', stampede: 'stampede', failures: 'failures' };
+const STAGE_C = ['#fb923c', '#8b5cf6', '#3b82f6', '#0d9488', '#db2777', '#16a34a'];
+
+function renderExplain() {
+  const E = CONTENT.explain, total = E.reduce((a, s) => a + s.min, 0);
+  const who = { I: ['Interviewer', 'iv'], C: ['You', 'you'], P: ['Tip', 'tip'] };
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">How to explain it</span><h2>Drive the ${total}-minute interview, stage by stage</h2>
+    <p>Interviewers grade the <b>structure</b> as much as the design. Follow the stages in order and say out loud which stage you are in.</p></div></div>
+    <div class="timebar">${E.map((s, k) => `<button data-to="ex${k}" style="flex:${s.min};--c:${STAGE_C[k % STAGE_C.length]}"><b>${k + 1}. ${esc(s.t)}</b><span>${s.min} min</span></button>`).join('')}</div>
+    ${E.map((s, k) => `<section class="rcard stage" id="ex${k}" style="--c:${STAGE_C[k % STAGE_C.length]}">
+      <div class="stage-h"><span class="sn">${k + 1}</span><h3>${esc(s.t)}</h3><span class="mn">~${s.min} min</span></div>
+      <p class="goal"><b>Goal:</b> ${rich(s.goal)}</p>
+      ${s.lines.map(([w, t]) => `<div class="msg ${who[w][1]}"><span class="who">${who[w][0]}</span><p>${rich(t)}</p></div>`).join('')}
+      ${s.avoid ? `<p class="avoid"><b>⚠ Avoid</b> ${rich(s.avoid)}</p>` : ''}
+    </section>`).join('')}
+  </div>`;
+}
+
+function renderAnswer() {
+  const A = CONTENT.answer;
+  const jumps = [['a-pitch', '⏱ 60-second answer'], ...A.sections.map((s, k) => [`a-sec${k}`, s.h]), ['a-dec', '⚖ Trade-offs'], ['a-code', '{ } Code']];
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Interview-ready answer</span><h2>What to actually say</h2>
+    <p>Start with the 60-second version, then expand any section the interviewer picks.</p></div></div>
+    <nav class="jump">${jumps.map(([id, t]) => `<button data-to="${id}">${esc(t)}</button>`).join('')}</nav>
+    <section class="rcard pitch" id="a-pitch"><h3>⏱ The 60-second answer</h3>${[].concat(A.summary).map(p => `<p>${rich(p)}</p>`).join('')}</section>
+    <div class="ans-grid">${A.sections.map((s, k) => `<section class="rcard ans" id="a-sec${k}" style="--c:${s.color || '#0b5cff'}"><h3>${esc(s.h)}</h3>${s.html}</section>`).join('')}</div>
+    <section class="rcard ans" id="a-dec" style="--c:#7c3aed"><h3>⚖ Key decisions &amp; trade-offs</h3>
+      <table><thead><tr><th>Decision</th><th>Why</th><th>Trade-off</th></tr></thead><tbody>${A.decisions.map(r => `<tr>${r.map(c => `<td>${rich(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>
+    <div class="code-grid" id="a-code">${A.code.map(c => `<section class="rcard codeblk"><h3>${esc(c.t)}</h3><pre>${esc(c.code)}</pre></section>`).join('')}</div>
+  </div>`;
+}
+
+let fuGroup = 'all';
+function renderFollowups() {
+  const G = CONTENT.followGroups, F = CONTENT.followups, list = F.filter(f => fuGroup === 'all' || f.g === fuGroup);
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Follow-up questions</span><h2>What they ask next, and what to answer</h2>
+    <p>Each answer has the same shape: <b>what happens</b> → <b>why</b> → <b>how you handle it</b> → <b>the trade-off</b>. Saying the trade-off unprompted is what separates senior answers.</p></div></div>
+    <div class="chips"><button data-g="all" class="${fuGroup === 'all' ? 'on' : ''}">All <small>${F.length}</small></button>${Object.entries(G).map(([k, g]) => `<button data-g="${k}" class="${fuGroup === k ? 'on' : ''}" style="--c:${g.color}">${esc(g.name)} <small>${F.filter(f => f.g === k).length}</small></button>`).join('')}</div>
+    ${list.map((f, k) => `<details class="rcard fu" style="--c:${G[f.g].color}"${k === 0 ? ' open' : ''}>
+      <summary><span class="fu-g">${esc(G[f.g].name)}</span><span class="fu-q">${esc(f.q)}</span></summary>
+      <div class="fu-body">
+        <div><b>What happens</b><p>${rich(f.what)}</p></div>
+        <div><b>Why</b><p>${rich(f.why)}</p></div>
+        <div class="say"><b>🎤 Say this</b><p>${rich(f.how)}</p></div>
+        <div style="grid-column:1/-1"><b>Trade-off</b><p>${rich(f.trade)}</p></div>
+        ${f.flow ? `<button class="watch" data-sc="${FLOW_TO_SC[f.flow]}">▶ Watch flow: ${esc(SCEN[FLOW_TO_SC[f.flow]].name)}</button>` : ''}
+      </div></details>`).join('')}
+  </div>`;
+  reader.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { fuGroup = b.dataset.g; renderFollowups(); });
+  reader.querySelectorAll('.watch').forEach(b => b.onclick = () => { setView('flow'); start(b.dataset.sc); });
+}
+// sticky jump bars scroll inside the reading panel
+reader.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-to]');
+  if (!b) return;
+  const el = document.getElementById(b.dataset.to), bar = b.parentElement;
+  reader.scrollTo({ top: el.offsetTop - bar.offsetHeight - 8 });
+});
+
+function setView(v) {
+  view = v;
+  document.body.className = 'v-' + v;
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  if (v !== 'flow') {
+    closeDrawer(); setLegend(false);
+    if (v === 'explain') renderExplain(); else if (v === 'answer') renderAnswer(); else renderFollowups();
+    reader.scrollTop = 0;
+  }
+  last = performance.now();
+}
+document.querySelectorAll('#viewSeg button').forEach(b => b.onclick = () => { b.blur(); setView(b.dataset.view); });
+
+// ---------------- header: previous / next design + hub (engine/catalog.js) ----------------
+(function designNav() {
+  const cat = (window.SD_CATALOG || []).filter(c => c.file), at = cat.findIndex(c => c.id === 'url');
+  const link = (d, txt, dir) => d ? `<a href="${d.file}" title="${dir}: ${d.n} · ${esc(d.title)}">${txt}</a>` : `<span class="off" title="No ${dir.toLowerCase()} design">${txt}</span>`;
+  document.getElementById('dNav').innerHTML = link(cat[at - 1], '←', 'Previous') + link(cat[at + 1], '→', 'Next')
+    + `<a class="hub" href="../02_SD_Interview_Simulator.html" title="All designs">All designs</a>`;
+})();
+
+
+start('hit');
+requestAnimationFrame(frame);
 </script>
-<script src="engine/app.js"></script>
 </body>
 </html>
