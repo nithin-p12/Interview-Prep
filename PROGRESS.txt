@@ -194,3 +194,7 @@ CHANGE LOG
 2026-11-19  Git page (14_Git.html, v1.0): content-addressed objects, refs, merge base + 3-way merge, packfile negotiation,
             ref CAS + non-fast-forward, repo sharding with quorum replicas, Git LFS, push events/webhooks. Hub v3.9.
             Verified: static dry-run of every flow + headless walk of every tab and flow step → 0 JS errors.
+2026-11-19  Parking Lot page (15_Parking_Lot.html, v1.0): LLD class model + Strategy (allocation, pricing), thread-safe
+            allocate, gate race (CAS on spot state + Redis ZPOPMIN), idempotent exit + pay-later fallback, live availability,
+            reservations with hold TTL + no-show, offline lot server with journal resync, cloud sharded by lotId. Hub v3.10.
+            Verified: static dry-run of every flow + headless walk of every tab and flow step → 0 JS errors.

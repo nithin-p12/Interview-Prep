@@ -17,6 +17,7 @@ window.SD_CATALOG = [
   { n: 12, id: 'cache', title: 'Distributed Cache', icon: '⚡', desc: 'Consistent hashing, eviction, replication, cache consistency.', tags: ['Hash ring', 'LRU', 'Versions'], file: '12_Distributed_Cache.html' },
   { n: 13, id: 'support', title: 'Customer Support Ticketing', icon: '🎫', desc: 'Zendesk-style helpdesk: ticket lifecycle, safe claims, SLA timers, live updates, multi-tenancy.', tags: ['State machine', 'Routing', 'SLA'], file: '13_Support_Ticketing.html' },
   { n: 14, id: 'git', title: 'Git', icon: '🌿', desc: 'Git internals and a GitHub-like service: content-addressed objects, refs, merges, packfiles, replicated repos, LFS.', tags: ['Merkle DAG', 'Refs CAS', 'Packfiles'], file: '14_Git.html' },
+  { n: 15, id: 'parking', title: 'Parking Lot', icon: '🅿️', desc: 'LLD + HLD: spot allocation by size and distance, gate races, pricing and idempotent exit, live availability, reservations, offline lot servers.', tags: ['Spot CAS', 'Gates', 'Pricing'], file: '15_Parking_Lot.html' },
 ];
 window.SD_CORE = { file: '00_Core_Components.html', title: 'Core Components', icon: '🧩',
   desc: 'What, why, without vs with, how it works, pros & cons, when to choose: one place for every building block.',

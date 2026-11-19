@@ -36,7 +36,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `core-components` | Core Components (watch first) | v2.3 | `03_System_Design/02_SD_Simulator/00_Core_Components.html` |
 | System Design | `fireflink-sd` | FireFlink System Design | v1.0 | `03_System_Design/FireFlink_System_Design.html` |
 | System Design | `fireflink-platform` | FireFlink Platform Architecture | archived v1 | `_archive/03_System_Design/01_FireFlink_Platform_Architecture_v1.html` |
-| System Design | `sd-simulator` | SD Interview Simulator (home) | v3.9 | `03_System_Design/02_SD_Interview_Simulator.html` |
+| System Design | `sd-simulator` | SD Interview Simulator (home) | v3.10 | `03_System_Design/02_SD_Interview_Simulator.html` |
 | System Design | `sd-url-shortener` | URL Shortener (TinyURL) | v2.2 | `03_System_Design/02_SD_Simulator/01_URL_Shortener.html` |
 | System Design | `sd-rate-limiter` | Rate Limiter | v2.0 | `03_System_Design/02_SD_Simulator/02_Rate_Limiter.html` |
 | System Design | `sd-notification` | Notification System | v2.0 | `03_System_Design/02_SD_Simulator/04_Notification_System.html` |
@@ -51,6 +51,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `sd-distributed-cache` | Distributed Cache | v2.0 | `03_System_Design/02_SD_Simulator/12_Distributed_Cache.html` |
 | System Design | `sd-support` | Customer Support Ticketing | v1.0 | `03_System_Design/02_SD_Simulator/13_Support_Ticketing.html` |
 | System Design | `sd-git` | Git | v1.0 | `03_System_Design/02_SD_Simulator/14_Git.html` |
+| System Design | `sd-parking` | Parking Lot | v1.0 | `03_System_Design/02_SD_Simulator/15_Parking_Lot.html` |
 | Interview Extras | `code-hub` | Coding Practice hub (22 problems) | v1.1 | `07_Interview/01_Coding/00_Coding_Practice.html` |
 | Interview Extras | `question-bank` | Interview Question Bank (concept-wise, company filter) | v1.0 | `07_Interview/02_Questions/00_Question_Bank.html` |
 | Interview Extras | `code-structures` | Data structures gallery (watch first) | v1.1 | `07_Interview/01_Coding/00_Structures_Gallery.html` |
@@ -253,7 +254,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v3.9 | 2026-11-19 | + 14 · Git card (catalog entry). | current file · tag `sd-simulator/v3.9` |
+| v3.10 | 2026-11-19 | + 15 · Parking Lot card (catalog entry). | current file · tag `sd-simulator/v3.10` |
+| v3.9 | 2026-11-19 | + 14 · Git card (catalog entry). | git tag `sd-simulator/v3.9` |
 | v3.8 | 2026-11-19 | + 13 · Customer Support Ticketing card (catalog entry; the "12 designs" chip text is unchanged). | git tag `sd-simulator/v3.8` |
 | v3.7 | 2026-11-12 | All 12 design cards open their own pages (Rate Limiter, Notification, E-commerce, Chat, Job Scheduler, News Feed, Search, Video Streaming, Distributed Cache rebuilt). | git tag `sd-simulator/v3.7` |
 | v3.6 | 2026-11-12 | Core Components card lists API gateway. | git tag `sd-simulator/v3.6` |
@@ -374,6 +376,12 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | Version | Date | What it has | Where |
 |---|---|---|---|
 | v1.0 | 2026-11-19 | New page, 6 tabs: overview loop, 11 components + drawn commit graph (links to Core Components for gateway, DB, S3, Kafka; to 4 Notification, 10 Search in the answer), 6 flows (objects and hashes: blob/tree/commit, branch = pointer, dedup, integrity; branch and merge: merge base, 3-way merge, two-parent commit, fast-forward vs rebase; push and fetch: ref advertisement, packfile, index-pack + connectivity, want/have; two pushes one branch: blind write vs ref CAS, non-fast-forward, rebase and retry; hosted shards and replicas: repo sharding, object pools, quorum ref vote, stale replica repair, reads from replicas; big files and PR events: LFS pointer + presigned S3, push event after commit, signed webhook, merge button = server merge + CAS), how to explain, 4-paragraph spoken answer, Java/JGit/Kafka code, 18 follow-ups. | current file · tag `sd-git/v1.0` |
+
+**Parking Lot** · `sd-parking`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-19 | New page (LLD + HLD), 6 tabs: overview loop, 12 components (links to Core Components for gateway, Redis, Kafka, DB scaling; to 2 Rate Limiter, 3 Ticket Booking, 4 Notification, 5 E-commerce in the answer), 6 flows (a car enters: ANPR, open-ticket check, nearest-fit strategy via Redis ZPOPMIN, spot CAS + ticket, boards, truck refused; two gates one spot: find-then-save vs CAS on state, atomic pop, why not synchronized, leaked spot + reconciler; exit and payment: PricingStrategy, idempotency key = ticket id, lost reply retry, conditional close + free, provider down → circuit breaker + pay later; live availability: Redis counters, LAN boards, lot events with seq to Kafka, band pushes, eventual consistency, dedupe + snapshot; reserve a spot: quota CAS, HELD with hold TTL, expiry, RESERVED spot, plate match, no-show timer; many lots offline edge: shard by lotId, local journal while the WAN is down, payments offline, stale lot, ordered resync, standby lot server), how to explain (incl. LLD stage), 4-paragraph spoken answer, Java/Spring/Mongo/Redis code (class model + Strategy, thread-safe allocate, Redis pop + Mongo CAS, idempotent exit), 7 trade-offs, 18 follow-ups. | current file · tag `sd-parking/v1.0` |
 
 ### Spring
 

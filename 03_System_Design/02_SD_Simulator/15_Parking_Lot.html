@@ -1,0 +1,1050 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-parking">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parking Lot · System Design · v1.0</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// Parking lot (asked as LLD and as HLD). Taught HERE: spot allocation by size + nearest-to-gate (Strategy pattern),
+// the allocation race (CAS on spot state vs Redis atomic pop), spot state FREE → RESERVED → OCCUPIED, fee + idempotent
+// exit, live availability counters, reservations with a hold TTL, a lot-local edge server that works offline.
+// Redis, Kafka, DB scaling and gateway basics live in 00_Core_Components.html; seat holds come from 03 Ticket Booking,
+// payments/outbox from 05 E-commerce, rate limits from 02 Rate Limiter, push messages from 04 Notification System.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+const KEEP = '#d5d9dc';
+
+// Row colours for spots, tickets, reservations and journal entries.
+const ST = {
+  FREE: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
+  RES: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  OCC: { fill: '#f3f6fe', stroke: BLUE, color: BLUE },
+  PAY: { fill: '#faf6fd', stroke: PURPLE, color: PURPLE },
+  DONE: { fill: '#f6f7fb', stroke: '#c9ced3', color: GREY },
+  LOG: { fill: '#f6f7fb', stroke: '#e3e6ee', color: '#203347' },
+  BAD: { fill: '#fff4f4', stroke: RED, color: RED },
+};
+// SVG collapses normal spaces, so pad with non-breaking ones to keep the monospace columns aligned.
+const pad = (str, n) => str.padEnd(n, ' ');
+const S = (spot, size, state, rest = '') => `${pad(spot, 7)}${pad(size, 6)}${pad(state, 9)}${rest}`;   // spot row
+const K = (id, plate, status, rest = '') => `${pad(id, 7)}${pad(plate, 10)}${pad(status, 7)}${rest}`;  // ticket / reservation row
+const J = (seq, rest) => `${pad(seq, 5)}${rest}`;                                                      // journal / event row
+const P1 = 'KA01-1234', P2 = 'KA05-7781';
+
+// State drawn next to the components: spots, tickets, clock, gates, lot server, board, app, city, payment, PSP.
+function setup(s, v, { spots = [], tks = [], spotTitle = 'SPOTS · lot 7 · floor L1', tkTitle = 'TICKETS · lot 7', clock = '09:10',
+  drv = `${P1} · car`, ent = 'G1 ready', ex = 'exit ready', lot = 'free L1·car: 41', brd = 'L1 car 41 · bike 30', app = 'app: lot 7 car 41',
+  city = 'lot 7 · online', pay = 'payments: —', psp = 'provider up' } = {}) {
+  v.clock = s.chip(440, 505, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
+  v.sp = s.store(885, 196, 205, spotTitle, { color: BLUE });
+  v.tk = s.store(885, 366, 205, tkTitle, { color: PURPLE });
+  v.rows = {};
+  spots.forEach(([key, txt, st]) => { s.row(v.sp, txt, { ...ST[st], now: true }); v.rows[key] = v.sp.rows[v.sp.rows.length - 1]; });
+  tks.forEach(([key, txt, st]) => { s.row(v.tk, txt, { ...ST[st ?? 'LOG'], now: true }); v.rows[key] = v.tk.rows[v.tk.rows.length - 1]; });
+  v.c = {
+    drv: s.chip(90, 134, drv, { color: GREY }),
+    ent: s.chip(90, 314, ent, { color: GREY }),
+    ex: s.chip(90, 494, ex, { color: GREY }),
+    lot: s.chip(295, 215, lot, { mono: true, color: GREY }),
+    brd: s.chip(295, 494, brd, { mono: true, color: GREY }),
+    app: s.chip(295, 134, app, { color: GREY }),
+    city: s.chip(770, 134, city, { color: GREY }),
+    pay: s.chip(770, 222, pay, { color: GREY }),
+    psp: s.chip(770, 494, psp, { color: GREY }),
+  };
+  return v;
+}
+// Add or update a row (spot or ticket) by key; new rows go to the given store.
+async function put(s, v, key, txt, st, store = 'sp') {
+  const r = v.rows[key];
+  if (!r) { v.rows[key] = await s.row(v[store], txt, ST[st]); return; }
+  r.label.textContent = txt;
+  s.paintRow(r, ST[st]);
+  await s.pulse(r, 1, 1.05);
+}
+// Append to the second store (keeps the last 5 visible).
+async function log(s, v, txt, st = 'LOG') {
+  if (v.tk.rows.length >= 5) await s.unrow(v.tk, v.tk.rows[0]);
+  return s.row(v.tk, txt, ST[st]);
+}
+async function clearRows(s, v) { for (const st of [v.sp, v.tk]) for (const r of [...st.rows]) await s.unrow(st, r); v.rows = {}; }
+const paint = color => ({ color, stroke: color === GREY ? KEEP : color });
+const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
+const say = (s, v, key, txt, color = GREY) => s.setChip(v.c[key], txt, paint(color));
+const ok = { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, bad = { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, warn = { mono: true, color: AMBER, stroke: AMBER, fill: '#fdf6ea' };
+// Floor L1 near the entry: C07 is nearest, then C08, C12 (distance in metres from gate G1).
+const L1 = [
+  ['C07', S('L1-C07', 'car', 'FREE', '12 m'), 'FREE'],
+  ['C08', S('L1-C08', 'car', 'FREE', '15 m'), 'FREE'],
+  ['C12', S('L1-C12', 'car', 'FREE', '31 m'), 'FREE'],
+  ['B03', S('L1-B03', 'bike', 'FREE', '9 m'), 'FREE'],
+];
+
+window.DESIGN = {
+  id: 'parking', n: 15, title: 'Parking Lot', tagline: 'spots allocated by size and distance with an atomic claim, paid for once at the exit, counted live, run by a lot server that keeps working offline',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'lot', title: 'At the lot', x0: 0, x1: 185, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'Cars meet the system at **gates**: an **ANPR camera** reads the plate at the entry, a barrier and pay terminal sit at the exit. Drivers also use the **app** to check availability and book.',
+      detail: 'Gates must answer in about 2 seconds, or a queue forms on the street.' },
+    { id: 'edge', title: 'Edge & app API', x0: 185, x1: 400, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: 'Each lot runs its own **lot server** (edge): it allocates spots, opens barriers and drives the floor boards, even when the internet is down. The **App API** in the cloud serves drivers: availability, bookings, push updates.',
+      detail: 'Gate decisions never cross the WAN; only events do.' },
+    { id: 'data', title: 'Data & events', x0: 400, x1: 670, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: 'The lot keeps its **spot index in Redis** (one free set per floor and size, atomic pop) and the truth in a **local Lot DB** (spots, tickets). **Kafka** carries lot events to the cloud and reservations back to the lot.',
+      detail: 'Redis is the fast index; the DB with a conditional update is the source of truth.' },
+    { id: 'cloud', title: 'Cloud services', x0: 670, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'The **City DB** holds every lot (sharded by `lotId`), availability counters and reservations. **Payment** charges the fee once per ticket through an external **card / UPI provider**.',
+      detail: 'Cloud outages must not trap cars inside a lot.' },
+  ],
+  layersIntro: {
+    title: 'A lot server per lot, the cloud for everything across lots',
+    text: 'The **entry gate** reads the plate and asks the **lot server** for a spot: it pops the nearest free spot of the right size from **Redis** and claims it in the **Lot DB** with a conditional update. At the **exit** the fee is computed and charged once through **Payment**. Every change becomes an event: floor **boards** update locally, **Kafka** carries it to the **App API** and **City DB**. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    driver: { x: 90, y: 85, w: 150, label: 'Driver', sub: 'car · app', icon: '🚗', layer: 'lot' },
+    entry: { x: 90, y: 265, w: 150, label: 'Entry gate', sub: 'ANPR · barrier', icon: '📷', layer: 'lot' },
+    exit: { x: 90, y: 445, w: 150, label: 'Exit gate', sub: 'pay · barrier', icon: '🚧', layer: 'lot' },
+    api: { x: 295, y: 85, w: 150, label: 'App API', sub: 'status · book', icon: '📱', layer: 'edge' },
+    lotsvc: { x: 295, y: 265, w: 150, label: 'Lot server', sub: 'edge · allocate', icon: '🅿️', layer: 'edge' },
+    board: { x: 295, y: 445, w: 150, label: 'Floor boards', sub: 'free per type', icon: '🪧', layer: 'edge' },
+    kafka: { x: 535, y: 190, w: 160, label: 'Kafka', sub: 'parking-events', icon: '📨', layer: 'data' },
+    redis: { x: 535, y: 320, w: 160, label: 'Spot index', sub: 'Redis · free sets', icon: '⚡', layer: 'data' },
+    pdb: { x: 535, y: 445, w: 160, label: 'Lot DB', sub: 'spots · tickets', icon: '🍃', layer: 'data' },
+    city: { x: 770, y: 85, w: 150, label: 'City DB', sub: 'shard by lotId', icon: '🗺️', layer: 'cloud' },
+    pay: { x: 770, y: 265, w: 150, label: 'Payment', sub: 'fee · idempotent', icon: '💳', layer: 'cloud' },
+    psp: { x: 770, y: 445, w: 150, label: 'Card / UPI', sub: 'provider', icon: '🏦', layer: 'cloud', ext: true },
+  },
+  wires: [['driver', 'entry'], ['driver', 'api'], ['entry', 'lotsvc'], ['exit', 'lotsvc'], ['lotsvc', 'board'], ['lotsvc', 'redis'], ['lotsvc', 'pdb'],
+    ['lotsvc', 'kafka'], ['lotsvc', 'pay'], ['pay', 'psp'], ['kafka', 'api'], ['kafka', 'city'], ['api', 'city']],
+
+  components: {
+    driver: {
+      name: 'Driver (car + app)',
+      what: 'Drives up to a gate; the plate is the identity, so no paper ticket is needed. In the app: see free spots per lot, book a spot for 18:00, pay, get "lot full" or "your spot is L1-C02" pushes.',
+      why: 'Everything is judged by the driver\'s two waits: at the entry barrier and at the exit barrier.',
+      without: '—',
+      tech: 'Mobile app (WebSocket / FCM push), ANPR-readable plate, optional FASTag / RFID', scale: 'Thousands of cars per lot per day; millions of app users city-wide.', fails: 'No network in the basement → the lot works by plate alone.',
+    },
+    entry: {
+      name: 'Entry gate (ANPR + barrier)',
+      what: 'An ANPR camera reads `KA01-1234` and classifies the vehicle (bike, car, truck by size / loop sensor). The gate controller calls the lot server, shows "L1-C07 →" on its screen and lifts the barrier. Fallback: a ticket button prints a QR ticket.',
+      why: 'The vehicle **size** decides which spots fit, and the **gate** decides which spot is nearest.',
+      without: 'A guard writes plates in a book and waves cars to "somewhere upstairs".',
+      tech: 'ANPR camera, PLC barrier controller, small display, QR printer', scale: 'Several entry gates per lot, all racing for the same spots.', fails: 'Plate unreadable → print a QR ticket; the ticket id becomes the key.',
+    },
+    exit: {
+      name: 'Exit gate (pay + barrier)',
+      what: 'ANPR reads the plate, the lot server finds the open ticket, shows the fee, takes card / UPI / FASTag on the terminal (or sees it was prepaid at a pay station or in the app) and opens the barrier.',
+      why: 'The exit is where money is collected, so it must be **exactly once** and must never trap a car.',
+      without: 'Cashier booth: long queues and no audit trail.',
+      tech: 'ANPR, POS terminal (card / UPI QR), barrier PLC', scale: 'Exit peaks after events and office hours.', fails: 'Payment provider down → open with "pay later" against the plate.',
+    },
+    api: {
+      name: 'App API (cloud)',
+      what: '`GET /lots?near=…` (availability bands per lot and type), `POST /reservations`, `POST /tickets/{id}/pay` (prepay), and a WebSocket / push channel for "lot 7: car 12 free". Consumes lot events from Kafka to keep counters fresh.',
+      why: 'Drivers search across **many lots**, which only the cloud can see; the lot server stays focused on its gates.',
+      without: 'Each lot exposes its own server to the internet: unsafe, and no city-wide search.',
+      tech: 'Spring Boot behind the API gateway, Redis cache of counters, WebSocket / FCM', scale: 'Stateless; scale on read traffic.', fails: 'Down → the app is stale, but every lot keeps working.',
+      core: ['gw', 'API gateway'],
+    },
+    lotsvc: {
+      name: 'Lot server (edge)',
+      what: 'The brain of one lot: `enter(plate, size, gate)` → nearest free spot of a fitting size; `exit(plate)` → fee, payment, free the spot. Owns the domain model (`ParkingLot`, `Floor`, `ParkingSpot`, `Ticket`, strategies). Drives the floor boards and writes every change to a local **journal** that is shipped to Kafka.',
+      why: 'Gates need answers in ~2 s and must keep working when the **internet link drops**; the lot is the natural unit of consistency.',
+      without: 'Every gate call goes to the cloud: a WAN hiccup closes all barriers in the city.',
+      tech: 'Spring Boot on a small server per lot (active + standby), local MongoDB + Redis', scale: 'One per lot; 500 lots = 500 independent servers.', fails: 'Standby takes over; worst case gates switch to QR tickets + manual mode.',
+    },
+    board: {
+      name: 'Floor boards',
+      what: 'LED boards at the entrance and on each ramp: "L1 car 12 · bike 30", "L2 FULL". Updated by the lot server on every entry / exit.',
+      why: 'Drivers decide where to turn **inside** the lot; the boards must be right, not just eventually right.',
+      without: 'Cars circle full floors, blocking the ramps.',
+      tech: 'Display controllers on the lot LAN, fed from the lot\'s Redis counters', scale: 'A few dozen per lot.', fails: 'Board offline → shows "—"; gates still allocate.',
+    },
+    kafka: {
+      name: 'Kafka · parking-events',
+      what: 'Lot events (`entered`, `exited`, `spot.freed`, counters with a per-lot `seq`) go up, keyed by **lotId** so one lot\'s events stay in order. Reservations for a lot come back down on `lot-7-commands`.',
+      why: 'One stream feeds the app counters, the City DB, billing and analytics without the lot calling each of them.',
+      without: 'The lot server calls five cloud services on every entry: slow, and fails when any one is down.',
+      tech: 'Kafka topic `parking-events`, key = lotId; consumers dedupe by `(lotId, seq)`', scale: 'Partitions by lotId; 500 lots × a few events/s is small.', fails: 'At-least-once → idempotent consumers.',
+      core: ['kafka', 'Queue · Kafka'],
+    },
+    redis: {
+      name: 'Spot index (Redis)',
+      what: 'One sorted set per floor and size: `free:7:L1:car` → member `L1-C07`, score = metres from the gate. `ZPOPMIN` takes the nearest spot **atomically**. Hashes `avail:7:L1` hold the counters the boards read.',
+      why: 'Finding "the nearest free car spot" must be fast and two gates must never get the same one.',
+      without: 'Scan 2,000 spot documents per car and race on the result.',
+      tech: 'Redis on the lot server; Lua when a pop must touch several keys', scale: 'Thousands of spots per lot: tiny.', fails: 'Lost or stale → rebuilt from the Lot DB, which is the truth.',
+      core: ['cache', 'Cache · Redis'],
+    },
+    pdb: {
+      name: 'Lot DB (source of truth)',
+      what: '`spots { _id: "L1-C07", floor, size, state: FREE|RESERVED|OCCUPIED, ticketId, version }`, `tickets { _id, plate, spot, entryAt, exitAt, fee, status }`, plus the **journal** of events waiting to be shipped.',
+      why: 'Claims are **conditional updates** on `state`, so even a stale Redis entry can never put two cars in one spot.',
+      without: 'Redis alone: a lost write or failover and the lot forgets who is parked where.',
+      tech: 'MongoDB replica set on the lot server pair; spot + ticket + journal in one transaction', scale: 'Small per lot; history is shipped to the cloud and pruned.', fails: 'Primary fails → standby takes over in seconds; gates retry.',
+      core: ['db', 'DB scaling'],
+    },
+    city: {
+      name: 'City DB (cloud)',
+      what: '`lots { _id: 7, geo, prices }`, `availability { lotId, type, free, seq }`, `reservations { _id, lotId, plate, from, to, status, holdUntil }`, ticket history for billing. Sharded by `lotId`.',
+      why: 'City-wide search, reservations and reports need all lots in one place.',
+      without: 'Ask 500 lot servers on every app search.',
+      tech: 'MongoDB sharded on `lotId` (geo index on lots), TTL / sweeper for expired holds', scale: 'Shard by lotId: each lot\'s data and writes stay on one shard.', fails: 'Slightly behind the lots; a lot\'s own DB always wins.',
+      core: ['db', 'DB scaling'],
+    },
+    pay: {
+      name: 'Payment service',
+      what: '`charge(ticketId, ₹130)` with **idempotency key = ticketId**: a retry returns the first result. Records `payments { _id: ticketId, amount, status }`, calls the provider, publishes `paid`.',
+      why: 'Exit retries are normal (timeouts, double taps); a ticket must be charged exactly once.',
+      without: 'A timeout + retry charges the driver twice.',
+      tech: 'Spring Boot, unique index on ticketId, Resilience4j circuit breaker (payments in depth: 5 · E-commerce)', scale: 'Low TPS, high correctness.', fails: 'Provider down → fallback: pay later / cash, gate still opens.',
+    },
+    psp: {
+      name: 'Card / UPI provider',
+      what: 'External payment gateway (card, UPI, FASTag issuer). Supports idempotency keys and sends a webhook for the final status.',
+      why: 'We never touch card data ourselves.',
+      without: '—',
+      tech: 'Razorpay / Stripe-like API, webhooks', scale: 'Theirs.', fails: 'Timeouts and outages → circuit breaker + reconciliation from webhooks.',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Read the plate, claim the nearest fitting spot atomically, charge once at the exit, count everything live.',
+    points: [
+      { t: 'Enter', color: BLUE, d: '**ANPR** at the gate → **lot server** pops the nearest free spot of the right size from **Redis**.' },
+      { t: 'Claim', color: PURPLE, d: 'Conditional update `state: FREE → OCCUPIED` in the **Lot DB** + ticket: one car per spot.' },
+      { t: 'Count', color: TEAL, d: 'Boards update locally; the event goes through **Kafka** to the **app** and **City DB**.' },
+      { t: 'Exit & pay', color: GREEN, d: 'Fee by **pricing strategy**, charged once (key = ticketId), spot back to FREE, barrier opens.' },
+    ],
+    stats: [['500', 'lots in the city'], ['200 k', 'spots'], ['< 2 s', 'at the barrier'], ['1', 'car per spot']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v, { spots: L1 }); v.ready = true; }
+    await clearRows(s, v);
+    for (const [key, txt, st] of L1) await put(s, v, key, txt, st);
+    tick(s, v, '09:12'); say(s, v, 'drv', `${P1} · car`); say(s, v, 'ent', 'G1 ready'); say(s, v, 'ex', 'exit ready');
+    say(s, v, 'lot', 'free L1·car: 41'); say(s, v, 'brd', 'L1 car 41 · bike 30'); say(s, v, 'app', 'app: lot 7 car 41'); say(s, v, 'pay', 'payments: —');
+
+    ui.say(0); ui.cap('**Enter** · the camera reads the plate; the lot server pops the nearest free car spot');
+    await s.send(['driver', 'entry', 'lotsvc'], `${P1} car`, BLUE, { ms: 400 });
+    await s.send(['lotsvc', 'redis'], 'ZPOPMIN car', BLUE, { ms: 380 });
+    await s.send(['redis', 'lotsvc'], 'L1-C07', BLUE, { ms: 380 });
+    ui.say(1); ui.cap('**Claim** · FREE → OCCUPIED only if still FREE, ticket written in the same transaction');
+    await s.send(['lotsvc', 'pdb'], 'CAS C07 FREE→OCC', PURPLE, { ms: 380 });
+    await put(s, v, 'C07', S('L1-C07', 'car', 'OCCUPIED', 'TK501'), 'OCC');
+    await log(s, v, K('TK-501', P1, 'OPEN', 'C07'), 'OCC');
+    await s.send(['lotsvc', 'entry'], 'open → L1-C07', GREEN, { ms: 360 });
+    say(s, v, 'ent', 'barrier up · L1-C07', GREEN);
+    ui.say(2); ui.cap('**Count** · boards update on the LAN; the event flows to the cloud and the app');
+    await s.send(['lotsvc', 'board'], 'car 40', TEAL, { ms: 340 });
+    say(s, v, 'brd', 'L1 car 40 · bike 30', TEAL); say(s, v, 'lot', 'free L1·car: 40', TEAL);
+    await s.send(['lotsvc', 'kafka', 'api'], 'entered #812', TEAL, { ms: 340 });
+    say(s, v, 'app', 'app: lot 7 car 40', TEAL);
+    ui.say(3); ui.cap('**Exit & pay** · 3 h 28 min → ₹130, charged once with key TK-501, spot freed');
+    tick(s, v, '12:40'); say(s, v, 'ex', `${P1} at exit`, BLUE);
+    await s.send(['exit', 'lotsvc', 'pay', 'psp'], '₹130 · TK-501', GREEN, { ms: 340 });
+    say(s, v, 'pay', 'TK-501 paid ✓', GREEN);
+    await s.send(['lotsvc', 'pdb'], 'close + free C07', GREEN, { ms: 340 });
+    await put(s, v, 'C07', S('L1-C07', 'car', 'FREE', '12 m'), 'FREE');
+    await put(s, v, 'TK-501', K('TK-501', P1, 'CLOSED', '₹130'), 'DONE', 'tk');
+    await s.send(['lotsvc', 'exit'], 'open', GREEN, { ms: 340 });
+    say(s, v, 'ex', 'barrier up ✓', GREEN); say(s, v, 'brd', 'L1 car 41 · bike 30', TEAL);
+    await s.wait(1800);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'entry', title: 'A car enters', sub: 'ANPR · size · nearest spot', color: BLUE,
+      build: (s, v) => setup(s, v, { spots: L1 }),
+      takeaway: 'Entry = **identify** (plate + size), **choose** (a `SpotAllocationStrategy`: fitting sizes in order, nearest to this gate first), **claim** (atomic pop + conditional update `FREE → OCCUPIED`), **record** (ticket in the same transaction), **tell** (barrier, boards, event). All of it runs on the lot server, so the barrier opens in under 2 seconds without the cloud.',
+      steps: [
+        {
+          title: 'The camera reads the plate and the size',
+          text: 'At gate G1 the ANPR camera reads `KA01-1234`; the loop sensor and camera classify it as a **car** (spot size M). The gate controller calls `POST /entries { plate, type: CAR, gate: G1 }` on the lot server over the LAN.',
+          observe: 'The lot server knows who is entering, how big it is and at which gate.',
+          focus: v => [v.n.entry, v.c.ent],
+          async run(s, v) {
+            await s.send(['driver', 'entry'], `${P1}`, BLUE);
+            say(s, v, 'ent', 'ANPR: car · G1', BLUE);
+            await s.send(['entry', 'lotsvc'], 'enter car G1', BLUE);
+          },
+        },
+        {
+          title: 'Already inside? Check for an open ticket',
+          text: 'A plate can only have one open ticket per lot: a unique index on `{ plate, status: OPEN }` (partial index). A misread or a tailgating car that never exited is flagged for the attendant instead of creating a second ticket.',
+          observe: 'No open ticket for KA01-1234: go ahead.',
+          focus: v => [v.n.pdb],
+          async run(s, v) {
+            await s.send(['lotsvc', 'pdb'], 'open ticket? KA01', GREY);
+            await s.flash(535, 400, 'none → continue', ok, 600);
+          },
+        },
+        {
+          title: 'Strategy: nearest free spot that fits',
+          text: 'The `NearestToGateStrategy` tries sizes that fit a car (car, then large if allowed) and floors in order of distance. In Redis each floor and size has a sorted set scored by metres from G1: `ZPOPMIN free:7:L1:car` returns **L1-C07 (12 m)** and removes it in one atomic step.',
+          observe: 'L1-C07 is the candidate; nobody else can pop it.',
+          say: 'Allocation is a strategy: fitting sizes, then nearest to the gate, served from a sorted set with an atomic pop.',
+          focus: v => [v.n.redis, v.rows.C07],
+          async run(s, v) {
+            await s.send(['lotsvc', 'redis'], 'ZPOPMIN L1:car', BLUE);
+            await s.send(['redis', 'lotsvc'], 'L1-C07 · 12 m', BLUE);
+            say(s, v, 'lot', 'free L1·car: 40', BLUE);
+          },
+        },
+        {
+          title: 'Claim in the DB and open the ticket',
+          text: 'One transaction: `updateOne({ _id: "L1-C07", state: "FREE" }, { $set: { state: "OCCUPIED", ticketId: "TK-501" }, $inc: { version: 1 } })` and insert ticket `TK-501 { plate, spot: L1-C07, entryAt: 09:12, status: OPEN }` plus a journal event. The filter on `state: FREE` is the safety net if Redis is ever stale.',
+          observe: 'L1-C07 is OCCUPIED, TK-501 is OPEN.',
+          focus: v => [v.rows.C07, v.tk],
+          async run(s, v) {
+            tick(s, v, '09:12');
+            await s.send(['lotsvc', 'pdb'], 'CAS FREE→OCC · txn', PURPLE);
+            await put(s, v, 'C07', S('L1-C07', 'car', 'OCCUPIED', 'TK501'), 'OCC');
+            await put(s, v, 'TK-501', K('TK-501', P1, 'OPEN', 'C07'), 'OCC', 'tk');
+          },
+        },
+        {
+          title: 'Barrier up, boards down by one',
+          text: 'The lot server answers the gate: screen shows **"L1 · C07 → turn left"**, barrier lifts. The floor board counter `HINCRBY avail:7:L1 car -1` changes from 41 to 40 and the board at the ramp shows it immediately.',
+          observe: 'The car drives in; the board says 40.',
+          focus: v => [v.n.board, v.c.brd],
+          async run(s, v) {
+            await s.send(['lotsvc', 'entry'], 'open · L1-C07', GREEN);
+            say(s, v, 'ent', 'barrier up · L1-C07', GREEN);
+            await s.send(['lotsvc', 'board'], 'L1 car 40', TEAL);
+            say(s, v, 'brd', 'L1 car 40 · bike 30', TEAL);
+          },
+        },
+        {
+          title: 'A truck when no large spot is free',
+          text: 'Next a truck arrives. Large spots on L1 and L2 are all taken and a truck cannot **downsize** into a car spot (a bike may **upsize** into a car spot if the tenant allows it). The strategy returns empty → the gate shows "No space for trucks", the barrier stays down and the board shows **truck FULL**.',
+          observe: 'The truck is refused at the gate, not stuck inside.',
+          say: 'Size rules live in the strategy: smaller vehicles may move up a size, never down.',
+          focus: v => [v.n.entry, v.c.brd],
+          async run(s, v) {
+            say(s, v, 'drv', 'KA09-4410 · truck', AMBER);
+            await s.send(['entry', 'lotsvc'], 'enter truck', AMBER);
+            await s.bounce('lotsvc', 'redis', 'ZPOPMIN truck', AMBER);
+            await s.send(['lotsvc', 'entry'], 'no space', RED);
+            say(s, v, 'ent', 'truck: FULL ✕', RED); say(s, v, 'brd', 'car 40 · truck FULL', RED);
+          },
+        },
+      ],
+    },
+    {
+      id: 'race', title: 'Two gates, one spot', sub: 'read-then-write vs CAS · atomic pop', color: PURPLE,
+      build: (s, v) => setup(s, v, { spots: L1, ent: 'G1 + G2 busy', drv: `${P1} · ${P2.slice(0, 4)}` }),
+      takeaway: 'Two gates asking at once is the classic bug: "find the first FREE spot, then mark it" lets both get L1-C07. Fix it where the data lives: a **conditional update** (`state: FREE` in the filter, loser retries the next spot) and/or a **Redis sorted set with ZPOPMIN** (each spot handed out once). A JVM `synchronized` only works while there is exactly one lot server process.',
+      steps: [
+        {
+          title: 'Two cars at two gates, same moment',
+          text: 'Car A (`KA01-1234`) at G1 and car B (`KA05-7781`) at G2 arrive within 30 ms. Both requests reach the lot server (two threads, or the active and a misconfigured standby).',
+          observe: 'Two allocations in flight.',
+          focus: v => [v.n.entry, v.n.lotsvc],
+          async run(s, v) {
+            await Promise.all([
+              s.send(['entry', 'lotsvc'], 'G1 car A', BLUE),
+              s.send(['entry', 'lotsvc'], 'G2 car B', PURPLE, { ms: 620, pulse: false }),
+            ]);
+          },
+        },
+        {
+          title: '❌ Find first, then save',
+          text: 'Naive code: `spot = repo.findFirstByStateAndSizeOrderByDistance(FREE, CAR)`; `spot.setState(OCCUPIED); repo.save(spot)`. Both threads read **L1-C07** as FREE, both save. Two tickets point at one spot; car B arrives and finds car A parked there.',
+          observe: 'L1-C07 has two cars.',
+          say: 'Check-then-act on a spot is a race: two gates can hand out the same spot.',
+          focus: v => [v.rows.C07, v.tk],
+          async run(s, v) {
+            await Promise.all([s.send(['lotsvc', 'pdb'], 'find FREE', RED), s.send(['lotsvc', 'pdb'], 'find FREE', RED, { ms: 620, pulse: false })]);
+            await Promise.all([s.send(['pdb', 'lotsvc'], 'C07', RED), s.send(['pdb', 'lotsvc'], 'C07', RED, { ms: 620, pulse: false })]);
+            await put(s, v, 'C07', S('L1-C07', 'car', 'OCCUPIED', 'A+B!'), 'BAD');
+            await put(s, v, 'TK-501', K('TK-501', P1, 'OPEN', 'C07'), 'BAD', 'tk');
+            await put(s, v, 'TK-502', K('TK-502', P2, 'OPEN', 'C07'), 'BAD', 'tk');
+          },
+        },
+        {
+          title: '✅ Rewind: conditional update on state',
+          text: 'The claim becomes `updateOne({ _id: "L1-C07", state: "FREE" }, { $set: { state: "OCCUPIED", ticketId } })`. A single-document update is atomic: G1 matches 1, G2 matches **0** and simply tries the next candidate, **L1-C08**. No locks, no double booking.',
+          observe: 'A gets C07, B gets C08.',
+          say: 'The claim is a compare-and-set on the spot state; the loser moves on to the next spot.',
+          focus: v => [v.rows.C07, v.rows.C08],
+          async run(s, v) {
+            await clearRows(s, v);
+            for (const [key, txt, st] of L1) await put(s, v, key, txt, st);
+            await s.send(['lotsvc', 'pdb'], 'C07 if FREE · A', TEAL);
+            await put(s, v, 'C07', S('L1-C07', 'car', 'OCCUPIED', 'A'), 'OCC');
+            await s.bounce('lotsvc', 'pdb', 'C07 if FREE · B', AMBER);
+            await s.flash(535, 400, 'B: matched 0 → next', warn, 600);
+            await s.send(['lotsvc', 'pdb'], 'C08 if FREE · B', TEAL);
+            await put(s, v, 'C08', S('L1-C08', 'car', 'OCCUPIED', 'B'), 'OCC');
+          },
+        },
+        {
+          title: 'Faster: atomic pop from a per-floor free set',
+          text: 'With hundreds of cars at 9 am, losers retrying is wasted work. Redis is single-threaded per command, so `ZPOPMIN free:7:L1:car` gives C07 to whichever call arrives first and **C12** (next nearest) to the other. The DB conditional update still runs, but now it almost always wins on the first try.',
+          observe: 'Each gate pops a different spot; no retries.',
+          say: 'A per-floor free set with an atomic pop hands every spot out once; the DB check stays as the safety net.',
+          focus: v => [v.n.redis, v.rows.C12],
+          async run(s, v) {
+            await Promise.all([s.send(['lotsvc', 'redis'], 'ZPOPMIN · G1', BLUE), s.send(['lotsvc', 'redis'], 'ZPOPMIN · G2', PURPLE, { ms: 620, pulse: false })]);
+            await Promise.all([s.send(['redis', 'lotsvc'], 'C07', BLUE), s.send(['redis', 'lotsvc'], 'C12', PURPLE, { ms: 620, pulse: false })]);
+            await put(s, v, 'C08', S('L1-C08', 'car', 'FREE', '15 m'), 'FREE');
+            await put(s, v, 'C12', S('L1-C12', 'car', 'OCCUPIED', 'B'), 'OCC');
+            say(s, v, 'lot', 'pops: G1 C07 · G2 C12', GREEN);
+          },
+        },
+        {
+          title: 'Why not just synchronized?',
+          text: 'In the LLD round, a `ReentrantLock` per floor or a `ConcurrentSkipListSet.pollFirst()` is a fine answer: one JVM, one lot. But the lot server runs as an **active / standby pair** and gates retry on timeouts; a lock inside one JVM protects nothing across processes. The store has to do the atomic step.',
+          observe: 'JVM locks are enough in the LLD, not in the deployed system.',
+          focus: v => [v.n.lotsvc],
+          async run(s, v) {
+            await s.flash(295, 330, 'lock in JVM 1 ≠ lock in JVM 2', warn, 900);
+          },
+        },
+        {
+          title: 'Crash after the pop: a leaked spot',
+          text: 'The server pops **L1-C08**, then crashes before the DB write. Redis forgot the spot, the DB still says FREE: it will never be handed out. A **reconciler** on start-up and every minute rebuilds the free sets from `spots { state: FREE }`, because the DB is the truth and Redis is only an index.',
+          observe: 'C08 comes back to the free set.',
+          say: 'Redis is an index rebuilt from the DB; a reconciler fixes popped-but-unclaimed spots.',
+          focus: v => [v.rows.C08, v.n.redis],
+          async run(s, v) {
+            await s.send(['lotsvc', 'redis'], 'ZPOPMIN → C08', AMBER);
+            s.tone(v.n.lotsvc, 'fail'); await s.wait(500); s.tone(v.n.lotsvc, null);
+            say(s, v, 'lot', 'C08 lost from index', RED);
+            await s.send(['lotsvc', 'pdb'], 'reconcile: FREE?', TEAL);
+            await s.send(['lotsvc', 'redis'], 'ZADD C08 15', TEAL);
+            say(s, v, 'lot', 'index = DB ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'exit', title: 'Exit & payment', sub: 'pricing · idempotent pay · fallback', color: GREEN,
+      build: (s, v) => setup(s, v, { spots: [['C07', S('L1-C07', 'car', 'OCCUPIED', 'TK501'), 'OCC'], ...L1.slice(1)], tks: [['TK-501', K('TK-501', P1, 'OPEN', 'C07'), 'OCC']], clock: '12:40', lot: 'free L1·car: 40', brd: 'L1 car 40 · bike 30', ent: 'G1 ready' }),
+      takeaway: 'The fee comes from a **PricingStrategy** (slabs per vehicle type, daily cap, lost-ticket rule). Payment uses the **ticket id as the idempotency key**, closing the ticket is a conditional update `PAID → CLOSED`, and freeing the spot is `OCCUPIED → FREE` + `ZADD`. When the provider is down a circuit breaker falls back to **pay later against the plate**: never trap a car.',
+      steps: [
+        {
+          title: 'The car reaches the exit',
+          text: 'ANPR reads `KA01-1234`; the lot server finds the open ticket by plate: **TK-501, entered 09:12, spot L1-C07**. If the plate is unreadable, the driver scans the QR ticket instead.',
+          observe: 'TK-501 is found.',
+          focus: v => [v.rows['TK-501'], v.n.exit],
+          async run(s, v) {
+            say(s, v, 'ex', `${P1} at exit`, BLUE);
+            await s.send(['exit', 'lotsvc'], `exit ${P1}`, BLUE);
+            await s.send(['lotsvc', 'pdb'], 'open ticket', BLUE);
+            await s.send(['pdb', 'lotsvc'], 'TK-501 09:12', BLUE);
+          },
+        },
+        {
+          title: 'PricingStrategy computes the fee',
+          text: '09:12 → 12:40 = 3 h 28 min → rounded up to **4 hours**. The car tariff (a `HourlySlabPricing`) says ₹40 for the first hour, ₹30 for each next hour, capped at ₹300 a day: 40 + 3 × 30 = **₹130**. Weekend, event-day or EV tariffs are other strategies; prices sync from the cloud.',
+          observe: 'Fee ₹130; ticket moves to PAYING.',
+          say: 'The fee is a pricing strategy per vehicle type, so tariffs change without touching the exit flow.',
+          focus: v => [v.rows['TK-501']],
+          async run(s, v) {
+            await s.flash(295, 330, '4 h car: 40 + 3×30 = ₹130', ok, 800);
+            await put(s, v, 'TK-501', K('TK-501', P1, 'PAYING', '₹130'), 'PAY', 'tk');
+            say(s, v, 'ex', 'pay ₹130', PURPLE);
+          },
+        },
+        {
+          title: 'Charge once: idempotency key = ticket id',
+          text: 'The driver taps a card. `POST /payments { key: "TK-501", amount: 130 }`: the payment service inserts `payments { _id: "TK-501", status: PENDING }` (unique) and calls the provider with the same idempotency key.',
+          observe: 'The provider approves ₹130.',
+          focus: v => [v.n.pay, v.n.psp],
+          async run(s, v) {
+            await s.send(['exit', 'lotsvc', 'pay'], '₹130 · key TK-501', PURPLE);
+            say(s, v, 'pay', 'TK-501 PENDING', AMBER);
+            await s.send(['pay', 'psp'], 'charge · TK-501', PURPLE);
+            say(s, v, 'psp', 'approved ₹130', GREEN);
+          },
+        },
+        {
+          title: 'The reply is lost; the driver taps again',
+          text: 'The provider charged, but the response timed out on the way back. The terminal retries `POST /payments { key: "TK-501" }` → the payment record exists → the service asks the provider for the status of that key (or waits for its webhook) and returns **the same success**. One charge, not two.',
+          observe: 'Second tap returns the first result.',
+          say: 'Payment is keyed by the ticket id, so retries and double taps are safe.',
+          focus: v => [v.c.pay],
+          async run(s, v) {
+            await s.bounce('pay', 'lotsvc', 'timeout', AMBER);
+            await s.send(['lotsvc', 'pay'], 'retry · TK-501', AMBER);
+            await s.flash(770, 175, 'key exists → same result', ok, 700);
+            say(s, v, 'pay', 'TK-501 PAID ✓ (once)', GREEN);
+            await put(s, v, 'TK-501', K('TK-501', P1, 'PAID', '₹130'), 'FREE', 'tk');
+          },
+        },
+        {
+          title: 'Close the ticket, free the spot, open the gate',
+          text: 'One transaction: `ticket PAID → CLOSED` (filter on `status: PAID`), `spot OCCUPIED → FREE` (filter on `ticketId: TK-501`), journal event. Then `ZADD free:7:L1:car 12 L1-C07` and `HINCRBY avail +1`. A duplicate "open gate" for TK-501 matches 0 and frees nothing twice.',
+          observe: 'C07 is FREE, the barrier lifts, the board shows 41.',
+          focus: v => [v.rows.C07, v.rows['TK-501'], v.c.brd],
+          async run(s, v) {
+            await s.send(['lotsvc', 'pdb'], 'close if PAID', GREEN);
+            await put(s, v, 'TK-501', K('TK-501', P1, 'CLOSED', '₹130'), 'DONE', 'tk');
+            await put(s, v, 'C07', S('L1-C07', 'car', 'FREE', '12 m'), 'FREE');
+            await s.send(['lotsvc', 'redis'], 'ZADD C07', GREEN);
+            await Promise.all([s.send(['lotsvc', 'exit'], 'open', GREEN), s.send(['lotsvc', 'board'], 'car 41', TEAL, { pulse: false })]);
+            say(s, v, 'ex', 'barrier up ✓', GREEN); say(s, v, 'brd', 'L1 car 41 · bike 30', TEAL); say(s, v, 'lot', 'free L1·car: 41', GREEN);
+          },
+        },
+        {
+          title: 'Rewind: the provider is down',
+          text: 'Next car, `KA05-7781`, owes ₹70 and the provider times out 5 times in a row: the **Resilience4j circuit breaker** opens and payments fail fast. Fallback: open the barrier and record **DUE ₹70 against the plate** (collected by FASTag / app link / next visit), or offer cash / UPI QR at the terminal. A queue of cars on the street is worse than a few unpaid tickets.',
+          observe: 'The gate opens; the ticket is DUE, not lost.',
+          say: 'If payment is down, we fail open with a debt against the plate rather than trapping cars.',
+          focus: v => [v.n.psp, v.rows['TK-502']],
+          async run(s, v) {
+            say(s, v, 'ex', `${P2} · ₹70`, BLUE);
+            s.tone(v.n.psp, 'fail'); say(s, v, 'psp', 'timeouts ✕', RED);
+            await s.send(['exit', 'lotsvc', 'pay'], '₹70 · TK-502', PURPLE);
+            await s.bounce('pay', 'psp', 'charge', RED);
+            say(s, v, 'pay', 'breaker OPEN → pay later', AMBER);
+            await put(s, v, 'TK-502', K('TK-502', P2, 'DUE', '₹70'), 'RES', 'tk');
+            await s.send(['lotsvc', 'exit'], 'open', GREEN);
+            say(s, v, 'ex', 'barrier up · DUE', AMBER);
+          },
+        },
+      ],
+    },
+    {
+      id: 'live', title: 'Live availability', sub: 'counters · events · eventual', color: TEAL,
+      build: (s, v) => setup(s, v, { spots: L1, tkTitle: 'EVENTS · lot 7 → cloud', clock: '17:58', lot: 'free L1·car: 3', brd: 'L1 car 3 · bike 30', app: 'app: lot 7 car 3', city: 'lot 7 car 3 · #810', drv: 'searching near MG Rd' }),
+      takeaway: 'Two kinds of availability: **inside the lot** (boards) must be exact and come from the lot\'s own Redis counters; **in the app** it is **eventually consistent**: lot events with a per-lot `seq` flow through Kafka to the App API, which pushes **bands** ("few left", "full") rather than promises. Only a **reservation** guarantees a spot.',
+      steps: [
+        {
+          title: 'Counters change with every claim',
+          text: 'The atomic pop and the counter change run in one Lua script: `ZPOPMIN free:7:L1:car` + `HINCRBY avail:7:L1 car -1`. Counters per floor **and** type are what boards and the app show; nobody counts spot documents on a read.',
+          observe: 'L1 car: 3 → 2.',
+          focus: v => [v.n.redis, v.c.lot],
+          async run(s, v) {
+            await s.send(['entry', 'lotsvc'], 'enter car', BLUE);
+            await s.send(['lotsvc', 'redis'], 'pop + HINCRBY -1', BLUE);
+            await put(s, v, 'C07', S('L1-C07', 'car', 'OCCUPIED', 'TK601'), 'OCC');
+            say(s, v, 'lot', 'free L1·car: 2', BLUE);
+          },
+        },
+        {
+          title: 'Floor boards update on the LAN',
+          text: 'The lot server pushes the new numbers to the boards directly; no internet involved. The board at the ramp shows **"L1 car 2"**, and at 0 it switches to "L1 FULL → L2" so cars stop circling.',
+          observe: 'The board shows 2 within a second.',
+          focus: v => [v.n.board, v.c.brd],
+          async run(s, v) {
+            await s.send(['lotsvc', 'board'], 'L1 car 2', TEAL);
+            say(s, v, 'brd', 'L1 car 2 · bike 30', TEAL);
+          },
+        },
+        {
+          title: 'The event goes up to the cloud',
+          text: 'The lot journal ships `{ lotId: 7, seq: 811, type: entered, free: { car: 2 } }` to Kafka with **key = lotId**. The App API updates its cached counter (Redis in the cloud) and the City DB stores the latest per lot, applying an event only if `seq > lastSeq`.',
+          observe: 'The cloud shows car 2 for lot 7.',
+          say: 'Lot events with a per-lot sequence number feed the cloud counters; old or duplicate events are ignored.',
+          focus: v => [v.n.kafka, v.c.city],
+          async run(s, v) {
+            await log(s, v, J('#811', 'entered · car 2'));
+            await s.send(['lotsvc', 'kafka'], '#811 car 2', TEAL);
+            await Promise.all([s.send(['kafka', 'api'], '#811', TEAL), s.send(['kafka', 'city'], '#811', TEAL, { pulse: false })]);
+            say(s, v, 'city', 'lot 7 car 2 · #811', TEAL);
+          },
+        },
+        {
+          title: 'Push bands to the app, not every change',
+          text: 'Drivers subscribed to lots near them get a push only when the **band** changes ("10+", "few left", "full"), at most every few seconds per lot. That keeps 100 k phones from receiving every single entry, and avoids promising "2 free" that will be gone in a minute.',
+          observe: 'The app shows "lot 7: few left".',
+          focus: v => [v.n.driver, v.c.app],
+          async run(s, v) {
+            await s.send(['api', 'driver'], 'lot 7: few left', TEAL);
+            say(s, v, 'app', 'app: lot 7 few left', AMBER); say(s, v, 'drv', 'heading to lot 7', BLUE);
+          },
+        },
+        {
+          title: 'Eventual: the spots are gone on arrival',
+          text: 'In the 6 minutes the driver needs, two cars take the last spots. At the gate the lot server is the truth: **L1 car 0**, the gate screen says "Full: L2 has 14", and the app is pushed **"full"**. The app number was a hint; a guarantee needs a reservation (next flow).',
+          observe: 'Lot full at arrival; the gate redirects.',
+          say: 'App availability is eventually consistent and shown as bands; only a reservation guarantees a spot.',
+          focus: v => [v.c.brd, v.c.ent],
+          async run(s, v) {
+            tick(s, v, '18:04');
+            await put(s, v, 'C08', S('L1-C08', 'car', 'OCCUPIED', 'TK602'), 'OCC');
+            await put(s, v, 'C12', S('L1-C12', 'car', 'OCCUPIED', 'TK603'), 'OCC');
+            say(s, v, 'lot', 'free L1·car: 0', RED); say(s, v, 'brd', 'L1 FULL → L2: 14', RED);
+            await s.send(['driver', 'entry', 'lotsvc'], 'enter car', BLUE);
+            await s.send(['lotsvc', 'entry'], 'L2 · C31', AMBER);
+            say(s, v, 'ent', 'L1 full → L2-C31', AMBER);
+          },
+        },
+        {
+          title: 'Late, duplicate or drifting counters',
+          text: 'A Kafka redelivery brings #811 again: `seq 811 ≤ last 813` → ignored. Counters can still drift (a manual gate opening, a sensor glitch), so every minute the lot server **recounts** from the Lot DB and sends a snapshot event that overwrites the cloud value.',
+          observe: 'The duplicate is ignored; the snapshot resets the truth.',
+          focus: v => [v.c.city, v.tk],
+          async run(s, v) {
+            await log(s, v, J('#813', 'entered · car 0'));
+            say(s, v, 'city', 'lot 7 car 0 · #813', TEAL);
+            await s.send(['kafka', 'city'], '#811 again', AMBER);
+            await s.flash(770, 175, '811 ≤ 813 → skip', ok, 700);
+            await log(s, v, J('#814', 'snapshot car 0'), 'FREE');
+            await s.send(['lotsvc', 'kafka', 'city'], 'snapshot #814', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'reserve', title: 'Reserve a spot', sub: 'quota CAS · hold TTL · no-show', color: AMBER,
+      build: (s, v) => setup(s, v, { spots: [['C02', S('L1-C02', 'car', 'FREE', '6 m'), 'FREE'], ...L1.slice(0, 2)], tkTitle: 'RESERVATIONS · lot 7', clock: '14:00', drv: `${P1} · app`, city: 'lot 7 · 18:00 booked 19/20', app: 'app: book lot 7' }),
+      takeaway: 'Reservations work like **seat holds** (03 Ticket Booking): a conditional increment on a per-slot **quota** (`booked < 20`), a **HELD** status with `holdUntil` while the driver pays, then CONFIRMED. The lot receives it through Kafka and turns one spot **RESERVED** shortly before arrival; ANPR matches the plate. A **grace-period timer** releases no-shows with a conditional update.',
+      steps: [
+        {
+          title: 'Book 18:00–20:00 at lot 7',
+          text: 'Lot 7 sells at most **20 of its 200 car spots** for any slot, so walk-in traffic still has room. `POST /reservations { lot: 7, type: car, from: 18:00, to: 20:00, plate }` → the City DB does `updateOne({ lotId: 7, slot: "18:00", type: "car", booked: { $lt: 20 } }, { $inc: { booked: 1 } })`.',
+          observe: 'Matched 1: 20/20 for that slot.',
+          say: 'Booking is a conditional increment on a quota, so the lot is never oversold.',
+          focus: v => [v.n.city, v.c.city],
+          async run(s, v) {
+            await s.send(['driver', 'api', 'city'], 'book 18:00 car', AMBER);
+            say(s, v, 'city', 'lot 7 · 18:00 booked 20/20', AMBER);
+          },
+        },
+        {
+          title: 'HELD for 10 minutes while paying',
+          text: 'The reservation `RES-88 { status: HELD, holdUntil: 14:10 }` is created with the quota increment in one transaction. The driver pays the ₹50 booking fee (idempotency key = RES-88). Another driver now sees "18:00 sold out" and gets a 409.',
+          observe: 'RES-88 is HELD until 14:10.',
+          focus: v => [v.rows['RES-88']],
+          async run(s, v) {
+            await put(s, v, 'RES-88', K('RES-88', P1, 'HELD', '6pm'), 'RES', 'tk');
+            await s.send(['api', 'driver'], 'pay ₹50 by 14:10', AMBER);
+            say(s, v, 'drv', 'paying booking fee', AMBER);
+          },
+        },
+        {
+          title: 'Paid → CONFIRMED; an abandoned hold expires',
+          text: 'Payment succeeds: `RES-88 HELD → CONFIRMED` (filter on `status: HELD`). A second driver\'s hold **RES-91** is never paid: at 14:12 the sweeper runs `updateOne({ _id: "RES-91", status: "HELD", holdUntil: { $lt: now } }, { status: EXPIRED })` and gives the quota back with `$inc: { booked: -1 }`.',
+          observe: 'RES-88 CONFIRMED; RES-91 EXPIRED, slot back to 19/20.',
+          say: 'Holds have a TTL; an expired hold is released with a conditional update that also returns the quota.',
+          focus: v => [v.rows['RES-88'], v.rows['RES-91']],
+          async run(s, v) {
+            await s.send(['driver', 'api', 'city'], 'paid RES-88', GREEN);
+            await put(s, v, 'RES-88', K('RES-88', P1, 'CONF', '6pm'), 'FREE', 'tk');
+            await put(s, v, 'RES-91', K('RES-91', P2, 'HELD', '6pm'), 'RES', 'tk');
+            tick(s, v, '14:12');
+            await s.flash(770, 175, 'RES-91 hold expired', warn, 600);
+            await put(s, v, 'RES-91', K('RES-91', P2, 'EXPIRD', '6pm'), 'DONE', 'tk');
+            say(s, v, 'city', 'lot 7 · 18:00 booked 19/20', TEAL);
+          },
+        },
+        {
+          title: 'The lot sets one spot aside',
+          text: 'The confirmation reaches lot 7 through Kafka (`lot-7` commands, key lotId) and is stored locally, so it survives a WAN outage. At **17:45** the lot server moves the nearest car spot, **L1-C02**, from the free set to `RESERVED { resId: RES-88 }` and the board count drops by one.',
+          observe: 'L1-C02 is RESERVED for RES-88.',
+          focus: v => [v.rows.C02, v.c.brd],
+          async run(s, v) {
+            await s.send(['api', 'kafka', 'lotsvc'], 'RES-88 18:00', AMBER);
+            tick(s, v, '17:45');
+            await s.send(['lotsvc', 'redis'], 'ZREM C02', AMBER);
+            await s.send(['lotsvc', 'pdb'], 'C02 FREE→RESERVED', AMBER);
+            await put(s, v, 'C02', S('L1-C02', 'car', 'RESERVED', 'R88'), 'RES');
+            say(s, v, 'brd', 'L1 car 40 · bike 30', TEAL);
+          },
+        },
+        {
+          title: '18:05: the plate matches the reservation',
+          text: 'ANPR reads `KA01-1234` → the lot server finds a reservation for that plate and slot → claims `{ _id: "L1-C02", state: "RESERVED", resId: "RES-88" } → OCCUPIED`. Same CAS pattern as a walk-in, only the expected state differs.',
+          observe: 'RES-88 parks in L1-C02.',
+          focus: v => [v.rows.C02, v.n.entry],
+          async run(s, v) {
+            tick(s, v, '18:05');
+            await s.send(['driver', 'entry', 'lotsvc'], `${P1}`, BLUE);
+            await s.send(['lotsvc', 'pdb'], 'C02 RES→OCC', BLUE);
+            await put(s, v, 'C02', S('L1-C02', 'car', 'OCCUPIED', 'R88'), 'OCC');
+            await put(s, v, 'RES-88', K('RES-88', P1, 'USED', 'C02'), 'DONE', 'tk');
+            await s.send(['lotsvc', 'entry'], 'open → L1-C02', GREEN);
+          },
+        },
+        {
+          title: 'Rewind: a no-show',
+          text: 'If the car had not come by **18:15** (grace period), a timer runs `updateOne({ _id: "L1-C02", state: "RESERVED", resId: "RES-88" }, { state: FREE })`, `ZADD` puts C02 back, RES-88 becomes **NO_SHOW** and the booking fee is kept. If the car arrived at 18:14:59, the filter matches 0 and the timer does nothing.',
+          observe: 'C02 is FREE again; the fee covers the no-show.',
+          say: 'No-shows are released by a timer that checks the state on fire.',
+          focus: v => [v.rows.C02, v.rows['RES-88']],
+          async run(s, v) {
+            await put(s, v, 'C02', S('L1-C02', 'car', 'RESERVED', 'R88'), 'RES');
+            await put(s, v, 'RES-88', K('RES-88', P1, 'CONF', '6pm'), 'FREE', 'tk');
+            tick(s, v, '18:15');
+            await s.send(['lotsvc', 'pdb'], 'free if RESERVED', GREY);
+            await put(s, v, 'C02', S('L1-C02', 'car', 'FREE', '6 m'), 'FREE');
+            await s.send(['lotsvc', 'redis'], 'ZADD C02', GREEN);
+            await put(s, v, 'RES-88', K('RES-88', P1, 'NOSHOW', 'fee'), 'BAD', 'tk');
+          },
+        },
+      ],
+    },
+    {
+      id: 'scale', title: 'Many lots, offline edge', sub: 'shard by lotId · journal · resync', color: RED,
+      build: (s, v) => setup(s, v, { spots: L1, tkTitle: 'JOURNAL · lot 7 (local)', clock: '10:00', city: 'lots 1–500 · online', app: 'app: lot 7 car 41' }),
+      takeaway: 'Each lot is its own small system: a **lot server** with a local DB and Redis owns allocation, so gates never wait on the WAN. The cloud is sharded by **lotId** (City DB shard key, Kafka key). When the link drops, events go to a **local journal** with a per-lot `seq` and are shipped in order later; consumers upsert idempotently by `(lotId, seq)`. The cloud stops selling reservations for a lot it cannot hear from.',
+      steps: [
+        {
+          title: '500 lots, each owns its spots',
+          text: 'A spot belongs to exactly one lot, and every operation on it happens in that lot. So the **lot is the unit of consistency**: no cross-lot transactions. In the cloud, `lotId` is the shard key of the City DB and the Kafka key, so one lot\'s data and events stay together and in order.',
+          observe: 'Lot 7 events go to one partition and one shard.',
+          say: 'The lot is the unit of consistency; the cloud is sharded by lot id.',
+          focus: v => [v.n.city, v.n.kafka],
+          async run(s, v) {
+            await log(s, v, J('#901', 'entered C07'), 'FREE');
+            await s.send(['lotsvc', 'kafka', 'city'], 'lot 7 · #901', TEAL);
+            say(s, v, 'city', 'lot 7 → shard 3 · #901', TEAL);
+          },
+        },
+        {
+          title: 'The internet link drops',
+          text: 'The fibre to lot 7 is cut. The lot server notices failed publishes and switches to **offline mode**: entries and exits keep using the local Redis and Lot DB; boards keep updating on the LAN. Events are written to the local **journal** (same transaction as the change) with seq **#902, #903, …** and marked unshipped.',
+          observe: 'Cars still enter; events pile up locally.',
+          say: 'The lot works offline: allocation is local and events wait in a local journal.',
+          focus: v => [v.n.lotsvc, v.tk],
+          async run(s, v) {
+            s.tone(v.n.kafka, 'fail'); say(s, v, 'lot', 'WAN down · offline mode', RED);
+            await s.bounce('lotsvc', 'kafka', '#902', RED);
+            await s.send(['entry', 'lotsvc', 'pdb'], 'enter car', BLUE, { ms: 420 });
+            await put(s, v, 'C08', S('L1-C08', 'car', 'OCCUPIED', 'TK902'), 'OCC');
+            await log(s, v, J('#902', 'entered C08 ✕'), 'RES');
+            await log(s, v, J('#903', 'exited C07 ✕'), 'RES');
+            await s.send(['lotsvc', 'board'], 'car 41', TEAL);
+          },
+        },
+        {
+          title: 'Payments while offline',
+          text: 'Card and UPI need the internet. A **4G backup link** carries payment traffic first (small, critical); if that is down too, exits use **pay later against the plate** or cash, exactly like the provider-down fallback. Tickets are marked `DUE` and settled when the link returns.',
+          observe: 'Exits are not blocked by the outage.',
+          focus: v => [v.n.pay, v.n.exit],
+          async run(s, v) {
+            await s.send(['exit', 'lotsvc'], 'exit TK-899', BLUE);
+            await s.bounce('lotsvc', 'pay', '₹40', AMBER);
+            await s.flash(295, 330, '4G backup / pay later', warn, 700);
+            await log(s, v, J('#904', 'exit DUE ₹40 ✕'), 'RES');
+            say(s, v, 'ex', 'barrier up · DUE', AMBER);
+          },
+        },
+        {
+          title: 'The cloud marks lot 7 as stale',
+          text: 'The App API has not heard a heartbeat from lot 7 for 2 minutes: the app shows lot 7 as **"availability unknown"** and the reservation service **stops selling** new bookings for it (it cannot know if the lot filled up). Bookings already confirmed are in the lot\'s local copy and still honoured.',
+          observe: 'App: lot 7 unknown; new bookings paused.',
+          focus: v => [v.c.app, v.c.city],
+          async run(s, v) {
+            say(s, v, 'city', 'lot 7 · no heartbeat 2m', RED);
+            await s.send(['city', 'api'], 'lot 7 stale', AMBER);
+            say(s, v, 'app', 'app: lot 7 unknown', AMBER);
+          },
+        },
+        {
+          title: 'Link back: ship the journal in order',
+          text: 'The relay ships #902, #903, #904 in seq order to Kafka (key 7). Consumers **upsert by (lotId, seq)**, so anything re-sent after a partial ship is ignored. The lot ends with a **snapshot** of counters; the cloud is exact again and reservations reopen.',
+          observe: 'Journal shipped; lot 7 is live again.',
+          say: 'On reconnect the journal is replayed in order and consumers are idempotent by lot and sequence.',
+          focus: v => [v.tk, v.c.city],
+          async run(s, v) {
+            s.tone(v.n.kafka, null); say(s, v, 'lot', 'online · shipping', GREEN);
+            await s.send(['lotsvc', 'kafka', 'city'], '#902 #903 #904', TEAL);
+            for (const r of v.tk.rows) { r.label.textContent = r.label.textContent.replace('✕', '✓'); s.paintRow(r, ST.FREE); }
+            await log(s, v, J('#905', 'snapshot car 40'), 'FREE');
+            say(s, v, 'city', 'lot 7 → shard 3 · #905', GREEN); say(s, v, 'app', 'app: lot 7 car 40', TEAL);
+          },
+        },
+        {
+          title: 'The lot server itself dies',
+          text: 'The lot runs an **active / standby pair** with a replicated Lot DB; the standby takes over the gate API address in seconds and rebuilds Redis from the DB (the reconciler from flow 2). If both die, the gate controllers fall back to **QR tickets + barrier-up mode**; the tickets are entered when the server returns.',
+          observe: 'Standby takes over; gates keep working.',
+          focus: v => [v.n.lotsvc],
+          async run(s, v) {
+            s.tone(v.n.lotsvc, 'fail'); s.setSub(v.n.lotsvc, 'active down', RED);
+            await s.wait(600);
+            s.tone(v.n.lotsvc, 'ok'); s.setSub(v.n.lotsvc, 'standby active', GREEN);
+            await s.send(['lotsvc', 'pdb'], 'rebuild index', TEAL);
+            await s.send(['lotsvc', 'redis'], 'ZADD free sets', TEAL);
+            say(s, v, 'lot', 'standby · index rebuilt', GREEN);
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'LLD or HLD? One lot or a city? Which vehicles?',
+      lines: [
+        ['I', 'Design a parking lot.'],
+        ['C', 'Should I focus on the object model and code for one lot (LLD), or the system for many lots with an app (HLD)? I can start with the classes and then scale out.'],
+        ['I', 'Start with the model, then the system.'],
+        ['C', 'Vehicle types: bike, car, truck? Multiple floors and gates? How is the fee computed: hourly slabs?'],
+        ['I', 'Yes to all; hourly with a daily cap.'],
+        ['C', 'Do we need an app with live availability and reservations, and plate recognition at the gates?'],
+        ['P', 'Write: sizes + floors + gates · nearest-fit allocation · tickets · pricing · payment at exit · boards + app · reservations · many lots, works offline.'],
+      ],
+      avoid: 'Drawing microservices before agreeing whether the interviewer wants a class diagram.',
+    },
+    {
+      t: 'Estimate the scale', min: 3, goal: 'Per lot it is tiny; the city adds reads.',
+      lines: [
+        ['C', 'One lot: 2,000 spots, ~6,000 entries a day, peaks of ~10 cars/minute per gate. That fits on one small server.'],
+        ['C', 'City: 500 lots, 200 k spots, ~3 M entries a day ≈ 35 events/s, peaks a few hundred/s.'],
+        ['C', 'App: 1 M users, availability reads dominate; push bands rather than every change.'],
+        ['P', 'The hard parts are correctness at the gate and working offline, not throughput.'],
+      ],
+    },
+    {
+      t: 'LLD: classes & patterns', min: 10, goal: 'Entities, enums, two strategies, a thread-safe allocate.',
+      lines: [
+        ['C', '`ParkingLot` has `Floor`s and `Gate`s; a `Floor` has `ParkingSpot`s, each with a `SpotSize` (BIKE, CAR, LARGE) and a `SpotState` (FREE, RESERVED, OCCUPIED).'],
+        ['C', '`Vehicle` is a sealed interface: `Bike`, `Car`, `Truck`, each knows which spot sizes it fits.'],
+        ['C', '`Ticket` (plate, spot, entry time, status) and `Payment`. `EntryGate` / `ExitGate` call the lot.'],
+        ['C', '**Strategy pattern** twice: `SpotAllocationStrategy` (nearest-to-gate, fill-lowest-floor, EV-first) and `PricingStrategy` (hourly slab, flat event rate, weekend).'],
+        ['C', '`allocate()` is thread-safe: free spots per size in a `ConcurrentSkipListSet` sorted by distance, `pollFirst()` is atomic, and the spot\'s state flips with a CAS.'],
+        ['I', 'Where would you put the singleton?'],
+        ['C', 'I\'d avoid a static singleton: one `ParkingLot` bean per lot, injected by Spring, so tests can create several.'],
+      ],
+      avoid: 'God classes (`ParkingLot` doing pricing, payment and display) or a `synchronized` on the whole lot.',
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Lot server at the edge, cloud for the city.',
+      lines: [
+        ['P', 'Draw: gates → lot server (Redis free sets + Lot DB) → boards; journal → Kafka → App API + City DB; exit → payment → provider.'],
+        ['C', 'Each lot has a lot server so gates never depend on the internet. Redis gives the nearest free spot with an atomic pop; the DB claim is a conditional update.'],
+        ['C', 'Every change writes a journal event; it goes to Kafka keyed by lot id and updates the app counters and the City DB.'],
+        ['C', 'API: `POST /entries`, `POST /exits`, `POST /payments` (key = ticket id), `GET /lots?near=`, `POST /reservations`.'],
+        ['I', 'Why not run everything in the cloud?'],
+        ['C', 'A WAN outage would close every barrier in the city. The lot is the natural unit of consistency, so it runs locally.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Race, exit idempotency, availability, reservations, offline.',
+      lines: [
+        ['I', 'Two gates allocate the same spot.'],
+        ['C', 'Atomic pop from a per-floor sorted set, and the DB update only matches if the spot is still FREE; the loser takes the next one.'],
+        ['I', 'The payment times out and the driver taps again.'],
+        ['C', 'Idempotency key = ticket id; closing is PAID → CLOSED, freeing is conditional on the ticket id.'],
+        ['I', 'The app said 3 free, the lot is full on arrival.'],
+        ['C', 'App availability is eventual and shown as bands; reservations are the guarantee, with a quota CAS and a hold TTL.'],
+        ['I', 'The lot loses its internet.'],
+        ['C', 'Local allocation keeps running, events go to a journal with a sequence, payments fall back to pay-later, the cloud stops selling bookings for that lot.'],
+      ],
+      avoid: 'Distributed locks across the city for a spot that only one lot can ever touch.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: strategy-based allocation, CAS claims with an atomic pop, spot state machine, idempotent exit, eventual app counters, reservations with holds, offline-first lot servers, cloud sharded by lot id.'],
+        ['C', 'Next: EV charging spots, monthly passes, dynamic pricing by occupancy, FASTag at the gate, fraud (plate swaps), analytics from the event stream.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): 1–2 minutes, pause between paragraphs
+    summary: [
+      "I'd start with the object model, because a parking lot is usually an LLD question first. A **ParkingLot** has floors and gates; each floor has **ParkingSpots** with a size, small, medium or large, and a state: free, reserved or occupied. **Vehicle** is a small hierarchy, bike, car and truck, and each one knows which spot sizes it fits. A **Ticket** links a plate to a spot with the entry time, and at the exit a **Payment** closes it.",
+      "The two parts that change are behaviour, so I'd use the **Strategy pattern** for both: a **SpotAllocationStrategy**, for example nearest to the entry gate, and a **PricingStrategy**, for example hourly slabs with a daily cap. The tricky bit is that several gates allocate at the same time. In one JVM I'd keep free spots per size in a `ConcurrentSkipListSet` sorted by distance, where `pollFirst` is atomic, and flip the spot's state with a compare-and-set, so two cars can never get the same spot.",
+      "For the real system, each lot runs a small **lot server** at the edge, so the barriers never depend on the internet. It keeps one **Redis** sorted set per floor and size, and `ZPOPMIN` hands out the nearest spot atomically. The MongoDB update only succeeds if the spot is still FREE, so even a stale Redis entry can't double-book. At the exit, the fee comes from the pricing strategy and the payment uses the **ticket id as the idempotency key**, so retries never charge twice; if the provider is down, a circuit breaker lets the car out with a pay-later record.",
+      "Every change is written to a local journal and shipped to **Kafka**, keyed by lot id. That feeds the app's availability, which is eventually consistent, so I show bands like \"few left\" instead of exact numbers, and a city database sharded by lot id. **Reservations** work like seat holds: a conditional increment on a quota, a ten-minute hold while paying, and a no-show timer that frees the spot only if it is still reserved. If the lot loses its connection, it keeps running and replays the journal in order when it's back.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> floors, gates, spot sizes; allocate the nearest fitting spot; tickets by plate; fee by vehicle type and time; pay at exit; boards + app availability; reservations; many lots.</li>
+        <li><b>Non-functional:</b> one car per spot; charge once; barrier decision &lt; 2 s; each lot works offline; app numbers may lag a few seconds.</li>
+        <li><b>Reuses:</b> holds from <a href="03_Ticket_Booking.html">3 · Ticket Booking</a>, payments + outbox from <a href="05_Ecommerce_Order.html">5 · E-commerce</a>, push via <a href="04_Notification_System.html">4 · Notification</a>, app rate limits from <a href="02_Rate_Limiter.html">2 · Rate Limiter</a>.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>One lot</td><td class="m">2,000 spots</td><td>~6 k entries/day; one small server</td></tr>
+        <tr><td>City</td><td class="m">500 lots</td><td>200 k spots, ~3 M entries/day ≈ 35/s</td></tr>
+        <tr><td>Events</td><td class="m">~4 per visit</td><td>enter, claim, pay, exit → a few hundred/s peak</td></tr>
+        <tr><td>App</td><td class="m">1 M users</td><td>read-heavy; push band changes only</td></tr></table>` },
+      { h: '3 · LLD classes', color: '#c47d1e', html: `<pre>ParkingLot ─ floors: List&lt;Floor&gt;, gates: List&lt;Gate&gt;
+  ├─ allocation: SpotAllocationStrategy   (Strategy)
+  └─ pricing:    PricingStrategy          (Strategy)
+Floor ─ spots: Map&lt;SpotSize, Set&lt;ParkingSpot&gt;&gt;
+ParkingSpot ─ id, size, distance, state (CAS)
+Vehicle (sealed) ─ Bike · Car · Truck → fits()
+Ticket ─ id, plate, spot, entryAt, status
+Gate ─ EntryGate · ExitGate      Payment ─ key = ticketId</pre>` },
+      { h: '4 · Spot & ticket states', color: '#8f4fc4', html: `<ol>
+        <li><b>Spot FREE</b> → OCCUPIED (walk-in claim, CAS on FREE)</li>
+        <li><b>FREE</b> → RESERVED (booking, ~15 min before) → OCCUPIED (plate matches) or → FREE (no-show timer)</li>
+        <li><b>OCCUPIED</b> → FREE (exit, conditional on ticketId)</li>
+        <li><b>Ticket</b> OPEN → PAYING → PAID → CLOSED, or → DUE (pay later)</li>
+        <li><b>Reservation</b> HELD → CONFIRMED → USED / NO_SHOW, or HELD → EXPIRED</li></ol>` },
+      { h: '5 · API & data', color: '#2f6fe0', html: `<pre>POST /entries   { plate, type, gate } → { ticketId, spot }
+POST /exits     { plate } → { ticketId, fee }
+POST /payments  { key: ticketId, amount } (idempotent)
+GET  /lots?near=lat,lng → bands per type
+POST /reservations { lotId, type, from, to, plate }
+
+// Redis   free:{lot}:{floor}:{size}  ZSET spot → metres
+//         avail:{lot}:{floor}        HASH size → free
+// spots   { _id, size, state, ticketId, resId, version }
+// tickets { _id, plate, spot, entryAt, fee, status }</pre>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>Claims are conditional updates; Redis is an index rebuilt from the DB by a reconciler.</li>
+        <li>Payment key = ticket id; close + free are conditional, so a replayed exit does nothing.</li>
+        <li>Circuit breaker on the provider → pay later against the plate; never trap a car.</li>
+        <li>Lot server pair (active / standby); offline journal with per-lot seq, idempotent consumers.</li>
+        <li>Hold TTLs and no-show timers check the state on fire.</li></ul>` },
+    ],
+    decisions: [
+      ['Lot server at the edge, cloud for the city', 'Barriers work through WAN outages; fast local decisions.', 'Hardware per lot; two copies of data to reconcile.'],
+      ['Redis sorted set per floor + size (ZPOPMIN)', 'Nearest spot in O(log n), handed out exactly once.', 'An index to keep in sync; leaks need a reconciler.'],
+      ['Conditional update on spot state', 'The DB guarantees one car per spot even if Redis is stale.', 'Losers retry the next candidate.'],
+      ['Strategy pattern for allocation and pricing', 'New tariffs or EV-first allocation without touching gates.', 'More classes for a simple default.'],
+      ['Idempotency key = ticket id', 'Retries and double taps never charge twice.', 'Needs a payment record + status lookup with the provider.'],
+      ['Fail open with pay-later when payment is down', 'No queue of trapped cars.', 'Some revenue collected late or lost.'],
+      ['Eventual app availability, shown as bands', 'Cheap fan-out; no false promises of "2 free".', 'Drivers may still find a lot full; reservations fix that.'],
+    ],
+    code: [
+      { t: 'LLD model: vehicles, spots, two strategies', code: `public enum SpotSize { BIKE, CAR, LARGE }
+public enum SpotState { FREE, RESERVED, OCCUPIED }
+
+public sealed interface Vehicle permits Bike, Car, Truck {
+  String plate();
+  List<SpotSize> fits();                                   // smallest first: may upsize, never downsize
+}
+public record Bike(String plate) implements Vehicle { public List<SpotSize> fits() { return List.of(SpotSize.BIKE, SpotSize.CAR); } }
+public record Car(String plate) implements Vehicle { public List<SpotSize> fits() { return List.of(SpotSize.CAR, SpotSize.LARGE); } }
+public record Truck(String plate) implements Vehicle { public List<SpotSize> fits() { return List.of(SpotSize.LARGE); } }
+
+public record Ticket(String id, String plate, String spotId, Instant entryAt) {}
+
+public interface SpotAllocationStrategy {                  // Strategy: nearest-to-gate, lowest-floor, EV-first
+  Optional<ParkingSpot> allocate(Vehicle v, Gate gate);
+  void release(ParkingSpot spot);
+}
+public interface PricingStrategy {                         // Strategy: hourly slab, event flat rate, weekend
+  long feeInPaise(Ticket t, Instant exitAt);
+}
+
+public final class HourlySlabPricing implements PricingStrategy {
+  public long feeInPaise(Ticket t, Instant exitAt) {
+    long hours = Math.max(1, (Duration.between(t.entryAt(), exitAt).toMinutes() + 59) / 60);  // round up
+    return Math.min(40_00 + (hours - 1) * 30_00, 300_00);  // ₹40 first hour, ₹30 after, ₹300 cap
+  }
+}` },
+      { t: 'Thread-safe allocate() in one JVM', code: `public final class ParkingSpot implements Comparable<ParkingSpot> {
+  private final String id; private final SpotSize size; private final int metres;
+  private final AtomicReference<SpotState> state = new AtomicReference<>(SpotState.FREE);
+
+  boolean tryOccupy()  { return state.compareAndSet(SpotState.FREE, SpotState.OCCUPIED); }
+  boolean tryFree()    { return state.compareAndSet(SpotState.OCCUPIED, SpotState.FREE); }
+  public int compareTo(ParkingSpot o) {                     // nearest first, id breaks ties
+    int c = Integer.compare(metres, o.metres); return c != 0 ? c : id.compareTo(o.id);
+  }
+  // getters …
+}
+
+public final class NearestToGateStrategy implements SpotAllocationStrategy {
+  // filled once at start-up, then only the sets change: safe to share between gate threads
+  private final Map<SpotSize, ConcurrentSkipListSet<ParkingSpot>> free = new EnumMap<>(SpotSize.class);
+
+  public Optional<ParkingSpot> allocate(Vehicle v, Gate gate) {
+    for (SpotSize size : v.fits()) {
+      ParkingSpot s;
+      while ((s = free.get(size).pollFirst()) != null) {    // atomic: each spot leaves the set once
+        if (s.tryOccupy()) return Optional.of(s);          // CAS FREE → OCCUPIED (skips RESERVED)
+      }
+    }
+    return Optional.empty();                               // full for this vehicle
+  }
+  public void release(ParkingSpot s) {
+    if (s.tryFree()) free.get(s.size()).add(s);            // a second release does nothing
+  }
+}` },
+      { t: 'Lot server: Redis atomic pop + Mongo CAS (Spring)', code: `@Transactional                                             // spot + ticket + journal: one Mongo txn
+public Ticket enter(String lotId, Vehicle v, String gate) {
+  for (String key : freeSetKeys(lotId, v, gate)) {         // free:7:L1:car, free:7:L2:car, …
+    ZSetOperations.TypedTuple<String> top;
+    while ((top = redis.opsForZSet().popMin(key)) != null) {   // ZPOPMIN: atomic in Redis
+      String spotId = top.getValue();
+      UpdateResult r = mongo.updateFirst(
+          query(where("_id").is(spotId).and("state").is("FREE")),
+          new Update().set("state", "OCCUPIED").set("plate", v.plate()).inc("version", 1),
+          Spot.class);
+      if (r.getModifiedCount() == 1) {                     // the DB is the truth
+        Ticket t = tickets.insert(Ticket.open(lotId, v, spotId, gate));
+        journal.append(lotId, "entered", t);               // shipped to Kafka (key = lotId)
+        redis.opsForHash().increment("avail:" + lotId + ":" + floorOf(spotId), sizeOf(v), -1);
+        return t;
+      }                                                    // stale entry: spot already taken, pop next
+    }
+  }
+  throw new LotFullException(lotId, v);                    // gate shows "full", barrier stays down
+}
+// If the txn rolls back after the pop, the reconciler re-adds FREE spots to the sets.` },
+      { t: 'Exit: fee, charge once, close conditionally', code: `@PostMapping("/exits")
+public ExitResult exit(@RequestBody ExitRequest req) {
+  Ticket t = tickets.findOpenByPlate(req.lotId(), req.plate()).orElseThrow(TicketNotFound::new);
+  long fee = pricing.forType(t.vehicleType()).feeInPaise(t, clock.instant());
+  PaymentResult p = payments.charge(t.id(), fee);          // idempotency key = ticket id
+  return p.ok() ? close(t, "PAID") : close(t, "DUE");      // DUE = pay later against the plate
+}
+
+@CircuitBreaker(name = "psp", fallbackMethod = "payLater")  // Resilience4j
+public PaymentResult charge(String ticketId, long fee) {
+  Payment pay = payments.findById(ticketId)                 // retry → same record, same answer
+      .orElseGet(() -> payments.insert(Payment.pending(ticketId, fee)));
+  return pay.isFinal() ? pay.result() : psp.charge(ticketId, fee);  // provider dedupes by key too
+}
+PaymentResult payLater(String ticketId, long fee, Throwable e) { return PaymentResult.deferred(ticketId); }
+
+ExitResult close(Ticket t, String how) {
+  Ticket closed = mongo.findAndModify(query(where("_id").is(t.id()).and("status").in("OPEN", "PAYING")),
+      new Update().set("status", how.equals("PAID") ? "CLOSED" : "DUE"), Ticket.class);
+  if (closed != null) spots.free(t.spotId(), t.id());      // OCCUPIED → FREE only for this ticket
+  return ExitResult.openGate(t.id());                       // replayed exit: nothing changes, gate opens
+}` },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    ld: { name: 'LLD & patterns', color: '#c47d1e' },
+    cc: { name: 'Concurrency', color: '#8f4fc4' },
+    px: { name: 'Exit & payments', color: '#348747' },
+    av: { name: 'Availability & booking', color: '#13968a' },
+    sc: { name: 'Scale & edge', color: '#2f6fe0' },
+  },
+  followups: [
+    { g: 'ld', q: 'Walk me through your classes.', what: 'ParkingLot, Floor, ParkingSpot (size + state), Vehicle hierarchy, Ticket, Gate, Payment.', why: 'Interviewers check responsibilities, not just names.', how: 'Lot owns floors and gates; spots know size, distance and state; vehicles know which sizes they fit; strategies decide allocation and pricing; gates only call the lot.', trade: 'Keep it small: no Address, no ParkingAttendant unless asked.', flow: 'entry' },
+    { g: 'ld', q: 'Which design patterns would you use?', what: 'Strategy for allocation and pricing; Factory for vehicles from the ANPR type; State (enum + allowed transitions) for spots and tickets; Observer for boards.', why: 'They match what actually varies: tariffs, allocation rules, displays.', how: 'Inject `SpotAllocationStrategy` and `PricingStrategy` as Spring beans; boards subscribe to spot events.', trade: 'Do not force Singleton: one bean per lot is enough.' },
+    { g: 'ld', q: 'How do you support a new vehicle type, like an EV that needs a charger?', what: 'EVs should get charger spots first.', why: 'Open/closed: adding a type should not edit every class.', how: 'Add `ElectricCar` to the sealed hierarchy with `fits()` = [EV_CAR, CAR]; add an EV-first allocation strategy; a pricing decorator adds kWh.', trade: 'The sealed interface means one compile-time change, by design.' },
+    { g: 'ld', q: 'How is the fee calculated, and how do you change tariffs?', what: 'Hourly slabs, daily cap, lost-ticket fee, event-day flat rate.', why: 'Tariffs change often and differ per lot.', how: '`PricingStrategy` per vehicle type and lot, config from the cloud; time rounding in one place; amounts in paise (long), never double.', trade: 'Strategies multiply; a rules table may be better for many tenants.', flow: 'exit' },
+    { g: 'cc', q: 'Two gates allocate at the same moment.', what: 'Both can get the same spot with find-then-save.', why: 'Check-then-act without atomicity.', how: 'Redis ZPOPMIN per floor + size hands each spot out once; the DB claim filters on `state: FREE`, loser takes the next spot.', trade: 'Two places to keep in sync; DB stays the truth.', flow: 'race' },
+    { g: 'cc', q: 'Why not synchronized or a lock on the lot?', what: 'Fine in the LLD (one JVM), wrong in production.', why: 'An active/standby pair and retries mean several processes; one global lock also serialises every gate.', how: 'Per-size concurrent sorted sets + CAS in the LLD; atomic store operations in the system.', trade: 'Lock-free code is harder to read; comment it.', flow: 'race' },
+    { g: 'cc', q: 'The server pops a spot from Redis and crashes.', what: 'The spot is in neither the free set nor occupied.', why: 'Redis and the DB are separate writes.', how: 'Reconciler on start-up and every minute: ZADD every spot that is FREE in the DB; boards recount from the DB too.', trade: 'A spot may be unavailable for up to a minute.', flow: 'race' },
+    { g: 'cc', q: 'Nearest spot differs per gate. How does one pop work?', what: 'Distance from G1 is not distance from G2.', why: 'One sorted set has one score.', how: 'One sorted set per gate per floor and size; a Lua script pops from the gate\'s set and ZREMs the spot from the other gates\' sets atomically.', trade: 'Memory × gates (tiny) and a Lua script to maintain.', flow: 'entry' },
+    { g: 'px', q: 'The payment times out and the driver taps again.', what: 'Risk of charging twice.', why: 'Timeouts do not tell you whether the charge happened.', how: 'Idempotency key = ticket id at our service and at the provider; retry returns the stored result or asks the provider for that key.', trade: 'Needs a payment record and status reconciliation (webhooks).', flow: 'exit' },
+    { g: 'px', q: 'The payment provider is down at 6 pm.', what: 'A queue of cars at the exit.', why: 'External dependency at the most critical point.', how: 'Circuit breaker → fail fast → pay later against the plate (DUE), cash or UPI QR; collect via app / FASTag / next visit.', trade: 'Some revenue is collected late or lost; repeat offenders blocked at entry.', flow: 'exit' },
+    { g: 'px', q: 'How do you make exit idempotent?', what: 'Gates retry "open" and ANPR may read the plate twice.', why: 'Freeing a spot twice inflates the free count.', how: 'Close is `status in (OPEN, PAYING) → CLOSED`; free is `OCCUPIED, ticketId = TK → FREE`; a replay matches 0.', trade: 'Every write carries its expected state.', flow: 'exit' },
+    { g: 'av', q: 'How do the boards and the app show free spots?', what: 'Counters per floor and type.', why: 'Counting documents on every read does not scale and lags.', how: 'Redis HINCRBY in the same script as the pop; boards fed locally; events with seq to the cloud, app gets band pushes.', trade: 'Counters drift → periodic recount snapshot.', flow: 'live' },
+    { g: 'av', q: 'The app said spots were free, but the lot is full on arrival.', what: 'App data is a few seconds to minutes old.', why: 'Eventual consistency + travel time.', how: 'Show bands ("few left"), redirect at the gate to another floor or nearby lot; offer reservations for a guarantee.', trade: 'Honesty over precision.', flow: 'live' },
+    { g: 'av', q: 'How do reservations avoid overbooking?', what: 'Two drivers book the last reservable spot.', why: 'Same race as seats in ticket booking.', how: 'Conditional `$inc booked` with `booked < quota` per lot, slot and type; HELD with holdUntil while paying; sweeper expires holds and returns quota.', trade: 'Quota keeps some spots unsellable to walk-ins.', flow: 'reserve' },
+    { g: 'av', q: 'A driver with a reservation does not come.', what: 'A spot is held empty.', why: 'Plans change.', how: 'Grace period timer: `RESERVED + resId → FREE` only if still reserved; keep the booking fee; late arrivals are treated as walk-ins.', trade: 'Grace too short annoys drivers; too long wastes spots.', flow: 'reserve' },
+    { g: 'sc', q: 'Why a server in every lot instead of only the cloud?', what: 'Barriers must work during internet outages.', why: 'A WAN outage would close every lot at once; gate latency must be < 2 s.', how: 'Lot server owns allocation with local Redis + DB; cloud only receives events and sends reservations.', trade: 'Hardware and deployment per lot; data reconciliation.', flow: 'scale' },
+    { g: 'sc', q: 'What happens to events while the lot is offline?', what: 'The cloud must eventually see everything.', why: 'Billing, reports and app counters depend on it.', how: 'Journal in the same transaction as the change, per-lot seq, shipped in order on reconnect; consumers upsert by (lotId, seq); snapshot at the end.', trade: 'Cloud is stale during the outage; bookings for that lot paused.', flow: 'scale' },
+    { g: 'sc', q: 'How do you shard data for 500 lots?', what: 'City DB, events and caches.', why: 'Lots are independent; queries are almost always per lot or by geo.', how: 'Shard key lotId (geo index on the small lots collection), Kafka key lotId, Redis keys prefixed by lot.', trade: 'City-wide reports go to a warehouse fed from Kafka.', flow: 'scale' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>
