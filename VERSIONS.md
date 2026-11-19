@@ -36,7 +36,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `core-components` | Core Components (watch first) | v2.3 | `03_System_Design/02_SD_Simulator/00_Core_Components.html` |
 | System Design | `fireflink-sd` | FireFlink System Design | v1.0 | `03_System_Design/FireFlink_System_Design.html` |
 | System Design | `fireflink-platform` | FireFlink Platform Architecture | archived v1 | `_archive/03_System_Design/01_FireFlink_Platform_Architecture_v1.html` |
-| System Design | `sd-simulator` | SD Interview Simulator (home) | v3.7 | `03_System_Design/02_SD_Interview_Simulator.html` |
+| System Design | `sd-simulator` | SD Interview Simulator (home) | v3.8 | `03_System_Design/02_SD_Interview_Simulator.html` |
 | System Design | `sd-url-shortener` | URL Shortener (TinyURL) | v2.2 | `03_System_Design/02_SD_Simulator/01_URL_Shortener.html` |
 | System Design | `sd-rate-limiter` | Rate Limiter | v2.0 | `03_System_Design/02_SD_Simulator/02_Rate_Limiter.html` |
 | System Design | `sd-notification` | Notification System | v2.0 | `03_System_Design/02_SD_Simulator/04_Notification_System.html` |
@@ -49,6 +49,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `sd-search` | Search System | v2.0 | `03_System_Design/02_SD_Simulator/10_Search_System.html` |
 | System Design | `sd-video` | Video Streaming | v2.0 | `03_System_Design/02_SD_Simulator/11_Video_Streaming.html` |
 | System Design | `sd-distributed-cache` | Distributed Cache | v2.0 | `03_System_Design/02_SD_Simulator/12_Distributed_Cache.html` |
+| System Design | `sd-support` | Customer Support Ticketing | v1.0 | `03_System_Design/02_SD_Simulator/13_Support_Ticketing.html` |
 | Interview Extras | `code-hub` | Coding Practice hub (22 problems) | v1.1 | `07_Interview/01_Coding/00_Coding_Practice.html` |
 | Interview Extras | `question-bank` | Interview Question Bank (concept-wise, company filter) | v1.0 | `07_Interview/02_Questions/00_Question_Bank.html` |
 | Interview Extras | `code-structures` | Data structures gallery (watch first) | v1.1 | `07_Interview/01_Coding/00_Structures_Gallery.html` |
@@ -251,7 +252,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v3.7 | 2026-11-12 | All 12 design cards open their own pages (Rate Limiter, Notification, E-commerce, Chat, Job Scheduler, News Feed, Search, Video Streaming, Distributed Cache rebuilt). | current file · tag `sd-simulator/v3.7` |
+| v3.8 | 2026-11-19 | + 13 · Customer Support Ticketing card (catalog entry; the "12 designs" chip text is unchanged). | current file · tag `sd-simulator/v3.8` |
+| v3.7 | 2026-11-12 | All 12 design cards open their own pages (Rate Limiter, Notification, E-commerce, Chat, Job Scheduler, News Feed, Search, Video Streaming, Distributed Cache rebuilt). | git tag `sd-simulator/v3.7` |
 | v3.6 | 2026-11-12 | Core Components card lists API gateway. | git tag `sd-simulator/v3.6` |
 | v3.5 | 2026-11-12 | Core Components card lists CDN and DB scaling. | git tag `sd-simulator/v3.5` |
 | v3.4 | 2026-11-02 | Core Components card lists Storage · S3. | git tag `sd-simulator/v3.4` |
@@ -358,6 +360,12 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 |---|---|---|---|
 | v2.0 | 2026-11-13 | Own page, 6 tabs: overview loop, 12 components (links to Core Components for Redis, DB), 6 flows (why consistent hashing: mod N vs hash ring + virtual nodes, cache-aside read + delete-on-write, stale-set race vs versioned values, eviction LRU/LFU + TTL jitter, node failure + replica promotion, hot key + stampede: single-flight, L1, key copies), how to explain, spoken interview answer, Java ring/Redis Lua code, 18 follow-ups. | current file · tag `sd-distributed-cache/v2.0` |
 | v1 | 2026-10-23 | Section of the all-in-one simulator. | `_archive/03_System_Design/02_SD_Interview_Simulator_v1.html#cache/1` · tag `sd-distributed-cache/v1` |
+
+**Customer Support Ticketing** · `sd-support`
+
+| Version | Date | What it has | Where |
+|---|---|---|---|
+| v1.0 | 2026-11-19 | New page, 6 tabs: overview loop, 12 components (links to Core Components for gateway, Redis, DB, Kafka, S3; to 4 Notification, 7 Chat, 8 Job Scheduler, 10 Search in the answer), 6 flows (email webhook → idempotent intake + transactional outbox + threading, two agents claim: read-then-write vs CAS on version, lifecycle state machine NEW → OPEN → PENDING → RESOLVED → CLOSED with reopen + follow-up, SLA timer: warn, breach → escalate, PENDING pause, check on fire, live updates: outbox → Kafka → WebSocket, versions, resync, offline email, multi-tenancy: tenant from JWT, search leak vs filtered alias, noisy tenant rate limits), how to explain, 4-paragraph spoken answer, Spring/Mongo/Kafka code, 18 follow-ups. | current file · tag `sd-support/v1.0` |
 
 ### Spring
 

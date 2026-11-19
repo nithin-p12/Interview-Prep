@@ -188,3 +188,6 @@ CHANGE LOG
             code font auto-fits code + inline values, return badge moved to the Visualize header, number-only chunk
             badges, input grows with its text. Gallery v1.1 (+ Intervals); 01/02/08 → v2.1; hub v1.1.
             Verified headless at 1365×650: every preset, every step, both modes + Remember it → 0 JS errors, 0 overflow.
+2026-11-19  Customer Support Ticketing page (13_Support_Ticketing.html, v1.0): intake + outbox, CAS claims, state machine,
+            SLA timers + escalation, live updates, tenant isolation. Hub v3.8 (catalog entry). Verified: static dry-run of
+            every flow + headless walk of every tab and flow step → 0 JS errors.

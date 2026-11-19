@@ -1,0 +1,967 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-support">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Customer Support Ticketing · System Design · v1.0</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// Customer support ticketing (Zendesk / Freshdesk). Taught HERE: ticket state machine, safe claim (CAS on version),
+// SLA timers + escalation, outbox events, live updates, tenant isolation.
+// Kafka, S3, DB scaling and gateway basics live in 00_Core_Components.html; timers reuse 08 Job Scheduler,
+// outbound mail reuses 04 Notification System, ticket search reuses 10 Search System (Elasticsearch).
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+const KEEP = '#d5d9dc';
+
+// Row colours for ticket documents and event (outbox + audit) entries.
+const ST = {
+  NEW: { fill: '#f3f6fe', stroke: BLUE, color: BLUE },
+  OPEN: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  PEND: { fill: '#faf6fd', stroke: PURPLE, color: PURPLE },
+  OK: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
+  DONE: { fill: '#f6f7fb', stroke: '#c9ced3', color: GREY },
+  LOG: { fill: '#f6f7fb', stroke: '#e3e6ee', color: '#203347' },
+  BAD: { fill: '#fff4f4', stroke: RED, color: RED },
+};
+// SVG collapses normal spaces, so pad with non-breaking ones to keep the monospace columns aligned.
+const pad = (str, n) => str.padEnd(n, ' ');
+const T = (id, status, rest = '') => `${pad(id, 6)}${pad(status, 9)}${rest}`;   // ticket row
+const E = (ver, rest) => `${pad(ver, 4)}${rest}`;                                // event row
+
+// State drawn next to the components: tickets, events (outbox + audit), clock, people, router queue, SLA timer.
+function setup(s, v, { tickets = [], events = [], clock = '09:58', cust = 'acme customer', a = 'online · cap 0/5', b = 'online · cap 0/5', q = 'billing queue: —', sla = 'timers: —' } = {}) {
+  v.clock = s.chip(222, 488, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
+  v.tk = s.store(885, 196, 205, 'TICKET DB · tickets', { color: TEAL });
+  v.ev = s.store(885, 366, 205, 'EVENTS · outbox + audit', { color: PURPLE });
+  v.rows = {};
+  tickets.forEach(([key, txt, st]) => { s.row(v.tk, txt, { ...ST[st], now: true }); v.rows[key] = v.tk.rows[v.tk.rows.length - 1]; });
+  events.forEach(([txt, st]) => s.row(v.ev, txt, { ...ST[st ?? 'LOG'], now: true }));
+  v.uc = s.chip(90, 134, cust, { color: GREY });
+  v.ua = s.chip(90, 314, a, { color: GREY });
+  v.ub = s.chip(90, 494, b, { color: GREY });
+  v.q = s.chip(770, 134, q, { color: GREY });
+  v.sl = s.chip(770, 314, sla, { mono: true, color: GREY });
+  return v;
+}
+// Add or update a ticket row.
+async function put(s, v, key, txt, st) {
+  const r = v.rows[key];
+  if (!r) { v.rows[key] = await s.row(v.tk, txt, ST[st]); return; }
+  r.label.textContent = txt;
+  s.paintRow(r, ST[st]);
+  await s.pulse(r, 1, 1.05);
+}
+// Append to the event log (outbox + audit); keeps the last 5 visible.
+async function log(s, v, txt, st = 'LOG') {
+  if (v.ev.rows.length >= 5) await s.unrow(v.ev, v.ev.rows[0]);
+  return s.row(v.ev, txt, ST[st]);
+}
+async function clearRows(s, v) { for (const st of [v.tk, v.ev]) for (const r of [...st.rows]) await s.unrow(st, r); v.rows = {}; }
+const paint = color => ({ color, stroke: color === GREY ? KEEP : color });
+const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
+const who = (s, v, u, txt, color = GREY) => s.setChip({ c: v.uc, a: v.ua, b: v.ub, q: v.q }[u], txt, paint(color));
+const timer = (s, v, txt, color = GREY) => s.setChip(v.sl, txt, paint(color));
+const ok = { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, bad = { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, warn = { mono: true, color: AMBER, stroke: AMBER, fill: '#fdf6ea' };
+const T101 = (status, rest, st) => ['T-101', T('T-101', status, rest), st];
+
+window.DESIGN = {
+  id: 'support', n: 13, title: 'Customer Support Ticketing', tagline: 'tickets as a state machine, claimed with compare-and-set, timed by SLA timers, streamed live from an outbox',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'People', x0: 0, x1: 185, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'Customers write in by **email, web form or chat**; **agents** work tickets from skill queues in a browser that stays connected for live updates.',
+      detail: 'Every person belongs to exactly one **tenant** (the company using the helpdesk).' },
+    { id: 'app', title: 'API & push', x0: 185, x1: 400, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: 'The **Ticket API** is the only writer: intake webhooks, replies, claims and status changes. The **push gateway** keeps WebSockets open and forwards ticket events to whoever is watching.',
+      detail: 'Both are stateless; the gateway only holds connections.' },
+    { id: 'data', title: 'Data & events', x0: 400, x1: 670, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: 'The **Ticket DB** holds tickets, threads and an **events** collection that is both the **outbox** and the **audit history**. A relay publishes events to **Kafka**; attachments live in **S3**.',
+      detail: 'Ticket + event are written in one transaction, so nothing changes without an event.' },
+    { id: 'async', title: 'Workers & side effects', x0: 670, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'Kafka consumers do everything that is not the write itself: **route** to a queue, start and fire **SLA timers**, keep the **search index** fresh, and send email through the **Notification** service.',
+      detail: 'Each consumer is idempotent: events carry the ticket **version**.' },
+  ],
+  layersIntro: {
+    title: 'One writer, one event log, many consumers',
+    text: 'Messages arrive through the **Ticket API**, which writes the ticket and an **event** in one transaction. A relay publishes events to **Kafka**; the **router** puts the ticket in a skill queue, the **SLA worker** starts timers, the **indexer** updates search and the **push gateway** updates every open screen. Agents **claim** with a compare-and-set on the ticket version. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    customer: { x: 90, y: 85, w: 150, label: 'Customer', sub: 'email · web · chat', icon: '👤', layer: 'entry' },
+    agentA: { x: 90, y: 265, w: 150, label: 'Agent Asha', sub: 'billing · L1', icon: '🎧', layer: 'entry' },
+    agentB: { x: 90, y: 445, w: 150, label: 'Agent Ben', sub: 'billing · L1', icon: '🎧', layer: 'entry' },
+    api: { x: 295, y: 175, w: 150, label: 'Ticket API', sub: 'intake · claim', icon: '🎫', layer: 'app' },
+    push: { x: 295, y: 385, w: 150, label: 'Push gateway', sub: 'WebSocket', icon: '📡', layer: 'app' },
+    tdb: { x: 535, y: 85, w: 160, label: 'Ticket DB', sub: 'Mongo · version', icon: '🍃', layer: 'data' },
+    kafka: { x: 535, y: 265, w: 160, label: 'Kafka', sub: 'ticket-events', icon: '📨', layer: 'data' },
+    s3: { x: 535, y: 445, w: 160, label: 'Attachments', sub: 'S3 · presigned', icon: '🪣', layer: 'data' },
+    router: { x: 770, y: 85, w: 150, label: 'Router', sub: 'skill queues', icon: '🧭', layer: 'async' },
+    sla: { x: 770, y: 265, w: 150, label: 'SLA & rules', sub: 'timers · escalate', icon: '⏰', layer: 'async' },
+    search: { x: 770, y: 445, w: 150, label: 'Search', sub: 'Elasticsearch', icon: '🔍', layer: 'async' },
+    notify: { x: 985, y: 85, w: 150, label: 'Notification', sub: 'email · SMS', icon: '🔔', layer: 'async', ext: true },
+  },
+  wires: [['customer', 'api'], ['agentA', 'api'], ['agentB', 'api'], ['api', 'tdb'], ['api', 's3'], ['api', 'search'], ['tdb', 'kafka'],
+    ['kafka', 'push'], ['push', 'agentA'], ['push', 'agentB'], ['push', 'customer'], ['kafka', 'router'], ['kafka', 'sla'], ['kafka', 'search'],
+    ['router', 'tdb'], ['sla', 'tdb'], ['sla', 'notify']],
+
+  components: {
+    customer: {
+      name: 'Customer (requester)',
+      what: 'Writes to `support@acme.help`, fills the web form or opens chat. Replies to the email thread, sees the ticket in the help-center portal.',
+      why: 'The ticket exists for them: every state change they care about (reply, resolved) must reach them.',
+      without: '—',
+      tech: 'Email client, web portal (WebSocket while open), chat widget', scale: 'Millions of requesters across tenants.', fails: 'Offline most of the time → updates go out by email.',
+    },
+    agentA: {
+      name: 'Agents',
+      what: 'Belong to **groups** with **skills** (billing, language, tier L1/L2) and a **capacity** (max open tickets). Claim tickets from their queues, reply, change status.',
+      why: 'Routing and claims exist so each ticket has exactly **one owner** and goes to someone who can solve it.',
+      without: 'Shared inbox: two agents answer the same customer, other tickets wait forever.',
+      tech: 'Agent workspace SPA, one WebSocket per tab', scale: 'Thousands of agents per big tenant.', fails: 'Tab closes → presence expires; their tickets stay assigned.',
+    },
+    agentB: {
+      name: 'Agent Ben',
+      what: 'Same group and skills as Asha. Races her for tickets and watches tickets she works on.',
+      why: 'Two agents show the claim race and live updates.',
+      without: '—',
+      tech: 'Same', scale: 'Same', fails: 'Same',
+    },
+    api: {
+      name: 'Ticket API',
+      what: 'Inbound webhooks (`POST /inbound/email` from SES / SendGrid, chat, web form), `POST /tickets/{id}/claim`, replies, status changes, `GET /tickets/{id}/events?since=v`. Takes `tenantId` from the **JWT**, never from the request body.',
+      why: 'One writer that validates every **state transition**, writes **ticket + event in one transaction** and dedupes webhooks.',
+      without: 'Each channel writes tickets its own way: duplicates, invalid states, no audit trail.',
+      tech: 'Spring Boot REST, Spring Data MongoDB, `@Transactional`', scale: 'Stateless, behind the gateway / LB; per-tenant rate limits.', fails: 'Webhook provider retries until it gets a 2xx → intake must be idempotent.',
+      core: ['gw', 'API gateway'],
+    },
+    push: {
+      name: 'Push gateway (WebSocket)',
+      what: 'Holds a WebSocket per open tab; clients subscribe to `acme:ticket:T-101` and `acme:queue:billing`. Consumes Kafka events and forwards them to subscribers. Also tracks **presence** ("Ben is viewing") in Redis with a TTL.',
+      why: 'Agents must see a claim, a reply or a status change **instantly**, or they collide.',
+      without: 'Agents refresh, reply to stale tickets and work tickets someone already took.',
+      tech: 'Spring WebSocket / STOMP, Redis pub/sub between gateway nodes (WebSockets are taught in 7 · Chat System)', scale: 'Add nodes; route a subscription to the node holding the socket.', fails: 'Client reconnects and asks `events?since=lastVersion`.',
+      core: ['cache', 'Cache · Redis'],
+    },
+    tdb: {
+      name: 'Ticket DB',
+      what: '`tickets { _id, tenantId, status, priority, queue, assignee, version, firstResponseAt }`, `messages { ticketId, author, body, attachments[] }`, `events { tenantId, ticketId, version, type, by, at, published }`.',
+      why: 'Ticket and event in **one document store transaction**: the event is the **outbox** (to publish) and the **audit history** (who changed what, when).',
+      without: 'Write DB then publish to Kafka: a crash between them loses events, or publishes changes that were rolled back.',
+      tech: 'MongoDB replica set, sharded by `{ tenantId, _id }`; `version` for optimistic locking; unique `{ tenantId, sourceMessageId }`', scale: 'Shard by tenant + id so big tenants spread and small ones share.', fails: 'Primary failover: writes pause for seconds; the API retries.',
+      core: ['db', 'DB scaling'],
+    },
+    kafka: {
+      name: 'Kafka · ticket-events',
+      what: 'An **outbox relay** (polling `published: false`, or MongoDB change streams) publishes each event keyed by **ticketId**, so all events of one ticket stay in order on one partition.',
+      why: 'One event, many independent consumers: router, SLA, search, push, notifications, analytics.',
+      without: 'The API calls five services synchronously; one slow consumer slows every reply.',
+      tech: 'Kafka topic `ticket-events`, key = ticketId, 24+ partitions', scale: 'Partitions + consumer groups per consumer type.', fails: 'At-least-once delivery → consumers dedupe by `(ticketId, version)`.',
+      core: ['kafka', 'Queue · Kafka'],
+    },
+    s3: {
+      name: 'Attachments (S3)',
+      what: 'Screenshots, invoices, logs. Web uploads go **straight to S3** with a presigned URL; email attachments are streamed there by the intake. Messages store only the key `acme/T-101/invoice.pdf`.',
+      why: 'Keeps big binaries out of the ticket DB and out of the API\'s memory.',
+      without: 'Base64 files bloat ticket documents and every thread read.',
+      tech: 'S3 with per-tenant prefixes, presigned GET for download, virus scan on ObjectCreated', scale: 'Unlimited; lifecycle rules move old files to cheaper tiers.', fails: 'Upload fails → the message is saved without the file and the user retries.',
+      core: ['s3', 'Storage · S3'],
+    },
+    router: {
+      name: 'Router (assignment)',
+      what: 'On `ticket.created` it applies the tenant\'s **routing rules** (channel, language, product, customer tier) → **queue** and priority. In push mode it also picks the least-loaded agent with free capacity.',
+      why: 'Routing is a business rule per tenant; it changes often and must not block intake.',
+      without: 'Everything lands in one inbox and someone triages by hand.',
+      tech: 'Kafka consumer, rules stored per tenant, conditional update on `version`', scale: 'Partitioned by ticketId: many routers in parallel.', fails: 'Down → tickets stay NEW in the default queue; SLA timers still run.',
+    },
+    sla: {
+      name: 'SLA & rules worker',
+      what: 'Computes **due times** from the tenant\'s SLA policy (first response 30 min for high priority, business hours) and stores **timer documents**. Due timers are claimed exactly like jobs in 8 · Job Scheduler. Also fires **auto-close** and **escalation**.',
+      why: 'Promises like "answer urgent tickets within 30 minutes" are the product; they need timers that survive restarts.',
+      without: 'Breaches are discovered in a weekly report, not while they can still be prevented.',
+      tech: 'Kafka consumer + timers collection `{ dueAt }` index + lease-based claim', scale: 'Timers sharded by tenant; claim in batches.', fails: 'Timers fire late, never lost; the action re-checks the ticket before doing anything.',
+    },
+    search: {
+      name: 'Ticket search',
+      what: 'An Elasticsearch index fed by ticket events: subject, thread text, tags, requester, status. Every query carries a **tenant filter** (Elasticsearch itself is taught in 10 · Search System).',
+      why: 'Agents search "refund invoice 4411" across millions of tickets; Mongo text search does not rank or scale like that.',
+      without: 'Regex scans on the primary DB during business hours.',
+      tech: 'Elasticsearch, routing by tenantId, filtered alias per tenant, external version = ticket version', scale: 'Shard per tenant size; big tenants get their own index.', fails: 'Lag of a second or two; the DB stays the source of truth.',
+    },
+    notify: {
+      name: 'Notification service',
+      what: 'Sends "we got your request", agent replies, "resolved, rate us" and escalation pages to the team lead. Built in 4 · Notification System.',
+      why: 'Customers are rarely online; email is the main channel back.',
+      without: 'Every ticket component sends mail itself, with no retries or dedupe.',
+      tech: 'Notification platform (Kafka, retries, DLQ) + SES; `Reply-To` carries the ticket token', scale: 'Its own system.', fails: 'Retries with a dedupe key; the ticket is unaffected.',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Write the ticket and its event together, route it, let exactly one agent claim it, push every change live.',
+    points: [
+      { t: 'Intake', color: BLUE, d: 'Email webhook → **Ticket API** → ticket **NEW** + event in one transaction (outbox).' },
+      { t: 'Route', color: PURPLE, d: 'Relay → **Kafka** → router picks the **skill queue**; SLA worker starts the **timer**.' },
+      { t: 'Claim', color: AMBER, d: 'Agent takes it with a **compare-and-set** on `version`: one winner, the other gets 409.' },
+      { t: 'Update live', color: GREEN, d: 'Every change is an event: **push gateway** updates screens, **Notification** emails the customer.' },
+    ],
+    stats: [['50 k', 'tenants'], ['5 M', 'tickets / day'], ['30 min', 'first-response SLA'], ['1', 'owner per ticket']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v); v.ready = true; }
+    await clearRows(s, v);
+    tick(s, v, '09:58'); timer(s, v, 'timers: —'); who(s, v, 'q', 'billing queue: —');
+    who(s, v, 'c', 'acme customer'); who(s, v, 'a', 'online · cap 0/5'); who(s, v, 'b', 'online · cap 0/5');
+
+    ui.say(0); ui.cap('**Intake** · an email arrives as a webhook; ticket and event are written together');
+    await s.send(['customer', 'api', 'tdb'], 'email webhook', BLUE, { ms: 420 });
+    await put(s, v, 'T-101', T('T-101', 'NEW', 'v1 —'), 'NEW');
+    await log(s, v, E('v1', 'created · email'));
+    ui.say(1); ui.cap('**Route** · the relay publishes the event; router and SLA worker consume it');
+    await s.send(['tdb', 'kafka'], 'created v1', PURPLE, { ms: 380 });
+    await Promise.all([
+      s.send(['kafka', 'router'], 'v1', PURPLE, { ms: 380 }),
+      s.send(['kafka', 'sla'], 'v1', PURPLE, { ms: 380, pulse: false }),
+    ]);
+    who(s, v, 'q', 'billing queue: T-101', PURPLE); timer(s, v, 'T-101 FRT due 10:28', AMBER);
+    await s.send(['kafka', 'push'], 'queue +T-101', PURPLE, { ms: 360 });
+    await Promise.all([s.send(['push', 'agentA'], 'new', PURPLE, { ms: 360 }), s.send(['push', 'agentB'], 'new', PURPLE, { ms: 360, pulse: false })]);
+    ui.say(2); ui.cap('**Claim** · both agents click Take; the version check lets exactly one win');
+    await Promise.all([
+      s.send(['agentA', 'api'], 'take v1', AMBER, { ms: 400 }),
+      s.send(['agentB', 'api'], 'take v1', AMBER, { ms: 440, pulse: false }),
+    ]);
+    await put(s, v, 'T-101', T('T-101', 'OPEN', 'v2 Asha'), 'OPEN');
+    await log(s, v, E('v2', 'assigned asha'));
+    who(s, v, 'a', 'working T-101', AMBER); who(s, v, 'b', '409 · taken', GREY); who(s, v, 'q', 'billing queue: —');
+    ui.say(3); ui.cap('**Update live** · Asha replies; the event reaches the screens and the customer\'s inbox');
+    await s.send(['agentA', 'api', 'tdb'], 'reply', GREEN, { ms: 380 });
+    await log(s, v, E('v3', 'reply asha'));
+    await s.send(['tdb', 'kafka', 'push', 'customer'], 'reply v3', GREEN, { ms: 340 });
+    await s.send(['kafka', 'sla', 'notify'], 'email reply', GREEN, { ms: 340 });
+    who(s, v, 'c', 'got the reply ✓', GREEN); timer(s, v, 'FRT met ✓', GREEN);
+    await s.wait(1800);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'intake', title: 'Email becomes a ticket', sub: 'webhook · dedupe · outbox', color: BLUE,
+      build: (s, v) => setup(s, v),
+      takeaway: 'Intake is a **webhook that will be retried**, so it is idempotent: a unique index on `{ tenantId, sourceMessageId }`. Ticket, message and event are written in **one transaction**; the event row is the **outbox** a relay publishes to Kafka. Replies are threaded onto the existing ticket by `In-Reply-To` or the ticket token.',
+      steps: [
+        {
+          title: 'The customer emails support',
+          text: 'Mail to `support@acme.help` lands at the inbound provider (SES / SendGrid), which `POST`s it to `/inbound/email` with `Message-ID`, from, subject, body and attachments. The **to-address** tells us the tenant: `acme`.',
+          observe: 'The webhook reaches the Ticket API.',
+          focus: v => [v.n.api],
+          async run(s, v) {
+            await s.send(['customer', 'api'], 'email webhook', BLUE);
+            who(s, v, 'c', 'sent · Message-ID m-77', BLUE);
+          },
+        },
+        {
+          title: 'Attachments go to S3, not the DB',
+          text: 'The intake streams `invoice.pdf` to S3 under `acme/T-101/…` and keeps only the key. From the web form the browser uploads **directly** with a presigned URL, so files never pass through the API (S3 basics: Core Components).',
+          observe: 'The file is in S3; the message holds only its key.',
+          focus: v => [v.n.s3],
+          async run(s, v) {
+            await s.send(['api', 's3'], 'PUT invoice.pdf', TEAL);
+            await s.flash(535, 400, 'acme/T-101/invoice.pdf', ok, 700);
+          },
+        },
+        {
+          title: 'Ticket + message + event in one transaction',
+          text: 'One MongoDB transaction inserts the ticket `{ _id: "T-101", tenantId: "acme", status: "NEW", version: 1 }`, the first message and an event `{ v1, created, published: false }`. The event is both the **outbox** and the first line of the **audit history**.',
+          observe: 'T-101 is NEW (v1) and event v1 is waiting to be published.',
+          say: 'Every change writes the ticket and an event in one transaction: a transactional outbox that doubles as the audit log.',
+          focus: v => [v.rows['T-101'], v.ev],
+          async run(s, v) {
+            await s.send(['api', 'tdb'], 'insert · txn', BLUE);
+            await put(s, v, 'T-101', T('T-101', 'NEW', 'v1 —'), 'NEW');
+            v.e1 = await log(s, v, E('v1', 'created · unpublished'));
+            await s.send(['api', 'customer'], '200 T-101', GREEN);
+          },
+        },
+        {
+          title: 'The provider retries the webhook',
+          text: 'Our 200 took too long, so the provider sends the **same email again**. The insert hits the unique index `{ tenantId, sourceMessageId: "m-77" }` → **duplicate key** → we return 200 with the existing T-101 instead of opening T-102.',
+          observe: 'Still one ticket.',
+          say: 'Intake is idempotent: the email Message-ID is a unique key per tenant.',
+          focus: v => [v.rows['T-101']],
+          async run(s, v) {
+            await s.send(['customer', 'api'], 'same webhook', AMBER);
+            await s.bounce('api', 'tdb', 'insert m-77', AMBER);
+            await s.flash(535, 140, 'E11000 → return T-101', warn, 800);
+          },
+        },
+        {
+          title: 'The relay publishes the event to Kafka',
+          text: 'The outbox relay (a poller on `published: false`, or a MongoDB **change stream**) sends the event to `ticket-events` with key **T-101**, then marks it published. Router, SLA worker, search indexer and push gateway each consume it in their own consumer group.',
+          observe: 'Router, SLA and search all receive v1.',
+          focus: v => [v.n.kafka],
+          async run(s, v) {
+            await s.send(['tdb', 'kafka'], 'created v1', PURPLE);
+            if (v.e1) { v.e1.label.textContent = E('v1', 'created · published ✓'); s.paintRow(v.e1, ST.OK); }
+            await Promise.all([
+              s.send(['kafka', 'router'], 'v1', PURPLE),
+              s.send(['kafka', 'sla'], 'v1', PURPLE, { pulse: false }),
+              s.send(['kafka', 'search'], 'v1', PURPLE, { pulse: false }),
+            ]);
+            who(s, v, 'q', 'billing queue: T-101', PURPLE); timer(s, v, 'T-101 FRT due 10:28', AMBER);
+          },
+        },
+        {
+          title: 'The customer replies: same ticket',
+          text: 'The reply has `In-Reply-To: <T-101.acme@help>` (we set that Message-ID on our acknowledgement) and `[#T-101]` in the subject. Intake matches the thread and **appends a message** to T-101 instead of creating a new ticket.',
+          observe: 'The thread grows; no new ticket.',
+          focus: v => [v.ev, v.rows['T-101']],
+          async run(s, v) {
+            tick(s, v, '10:03');
+            await s.send(['customer', 'api', 'tdb'], 'Re: [#T-101]', BLUE);
+            await put(s, v, 'T-101', T('T-101', 'NEW', 'v2 —'), 'NEW');
+            await log(s, v, E('v2', 'message · customer'));
+            who(s, v, 'c', 'threaded on T-101', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'claim', title: 'Two agents, one ticket', sub: 'read-then-write vs CAS', color: PURPLE,
+      build: (s, v) => setup(s, v, { tickets: [T101('NEW', 'v1 —', 'NEW')], events: [[E('v1', 'created · email')]], clock: '10:01', q: 'billing queue: T-101' }),
+      takeaway: 'A claim is a **compare-and-set**: update the ticket only if `version` (and `assignee: null`) are still what the agent saw, and increment the version. The loser matches 0 → **409 Conflict**, and the push gateway tells every screen who owns it. Spring Data `@Version` does exactly this for you.',
+      steps: [
+        {
+          title: 'The ticket appears in the billing queue',
+          text: 'The router matched T-101 to **billing · English · L1**. Everyone subscribed to `acme:queue:billing` gets the event, so Asha and Ben both see T-101 at the top of their list, showing **version 1**.',
+          observe: 'Both agents see T-101 (v1).',
+          focus: v => [v.n.agentA, v.n.agentB],
+          async run(s, v) {
+            await s.send(['kafka', 'push'], 'queue +T-101', PURPLE);
+            await Promise.all([s.send(['push', 'agentA'], 'T-101 v1', PURPLE), s.send(['push', 'agentB'], 'T-101 v1', PURPLE, { pulse: false })]);
+            who(s, v, 'a', 'sees T-101 v1', PURPLE); who(s, v, 'b', 'sees T-101 v1', PURPLE);
+          },
+        },
+        {
+          title: 'Both click "Take" at the same moment',
+          text: 'With dozens of agents on a busy queue, two clicks within the same 50 ms are normal, especially on the oldest ticket that everybody sees first.',
+          observe: 'Two claims reach the API together.',
+          focus: v => [v.n.api],
+          async run(s, v) {
+            await Promise.all([
+              s.send(['agentA', 'api'], 'take T-101', AMBER),
+              s.send(['agentB', 'api'], 'take T-101', AMBER, { pulse: false }),
+            ]);
+          },
+        },
+        {
+          title: '❌ Read, then write',
+          text: 'Naive code: `t = findById("T-101")`; `if (t.assignee == null) { t.assignee = me; save(t); }`. Both reads see `assignee: null`, both saves succeed. Ben\'s save lands last, but **both** think they own it and both email the customer, with different answers.',
+          observe: 'Two owners, two replies to the customer.',
+          say: 'Check-then-act on a ticket is a race: both agents can take it.',
+          focus: v => [v.rows['T-101'], v.uc],
+          async run(s, v) {
+            await Promise.all([
+              s.send(['api', 'tdb'], 'save asha', RED),
+              s.send(['api', 'tdb'], 'save ben', RED, { pulse: false }),
+            ]);
+            await put(s, v, 'T-101', T('T-101', 'OPEN', 'Ben+Asha!'), 'BAD');
+            who(s, v, 'a', 'working T-101', RED); who(s, v, 'b', 'working T-101', RED);
+            await s.send(['tdb', 'kafka', 'sla', 'notify'], '2 replies', RED, { ms: 360 });
+            who(s, v, 'c', '2 different answers ✕', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: compare-and-set on version',
+          text: '`findAndModify({ _id: "T-101", tenantId: "acme", version: 1, assignee: null }, { $set: { assignee: "asha", status: "OPEN" }, $inc: { version: 1 } })`. A single-document update is atomic: Asha\'s arrives first and matches; the version becomes **2**.',
+          observe: 'T-101 is OPEN, v2, owned by Asha.',
+          say: 'The claim is a conditional update on the version the agent saw: optimistic locking.',
+          focus: v => [v.rows['T-101']],
+          async run(s, v) {
+            await put(s, v, 'T-101', T('T-101', 'NEW', 'v1 —'), 'NEW');
+            who(s, v, 'a', 'sees T-101 v1', PURPLE); who(s, v, 'b', 'sees T-101 v1', PURPLE); who(s, v, 'c', 'acme customer');
+            await s.send(['api', 'tdb'], 'CAS v1 → asha', TEAL);
+            await put(s, v, 'T-101', T('T-101', 'OPEN', 'v2 Asha'), 'OPEN');
+            await log(s, v, E('v2', 'assigned asha'));
+          },
+        },
+        {
+          title: 'Ben\'s update matches nothing → 409',
+          text: 'Ben\'s update also says `version: 1`, but the ticket is at version 2 now → **matched 0** → the API answers `409 Conflict: taken by Asha`. Nothing was overwritten; no lock was held while anyone was thinking.',
+          observe: 'Ben gets 409.',
+          focus: v => [v.n.agentB, v.ub],
+          async run(s, v) {
+            await s.bounce('api', 'tdb', 'CAS v1 → ben', AMBER);
+            await s.send(['api', 'agentB'], '409 taken', RED);
+            who(s, v, 'b', '409 · taken by Asha', GREY); who(s, v, 'a', 'working T-101 · 1/5', AMBER);
+          },
+        },
+        {
+          title: 'Every screen learns the new owner',
+          text: 'Event v2 `assigned asha` flows outbox → Kafka → push gateway: T-101 leaves the queue on every screen. In **push mode** the router does the assigning itself (least-loaded agent with free capacity, same CAS plus `openCount < capacity`), which removes most races entirely.',
+          observe: 'The queue is empty again.',
+          focus: v => [v.q, v.n.push],
+          async run(s, v) {
+            await s.send(['tdb', 'kafka', 'push'], 'assigned v2', PURPLE);
+            await Promise.all([s.send(['push', 'agentA'], 'yours v2', GREEN), s.send(['push', 'agentB'], 'gone v2', GREY, { pulse: false })]);
+            who(s, v, 'q', 'billing queue: —');
+          },
+        },
+      ],
+    },
+    {
+      id: 'lifecycle', title: 'Ticket lifecycle', sub: 'state machine · reopen · close', color: TEAL,
+      build: (s, v) => setup(s, v, { tickets: [T101('OPEN', 'v2 Asha', 'OPEN')], events: [[E('v1', 'created · email')], [E('v2', 'assigned asha')]], clock: '10:05', a: 'working T-101', q: 'billing queue: —', sla: 'T-101 FRT met ✓' }),
+      takeaway: 'Status is a **state machine**: a table of allowed transitions, checked in one place, and applied with a conditional update on the **current status + version**. PENDING pauses the SLA, a customer reply reopens a RESOLVED ticket, a **timer** closes it after 7 days, and a CLOSED ticket is never reopened: a reply creates a **follow-up** ticket.',
+      steps: [
+        {
+          title: 'OPEN → PENDING: waiting on the customer',
+          text: 'Asha asks for the invoice number and sets **PENDING**. Allowed: `OPEN → PENDING`. While a ticket is pending the **resolution SLA clock is paused**, because the delay is not ours.',
+          observe: 'T-101 is PENDING (v3); the SLA clock is paused.',
+          focus: v => [v.rows['T-101'], v.sl],
+          async run(s, v) {
+            await s.send(['agentA', 'api', 'tdb'], 'reply + PENDING', PURPLE);
+            await put(s, v, 'T-101', T('T-101', 'PENDING', 'v3 Asha'), 'PEND');
+            await log(s, v, E('v3', 'OPEN→PENDING asha'));
+            timer(s, v, 'resolution clock ⏸', PURPLE);
+          },
+        },
+        {
+          title: 'The customer answers → back to OPEN',
+          text: 'An inbound message from the **requester** on a PENDING ticket triggers the rule `PENDING → OPEN`. The clock resumes and the ticket shows up again in Asha\'s "needs action" list.',
+          observe: 'T-101 is OPEN (v4).',
+          focus: v => [v.rows['T-101']],
+          async run(s, v) {
+            tick(s, v, '11:40');
+            await s.send(['customer', 'api', 'tdb'], 'invoice #4411', BLUE);
+            await put(s, v, 'T-101', T('T-101', 'OPEN', 'v4 Asha'), 'OPEN');
+            await log(s, v, E('v4', 'PENDING→OPEN cust'));
+            timer(s, v, 'resolution clock ▶', AMBER);
+          },
+        },
+        {
+          title: 'Asha resolves it',
+          text: '`OPEN → RESOLVED`. The rules worker emails "Your request was solved" with a satisfaction link (through the Notification service) and starts an **auto-close timer: 7 days**.',
+          observe: 'RESOLVED (v5); the customer is emailed.',
+          say: 'Resolved is not closed: the customer can still reopen it for a few days.',
+          focus: v => [v.rows['T-101'], v.n.notify],
+          async run(s, v) {
+            await s.send(['agentA', 'api', 'tdb'], 'resolve', GREEN);
+            await put(s, v, 'T-101', T('T-101', 'RESOLVED', 'v5 Asha'), 'OK');
+            await log(s, v, E('v5', 'OPEN→RESOLVED asha'));
+            await s.send(['tdb', 'kafka', 'sla', 'notify'], 'resolved v5', GREEN, { ms: 360 });
+            timer(s, v, 'auto-close in 7 d', TEAL); who(s, v, 'c', 'email: solved ✓', GREEN);
+          },
+        },
+        {
+          title: '"Still broken" → reopen',
+          text: 'Two days later the customer replies. `RESOLVED → OPEN` is allowed: same ticket, **same assignee**, `reopenCount + 1` (a quality metric). The auto-close timer is not deleted; it will **re-check** the status when it fires.',
+          observe: 'T-101 is OPEN again (v6).',
+          focus: v => [v.rows['T-101']],
+          async run(s, v) {
+            tick(s, v, '+2 d');
+            await s.send(['customer', 'api', 'tdb'], 'still broken', RED);
+            await put(s, v, 'T-101', T('T-101', 'OPEN', 'v6 reopen 1'), 'OPEN');
+            await log(s, v, E('v6', 'RESOLVED→OPEN cust'));
+            who(s, v, 'a', 'T-101 reopened', AMBER);
+          },
+        },
+        {
+          title: 'Resolved again; 7 days later it closes',
+          text: 'Asha fixes it (v7 RESOLVED). Seven quiet days later the auto-close timer fires and runs `updateOne({ _id: "T-101", status: "RESOLVED", version: 7 }, { $set: { status: "CLOSED" }, $inc: { version: 1 } })`. Had the customer replied in between, the filter would not match and nothing would happen.',
+          observe: 'CLOSED (v8), written by the system.',
+          say: 'The auto-close timer only closes the ticket if it is still in the state it expected.',
+          focus: v => [v.rows['T-101'], v.sl],
+          async run(s, v) {
+            await s.send(['agentA', 'api', 'tdb'], 'resolve', GREEN, { ms: 420 });
+            await put(s, v, 'T-101', T('T-101', 'RESOLVED', 'v7 Asha'), 'OK');
+            await log(s, v, E('v7', 'OPEN→RESOLVED asha'));
+            tick(s, v, '+9 d'); timer(s, v, 'auto-close fires', TEAL);
+            await s.send(['sla', 'tdb'], 'close if RESOLVED·v7', TEAL);
+            await put(s, v, 'T-101', T('T-101', 'CLOSED', 'v8 system'), 'DONE');
+            await log(s, v, E('v8', 'RESOLVED→CLOSED sys'));
+          },
+        },
+        {
+          title: 'A reply after CLOSED → follow-up ticket',
+          text: '`CLOSED → OPEN` is **not** in the transition table: closed tickets are final for reports and billing. The intake creates **T-245** with `followUpOf: "T-101"` and the same requester, routed to the same group.',
+          observe: 'New ticket T-245 linked to T-101.',
+          focus: v => [v.rows['T-245']],
+          async run(s, v) {
+            await s.send(['customer', 'api'], 'Re: [#T-101]', BLUE);
+            await s.flash(295, 120, 'CLOSED → OPEN ✕', bad, 700);
+            await s.send(['api', 'tdb'], 'new follow-up', BLUE);
+            await put(s, v, 'T-245', T('T-245', 'NEW', 'v1 ↩T-101'), 'NEW');
+            who(s, v, 'c', 'new ticket T-245', BLUE);
+          },
+        },
+      ],
+    },
+    {
+      id: 'sla', title: 'SLA breach', sub: 'timer · escalate · check on fire', color: AMBER,
+      build: (s, v) => setup(s, v, { tickets: [['T-102', T('T-102', 'NEW', 'v1 high'), 'NEW']], events: [[E('v1', 'created · chat')]], clock: '10:00', q: 'billing queue: T-102' }),
+      takeaway: 'SLA due times are **timer documents** claimed like jobs (8 · Job Scheduler): durable, leased, fired late rather than lost. A timer **never trusts that it is still relevant**: escalation is a conditional update (`firstResponseAt: null`, not PENDING), so a reply one second earlier turns it into a no-op. PENDING time is added to the due time.',
+      steps: [
+        {
+          title: 'Compute the due time and store a timer',
+          text: 'On `created`, the rules worker reads acme\'s SLA policy: **high priority → first response in 30 min**, counted in business hours. It inserts `timers { _id: "T-102:frt", dueAt: 10:30, warnAt: 10:24, status: "WAITING" }`.',
+          observe: 'Timer due 10:30, warning at 10:24.',
+          say: 'SLA deadlines are stored as timer documents, not in-memory schedules.',
+          focus: v => [v.sl],
+          async run(s, v) {
+            await s.send(['kafka', 'sla'], 'created v1', PURPLE);
+            await s.send(['sla', 'tdb'], 'timer 10:30', AMBER);
+            timer(s, v, 'T-102 FRT due 10:30', AMBER);
+          },
+        },
+        {
+          title: '10:24: 80 % gone → warn the queue',
+          text: 'Timer workers poll `{ dueAt or warnAt ≤ now }` and claim with a lease, exactly like the job scheduler. The warning writes an event `sla.warning`; the push gateway turns T-102 **orange** on every billing screen.',
+          observe: 'Agents see T-102 at risk.',
+          focus: v => [v.n.agentA, v.n.agentB, v.sl],
+          async run(s, v) {
+            tick(s, v, '10:24');
+            timer(s, v, 'T-102 warn · 6 min left', AMBER);
+            await s.send(['sla', 'tdb', 'kafka', 'push'], 'sla.warning', AMBER, { ms: 360 });
+            await Promise.all([s.send(['push', 'agentA'], 'T-102 ⚠', AMBER), s.send(['push', 'agentB'], 'T-102 ⚠', AMBER, { pulse: false })]);
+            who(s, v, 'a', 'busy · 5/5', GREY); who(s, v, 'b', 'busy · 5/5', GREY);
+          },
+        },
+        {
+          title: '10:30: breach → escalate',
+          text: 'Nobody replied. The escalation rule runs `updateOne({ _id: "T-102", firstResponseAt: null, status: { $ne: "PENDING" } }, { $set: { priority: "urgent", queue: "billing-L2", breached: true }, $inc: { version: 1 } })` and the team lead is paged through the Notification service.',
+          observe: 'T-102 is urgent in billing-L2; the lead is paged.',
+          say: 'On breach we escalate: higher priority, a senior queue, and a page to the lead.',
+          focus: v => [v.rows['T-102'], v.n.notify],
+          async run(s, v) {
+            tick(s, v, '10:30');
+            timer(s, v, 'T-102 BREACHED', RED);
+            await s.send(['sla', 'tdb'], 'escalate if no reply', RED);
+            await put(s, v, 'T-102', T('T-102', 'NEW', 'v2 urgent L2'), 'BAD');
+            await log(s, v, E('v2', 'sla.breach → L2'), 'BAD');
+            await s.send(['sla', 'notify'], 'page lead', RED);
+            who(s, v, 'q', 'billing-L2: T-102', RED);
+          },
+        },
+        {
+          title: 'Rewind: PENDING pauses the clock',
+          text: 'Suppose at 10:10 Asha had asked a question and set PENDING. The timer is marked `pausedAt: 10:10`; when the customer answers at 10:50, the 40 paused minutes are **added**: `dueAt = 10:30 + 40 min = 11:10`. Business-hours calendars work the same way.',
+          observe: 'The due time moves to 11:10.',
+          focus: v => [v.sl, v.rows['T-102']],
+          async run(s, v) {
+            await put(s, v, 'T-102', T('T-102', 'PENDING', 'v2 Asha'), 'PEND');
+            tick(s, v, '10:10'); timer(s, v, 'paused at 10:10', PURPLE);
+            await s.wait(500);
+            tick(s, v, '10:50');
+            await s.send(['customer', 'api', 'tdb'], 'answer', BLUE);
+            await put(s, v, 'T-102', T('T-102', 'OPEN', 'v3 Asha'), 'OPEN');
+            timer(s, v, 'due 11:10 (+40 min)', AMBER);
+          },
+        },
+        {
+          title: 'Rewind: a reply one second before the breach',
+          text: 'Asha replies at 10:29:59 and sets `firstResponseAt`. Cancelling the timer is a separate write that can lose the race, so we do not rely on it: at 10:30 the timer still fires, but the escalation filter `firstResponseAt: null` **matches 0** → no-op, the timer is marked DONE.',
+          observe: 'The timer fires and does nothing.',
+          say: 'Timers check on fire: the action is a conditional update, so a late timer is harmless.',
+          focus: v => [v.rows['T-102'], v.sl],
+          async run(s, v) {
+            await put(s, v, 'T-102', T('T-102', 'OPEN', 'v2 Asha'), 'OPEN');
+            tick(s, v, '10:29:59');
+            await s.send(['agentA', 'api', 'tdb'], 'first reply', GREEN);
+            timer(s, v, 'T-102 FRT due 10:30', AMBER);
+            tick(s, v, '10:30');
+            await s.bounce('sla', 'tdb', 'escalate if no reply', AMBER);
+            await s.flash(770, 215, 'matched 0 → no-op', ok, 800);
+            timer(s, v, 'FRT met ✓ · DONE', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'realtime', title: 'Live updates', sub: 'WebSocket · versions · resync', color: GREEN,
+      build: (s, v) => setup(s, v, { tickets: [T101('OPEN', 'v4 Asha', 'OPEN')], events: [[E('v3', 'OPEN→PENDING asha')], [E('v4', 'PENDING→OPEN cust')]], clock: '11:41', a: 'working T-101', b: 'viewing T-101', cust: 'portal open', q: 'billing queue: —', sla: 'resolution ▶' }),
+      takeaway: 'Screens are updated from the **same events** that drive everything else: outbox → Kafka (key ticketId) → push gateway → subscribers. Every event carries the ticket **version**, so clients drop duplicates and stale updates, and after a reconnect they ask for `events?since=v`. Offline customers get the update by email instead.',
+      steps: [
+        {
+          title: 'Subscriptions and presence',
+          text: 'Asha, Ben and the customer\'s portal each hold a WebSocket and subscribe to `acme:ticket:T-101`. Ben opening the ticket writes presence `viewing:T-101 → ben` in Redis with a 30 s TTL, refreshed by heartbeats, so Asha sees **"Ben is viewing"** and nobody replies twice (collision detection).',
+          observe: 'Asha sees that Ben is on the same ticket.',
+          focus: v => [v.n.push, v.ua],
+          async run(s, v) {
+            await s.send(['agentB', 'push'], 'viewing T-101', GREY);
+            await s.send(['push', 'agentA'], 'Ben is viewing', GREY);
+            who(s, v, 'a', 'sees: Ben viewing', PURPLE);
+          },
+        },
+        {
+          title: 'Asha replies',
+          text: 'The API writes the message, bumps the ticket to **v5** and inserts event `v5 reply` in the same transaction. The HTTP response returns v5 to Asha immediately; everyone else learns it from the event.',
+          observe: 'Event v5 is in the outbox.',
+          focus: v => [v.ev, v.rows['T-101']],
+          async run(s, v) {
+            await s.send(['agentA', 'api', 'tdb'], 'reply', GREEN);
+            await put(s, v, 'T-101', T('T-101', 'OPEN', 'v5 Asha'), 'OPEN');
+            await log(s, v, E('v5', 'reply asha'));
+          },
+        },
+        {
+          title: 'Fan-out to every open screen',
+          text: 'The relay publishes v5 (key T-101); the push gateway\'s consumer looks up subscribers of `acme:ticket:T-101` (on other gateway nodes via Redis pub/sub) and sends it. Ben\'s screen and the customer\'s portal update within a second.',
+          observe: 'Ben and the customer both get v5.',
+          say: 'Live updates come from the same event stream: outbox, Kafka, push gateway, WebSocket.',
+          focus: v => [v.n.agentB, v.n.customer],
+          async run(s, v) {
+            await s.send(['tdb', 'kafka', 'push'], 'reply v5', GREEN);
+            await Promise.all([s.send(['push', 'agentB'], 'v5', GREEN), s.send(['push', 'customer'], 'v5', GREEN, { pulse: false })]);
+            who(s, v, 'b', 'shows v5', GREEN); who(s, v, 'c', 'portal: reply ✓', GREEN);
+          },
+        },
+        {
+          title: 'A duplicate arrives: ignored by version',
+          text: 'Kafka is at-least-once: after a consumer rebalance the gateway redelivers v5. The client keeps `lastVersion = 5` per ticket and applies an event only if `version > lastVersion`. Same rule protects against an older event arriving late.',
+          observe: 'The duplicate changes nothing.',
+          focus: v => [v.ub],
+          async run(s, v) {
+            await s.send(['kafka', 'push', 'agentB'], 'v5 again', AMBER);
+            await s.flash(90, 400, 'v5 ≤ last 5 → skip', ok, 700);
+          },
+        },
+        {
+          title: 'Ben\'s Wi-Fi drops; he misses v6',
+          text: 'While Ben is offline the customer replies (**v6**). The gateway has no socket for him, so nothing is queued there. On reconnect the client calls `GET /tickets/T-101/events?since=5`: the **audit events double as the replay log**.',
+          observe: 'Ben catches up with v6.',
+          say: 'On reconnect the client asks for events since its last version.',
+          focus: v => [v.n.agentB, v.ev],
+          async run(s, v) {
+            s.tone(v.n.agentB, 'warn'); s.setSub(v.n.agentB, 'offline', AMBER); who(s, v, 'b', 'offline · last v5', AMBER);
+            await s.send(['customer', 'api', 'tdb'], 'reply', BLUE);
+            await put(s, v, 'T-101', T('T-101', 'OPEN', 'v6 Asha'), 'OPEN');
+            await log(s, v, E('v6', 'message · customer'));
+            s.tone(v.n.agentB, null); s.setSub(v.n.agentB, 'billing · L1');
+            await s.send(['agentB', 'api'], 'events since 5', TEAL);
+            await s.send(['api', 'agentB'], '[v6]', GREEN);
+            who(s, v, 'b', 'shows v6 ✓', GREEN);
+          },
+        },
+        {
+          title: 'Customer offline → email instead',
+          text: 'Asha answers (v7) after the customer closed the portal: no subscriber. The Notification consumer emails the reply with `Reply-To: support+T-101@acme.help` so the answer threads back onto T-101 (4 · Notification System handles retries and dedupe).',
+          observe: 'The reply goes out by email.',
+          focus: v => [v.n.notify, v.uc],
+          async run(s, v) {
+            who(s, v, 'c', 'portal closed', GREY);
+            await s.send(['agentA', 'api', 'tdb'], 'reply', GREEN, { ms: 420 });
+            await put(s, v, 'T-101', T('T-101', 'OPEN', 'v7 Asha'), 'OPEN');
+            await log(s, v, E('v7', 'reply asha'));
+            await s.send(['tdb', 'kafka', 'sla', 'notify'], 'email v7', GREEN, { ms: 360 });
+            who(s, v, 'c', 'email: reply ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'tenant', title: 'Many tenants', sub: 'tenant filter · noisy tenant', color: RED,
+      build: (s, v) => setup(s, v, { tickets: [T101('OPEN', 'v7 acme', 'OPEN'), ['G-9', T('G-9', 'OPEN', 'v2 globex'), 'LOG']], events: [[E('v7', 'reply asha')]], clock: '14:00', a: 'acme · billing', b: 'acme · billing', cust: 'globex mailbox', q: 'billing queue: —' }),
+      takeaway: 'Multi-tenancy is a **filter you can never forget**: `tenantId` comes from the token, sits first in every index and shard key, and is enforced in one shared layer (repository, Elasticsearch filtered alias) and re-checked on hydration. Per-tenant **rate limits and quotas** keep one company\'s mail loop from slowing everyone else.',
+      steps: [
+        {
+          title: 'Tenant comes from the token',
+          text: 'Asha\'s JWT carries `tenantId: "acme"`. The API puts it in a request-scoped context; every repository method adds `tenantId` to the query. Tickets are sharded by `{ tenantId, _id }`: a big tenant spreads over chunks, small tenants share them.',
+          observe: 'Asha\'s requests are scoped to acme.',
+          focus: v => [v.n.api, v.rows['T-101'], v.rows['G-9']],
+          async run(s, v) {
+            await s.send(['agentA', 'api'], 'JWT tenant=acme', BLUE);
+            await s.flash(295, 120, 'TenantContext = acme', ok, 700);
+          },
+        },
+        {
+          title: 'Search goes to Elasticsearch with a tenant filter',
+          text: 'Asha searches "refund". The API queries the ticket index with `filter: { term: { tenantId: "acme" } }` and `routing: acme`, gets ids back, and **hydrates** them from the Ticket DB. (Inverted index, analyzers and ranking: 10 · Search System.)',
+          observe: 'Only acme results.',
+          focus: v => [v.n.search],
+          async run(s, v) {
+            await s.send(['api', 'search'], 'refund · acme', TEAL);
+            await s.send(['search', 'api', 'agentA'], '[T-101]', GREEN);
+            who(s, v, 'a', '1 result ✓', GREEN);
+          },
+        },
+        {
+          title: '❌ One missing filter leaks another company\'s ticket',
+          text: 'A new "search by attachment name" endpoint builds its own query and **forgets the tenant filter**. Asha sees **G-9** from globex, including the customer\'s email and invoice. In a helpdesk this is the worst bug you can ship.',
+          observe: 'A globex ticket in acme\'s results.',
+          say: 'The real risk in multi-tenancy is one query that forgets the tenant.',
+          focus: v => [v.rows['G-9'], v.ua],
+          async run(s, v) {
+            await s.send(['api', 'search'], 'invoice.pdf (no tenant)', RED);
+            await s.send(['search', 'api', 'agentA'], '[T-101, G-9]', RED);
+            s.paintRow(v.rows['G-9'], ST.BAD);
+            who(s, v, 'a', 'sees globex G-9 ✕', RED);
+          },
+        },
+        {
+          title: '✅ Enforce it in one place, check it twice',
+          text: 'Endpoints never build raw queries: a shared `TenantScopedRepository` and a **filtered alias per tenant** (`tickets-acme` = index + tenant filter) add the filter for them. Hydration re-checks `ticket.tenantId == context.tenantId` and drops anything else. Plus an automated test that runs every endpoint as tenant B against tenant A\'s data.',
+          observe: 'G-9 is filtered out.',
+          focus: v => [v.n.api, v.rows['G-9']],
+          async run(s, v) {
+            s.paintRow(v.rows['G-9'], ST.LOG);
+            await s.send(['api', 'search'], 'alias tickets-acme', TEAL);
+            await s.send(['search', 'api'], '[T-101]', GREEN);
+            await s.flash(295, 120, 'hydrate: tenant = acme ✓', ok, 600);
+            await s.send(['api', 'agentA'], '[T-101]', GREEN);
+            who(s, v, 'a', '1 result ✓', GREEN);
+          },
+        },
+        {
+          title: 'A noisy tenant: globex\'s mail loop',
+          text: 'Globex\'s auto-responder answers our acknowledgement, which answers back: **2,000 emails a minute**. Per-tenant **token buckets** in Redis cap intake (2 · Rate Limiter); loop detection drops mail with `Auto-Submitted` headers or the same sender + subject repeating. Kafka is keyed by ticketId and consumers have per-tenant quotas, so acme\'s tickets keep flowing.',
+          observe: 'Globex is throttled; acme is unaffected.',
+          say: 'Per-tenant rate limits and quotas stop one customer from hurting the others.',
+          focus: v => [v.n.customer, v.n.api],
+          async run(s, v) {
+            who(s, v, 'c', 'globex: 2,000 mails/min', RED);
+            await s.send(['customer', 'api'], 'auto-reply', AMBER, { ms: 360 });
+            await s.bounce('customer', 'api', 'auto-reply', AMBER);
+            await s.flash(295, 120, 'globex bucket empty → 429', warn, 700);
+            await s.send(['agentA', 'api', 'tdb'], 'acme reply', GREEN, { ms: 400 });
+            who(s, v, 'a', 'acme unaffected ✓', GREEN);
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Channels, tenants, SLAs, real time.',
+      lines: [
+        ['I', 'Design a customer support ticketing system like Zendesk.'],
+        ['C', 'Is it multi-tenant, many companies each with their own agents and customers?'],
+        ['I', 'Yes, a SaaS product.'],
+        ['C', 'Which channels: email, web form, chat? And do we need SLAs with escalation?'],
+        ['I', 'All three channels, and yes, SLAs matter.'],
+        ['C', 'Must agents see changes live, and how do tickets reach agents: queues they pick from, or automatic assignment?'],
+        ['I', 'Live, and both modes.'],
+        ['P', 'Write: multi-tenant · email/web/chat intake · lifecycle · routing + claim · SLA timers · live updates · search · audit.'],
+      ],
+      avoid: 'Jumping into the database before agreeing that the hard parts are claims, SLAs and tenant isolation.',
+    },
+    {
+      t: 'Estimate the scale', min: 3, goal: 'Writes are modest; reads and fan-out dominate.',
+      lines: [
+        ['C', '50 k tenants, **5 M new tickets a day** ≈ 60/s, peaks ~300/s. Each ticket gets ~5 messages → ~300 writes/s average.'],
+        ['C', 'Ticket + messages ~10 KB without attachments → **50 GB/day** in the DB; attachments in S3, several TB/day.'],
+        ['C', 'Hundreds of thousands of agents online → that many WebSockets, but only a few events per ticket.'],
+        ['P', 'The DB load is fine; the design work is correctness and isolation.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 5, goal: 'Ticket with version, events as outbox + audit.',
+      lines: [
+        ['C', '`POST /inbound/email` (webhook), `POST /tickets`, `POST /tickets/{id}/messages`, `POST /tickets/{id}/claim { version }`, `PATCH /tickets/{id}/status { to, version }`, `GET /tickets/{id}/events?since=v`, `GET /search?q=`.'],
+        ['C', '`tickets { _id, tenantId, status, priority, queue, assignee, version, firstResponseAt }`, `messages`, `events { ticketId, version, type, by, published }`, `timers { dueAt }`.'],
+        ['C', 'Shard key `{ tenantId, _id }`; unique `{ tenantId, sourceMessageId }`.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'API, DB + outbox, Kafka, consumers, push.',
+      lines: [
+        ['P', 'Draw: channels → Ticket API → Ticket DB (+ events) → relay → Kafka → router / SLA / search / push / notification.'],
+        ['C', 'The API is the only writer. Each change writes the ticket and an event in one transaction: that is the outbox and the audit log.'],
+        ['C', 'The router puts the ticket in a skill queue; agents claim with a compare-and-set on the version.'],
+        ['C', 'The SLA worker stores timers and fires them through a lease-based scheduler.'],
+        ['C', 'The push gateway consumes events and pushes them over WebSockets; offline customers get email.'],
+        ['I', 'Why not just publish to Kafka from the API after saving?'],
+        ['C', 'Two writes without a transaction: a crash in between loses the event. The outbox makes it atomic.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Claim race, state machine, SLA, live updates, tenancy.',
+      lines: [
+        ['I', 'Two agents take the same ticket.'],
+        ['C', 'Conditional update on version and assignee null; the loser matches 0 and gets 409.'],
+        ['I', 'How do you stop invalid status changes?'],
+        ['C', 'A transition table checked in one service, applied with a filter on the current status and version. Closed is final; a reply creates a follow-up.'],
+        ['I', 'An SLA timer fires right after the agent replied.'],
+        ['C', 'The escalation is conditional on `firstResponseAt: null`, so it is a no-op. Timers check on fire.'],
+        ['I', 'An agent reconnects after a network drop.'],
+        ['C', 'Events carry versions; the client asks for events since its last version.'],
+        ['I', 'How do you keep tenants apart?'],
+        ['C', 'Tenant from the token, filter enforced in a shared repository and ES filtered alias, re-checked on hydration, rate limits per tenant.'],
+      ],
+      avoid: 'Pessimistic locks held while an agent is typing.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: one writer, ticket + event in one transaction, Kafka fan-out, CAS claims, state machine, durable SLA timers that check on fire, versioned live updates, tenant isolation.'],
+        ['C', 'Next: skills-based push routing with capacity, macros and automations engine, CSAT analytics from the event stream, data residency per tenant (EU cluster), GDPR delete.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): 1–2 minutes, pause between paragraphs
+    summary: [
+      "I'd build it around one **Ticket service** in Spring Boot that is the only writer. Email arrives as a webhook from the inbound mail provider, web and chat call the same API, and the tenant comes from the to-address or the JWT. Because webhooks get retried, intake is idempotent: there's a unique index on tenant plus the email's Message-ID. Replies are threaded onto the existing ticket using the In-Reply-To header or the ticket number in the subject, and attachments go to **S3**, so the ticket only stores the key.",
+      "Every change writes the ticket document and an **event** in one MongoDB transaction. That events collection is the **transactional outbox**, and it's also the audit history: who changed what and when. A relay publishes the events to **Kafka**, keyed by ticket id so one ticket's events stay in order, and several consumer groups react: the router puts the ticket in a skill queue, the SLA worker starts timers, the indexer updates Elasticsearch, and the push gateway sends it over **WebSockets** to every open screen.",
+      "The status is a **state machine**, new, open, pending, resolved, closed, with a transition table checked in one place. Claims use **optimistic locking**: the update says \"only if the version is still 1 and nobody is assigned\", and increments the version, so if two agents click Take together, one wins and the other gets a 409. Spring Data's `@Version` does this out of the box.",
+      "SLA deadlines are stored as **timer documents** and fired by lease-based workers, the same pattern as a job scheduler. The important detail is that a timer checks on fire: the escalation is a conditional update on \"no first response yet\", so a reply one second earlier makes it a no-op. Pending time pauses the clock. And for multi-tenancy, tenantId is in every index and shard key, enforced in one shared repository layer and a filtered search alias, with per-tenant rate limits so one company's mail loop can't slow down everybody else.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> intake from email / web / chat with threading and attachments; lifecycle NEW → OPEN → PENDING → RESOLVED → CLOSED with reopen; skill queues + claim / auto-assign; SLA timers + escalation; live updates; search; audit history.</li>
+        <li><b>Non-functional:</b> multi-tenant isolation; one owner per ticket; no lost or duplicated tickets; updates in ~1 s; SLA timers survive restarts.</li>
+        <li><b>Reuses:</b> timers like <a href="08_Job_Scheduler.html">8 · Job Scheduler</a>, mail via <a href="04_Notification_System.html">4 · Notification System</a>, search via <a href="10_Search_System.html">10 · Search System</a>, WebSockets from <a href="07_Chat_System.html">7 · Chat</a>.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Tickets</td><td class="m">5 M / day</td><td>≈ 60/s, peaks ~300/s</td></tr>
+        <tr><td>Messages</td><td class="m">~5 per ticket</td><td>~300 writes/s average</td></tr>
+        <tr><td>Storage</td><td class="m">~10 KB / ticket</td><td>≈ 50 GB/day DB; files in S3</td></tr>
+        <tr><td>Sockets</td><td class="m">agents + portals</td><td>100 k+ open WebSockets</td></tr></table>` },
+      { h: '3 · API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">POST /inbound/email</td><td>provider webhook → 200 { ticketId } (idempotent)</td></tr>
+        <tr><td class="m">POST /tickets/{id}/claim</td><td>{ version } → 200 | 409 Conflict</td></tr>
+        <tr><td class="m">PATCH /tickets/{id}/status</td><td>{ to, version } → 200 | 409 | 422 illegal</td></tr>
+        <tr><td class="m">GET /tickets/{id}/events?since=v</td><td>resync after reconnect; audit view</td></tr>
+        <tr><td class="m">GET /search?q=</td><td>tenant-scoped Elasticsearch query</td></tr></table>` },
+      { h: '4 · Data', color: '#8f4fc4', html: `<pre>// tickets (shard key { tenantId: 1, _id: 1 })
+{ _id: "T-101", tenantId: "acme", status: "OPEN",
+  priority: "high", queue: "billing", assignee: "asha",
+  version: 5, firstResponseAt: ISODate(…),
+  sourceMessageId: "m-77", followUpOf: null }
+// unique { tenantId: 1, sourceMessageId: 1 }
+
+// events: outbox + audit (append-only)
+{ tenantId: "acme", ticketId: "T-101", version: 5,
+  type: "reply", by: "asha", at: …, published: true }
+
+// timers
+{ _id: "T-101:frt", dueAt: …, warnAt: …, status: "WAITING" }</pre>` },
+      { h: '5 · Lifecycle', color: '#2f6fe0', html: `<ol>
+        <li><b>NEW</b> → OPEN (claimed / agent reply) · PENDING · RESOLVED</li>
+        <li><b>OPEN</b> ⇄ PENDING (waiting on customer, SLA paused)</li>
+        <li><b>OPEN / PENDING</b> → RESOLVED (agent) → OPEN on customer reply (reopen)</li>
+        <li><b>RESOLVED</b> → CLOSED after 7 days (timer, conditional on status + version)</li>
+        <li><b>CLOSED</b> is final: a reply creates a follow-up ticket.</li></ol>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>Outbox in the same transaction → no lost events; consumers dedupe by (ticketId, version).</li>
+        <li>CAS on version for claims and status changes; no locks held while agents type.</li>
+        <li>Timers are durable and leased; actions check on fire.</li>
+        <li>Clients resync with <code>events?since=v</code>; offline customers get email.</li>
+        <li>Tenant filter in one shared layer, re-checked on hydration; per-tenant rate limits.</li></ul>` },
+    ],
+    decisions: [
+      ['Transactional outbox (events collection)', 'Ticket change and event can never disagree; doubles as audit history.', 'A relay to run; events arrive ~100 ms later.'],
+      ['Optimistic locking (version CAS) for claims', 'No locks held; the loser gets a clear 409.', 'Clients must refresh and retry on conflict.'],
+      ['Explicit state machine', 'Illegal transitions rejected in one place; clean reporting.', 'Every new status needs table + migration.'],
+      ['Durable timers that check on fire', 'Survive restarts; a late timer is harmless.', 'Fires up to a poll interval late.'],
+      ['Kafka keyed by ticketId', 'Per-ticket ordering, independent consumers.', 'At-least-once → version-based dedupe everywhere.'],
+      ['Shared DB, tenantId everywhere', 'Cheap for 50 k mostly small tenants.', 'One missing filter leaks data → enforce centrally; big tenants may need their own shard / cluster.'],
+      ['Pull queues vs push assignment', 'Pull is simple and fair to agents; push balances load by capacity.', 'Pull has claim races; push needs capacity tracking.'],
+    ],
+    code: [
+      { t: 'Idempotent intake + outbox in one transaction', code: `@PostMapping("/inbound/email")
+@Transactional                                                    // Mongo replica set: multi-document txn
+public TicketRef inbound(@RequestBody InboundEmail mail) {
+  String tenant = tenants.byAddress(mail.to());                   // support@acme.help → "acme"
+  Optional<Ticket> thread = tickets.findThread(tenant, mail.inReplyTo(), mail.subject());
+  if (thread.isPresent()) return appendMessage(thread.get(), mail); // reply → same ticket
+  try {
+    Ticket t = tickets.insert(Ticket.newFrom(tenant, mail));      // unique { tenantId, sourceMessageId }
+    events.insert(TicketEvent.of(t, "created"));                   // outbox row, same transaction
+    return t.ref();
+  } catch (DuplicateKeyException retry) {                          // provider re-sent the webhook
+    return tickets.findBySource(tenant, mail.messageId()).ref();
+  }
+}` },
+      { t: 'Claim with compare-and-set on version', code: `public Ticket claim(String tenant, String id, long seenVersion, String agent) {
+  Query q = query(where("_id").is(id).and("tenantId").is(tenant)
+      .and("version").is(seenVersion).and("assignee").isNull());
+  Update u = new Update().set("assignee", agent).set("status", "OPEN").inc("version", 1);
+  Ticket t = mongo.findAndModify(q, u, options().returnNew(true), Ticket.class);
+  if (t == null) throw new TicketConflictException(id);           // → 409, client refreshes
+  events.insert(TicketEvent.of(t, "assigned"));
+  return t;
+}
+// Same idea with Spring Data: @Version Long version → OptimisticLockingFailureException` },
+      { t: 'State machine: allowed transitions', code: `enum Status { NEW, OPEN, PENDING, RESOLVED, CLOSED }
+
+static final Map<Status, Set<Status>> NEXT = Map.of(
+    NEW,      EnumSet.of(Status.OPEN, Status.PENDING, Status.RESOLVED),
+    OPEN,     EnumSet.of(Status.PENDING, Status.RESOLVED),
+    PENDING,  EnumSet.of(Status.OPEN, Status.RESOLVED),
+    RESOLVED, EnumSet.of(Status.OPEN, Status.CLOSED),           // customer reply reopens
+    CLOSED,   EnumSet.noneOf(Status.class));                     // final: reply → follow-up ticket
+
+Ticket move(Ticket t, Status to, String by) {
+  if (!NEXT.get(t.status()).contains(to)) throw new IllegalTransitionException(t.status(), to);
+  Query q = query(where("_id").is(t.id()).and("status").is(t.status()).and("version").is(t.version()));
+  Ticket moved = mongo.findAndModify(q, new Update().set("status", to).inc("version", 1),
+                                     options().returnNew(true), Ticket.class);
+  if (moved == null) throw new TicketConflictException(t.id());   // changed under us
+  events.insert(TicketEvent.transition(moved, t.status(), to, by));
+  return moved;
+}` },
+      { t: 'SLA timer checks on fire · push consumer', code: `void onTimerDue(Timer timer) {                                    // claimed with a lease (see 8 · Job Scheduler)
+  UpdateResult r = mongo.updateFirst(
+      query(where("_id").is(timer.ticketId()).and("firstResponseAt").isNull()
+          .and("status").ne("PENDING")),
+      new Update().set("priority", "URGENT").set("queue", "billing-L2")
+          .set("breached", true).inc("version", 1), Ticket.class);
+  if (r.getModifiedCount() == 1) notifier.pageLead(timer);         // 0 → already answered: no-op
+  timers.markDone(timer);
+}
+
+@KafkaListener(topics = "ticket-events", groupId = "push-gateway")
+void onEvent(TicketEvent e) {                                      // key = ticketId → per-ticket order
+  sessions.subscribers(e.tenantId() + ":ticket:" + e.ticketId())
+          .forEach(s -> s.send(e));                                // client drops version ≤ lastVersion
+}` },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    cc: { name: 'Concurrency', color: '#8f4fc4' },
+    lc: { name: 'Lifecycle & SLA', color: '#c47d1e' },
+    ev: { name: 'Events & real time', color: '#348747' },
+    mt: { name: 'Tenancy & scale', color: '#2f6fe0' },
+    tt: { name: 'Alternatives', color: '#ce3434' },
+  },
+  followups: [
+    { g: 'cc', q: 'Two agents click "Take" on the same ticket.', what: 'With read-then-save, both own it and both reply.', why: 'The check and the write are separate operations.', how: 'Conditional update on `version` + `assignee: null`, `$inc version`; the loser matches 0 → 409 and the UI refreshes. `@Version` in Spring Data does it automatically.', trade: 'Losers see an error and must pick another ticket.', flow: 'claim' },
+    { g: 'cc', q: 'Why optimistic locking and not a lock on the ticket?', what: 'A pessimistic lock would be held while the agent reads and types.', why: 'Minutes-long locks block automations and other agents, and leak when tabs close.', how: 'Optimistic CAS for writes plus **presence** ("Ben is viewing") for humans; conflicts are rare and cheap.', trade: 'Occasional 409s instead of waiting.', flow: 'claim' },
+    { g: 'cc', q: 'An automation and an agent change the same ticket at once.', what: 'One would overwrite the other.', why: 'Both read version 5.', how: 'Every write is version-checked; the automation retries by re-reading and re-evaluating its rule, the agent sees a 409 with the new state.', trade: 'Retry logic in every writer.' },
+    { g: 'cc', q: 'How does push (auto) assignment respect agent capacity?', what: 'The router must not give a 6th ticket to someone with max 5.', why: 'Two routers may pick the same least-loaded agent.', how: 'Conditional `$inc openCount` on the agent document with `openCount < capacity`, then CAS on the ticket; undo the counter if the ticket CAS fails.', trade: 'Two documents to keep consistent; a transaction or a reconciliation job.' },
+    { g: 'lc', q: 'How do you model the ticket lifecycle?', what: 'NEW, OPEN, PENDING, RESOLVED, CLOSED, with reopen.', why: 'Illegal jumps break SLAs and reports.', how: 'Transition table in one service, applied with a filter on current status + version, each transition written as an event.', trade: 'Custom statuses per tenant map onto these base states.', flow: 'lifecycle' },
+    { g: 'lc', q: 'A customer replies to a closed ticket.', what: 'Closed must stay closed for reporting and billing.', why: 'Reopening would change history that reports already counted.', how: 'Create a follow-up ticket linked with `followUpOf`, same requester and group.', trade: 'Context split over two tickets (the link shows both).', flow: 'lifecycle' },
+    { g: 'lc', q: 'How do SLA timers work, and what if the worker is down?', what: 'Due times must fire even after restarts.', why: 'In-memory schedulers lose timers on deploy.', how: 'Timer documents with `dueAt`, claimed with a lease like the job scheduler; a down worker means late, not lost.', trade: 'Precision = poll interval (seconds).', flow: 'sla' },
+    { g: 'lc', q: 'The agent replies one second before the breach.', what: 'The timer may still fire.', why: 'Cancelling a timer races with firing it.', how: 'Check on fire: the escalation filters on `firstResponseAt: null`, so it matches 0.', trade: 'Timers must be written as idempotent conditional actions.', flow: 'sla' },
+    { g: 'lc', q: 'How are business hours and PENDING handled in SLAs?', what: 'The clock should not run at night or while waiting on the customer.', why: 'SLAs are contractual and measured in business time.', how: 'Compute dueAt with the tenant\'s calendar; on PENDING store `pausedAt`, on resume add the paused time to dueAt.', trade: 'Calendar math and holiday tables per tenant.', flow: 'sla' },
+    { g: 'ev', q: 'Why the outbox instead of publishing to Kafka after saving?', what: 'Save + publish are two systems.', why: 'A crash between them loses the event, or publishes a rolled-back change.', how: 'Insert the event in the same transaction; a relay or change stream publishes and marks it.', trade: 'Extra component; events are slightly delayed.', flow: 'intake' },
+    { g: 'ev', q: 'How do agents and customers get live updates?', what: 'Screens must change within a second.', why: 'Stale screens cause double replies.', how: 'Push gateway consumes ticket-events and pushes over WebSockets to `tenant:ticket:id` subscribers; Redis pub/sub between gateway nodes.', trade: '100 k+ open sockets to operate.', flow: 'realtime' },
+    { g: 'ev', q: 'A client misses or gets duplicate events.', what: 'Reconnects and Kafka redeliveries happen.', why: 'At-least-once delivery, flaky networks.', how: 'Every event has the ticket version; clients apply only newer ones and call `events?since=v` on reconnect.', trade: 'Events must be kept long enough to replay.', flow: 'realtime' },
+    { g: 'ev', q: 'The webhook provider sends the same email twice.', what: 'Two tickets for one email.', why: 'Providers retry on slow or failed responses.', how: 'Unique index on `{ tenantId, sourceMessageId }`; on duplicate key return the existing ticket.', trade: 'Needs a stable id from every channel (chat message id, form submission id).', flow: 'intake' },
+    { g: 'mt', q: 'How do you isolate tenants?', what: 'One forgotten filter leaks another company\'s data.', why: 'Shared database and index.', how: 'TenantId from JWT, shared tenant-scoped repository, ES filtered alias + routing, re-check on hydration, cross-tenant tests.', trade: 'Discipline everywhere; regulated tenants may need their own cluster.', flow: 'tenant' },
+    { g: 'mt', q: 'One tenant floods the system.', what: 'A mail loop or a huge import.', why: 'Shared intake, Kafka and workers.', how: 'Per-tenant token buckets at the API, loop detection, per-tenant consumer quotas; Kafka keyed by ticketId, not tenantId, to avoid hot partitions.', trade: 'Throttled tenants see delays.', flow: 'tenant' },
+    { g: 'mt', q: 'How do you shard the ticket data?', what: 'Billions of tickets over years.', why: 'One replica set will not hold it.', how: 'Shard key `{ tenantId, _id }`: tenant queries stay targeted, big tenants split over chunks; archive closed tickets after N months.', trade: 'Cross-tenant analytics go to a warehouse, not the OLTP DB.' },
+    { g: 'tt', q: 'Why Elasticsearch and not MongoDB text search?', what: 'Agents search full threads with ranking and filters.', why: 'Mongo text indexes rank poorly and load the primary.', how: 'Index from ticket events with the version as external version; DB stays the source of truth.', trade: 'A second store, ~1 s lag.', flow: 'tenant' },
+    { g: 'tt', q: 'Pull queues or push assignment?', what: 'Agents pick tickets vs the router assigns them.', why: 'Different teams want different control.', how: 'Support both: pull uses CAS claims; push uses capacity-aware assignment with the same CAS.', trade: 'Pull = races and cherry-picking; push = capacity tracking and fairness rules.', flow: 'claim' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>
