@@ -191,3 +191,6 @@ CHANGE LOG
 2026-11-19  Customer Support Ticketing page (13_Support_Ticketing.html, v1.0): intake + outbox, CAS claims, state machine,
             SLA timers + escalation, live updates, tenant isolation. Hub v3.8 (catalog entry). Verified: static dry-run of
             every flow + headless walk of every tab and flow step → 0 JS errors.
+2026-11-19  Git page (14_Git.html, v1.0): content-addressed objects, refs, merge base + 3-way merge, packfile negotiation,
+            ref CAS + non-fast-forward, repo sharding with quorum replicas, Git LFS, push events/webhooks. Hub v3.9.
+            Verified: static dry-run of every flow + headless walk of every tab and flow step → 0 JS errors.
