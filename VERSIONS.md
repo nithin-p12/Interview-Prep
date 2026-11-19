@@ -46,7 +46,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `sd-file-upload` | File Upload & Storage | v2.3 | `03_System_Design/02_SD_Simulator/06_File_Upload.html` |
 | System Design | `sd-job-scheduler` | Distributed Job Scheduler | v2.0 | `03_System_Design/02_SD_Simulator/08_Job_Scheduler.html` |
 | System Design | `sd-news-feed` | News Feed | v2.0 | `03_System_Design/02_SD_Simulator/09_News_Feed.html` |
-| System Design | `sd-search` | Search System | v2.0 | `03_System_Design/02_SD_Simulator/10_Search_System.html` |
+| System Design | `sd-search` | Search System | v3.0 | `03_System_Design/02_SD_Simulator/10_Search_System.html` |
 | System Design | `sd-video` | Video Streaming | v2.0 | `03_System_Design/02_SD_Simulator/11_Video_Streaming.html` |
 | System Design | `sd-distributed-cache` | Distributed Cache | v2.0 | `03_System_Design/02_SD_Simulator/12_Distributed_Cache.html` |
 | System Design | `sd-support` | Customer Support Ticketing | v1.0 | `03_System_Design/02_SD_Simulator/13_Support_Ticketing.html` |
@@ -349,7 +349,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v2.0 | 2026-11-13 | Own page, 6 tabs: overview loop, 14 components (links to Core Components for gateway, Redis, Kafka, DB), 6 flows (why Elasticsearch: regex scan vs inverted index, analyzers, BM25, shards; bool query must/filter + query cache; DB → CDC → Kafka → bulk index; dual write vs CDC; out-of-order updates vs external version; zero-downtime reindex with alias swap), how to explain, spoken interview answer, Java client/change stream code, 16 follow-ups. | current file · tag `sd-search/v2.0` |
+| v3.0 | 2026-11-20 | CURRENT: self-contained animated data-flow page in the URL Shortener v6.0 style (zones by role: Client · Entry · App services · Data · Async indexing; 15 logo cards incl. Change Stream CDC publisher, 3 shards with scatter/gather hops, details drawers with Core Components links) + Explain, Answer and Follow-ups tabs ported verbatim (9 ▶ Watch flow buttons). 7 scenarios: Why Elasticsearch, Search with filters, Seller changes a price, Dual write vs CDC, Out-of-order updates, Zero-downtime reindex, Live mix. No longer uses the shared engine. | current file · tag `sd-search/v3.0` |
+| v2.0 | 2026-11-13 | Own page, 6 tabs: overview loop, 14 components (links to Core Components for gateway, Redis, Kafka, DB), 6 flows (why Elasticsearch: regex scan vs inverted index, analyzers, BM25, shards; bool query must/filter + query cache; DB → CDC → Kafka → bulk index; dual write vs CDC; out-of-order updates vs external version; zero-downtime reindex with alias swap), how to explain, spoken interview answer, Java client/change stream code, 16 follow-ups. | git tag `sd-search/v2.0` |
 | v1 | 2026-10-23 | Section of the all-in-one simulator. | `_archive/03_System_Design/02_SD_Interview_Simulator_v1.html#search/1` · tag `sd-search/v1` |
 
 **Video Streaming** · `sd-video`

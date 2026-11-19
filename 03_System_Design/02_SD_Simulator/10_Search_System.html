@@ -3,790 +3,1160 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="sd-search">
-<meta name="doc-version" content="v2.0">
+<meta name="doc-version" content="v3.0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Search System · System Design · v2.0</title>
-<link rel="stylesheet" href="engine/sd.css">
+<title>Search System · System Design · v3.0</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:#ffffff;color:#0f172a}
+
+/* ---------- header ---------- */
+header{height:64px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.brand .logo{flex-shrink:0}
+.brand .txt{min-width:0}
+.brand .t{font-size:16px;font-weight:800;white-space:nowrap;display:flex;align-items:baseline;gap:10px}
+.brand .t a{font-size:11.5px;font-weight:600;color:#0b5cff;text-decoration:none}
+.brand .t a:hover{text-decoration:underline}
+.brand .s{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrls{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.seg{display:flex;align-items:center;background:#f1f5f9;border-radius:10px;padding:3px;gap:2px}
+.seg .lbl{font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;padding:0 6px 0 7px}
+.seg button{border:0;background:transparent;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#475569;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.seg button:hover{color:#0f172a}
+.seg button.on{background:#fff;color:#0b5cff;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.btn{border:1px solid #e2e8f0;background:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#334155;padding:7px 12px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f8fafc}
+
+/* ---------- main / svg ---------- */
+main{position:relative;height:calc(100vh - 64px - 78px)}
+#dia{display:block;width:100%;height:100%;user-select:none}
+.hint{position:absolute;left:12px;bottom:8px;font-size:11px;color:#64748b;background:rgba(255,255,255,.85);padding:3px 8px;border-radius:6px;pointer-events:none}
+.zl{font-size:13px;font-weight:800;letter-spacing:1.2px;fill:#334155}
+.nl{font:11px ui-monospace,Consolas,monospace;fill:#64748b}
+.edge{fill:none;stroke:#94a3b8;stroke-width:2;stroke-dasharray:6 7}
+.edge.hot{stroke-dasharray:none;stroke-width:3}
+.elbl{font-size:11px;font-weight:600;fill:#64748b;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.node{cursor:pointer}
+.node .card{transition:filter .2s,stroke-width .2s;filter:drop-shadow(0 1px 3px rgba(15,23,42,.08))}
+.node:hover .card{filter:drop-shadow(0 4px 10px rgba(15,23,42,.18))}
+.node.active .card{stroke-width:3.5;filter:drop-shadow(0 0 14px rgba(11,92,255,.55))}
+.nlab{font-size:14px;font-weight:700;fill:#0f172a;text-anchor:middle}
+.nsub{font-size:11px;fill:#64748b;text-anchor:middle}
+.tag text{font-size:10.5px;font-weight:700;fill:#fff;text-anchor:middle}
+.ptag{font-size:10.5px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3.5px;stroke-linejoin:round;text-anchor:middle}
+
+/* ---------- legend popover ---------- */
+.ibtn{width:34px;padding:7px 0;text-align:center;font-size:14px;line-height:1}
+.ibtn.on{background:#eef4ff;border-color:#cfe0ff;color:#0b5cff}
+#legendPop{position:fixed;top:70px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 44px rgba(15,23,42,.2),0 3px 10px rgba(15,23,42,.08);padding:12px 14px;z-index:7;display:none}
+#legendPop.open{display:block}
+#legendPop:before{content:"";position:absolute;top:-6px;right:var(--arrow,20px);width:10px;height:10px;background:#fff;border-left:1px solid #e5e7eb;border-top:1px solid #e5e7eb;transform:rotate(45deg)}
+.lgh{font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8;margin:2px 0 8px}
+.lgk{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+.lgk span{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569}
+.lgk i{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.06),0 0 7px var(--c);background:var(--c)}
+.lgs{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:10px}
+.lgs b{display:block;font-size:16px;font-weight:800;color:#0f172a;line-height:1.15}
+.lgs span{font-size:11px;color:#475569}
+.lgn{font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:8px}
+
+/* ---------- footer ---------- */
+footer{height:78px;background:#fff;border-top:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+#badge{flex-shrink:0;min-width:52px;height:44px;padding:0 8px;border-radius:12px;background:#0b5cff;color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+#badge.live{background:#16a34a;letter-spacing:1px}
+.fmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.frow{display:flex;align-items:center;gap:8px;min-width:0}
+#ftitle{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{flex-shrink:0;font:600 11px ui-monospace,Consolas,monospace;color:#0b5cff;background:#eef4ff;border:1px solid #cfe0ff;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill:empty{display:none}
+.grow{flex:1}
+#dots{display:flex;gap:3px;flex-shrink:0}
+#dots i{display:block;width:18px;height:4px;border-radius:2px;background:#e2e8f0}
+#dots i.on{background:#0b5cff}
+#ftext{font-size:12.5px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{display:flex;gap:8px;flex-shrink:0}
+.stat{width:78px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:6px 8px}
+.stat b{display:block;font-size:18px;line-height:1.1}
+.stat span{font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#64748b;white-space:nowrap}
+
+/* ---------- drawer ---------- */
+#drawer{position:fixed;right:14px;top:76px;bottom:90px;width:380px;max-width:calc(100vw - 28px);background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.22),0 4px 14px rgba(15,23,42,.08);transform:translateX(420px);transition:transform .35s ease;display:flex;flex-direction:column;overflow:hidden;z-index:5}
+#drawer.open{transform:translateX(0)}
+.dh{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #e5e7eb}
+.dh .dl{width:52px;height:52px;border-radius:12px;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dh h3{margin:0;font-size:16px}
+.dh p{margin:2px 0 0;font-size:12px;color:#475569}
+.dh button{margin-left:auto;align-self:flex-start;border:0;background:rgba(255,255,255,.7);border-radius:8px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#334155}
+.db{padding:14px 16px 18px;overflow:auto;font-size:13px;line-height:1.5;color:#334155}
+.db h4{margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.db ul{margin:0;padding-left:18px}
+.db li{margin:3px 0}
+.db pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.db code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px}
+.core-link{display:inline-block;margin-top:14px;font-size:12.5px;font-weight:600;color:#0b5cff;text-decoration:none;background:#eef4ff;border:1px solid #cfe0ff;padding:6px 10px;border-radius:9px}
+.core-link:hover{text-decoration:underline}
+
+/* ---------- header nav + view tabs ---------- */
+.brand .s{display:flex;align-items:center;gap:6px}
+.brand .s .sub{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.brand .nav{display:flex;align-items:center;gap:1px;flex-shrink:0}
+.brand .nav a,.brand .nav span{font-size:11.5px;font-weight:700;color:#0b5cff;text-decoration:none;padding:0 4px;border-radius:5px;line-height:16px}
+.brand .nav a:hover{background:#eef4ff}
+.brand .nav span.off{color:#cbd5e1;cursor:default}
+.brand .nav a.hub{color:#64748b;font-weight:600}
+body:not(.v-flow) .flowonly{display:none}
+body:not(.v-flow) main,body:not(.v-flow) footer,body:not(.v-flow) #drawer,body:not(.v-flow) #legendPop{display:none}
+body.v-flow #reader{display:none}
+
+/* ---------- reading panel (tabs 2-4) ---------- */
+#reader{position:relative;height:calc(100vh - 64px);overflow:auto;background:#f8fafc;scroll-behavior:smooth}
+.rd{max-width:1120px;margin:0 auto;padding:18px 20px 40px}
+.rd-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:12px}
+.rd-head h2{margin:0;font-size:20px;font-weight:800}
+.rd-head p{margin:4px 0 0;font-size:13px;color:#64748b;max-width:760px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.rcard{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.05);padding:14px 16px;margin-bottom:12px;font-size:13.5px;line-height:1.55;color:#334155}
+.rcard code,.fu code,.rd td code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px;color:#0f172a}
+.rcard h3{margin:0 0 6px;font-size:15px;color:#0f172a}
+/* explain */
+.timebar{position:sticky;top:0;z-index:2;display:flex;gap:4px;background:#f8fafc;padding:6px 0 10px}
+.timebar button{min-width:126px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:6px 8px;text-align:left;cursor:pointer;font:inherit;border-top:3px solid var(--c)}
+.timebar button:hover{background:#f1f5f9}
+.timebar b{display:block;font-size:12px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timebar span{font-size:11px;color:#64748b}
+.stage{border-left:4px solid var(--c);scroll-margin-top:70px}
+.stage-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.stage-h .sn{width:24px;height:24px;border-radius:50%;background:var(--c);color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center}
+.stage-h .mn{font-size:11px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:999px;padding:1px 8px}
+.goal{margin:2px 0 10px;color:#64748b}
+.msg{display:flex;gap:10px;margin:6px 0;align-items:flex-start}
+.msg .who{flex-shrink:0;width:88px;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding-top:3px}
+.msg p{margin:0;flex:1;padding:6px 10px;border-radius:10px}
+.msg.iv .who{color:#7c3aed}.msg.iv p{background:#f5f3ff}
+.msg.you .who{color:#0b5cff}.msg.you p{background:#eef4ff}
+.msg.tip .who{color:#a16207}.msg.tip p{background:#fefce8;font-style:italic}
+.avoid{margin:10px 0 0;padding:8px 12px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+/* answer */
+.jump{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.jump button,.chips button{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:4px 11px;font:600 12px "Segoe UI",system-ui,sans-serif;color:#475569;cursor:pointer}
+.jump button:hover,.chips button:hover{border-color:#cbd5e1;color:#0f172a}
+.pitch{border-left:4px solid #0b5cff;scroll-margin-top:56px}
+.pitch p{margin:0 0 8px}.pitch p:last-child{margin:0}
+.ans-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.ans-grid .rcard{margin:0}
+.ans{border-top:4px solid var(--c);scroll-margin-top:56px}
+.ans ul,.ans ol{margin:0;padding-left:20px}.ans li{margin:3px 0}
+.ans table{border-collapse:collapse;width:100%;font-size:13px}
+.ans td,.ans th{border-bottom:1px solid #f1f5f9;padding:5px 8px;text-align:left;vertical-align:top}
+.ans th{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8}
+.ans .m{font:12px ui-monospace,Consolas,monospace;white-space:nowrap;color:#0f172a}
+.ans pre,.codeblk pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.code-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;scroll-margin-top:56px}
+.codeblk{margin:0}
+.codeblk h3{font-size:13px}
+/* follow-ups */
+.chips{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.chips button small{color:#94a3b8;font-weight:700;margin-left:2px}
+.chips button.on{background:var(--c,#0b5cff);border-color:var(--c,#0b5cff);color:#fff}
+.chips button.on small{color:rgba(255,255,255,.8)}
+.fu{padding:0;border-left:4px solid var(--c)}
+.fu summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px}
+.fu summary::-webkit-details-marker{display:none}
+.fu summary:after{content:"▸";margin-left:auto;color:#94a3b8;transition:transform .2s}
+.fu[open] summary:after{transform:rotate(90deg)}
+.fu-g{flex-shrink:0;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border-radius:999px;padding:2px 9px}
+.fu-q{font-size:14px;font-weight:700;color:#0f172a}
+.fu-body{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:0 16px 14px}
+.fu-body > div > b{display:block;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8;margin-bottom:2px}
+.fu-body p{margin:0}
+.fu-body .say{grid-column:1/-1;background:#eef4ff;border-radius:10px;padding:8px 12px}
+.fu-body .say > b{color:#0b5cff}
+.watch{grid-column:1/-1;justify-self:start;border:0;background:#0b5cff;color:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;padding:7px 14px;border-radius:9px;cursor:pointer}
+.watch:hover{background:#0a4fe0}
+</style>
 </head>
-<body>
-<script src="engine/scene.js"></script>
-<script src="engine/player.js"></script>
+<body class="v-flow">
+<header>
+  <div class="brand">
+    <svg class="logo" width="34" height="34" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#0b5cff"/><circle cx="21" cy="21" r="9" fill="none" stroke="#fff" stroke-width="3.4"/><path d="M28 28l8 8" stroke="#fff" stroke-width="3.8" stroke-linecap="round"/></svg>
+    <div class="txt">
+      <div class="t">Search System</div>
+      <div class="s"><span class="nav" id="dNav"></span><span class="sub">Product search · inverted index · bool query fan-out to shards · CDC → Kafka → _bulk with external versions · alias reindex</span></div>
+    </div>
+  </div>
+  <div class="ctrls">
+    <div class="seg" id="viewSeg">
+      <button data-view="flow" class="on" title="Animated data flow">Data flow</button>
+      <button data-view="explain" title="How to explain it, stage by stage">Explain</button>
+      <button data-view="answer" title="Interview-ready answer">Answer</button>
+      <button data-view="followups" title="Follow-up questions">Follow-ups</button>
+    </div>
+    <div class="seg flowonly" id="scSeg"><span class="lbl">Scenario</span>
+      <button data-sc="why" title="Why Elasticsearch? Regex scan vs inverted index">Why ES</button>
+      <button data-sc="query" title="Search with filters: bool must + filter · shard fan-out · query cache">Search</button>
+      <button data-sc="index" title="Seller changes a price: DB → change stream → Kafka → _bulk">Index</button>
+      <button data-sc="dual" title="Dual write vs CDC: app writes both stores vs change stream">Dual</button>
+      <button data-sc="order" title="Out-of-order updates: last write wins vs external version">Order</button>
+      <button data-sc="reindex" title="Reindex with zero downtime: new index · backfill · alias swap">Reindex</button>
+      <button data-sc="live" title="Live mixed traffic">Live</button>
+    </div>
+    <div class="seg flowonly" id="spSeg"><span class="lbl">Speed</span>
+      <button data-sp="0.5">0.5x</button><button data-sp="1" class="on">1x</button><button data-sp="2">2x</button>
+    </div>
+    <button class="btn flowonly" id="pauseBtn">⏸ Pause</button>
+    <button class="btn flowonly" id="replayBtn">↻ Replay</button>
+    <button class="btn ibtn flowonly" id="legendBtn" title="Legend &amp; scale (L)" aria-haspopup="dialog" aria-expanded="false">ⓘ</button>
+  </div>
+</header>
+
+<main>
+  <svg id="dia" viewBox="0 0 1600 600" preserveAspectRatio="xMidYMid meet"></svg>
+  <div class="hint">Click any component for details · Space pause · 1 2 3 speed · R replay · L legend</div>
+</main>
+
+<footer>
+  <div id="badge">1/1</div>
+  <div class="fmid">
+    <div class="frow"><span id="ftitle"></span><span id="fproto" class="pill"></span><span class="grow"></span><div id="dots"></div></div>
+    <div id="ftext"></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="stReq">0</b><span>Requests</span></div>
+    <div class="stat"><b id="stHit">0</b><span>Cache hits</span></div>
+    <div class="stat"><b id="stEvt">0</b><span>Events</span></div>
+    <div class="stat"><b id="stRes">0</b><span>Responses</span></div>
+  </div>
+</footer>
+
+<section id="reader" aria-live="polite"></section>
+
+<div id="legendPop" role="dialog" aria-label="Legend and scale">
+  <div class="lgh">PACKETS</div>
+  <div class="lgk" id="lgKinds"></div>
+  <div class="lgh">SCALE (FROM THE FULL DESIGN)</div>
+  <div class="lgs">
+    <div><b>50 M</b><span>products · ~100 GB</span></div>
+    <div><b>5 k/s</b><span>searches at peak</span></div>
+    <div><b>&lt; 200 ms</b><span>p99 search</span></div>
+    <div><b>~1 s</b><span>index lag (refresh)</span></div>
+  </div>
+  <div class="lgn">Dashed edges crawl in the request direction · solid = packet in transit</div>
+</div>
+
+<aside id="drawer" aria-hidden="true">
+  <div class="dh" id="dHead"><div class="dl" id="dLogo"></div><div><h3 id="dTitle"></h3><p id="dTag"></p></div><button id="dClose" title="Close (Esc)">×</button></div>
+  <div class="db" id="dBody"></div>
+</aside>
+
 <script src="engine/catalog.js"></script>
 <script>
-// Product search (e-commerce). Elasticsearch is taught HERE (flow "Why Elasticsearch?"), not in Core Components.
-// API gateway, Redis, Kafka and DB basics live in 00_Core_Components.html.
-const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
-const KEEP = '#d5d9dc';
+'use strict';
+// =====================================================================
+// Search System · Data Flow: nodes grouped by app role (client · entry · app services · data · async indexing);
+// no infra containers, no CDN (search results are per query and must stay fresh). Self-contained: no engine/ except catalog.js for prev/next.
+// Content comes from 10_Search_System.html (v2.0): MongoDB as truth with version++, change stream → Kafka (key = productId)
+// → Indexer → _bulk with version_type=external, bool query (must + filter) fanned out to 3 shards, Redis query cache, alias reindex.
+// Elasticsearch itself (analyzers, inverted index, BM25, shards, refresh) is taught HERE, not in Core Components.
+// =====================================================================
 
-// Row colours for the store under the pipeline (posting lists, search documents, results or indices).
-const ST = {
-  NEW: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
-  IDX: { fill: '#f3f6fe', stroke: BLUE, color: BLUE },
-  OK: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
-  BAD: { fill: '#fff4f4', stroke: RED, color: RED },
-  DIM: { fill: '#f6f7fb', stroke: '#e3e6ee', color: GREY },
+const NS = 'http://www.w3.org/2000/svg';
+const KIND = { request: '#2563eb', response: '#16a34a', event: '#f97316', error: '#dc2626' };
+const CLIENTS = new Set(['userA', 'userB', 'seller']);
+const PAL = {
+  userA: ['#eef0ff', '#818cf8'], userB: ['#eef0ff', '#818cf8'], seller: ['#ecfdf5', '#10b981'],
+  gw: ['#ffffff', '#7c3aed'],
+  search: ['#ffffff', '#2563eb'], catalog: ['#fff9db', '#e0b400'],
+  cache: ['#fff1f2', '#dc2626'], es: ['#e6faf8', '#00a39a'], s0: ['#e0f2fe', '#0284c7'], s1: ['#e0f2fe', '#0284c7'], s2: ['#e0f2fe', '#0284c7'],
+  catdb: ['#e6f6ea', '#34a853'],
+  cdc: ['#f0f9e8', '#65a30d'], kafka: ['#fff0e0', '#f59e0b'], indexer: ['#ffffff', '#db2777'],
 };
-const SHARDS = ['s0', 's1', 's2'];
+// zone tints: [fill, stroke, label] (same palette as 01_URL_Shortener.html)
+const ZT = {
+  client: ['#fed7aa', '#fb923c', '#9a3412'], entry: ['#ddd6fe', '#8b5cf6', '#5b21b6'], app: ['#bfdbfe', '#3b82f6', '#1e3a8a'],
+  data: ['#e5e7eb', '#9ca3af', '#374151'], async: ['#ffe4e6', '#fb7185', '#9f1239'],
+};
 
-// State shown next to the components: the store (bottom right), DB doc, Kafka, indexer, cache, shards, users.
-function setup(s, v, { rows = [], title = 'SEARCH INDEX · products (copy)', clock = '15:00:00', db = 'p-7 · ₹100 · v3', kaf = 'product-changes —', idx = 'idle', cache = 'cache empty', sh = ['17 M docs', '17 M docs', '16 M docs'], a = 'browsing', b = 'browsing', c = 'seller portal', es = null } = {}) {
-  v.clock = s.chip(15, 500, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
-  v.log = s.store(840, 405, 250, title, { color: BLUE });
-  v.rows = {};
-  rows.forEach(([key, text, st]) => { s.row(v.log, text, { ...ST[st], now: true }); v.rows[key] = v.log.rows[v.log.rows.length - 1]; });
-  v.db = s.chip(650, 492, db, { mono: true, color: TEAL });
-  v.kaf = s.chip(960, 378, kaf, { mono: true, color: PURPLE });
-  v.idx = s.chip(960, 140, idx, { mono: true, color: GREY });
-  v.cache = s.chip(650, 112, cache, { mono: true, color: GREY });
-  v.sh = [542, 650, 758].map((x, i) => s.chip(x, 357, sh[i], { mono: true, color: GREY }));
-  v.ua = s.chip(65, 116, a, { color: GREY });
-  v.ub = s.chip(65, 271, b, { color: GREY });
-  v.uc = s.chip(65, 436, c, { color: GREY });
-  if (es) s.setSub(s.nodes.es, es, BLUE);
-  return v;
+// ---------------- logos (48x48 inline SVG) ----------------
+const cube = (badge) => `<path d="M24 5l17 9.5v19L24 43 7 33.5v-19z" fill="#326ce5"/><path d="M24 24l17-9.5v19L24 43z" fill="#2557c4"/><path d="M24 5l17 9.5L24 24 7 14.5z" fill="#6f9cf0"/>${badge}`;
+const person = c => `<circle cx="24" cy="15" r="8.5" fill="${c}"/><path d="M7 43c0-10 7.6-16 17-16s17 6 17 16z" fill="${c}"/>`;
+const shard = n => `<rect x="5" y="6" width="36" height="34" rx="7" fill="#0284c7"/><g fill="#fff"><rect x="11" y="12" width="20" height="4.2" rx="2.1"/><rect x="11" y="20" width="24" height="4.2" rx="2.1" opacity=".85"/><rect x="11" y="28" width="14" height="4.2" rx="2.1" opacity=".7"/></g><circle cx="37" cy="37" r="9" fill="#00bfb3" stroke="#fff" stroke-width="2"/><text x="37" y="41.3" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Segoe UI,Arial,sans-serif">${n}</text>`;
+const LOGO = {
+  userA: person('#6366f1'),
+  userB: person('#6366f1'),
+  seller: `<path d="M8 21h32v19a3 3 0 0 1-3 3H11a3 3 0 0 1-3-3z" fill="#10b981"/><path d="M5 18l5-12h28l5 12z" fill="#047857"/><path d="M5 18a5.5 5.5 0 0 0 11 0 5.5 5.5 0 0 0 11 0h-6 6a5.5 5.5 0 0 0 11 0 5.5 5.5 0 0 0 5 0" fill="#fff" stroke="#047857" stroke-width="2" stroke-linejoin="round"/><rect x="19" y="29" width="10" height="14" rx="1.5" fill="#fff"/><rect x="11.5" y="27" width="5" height="5" rx="1" fill="#d1fae5"/><rect x="31.5" y="27" width="5" height="5" rx="1" fill="#d1fae5"/>`,
+  gw: `<rect x="5" y="5" width="38" height="38" rx="10" fill="#7c3aed"/><path d="M15 38V23a9 9 0 0 1 18 0v15" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M11 38h26" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="28" cy="31" r="1.9" fill="#fff"/>`,
+  search: cube(`<circle cx="37" cy="37" r="9" fill="#2563eb" stroke="#fff" stroke-width="2"/><circle cx="35.6" cy="35.6" r="3.6" fill="none" stroke="#fff" stroke-width="2.2"/><path d="M38.3 38.3l3 3" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>`),
+  catalog: cube(`<circle cx="37" cy="37" r="9" fill="#e0b400" stroke="#fff" stroke-width="2"/><path d="M32.5 32.5h4.6l5.4 5.4-4.6 4.6-5.4-5.4z" fill="#fff"/><circle cx="35" cy="35" r="1.1" fill="#e0b400"/>`),
+  cache: `<path d="M5 31l19 8 19-8-19-8z" fill="#a41e11"/><path d="M5 24l19 8 19-8-19-8z" fill="#d82c20"/><path d="M5 17l19 8 19-8-19-8z" fill="#ff4438"/><path d="M24 12.5l1.6 3.1 3.4.4-2.5 2.2.7 3.3-3.2-1.7-3 1.7.6-3.3-2.5-2.2 3.4-.4z" fill="#fff"/>`,
+  es: `<path d="M8.5 18.5C10.6 10.5 16.7 5 24.5 5 30.6 5 36 8.4 38.9 13.5H14.2c-2.6 0-4.8 2-5.7 5z" fill="#fec514"/><rect x="8" y="20.2" width="33" height="7.6" rx="3.8" fill="#343741"/><path d="M8.5 29.5c.9 3 3.1 5 5.7 5h24.7C36 39.6 30.6 43 24.5 43 16.7 43 10.6 37.5 8.5 29.5z" fill="#00bfb3"/><path d="M3.5 21.5a6 6 0 0 1 2.4-2.6v10.2a6 6 0 0 1-2.4-2.6z" fill="#f04e98"/><path d="M42.6 20.2h1.4a2.5 2.5 0 0 1 0 7.6h-1.4z" fill="#1ba9f5"/>`,
+  s0: shard(0), s1: shard(1), s2: shard(2),
+  catdb: `<path d="M24 3c8 9 12 17 12 24.5 0 8.5-5.2 13.5-10.6 15.5h-2.8C17.2 41 12 36 12 27.5 12 20 16 12 24 3z" fill="#13aa52"/><path d="M24 9v37" stroke="#0b6b33" stroke-width="2"/>`,
+  cdc: `<ellipse cx="17" cy="11" rx="12" ry="5" fill="#a3e635"/><path d="M5 11v25c0 2.8 5.4 5 12 5s12-2.2 12-5V11c0 2.8-5.4 5-12 5S5 13.8 5 11z" fill="#65a30d"/><path d="M5 19.5c0 2.8 5.4 5 12 5s12-2.2 12-5M5 28c0 2.8 5.4 5 12 5s12-2.2 12-5" fill="none" stroke="#d9f99d" stroke-width="1.6"/><path d="M27 24h12M34.5 18.5l5.5 5.5-5.5 5.5" fill="none" stroke="#ea580c" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="34" cy="35" r="2.3" fill="#f97316"/><circle cx="40" cy="35" r="2.3" fill="#f97316" opacity=".7"/><circle cx="46" cy="35" r="2" fill="#f97316" opacity=".45"/>`,
+  kafka: `<g stroke="#231f20" stroke-width="2.4" fill="none"><path d="M24 11v26M24 24l12-7M24 24l12 7"/></g><g fill="#fff" stroke="#231f20" stroke-width="2.8"><circle cx="24" cy="8" r="4.5"/><circle cx="24" cy="40" r="4.5"/><circle cx="24" cy="24" r="5.5"/><circle cx="37" cy="16" r="4"/><circle cx="37" cy="32" r="4"/></g>`,
+  indexer: `<circle cx="20" cy="24" r="13.5" fill="none" stroke="#db2777" stroke-width="6.5" stroke-dasharray="5.3 5.3"/><circle cx="20" cy="24" r="10.8" fill="#ec4899"/><circle cx="20" cy="24" r="4.2" fill="#fff"/><path d="M33 13h10v22H33" fill="#fff" stroke="#db2777" stroke-width="2.2" stroke-linejoin="round"/><path d="M36 19h5M36 24h5M36 29h5" stroke="#db2777" stroke-width="2" stroke-linecap="round"/>`,
+};
+
+// ---------------- topology ----------------
+const NODES = {
+  userA: { x: 93, y: 125, label: 'Shopper A', sub: 'web / app · searches' },
+  userB: { x: 93, y: 300, label: 'Shopper B', sub: 'same query, later' },
+  seller: { x: 93, y: 475, label: 'Seller C', sub: 'seller portal' },
+  gw: { x: 300, y: 300, label: 'API Gateway', sub: 'JWT · rate limit · routes', replicas: 2 },
+  search: { x: 530, y: 215, label: 'Search Service', sub: 'bool query · cache', replicas: 3 },
+  catalog: { x: 530, y: 420, label: 'Catalog Service', sub: 'product writes · DB only', replicas: 2 },
+  cache: { x: 740, y: 118, label: 'Query Cache', sub: 'Redis · q:… · TTL 30 s', replicas: 2 },
+  es: { x: 1052, y: 215, label: 'Elasticsearch', sub: 'coordinating node', replicas: 3 },
+  s0: { x: 890, y: 385, label: 'Shard 0', sub: '17 M docs · + replica', replicas: 2 },
+  s1: { x: 1052, y: 385, label: 'Shard 1', sub: '17 M docs · + replica', replicas: 2 },
+  s2: { x: 1214, y: 385, label: 'Shard 2', sub: '16 M docs · + replica', replicas: 2 },
+  catdb: { x: 740, y: 525, label: 'Catalog DB', sub: 'MongoDB · source of truth', replicas: 3 },
+  cdc: { x: 1452, y: 525, label: 'Change Stream', sub: 'CDC publisher · oplog' },
+  kafka: { x: 1452, y: 335, label: 'Kafka', sub: 'topic product-changes', replicas: 3 },
+  indexer: { x: 1452, y: 140, label: 'Indexer', sub: '@KafkaListener → _bulk', replicas: 3 },
+};
+// grouped by developer role, not by infrastructure
+const ZONES = [
+  { x: 8, y: 8, w: 170, h: 584, t: 'client', label: 'CLIENT', cap: 'shoppers · sellers' },
+  { x: 190, y: 8, w: 190, h: 584, t: 'entry', label: 'ENTRY', cap: 'one front door' },
+  { x: 392, y: 8, w: 240, h: 584, t: 'app', label: 'APP SERVICES', cap: 'Spring Boot · stateless', dash: true },
+  { x: 644, y: 8, w: 656, h: 584, t: 'data', label: 'DATA', cap: 'truth · index · cache', dash: true },
+  { x: 1312, y: 8, w: 280, h: 584, t: 'async', label: 'ASYNC INDEXING', cap: 'CDC → Kafka → _bulk', dash: true },
+];
+// [from, to, protocol label]; the path direction is the request direction (dashes crawl that way).
+const EDGE_DEFS = [
+  ['userA', 'gw', 'HTTPS'], ['userB', 'gw', ''], ['seller', 'gw', 'HTTPS'],
+  ['gw', 'search', 'GET /search'], ['gw', 'catalog', 'PATCH'],
+  ['search', 'cache', 'GET · SET'], ['search', 'es', 'POST products/_search'],
+  ['es', 's0', ''], ['es', 's1', 'query'], ['es', 's2', ''],
+  ['catalog', 'catdb', 'updateOne'], ['catalog', 'es', '❌ dual write'],
+  ['catdb', 'cdc', 'change stream (oplog)'], ['cdc', 'kafka', 'key = productId'], ['kafka', 'indexer', 'poll batch'],
+  ['indexer', 'es', '_bulk · external version'],
+];
+
+// ---------------- drawer content ----------------
+const INFO = {
+  userA: {
+    tag: 'Shoppers · web and mobile app',
+    desc: 'Type a query, pick filters (price, brand, in stock), sort and page through results; the UI also asks for <b>autocomplete</b> while they type. Search is the main way people find products: it must be fast (&lt; 200 ms) and relevant.',
+    points: ['~5 k searches/s at peak, far more than product writes', 'Only two read endpoints: <code>GET /search</code> and <code>GET /suggest</code>', 'A slow search is an abandoned session: time out and show cached or partial results', 'Deep pages are capped: the UI moves forward with a cursor (<code>search_after</code>), not page 500'],
+    code: `# search with filters
+curl 'https://shop.ex/search?q=running%20shoes&maxPrice=150&inStock=true&page=1' \\
+  -H 'Authorization: Bearer eyJ…'
+# -> 200 { "hits": [ { "id": "p-7", "title": "Trail running shoes",
+#                     "price": 80, "score": 7.3 }, … ],
+#          "facets": { "brand": { "Asics": 41, "Nike": 37 } },
+#          "next": "eyJzb3J0IjpbNy4zLCJwLTciXX0" }
+
+# autocomplete while typing (debounced in the UI)
+curl 'https://shop.ex/suggest?q=run'`,
+  },
+  userB: {
+    tag: 'Runs the same popular query a moment later',
+    desc: 'Shows the <b>query cache</b>: popular queries ("iphone", "running shoes") follow a power law, so many shoppers send exactly the same normalised query within seconds.',
+    points: ['Same query + filters + page → same cache key', 'Served from Redis in ~4 ms, without touching the cluster', 'The list may be up to 30 s old: fine for search, not for checkout prices', 'The product page and checkout always read the Catalog DB'],
+    code: `curl -i 'https://shop.ex/search?q=Running%20Shoes&inStock=true&maxPrice=150'
+# HTTP/2 200
+# x-cache: HIT            (key q:running shoes|price≤150|inStock|p1)
+# x-took-ms: 4`,
+  },
+  seller: {
+    tag: 'Seller portal · creates and edits products',
+    desc: 'Creates and edits products: title, description, price, stock. Every edit must reach search within seconds, without ever losing or reordering a change.',
+    points: ['Low write rate compared with searches', 'Writes go to the Catalog Service and the <b>DB only</b>', 'Their own product page reads the <b>DB</b>, so they see a change at once even if search lags a second', 'Two quick edits must end in the newest price in search: external versions guarantee it'],
+    code: `curl -X PATCH https://shop.ex/products/p-7 \\
+  -H 'Authorization: Bearer eyJ…(seller C)' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"price": 80}'
+# -> 200 {"id":"p-7","price":80,"version":4}`,
+  },
+  gw: {
+    tag: 'API gateway · entry point',
+    desc: 'JWT auth, rate limits per user / IP (search is a favourite for scrapers) and routing: <code>/search</code> to the Search Service, <code>/products</code> to the Catalog Service. Cross-cutting concerns live in one place, so abusive clients stop here, not in the Elasticsearch cluster.',
+    points: ['Without it, a scraper paging through every result can saturate the cluster', 'Read path and write path are completely separate behind it', 'Stateless pods; retries only idempotent GETs', '<b>Why no CDN?</b> Results are per query and per filter and must reflect price changes within seconds; a CDN only helps for images and static assets.'],
+    code: `# Spring Cloud Gateway: application.yml
+spring:
+  cloud:
+    gateway:
+      routes:
+      - id: search                      # read path, hot
+        uri: lb://search-service
+        predicates: [ Path=/search/**, Path=/suggest/** ]
+        filters:
+        - name: RequestRateLimiter      # scrapers stop here
+          args:
+            redis-rate-limiter.replenishRate: 20
+            redis-rate-limiter.burstCapacity: 40
+      - id: catalog                     # write path
+        uri: lb://catalog-service
+        predicates: [ Path=/products/** ]`,
+  },
+  search: {
+    tag: 'Spring Boot · query side · 3 instances',
+    desc: 'Normalises the input, builds the Elasticsearch <b>bool query</b> (scored <code>must</code>, cached <code>filter</code>, boosts, facets), always queries the <b>alias</b> <code>products</code>, and caches hot result pages in Redis.',
+    points: ['Keeps query rules, synonyms config and relevance tuning in one place; clients never talk to Elasticsearch', 'Without it every client builds its own queries, and one bad query (a leading wildcard, page 5 000) hurts everyone', 'Text in <code>must</code> (BM25-scored); price, brand, stock in <code>filter</code> (unscored, cached as bitsets)', 'ES slow → <code>timeout</code> + <code>allow_partial_search_results</code>, or a cached page'],
+    code: `public SearchPage search(String q, BigDecimal maxPrice, int page) {
+  String key = "q:" + normalise(q) + "|price≤" + maxPrice + "|inStock|p" + page;
+  SearchPage cached = redis.opsForValue().get(key);          // GET q:…
+  if (cached != null) return cached;                          // ~4 ms
+
+  SearchResponse<ProductDoc> res = es.search(s -> s
+      .index("products")                                      // always the alias
+      .query(qb -> qb.bool(b -> b
+          .must(m -> m.multiMatch(mm -> mm.query(q)
+              .fields("title^3", "description")))             // scored (BM25)
+          .filter(f -> f.range(r -> r.number(n -> n.field("price")
+              .lte(maxPrice.doubleValue()))))
+          .filter(f -> f.term(t -> t.field("inStock").value(true)))))
+      .aggregations("brands", a -> a.terms(t -> t.field("brand").size(10)))
+      .from(page * 10).size(10)
+      .timeout("500ms"), ProductDoc.class);
+
+  SearchPage result = SearchPage.of(res);
+  redis.opsForValue().set(key, result, Duration.ofSeconds(30)); // SET … EX 30
+  return result;
+}`,
+  },
+  catalog: {
+    tag: 'Spring Boot · write side · 2 instances',
+    desc: 'Validates and stores product changes in the <b>Catalog DB</b>, bumping a <code>version</code> field on every change. One write, one commit: the DB is the only thing the request path writes.',
+    points: ['Never writes Elasticsearch: the CDC pipeline does', 'Without that rule it would dual-write, and the two copies would drift', 'Normal OLTP traffic: a few hundred writes/s at most', 'The thin line to Elasticsearch on the diagram is the ❌ dual-write shortcut (Dual scenario)'],
+    code: `@PatchMapping("/products/{id}")
+ProductView update(@PathVariable String id, @Valid @RequestBody PriceChange req) {
+  UpdateResult r = mongo.updateFirst(
+      query(where("_id").is(id)),
+      new Update().set("price", req.price())
+                  .inc("version", 1),              // v3 -> v4: orders every change
+      Product.class);
+  if (r.getMatchedCount() == 0) throw new NotFound(id);
+  return views.findById(id);                       // seller reads the DB: sees ₹80 now
+  // no es.index(...) here: the change stream feeds the index
+}`,
+  },
+  cache: {
+    tag: 'Redis · result pages of hot queries · 30 s',
+    desc: 'Result pages of popular queries, keyed by the <b>normalised query + filters + page</b>, for ~30 s. A few queries make up a large share of traffic; without the cache every repeat goes to every shard again.',
+    points: ['Small values, high hit rate on the head of the distribution', 'Miss → Elasticsearch; results may be up to 30 s old (fine for search, not for checkout)', 'Elasticsearch also caches filters (bitsets) and shard request results itself', 'Redis down → go straight to the cluster, which is sized for it'],
+    code: `GET q:running shoes|price≤150|inStock|p1          # miss -> (nil)
+SET q:running shoes|price≤150|inStock|p1 '{…10 hits, facets…}' EX 30
+GET q:running shoes|price≤150|inStock|p1          # hit  -> page in ~1 ms
+CONFIG SET maxmemory-policy allkeys-lru`,
+  },
+  es: {
+    tag: 'Elasticsearch · coordinating node · alias products',
+    desc: 'Receives the query, sends it to <b>one copy of every shard</b> (query phase), merges their top-k lists, then <b>fetches</b> the full documents of the winners (fetch phase). This lets the index be split across many machines while a query still sees all of it.',
+    points: ['Any node can coordinate; dedicated coordinating nodes at large scale', 'Clients query the <b>alias</b> <code>products</code> → <code>products_v1</code>, so a reindex is an atomic alias swap', 'Bulk writes are split by shard and forwarded to each primary', 'A node loss promotes replicas elsewhere: the cluster turns yellow, not down', 'Without it: one machine holding a 50 M-document index, with no failover'],
+    code: `POST /products/_search            # the alias, not products_v1
+{
+  "query": { "bool": {
+    "must":   [ { "multi_match": { "query": "running shoes",
+                                   "fields": ["title^3", "description"] } } ],
+    "filter": [ { "range": { "price": { "lte": 150 } } },
+                { "term":  { "inStock": true } } ] } },
+  "aggs":    { "brands": { "terms": { "field": "brand", "size": 10 } } },
+  "from": 0, "size": 10,
+  "timeout": "500ms"
 }
-async function put(s, v, key, text, st) {
-  const r = v.rows[key];
-  if (!r) { v.rows[key] = await s.row(v.log, text, ST[st]); return; }
-  r.label.textContent = text;
-  s.paintRow(r, ST[st]);
-  await s.pulse(r, 1, 1.05);
-}
-async function clearRows(s, v) { for (const r of [...v.log.rows]) await s.unrow(v.log, r); v.rows = {}; }
-const paint = color => ({ color, stroke: color === GREY ? KEEP : color });
-const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
-const db = (s, v, t, color = TEAL) => s.setChip(v.db, t, { color });
-const kaf = (s, v, t, color = PURPLE) => s.setChip(v.kaf, t, { color });
-const idx = (s, v, t, color = GREY) => s.setChip(v.idx, t, paint(color));
-const cch = (s, v, t, color = GREY) => s.setChip(v.cache, t, paint(color));
-const shd = (s, v, i, t, color = GREY) => s.setChip(v.sh[i], t, paint(color));
-const who = (s, v, u, txt, color = GREY) => s.setChip(u === 'B' ? v.ub : u === 'C' ? v.uc : v.ua, txt, paint(color));
-const both = (...ps) => Promise.all(ps);
-// Coordinating node → every shard (query phase), and back (only one pulse on the shared node).
-const scatter = (s, label, color = BLUE) => both(
-  s.send(['es', 's0'], label, color, { ms: 380 }), s.send(['es', 's1'], label, color, { ms: 380 }), s.send(['es', 's2'], label, color, { ms: 380 }));
-const gather = (s, [a, b, c], color = GREEN) => both(
-  s.send(['s0', 'es'], a, color, { ms: 380 }), s.send(['s1', 'es'], b, color, { ms: 380, pulse: false }), s.send(['s2', 'es'], c, color, { ms: 380, pulse: false }));
-const ok = { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, bad = { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, info = { mono: true, color: BLUE, stroke: BLUE, fill: '#f3f6fe' };
-
-window.DESIGN = {
-  id: 'search', n: 10, title: 'Search System', tagline: 'the DB is the truth, Elasticsearch is a versioned copy fed by CDC, queries fan out to shards',
-  viewBox: [1100, 520],
-
-  // ---------------- architecture ----------------
-  layers: [
-    { id: 'entry', title: 'Shoppers, sellers & gateway', x0: 0, x1: 290, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
-      why: '**Shoppers** search (thousands per second); **sellers** change products (far fewer). Both come through the **API gateway** for auth and rate limits.',
-      detail: 'Reads ≫ writes, and the two paths are completely separate behind the gateway.' },
-    { id: 'app', title: 'Query side · write side', x0: 290, x1: 470, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
-      why: 'The **Search Service** turns user input into an Elasticsearch **bool query** and caches hot queries. The **Catalog Service** writes products to the **Catalog DB only**.',
-      detail: 'The thin Catalog → Elasticsearch line is the ❌ dual-write shortcut from one flow; the real path goes DB → Kafka → Indexer.' },
-    { id: 'data', title: 'Elasticsearch, cache & truth', x0: 470, x1: 820, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
-      why: '**Elasticsearch** keeps an **inverted index** (term → documents) split into **shards**; a **coordinating node** fans each query out and merges the top results. The **Catalog DB** (MongoDB) stays the **source of truth**.',
-      detail: 'The index is a derived copy: if it is lost, rebuild it from the DB.' },
-    { id: 'async', title: 'Indexing pipeline', x0: 820, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
-      why: 'A MongoDB **change stream** puts every product change on **Kafka** (key = productId); the **Indexer** bulk-writes them to Elasticsearch with the DB **version** as an **external version**.',
-      detail: 'Near real-time: a change is searchable about one second after the indexer writes it.' },
-  ],
-  layersIntro: {
-    title: 'Write to the truth, derive the index, fan the query out',
-    text: 'Sellers write only to the **Catalog DB**. A **change stream → Kafka → Indexer** pipeline copies every change into **Elasticsearch** with the DB version. Shoppers\' queries go **Search Svc → coordinating node → every shard**; each shard returns its **top 10**, the coordinator merges and fetches. Hover a layer or a component to see why it exists.',
+# -> "took": 38, "_shards": { "total": 3, "successful": 3 }`,
   },
-  nodes: {
-    userA: { x: 65, y: 70, w: 120, label: 'Shopper A', sub: 'web / app', icon: '👤', layer: 'entry' },
-    userB: { x: 65, y: 225, w: 120, label: 'Shopper B', sub: 'web / app', icon: '👤', layer: 'entry' },
-    seller: { x: 65, y: 390, w: 120, label: 'Seller C', sub: 'seller portal', icon: '🏪', layer: 'entry' },
-    gw: { x: 210, y: 230, w: 138, label: 'API Gateway', sub: 'auth · limits', icon: '🚪', layer: 'entry' },
-    search: { x: 375, y: 110, w: 160, label: 'Search Svc', sub: 'bool query · cache', icon: '🔎', layer: 'app' },
-    catalog: { x: 375, y: 360, w: 160, label: 'Catalog Svc', sub: 'product writes', icon: '🏷️', layer: 'app' },
-    cache: { x: 650, y: 60, w: 160, label: 'Query cache', sub: 'Redis · 30 s TTL', icon: '⚡', layer: 'data' },
-    es: { x: 650, y: 190, w: 160, label: 'Elasticsearch', sub: 'coordinating node', icon: '🔍', layer: 'data' },
-    s0: { x: 542, y: 318, w: 104, h: 46, label: 'Shard 0', sub: '+ replica', icon: '🧩', layer: 'data' },
-    s1: { x: 650, y: 318, w: 104, h: 46, label: 'Shard 1', sub: '+ replica', icon: '🧩', layer: 'data' },
-    s2: { x: 758, y: 318, w: 104, h: 46, label: 'Shard 2', sub: '+ replica', icon: '🧩', layer: 'data' },
-    catdb: { x: 650, y: 450, w: 160, label: 'Catalog DB', sub: 'MongoDB · truth', icon: '🍃', layer: 'data' },
-    indexer: { x: 960, y: 190, w: 160, label: 'Indexer', sub: 'Kafka → _bulk', icon: '⚙️', layer: 'async' },
-    kafka: { x: 960, y: 330, w: 160, label: 'Kafka', sub: 'product-changes', icon: '📨', layer: 'async' },
-  },
-  wires: [['userA', 'gw'], ['userB', 'gw'], ['seller', 'gw'], ['gw', 'search'], ['gw', 'catalog'], ['search', 'cache'], ['search', 'es'],
-    ['es', 's0'], ['es', 's1'], ['es', 's2'], ['catalog', 'catdb'], ['catalog', 'es'], ['catdb', 'kafka'], ['kafka', 'indexer'], ['indexer', 'es']],
+  s0: {
+    tag: 'Primary shard + replica · a complete Lucene index',
+    desc: 'Each shard is a complete <b>Lucene index</b>: an <b>inverted index</b> (term → posting list of doc ids) plus doc values for sorting and facets. An <b>analyzer</b> turns text into terms once, at index time; the same analyzer runs on the query, so both sides speak the same terms.',
+    points: ['Analyzer: tokenize → lowercase → stop words → stem: "Trail Running Shoes" → <code>[trail, run, shoe]</code>', 'Posting lists: <code>run → p-7 p-9 p-12</code>, <code>shoe → p-7 p-9</code>: a lookup, not a scan', 'BM25 ranks by term frequency, inverse document frequency (rare terms weigh more) and field length', 'A doc lives on shard <code>hash(_id) % 3</code>; every primary has a replica on another node'],
+    code: `POST /products/_analyze
+{ "field": "title", "text": "Trail Running Shoes" }
+# -> tokens: [ "trail", "run", "shoe" ]
 
-  components: {
-    userA: {
-      name: 'Shoppers (A, B)',
-      what: 'Type a query, pick filters (price, brand, in stock), sort and page through results; the UI also asks for **autocomplete** while they type.',
-      why: 'Search is the main way people find products: it must be fast (< 200 ms) and relevant.',
-      without: '—',
-      tech: 'Web / mobile app', scale: '~5 k searches/s at peak, far more than product writes.', fails: 'A slow search is an abandoned session: time out and show cached or partial results.',
-    },
-    userB: {
-      name: 'Shopper B',
-      what: 'Runs the same popular query a moment after A.',
-      why: 'Shows the **query cache**: popular queries follow a power law.',
-      without: '—',
-      tech: 'Web / mobile app', scale: '—', fails: '—',
-    },
-    seller: {
-      name: 'Seller C',
-      what: 'Creates and edits products: title, description, price, stock.',
-      why: 'Every edit must reach search within seconds, without ever losing or reordering a change.',
-      without: '—',
-      tech: 'Seller portal', scale: 'Low write rate compared with searches.', fails: 'Their own product page reads the **DB**, so they see their change at once even if search lags a second.',
-    },
-    gw: {
-      name: 'API Gateway',
-      what: 'JWT auth, rate limits per user / IP (search is a favourite for scrapers), routing `/search` and `/products`.',
-      why: 'Cross-cutting concerns in one place; abusive clients stop here, not in the Elasticsearch cluster.',
-      without: 'A scraper paging through every result can saturate the cluster.',
-      tech: 'Spring Cloud Gateway / Kong', scale: 'Stateless pods.', fails: 'Retries only idempotent GETs.',
-      core: ['gw', 'API Gateway'],
-    },
-    search: {
-      name: 'Search Service',
-      what: 'Normalises the input, builds the Elasticsearch **bool query** (scored `must`, cached `filter`, boosts, facets), always queries the **alias** `products`, caches hot result pages.',
-      why: 'Keeps query rules, synonyms config and relevance tuning in one place; clients never talk to Elasticsearch.',
-      without: 'Every client builds its own queries; one bad query (a leading wildcard, page 5 000) hurts everyone.',
-      tech: 'Spring Boot · Elasticsearch Java client', scale: 'Stateless; scale with traffic.', fails: 'ES slow → timeout, return cached or partial results (`timeout`, `allow_partial_search_results`).',
-    },
-    catalog: {
-      name: 'Catalog Service',
-      what: 'Validates and stores product changes in the **Catalog DB**, bumping a `version` field on every change.',
-      why: 'One write, one commit: the DB is the only thing the request path writes.',
-      without: 'It would also write Elasticsearch directly (dual write) and the two copies would drift.',
-      tech: 'Spring Boot · Spring Data MongoDB', scale: 'Normal OLTP traffic.', fails: 'Never writes Elasticsearch: the pipeline does.',
-    },
-    cache: {
-      name: 'Query cache',
-      what: 'Result pages of popular queries, keyed by the **normalised query + filters + page**, for ~30 s.',
-      why: 'A few queries ("iphone", "running shoes") make up a large share of traffic.',
-      without: 'Every repeat goes to every shard again.',
-      tech: 'Redis `SET q:… EX 30`; Elasticsearch also caches filters and shard requests itself', scale: 'Small values, high hit rate on the head of the distribution.', fails: 'Miss → Elasticsearch; results may be up to 30 s old (fine for search, not for checkout prices).',
-      core: ['cache', 'Cache · Redis'],
-    },
-    es: {
-      name: 'Elasticsearch (coordinating node)',
-      what: 'Receives the query, sends it to **one copy of every shard** (query phase), merges their top-k lists, then **fetches** the full documents of the winners (fetch phase).',
-      why: 'Lets the index be split across many machines while a query still sees all of it.',
-      without: 'One machine holding a 50 M-document index, with no failover.',
-      tech: 'Elasticsearch / OpenSearch; any node can coordinate (dedicated coordinating nodes at large scale)', scale: 'Add data nodes and replicas; the coordinator itself is cheap.', fails: 'A node loss promotes replicas on other nodes; the cluster turns yellow, not down.',
-    },
-    s0: {
-      name: 'Shards (primary + replica)',
-      what: 'Each shard is a complete **Lucene index**: an **inverted index** (term → posting list of doc ids) plus doc values for sorting and facets. A doc lives on shard `hash(_id) % 3`; every primary has a **replica** on another node.',
-      why: 'Shards spread data and work over machines; replicas give failover and extra read capacity.',
-      without: 'No horizontal scale for indexing or searching.',
-      tech: '3 primary shards × 1 replica; aim for ~10–50 GB per shard', scale: 'Primary count is fixed at index creation (change it with a reindex or `_split`).', fails: 'Primary lost → its replica is promoted; a new replica is rebuilt elsewhere.',
-    },
-    s1: {
-      name: 'Shard 1',
-      what: 'Same as shard 0. Product p-7 hashes here in the flows.',
-      why: '—', without: '—', tech: 'Lucene index', scale: '—', fails: '—',
-    },
-    s2: {
-      name: 'Shard 2',
-      what: 'Same as shard 0.',
-      why: '—', without: '—', tech: 'Lucene index', scale: '—', fails: '—',
-    },
-    catdb: {
-      name: 'Catalog DB (source of truth)',
-      what: '`products { _id: "p-7", title, brand, price, inStock, version }`. Every update does `$inc: { version: 1 }`.',
-      why: 'The version orders changes per product and travels with every event to the index.',
-      without: 'No way to tell an old change from a new one once events are retried or replayed.',
-      tech: 'MongoDB replica set; **change streams** (oplog) feed the pipeline', scale: 'Shard by product id.', fails: 'The change-stream reader stores a **resume token**, so after a restart it continues exactly where it stopped.',
-      core: ['db', 'DB scaling'],
-    },
-    kafka: {
-      name: 'Kafka (product-changes)',
-      what: 'Product change events, **key = productId**, so all changes of one product land in one partition, in order.',
-      why: 'Decouples the DB from Elasticsearch: if the cluster is slow or down, events wait here.',
-      without: 'The change-stream reader would have to block on Elasticsearch.',
-      tech: 'Kafka (change stream reader, or Debezium for SQL databases)', scale: 'Partitions by productId; replayable for backfills.', fails: 'Redelivery and replays re-index old changes: harmless thanks to external versions.',
-      core: ['kafka', 'Queue · Kafka'],
-    },
-    indexer: {
-      name: 'Indexer',
-      what: 'Consumes batches, maps DB documents to search documents and writes them with the **_bulk** API, using `version_type=external` with the DB version. Commits offsets only after the bulk response.',
-      why: 'Bulk requests are 10–100× cheaper than single writes; external versions make the index converge whatever the arrival order.',
-      without: 'Single-document writes overload the cluster; late retries overwrite newer data.',
-      tech: 'Spring Kafka `@KafkaListener` (batch) + Elasticsearch Java client', scale: 'One consumer per partition; ~5–15 MB per bulk.', fails: '429 → back off and retry failed items; 409 = already newer → skip; a broken document → DLQ.',
-    },
+# what the shard keeps (conceptually)
+# term   posting list (sorted doc ids)
+# run  -> [p-7, p-9, p-12]
+# shoe -> [p-7, p-9]
+# sock -> [p-12]
+# trail-> [p-7]`,
   },
+  s1: {
+    tag: 'Shard 1 · p-7 hashes here in every scenario',
+    desc: 'Same as shard 0. New writes land in an in-memory buffer and the <b>translog</b> (durable), and become searchable only at the next <b>refresh</b>, which opens a new segment: Elasticsearch is <b>near real-time</b>.',
+    points: ['<code>refresh_interval: 1s</code> by default: a change is searchable about a second later', 'Never send <code>refresh=true</code> on bulk traffic (tiny segments)', '<code>refresh=wait_for</code> for a single write that must be searchable at once', 'External versions: a write is accepted only if its version is higher than the stored one, else <b>409</b>'],
+    code: `PUT /products_v1/_settings
+{ "index": { "refresh_interval": "1s" } }
 
-  // ---------------- 1 · overview loop ----------------
-  intro: {
-    headline: 'Write the truth, stream it into an inverted index, fan the query out to shards.',
-    points: [
-      { t: 'Truth', color: TEAL, d: 'Sellers write only to **MongoDB**, which bumps the product\'s **version**.' },
-      { t: 'Index', color: PURPLE, d: 'Change stream → **Kafka** → **Indexer** → `_bulk` with an **external version**; searchable after ~1 s.' },
-      { t: 'Query', color: BLUE, d: 'Search Svc sends a **bool query**; the coordinating node asks **every shard** for its top 10.' },
-      { t: 'Merge', color: GREEN, d: 'Merge, **fetch** the winners, return; hot queries are **cached** for 30 s.' },
+# one seller write that must be searchable before we answer
+PUT /products/_doc/p-7?version=4&version_type=external&refresh=wait_for
+{ "title": "Trail running shoes", "price": 80, "inStock": true }
+
+# an older retry arriving late
+PUT /products/_doc/p-7?version=5&version_type=external     # stored: 6
+# -> 409 version_conflict_engine_exception`,
+  },
+  s2: {
+    tag: 'Shard 2 · sizing, replicas and failover',
+    desc: 'Same as shard 0. Shards spread data and work over machines; replicas give failover and extra read capacity. The <b>primary count is fixed</b> at index creation (change it with a reindex or <code>_split</code>).',
+    points: ['3 primary shards × 1 replica; aim for ~10–50 GB per shard', 'Every search hits one copy of every shard: more replicas = more read capacity', 'Primary lost → its replica is promoted; a new replica is rebuilt elsewhere', 'Total loss → rebuild from the DB: the index is a derived copy'],
+    code: `PUT /products_v1
+{ "settings": { "number_of_shards": 3, "number_of_replicas": 1 } }
+
+GET _cat/shards/products_v1?v
+# index       shard prirep state   docs  node
+# products_v1 0     p      STARTED 17M   es-a
+# products_v1 0     r      STARTED 17M   es-b
+# products_v1 2     p      STARTED 16M   es-c
+# products_v1 2     r      STARTED 16M   es-a`,
+  },
+  catdb: {
+    tag: 'MongoDB replica set · source of truth',
+    desc: '<code>products { _id: "p-7", title, brand, price, inStock, version }</code>. Every update does <code>$inc: { version: 1 }</code>: the version orders changes per product and travels with every event to the index.',
+    points: ['Without the version: no way to tell an old change from a new one once events are retried or replayed', 'A regex / <code>LIKE \'%…%\'</code> search here is a <b>COLLSCAN</b> of 50 M docs: that is why Elasticsearch exists', '<b>Change streams</b> (the oplog) feed the pipeline', 'Shard by product id when it grows'],
+    code: `// products: the truth
+{ _id: "p-7", title: "Trail running shoes", brand: "Asics",
+  price: 80, inStock: true, version: 4 }
+
+db.products.updateOne({ _id: "p-7" },
+  { $set: { price: 80 }, $inc: { version: 1 } })
+
+// why not search here?
+db.products.find({ title: /running shoes/i }).explain()
+// -> winningPlan: COLLSCAN, totalDocsExamined: 50000000`,
+  },
+  cdc: {
+    tag: 'Change-stream publisher (CDC) · resume token',
+    desc: 'A small publisher watches <code>products.watch(…, { fullDocument: "updateLookup" })</code> and sends every committed change to Kafka with <b>key = productId</b>. It reads the <b>oplog</b>, the same log replication uses, so every change appears exactly once, in commit order.',
+    points: ['Saves the change stream\'s <b>resume token</b> after each Kafka ack: a restart continues exactly where it stopped', 'Replaces the dual write: the request path writes only the DB', 'For SQL databases <b>Debezium</b> reads the binlog / WAL the same way', 'Alternative: an <b>outbox</b> document written in the same MongoDB transaction'],
+    code: `@Component
+class ProductChangePublisher {
+  @EventListener(ApplicationReadyEvent.class)
+  void start() {
+    BsonDocument token = tokens.load("products");             // resume where we stopped
+    var stream = mongo.getCollection("products").watch()
+        .fullDocument(FullDocument.UPDATE_LOOKUP);
+    if (token != null) stream = stream.resumeAfter(token);
+    for (ChangeStreamDocument<Document> c : stream) {
+      String id = c.getDocumentKey().getString("_id").getValue();
+      kafka.send("product-changes", id, ProductEvent.from(c)) // key = productId
+           .get();                                            // wait for the ack…
+      tokens.save("products", c.getResumeToken());            // …then move the token
+    }
+  }
+}`,
+  },
+  kafka: {
+    tag: 'Topic product-changes · key = productId',
+    desc: 'Product change events, <b>key = productId</b>, so all changes of one product land in one partition, in order. Decouples the DB from Elasticsearch: if the cluster is slow or down, events wait here.',
+    points: ['Without it the change-stream reader would have to block on Elasticsearch', 'Partitions by productId; replayable for backfills', 'Redelivery and replays re-index old changes: harmless thanks to external versions', 'Consumer lag = how far search is behind the DB: alert on it'],
+    code: `kafka-topics.sh --create --topic product-changes \\
+  --partitions 12 --replication-factor 3
+
+props.put(ProducerConfig.ACKS_CONFIG, "all");
+props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+
+kafka-consumer-groups.sh --describe --group indexer
+# TOPIC            PARTITION  CURRENT-OFFSET  LOG-END  LAG
+# product-changes  3          910             910      0`,
+  },
+  indexer: {
+    tag: 'Spring Kafka consumer group "indexer"',
+    desc: 'Consumes batches, maps DB documents to search documents and writes them with the <b>_bulk</b> API, using <code>version_type=external</code> with the DB version. Commits offsets only after the bulk response.',
+    points: ['Bulk requests are 10–100× cheaper than single writes (~5–15 MB per bulk)', 'External versions make the index converge whatever the arrival order', 'Per-item results: 409 = already newer → skip; 429 → back off and retry; broken document → DLQ', 'One consumer per partition; scale up to the partition count'],
+    code: `@KafkaListener(topics = "product-changes", batch = "true")
+void index(List<ProductEvent> events, Acknowledgment ack) throws IOException {
+  BulkResponse res = es.bulk(b -> {
+    for (ProductEvent e : events)
+      b.operations(op -> op.index(i -> i
+          .index("products").id(e.id())
+          .version(e.version()).versionType(VersionType.External)   // DB version
+          .document(ProductDoc.from(e))));
+    return b;
+  });
+  for (BulkResponseItem item : res.items()) {
+    if (item.error() == null || item.status() == 409) continue;     // already newer
+    if (item.status() == 429) retry.send(item.id());               // back off, retry
+    else dlq.send(item.id(), item.error().reason());                // bad document
+  }
+  ack.acknowledge();                                                // commit after the bulk
+}`,
+  },
+};
+
+// building blocks taught once in 00_Core_Components.html (same "#id/what" links as the engine pages)
+const CORE = {
+  gw: ['gw', 'API Gateway'], cache: ['cache', 'Cache · Redis'], catdb: ['db', 'DB scaling'], kafka: ['kafka', 'Queue · Kafka'],
+};
+
+// ---------------- scenarios ----------------
+// hop: `from`/`to` may be an array (fan-out / fan-in to the shards: one packet per pair, all at once).
+// node: `id` may be an array (several nodes work in parallel); `tags` gives one tag per node.
+const hop = (from, to, kind, tag, title, proto, text, extra) => Object.assign({ type: 'hop', from, to, kind, tag, title, proto, text }, extra || {});
+const node = (id, tag, title, proto, text, extra) => Object.assign({ type: 'node', id, tag, title, proto, text }, extra || {});
+const GREEN = '#16a34a', RED = '#dc2626', AMBER = '#d97706', BLUE = '#0b5cff';
+const SH = ['s0', 's1', 's2'];
+
+const SCEN = {
+  // Ported from the old page's "Why Elasticsearch?" flow: regex COLLSCAN vs analyzer + inverted index + BM25 + shards.
+  why: {
+    name: 'Why Elasticsearch?',
+    steps: [
+      hop('userA', 'gw', 'request', 'GET /search?q=…', '❌ First idea: let MongoDB do the search', 'HTTPS · TCP 443 · HTTP/2', `Shopper A types "running shoes"; in this naive first design the gateway sends /search to the Catalog Service, which queries the Catalog DB directly.`),
+      hop('gw', 'catalog', 'request', 'q=running shoes', 'Routed to the Catalog Service', 'HTTP/1.1 · :8080', `The gateway checks the JWT and the per-IP rate limit; there is no Search Service and no search index yet in this version.`),
+      hop('catalog', 'catdb', 'request', '$regex /running shoes/i', 'Regex query on 50 M products', 'Mongo wire · TCP 27017 · find', `db.products.find({ title: /running shoes/i }) is the MongoDB twin of SQL LIKE '%running shoes%'.`),
+      node('catdb', 'COLLSCAN 50 M', 'Decision: no index can help → COLLSCAN', 'explain() → COLLSCAN · 50 M docs', `A B-tree index is sorted by the start of the value, so a pattern that can match anywhere cannot use it: MongoDB reads all 50 M products, seconds per query at 5,000 queries/s.`, { tagColor: RED, dur: 2.8 }),
+      hop('catdb', 'catalog', 'error', '3 hits · 4.2 s', 'Three matches, after 4.2 seconds', 'BSON cursor · 4.2 s', `The scan finally returns, after holding a CPU core and the disk for seconds while thousands of other searches queue behind it.`),
+      node('catalog', 'chars ≠ words', '❌ …and it matches characters, not words', 'no analysis · no ranking', `"Running Shoe" and "shoes for running" are missed, "shoestring running belt" matches, and every hit scores the same: a title match is no better than a passing mention.`, { tagColor: RED, dur: 2.8 }),
+      hop('catalog', 'gw', 'error', '200 · 4.2 s', 'Slow, wrong, unranked results', 'HTTP 200 · 4.2 s', `Technically a 200 OK, but it misses obvious products, includes junk and is in no useful order.`),
+      hop('gw', 'userA', 'error', 'bad results ✕', 'Shopper A gives up', 'HTTPS · 200', `A 4-second search with poor results is an abandoned session: product search needs a dedicated search engine next to the database.`),
+      hop('indexer', 'es', 'event', '_bulk p-7 …', '✅ Copy the catalog into Elasticsearch', 'HTTP · POST _bulk · :9200', `MongoDB stays the truth; the indexing pipeline (change stream → Kafka → Indexer, see the Index scenario) bulk-writes every product, e.g. p-7 "Trail Running Shoes".`),
+      hop('es', 's1', 'event', 'hash(p-7) % 3 = 1', 'Route the document to its shard', 'routing: murmur3(_id) % 3', `Elasticsearch routes each document to one primary shard by hashing its _id; p-7 lands on shard 1, a complete Lucene index on its own node.`),
+      node('s1', '[trail, run, shoe]', '✅ Analyze the text once, at index time', 'analyzer: tokenize · lowercase · stem', `The title passes through an analyzer: split on word boundaries, lowercase, drop stop words, stem (running → run, shoes → shoe), so "Trail Running Shoes" becomes [trail, run, shoe].`, { tagColor: BLUE, dur: 3 }),
+      node('s1', 'run → p-7 p-9 p-12', 'The inverted index: term → posting list', 'Lucene segment · term dictionary + postings', `For each term the shard keeps a sorted posting list of the documents containing it, like the index at the back of a book: finding a term costs a lookup, not a scan of 50 M.`, { tagColor: BLUE, dur: 3 }),
+      hop('userA', 'gw', 'request', '"running shoes"', 'A searches again, the right way', 'HTTPS · GET /search', `This time the gateway routes /search to the Search Service: the query path never touches MongoDB.`),
+      hop('gw', 'search', 'request', 'GET /search', 'The Search Service builds the query', 'HTTP/1.1 · :8080', `The Search Service turns the input into an Elasticsearch match query against the alias products.`),
+      hop('search', 'es', 'request', 'match "running shoes"', 'Same analyzer on the query: [run, shoe]', 'HTTP · POST products/_search', `The query text runs through the same analyzer as the documents, so "running shoes" becomes [run, shoe] and matches index terms exactly.`),
+      hop('es', SH, 'request', null, 'Ask every shard in parallel', 'query phase · one copy per shard', `The coordinating node sends the query to one copy of every shard; each holds about a third of the 50 M products.`, { tags: ['query', 'query', 'query'] }),
+      node(SH, null, 'BM25 ranks the matches on each shard', 'BM25: tf · idf · field length', `Each shard reads two posting lists and scores the matches: term frequency (with diminishing returns), inverse document frequency (rare "trail" outweighs common "shoe") and field length (short titles win).`, { tags: ['top 5.8', 'top 7.3', 'top 6.9'], tagColor: BLUE, dur: 3 }),
+      hop(SH, 'es', 'response', null, 'Top results back to the coordinator', 'query phase · ids + scores', `Each shard returns only its best ids and scores; the coordinator merges them: p-7 7.3, p-9 6.9, p-12 2.1.`, { tags: ['ids', 'ids', 'ids'] }),
+      hop('es', 'search', 'response', 'p-7, p-9, p-12', 'Ranked hits in milliseconds', 'HTTP 200 · took 30 ms', `The cost depends on the posting lists that match, not on the collection size: ~30 ms instead of 4.2 s.`),
+      hop('search', 'gw', 'response', '200 · ranked', 'Ranked results returned', 'HTTP 200 · JSON', `The Search Service maps the hits to a JSON page: id, title, price and score.`),
+      hop('gw', 'userA', 'response', 'ranked · 30 ms ✓', 'Shopper A gets relevant results', 'HTTPS · 200', `"Trail Running Shoes" and "Road Running Shoe" first, "Running Socks" last: words, stems and relevance, served from an inverted index.`),
     ],
-    stats: [['50 M', 'products'], ['5 k/s', 'searches'], ['< 200 ms', 'p99 search'], ['~1 s', 'index lag']],
   },
-  async overview(s, v, ui) {
-    if (!v.ready) { setup(s, v); v.ready = true; }
-    await clearRows(s, v);
-    await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹100 · v3', 'OK');
-    await put(s, v, 'p-9', 'p-9 · Road shoes · ₹120 · v7', 'OK');
-    db(s, v, 'p-7 · ₹100 · v3'); kaf(s, v, 'product-changes —'); idx(s, v, 'idle'); cch(s, v, 'cache empty');
-    SHARDS.forEach((_, i) => shd(s, v, i, i === 2 ? '16 M docs' : '17 M docs'));
-    who(s, v, 'A', 'browsing'); who(s, v, 'B', 'browsing'); who(s, v, 'C', 'lowers p-7 to ₹80');
-
-    ui.say(0); ui.cap('**Truth** · the seller\'s change goes only to the Catalog DB; the version becomes 4');
-    await s.send(['seller', 'gw', 'catalog'], 'PATCH price 80', AMBER, { ms: 400 });
-    await s.send(['catalog', 'catdb'], '$inc version', TEAL, { ms: 400 });
-    db(s, v, 'p-7 · ₹80 · v4'); await s.pulse(v.db);
-    who(s, v, 'C', 'saved ✓', GREEN);
-    ui.say(1); ui.cap('**Index** · change stream → Kafka → indexer → _bulk with version 4 → searchable after a refresh');
-    await s.send(['catdb', 'kafka'], 'p-7 v4', PURPLE, { ms: 400 });
-    kaf(s, v, 'p-7 v4 ₹80 @910');
-    await s.send(['kafka', 'indexer'], 'batch', PURPLE, { ms: 380 });
-    idx(s, v, '_bulk · p-7 v4', PURPLE);
-    await s.send(['indexer', 'es', 's1'], '_bulk v4 external', PURPLE, { ms: 380 });
-    await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹80 · v4', 'OK');
-    ui.say(2); ui.cap('**Query** · A searches; cache miss; the coordinating node sends the query to every shard');
-    await s.send(['userA', 'gw', 'search'], '"running shoes" ≤ ₹150', BLUE, { ms: 380 });
-    await s.send(['search', 'cache'], 'GET q:…', RED, { ms: 340 });
-    cch(s, v, 'miss', GREY);
-    await s.send(['search', 'es'], 'bool query', BLUE, { ms: 380 });
-    await scatter(s, 'query');
-    ['top · 6.9', 'top · 7.3', 'top · 5.8'].forEach((t, i) => shd(s, v, i, t, BLUE));
-    ui.say(3); ui.cap('**Merge** · top 10 of each shard → global top 10 → fetch → results; the page is cached for B');
-    await gather(s, ['10 ids', '10 ids', '10 ids']);
-    await s.flash(800, 255, 'merge 30 → top 10', info, 600);
-    await s.send(['es', 's1'], 'fetch _source', TEAL, { ms: 340 });
-    await s.send(['es', 'search', 'gw', 'userA'], '10 hits · p-7 ₹80', GREEN, { ms: 360 });
-    who(s, v, 'A', '10 hits · 45 ms', GREEN);
-    await s.send(['search', 'cache'], 'SET EX 30', RED, { ms: 340 });
-    cch(s, v, 'q:running shoes · 30 s', RED);
-    await s.send(['userB', 'gw', 'search', 'cache'], 'same query', BLUE, { ms: 340 });
-    await s.send(['search', 'gw', 'userB'], 'cache hit', GREEN, { ms: 340 });
-    who(s, v, 'B', 'cache hit · 4 ms', GREEN);
-    await s.wait(1800);
-    ui.say(-1); ui.cap('');
-    await s.wait(400);
+  // Ported from the old page's "Search with filters" flow: cache miss, bool must + filter, scatter / gather / fetch, cache fill, B hits.
+  query: {
+    name: 'Search with filters',
+    steps: [
+      hop('userA', 'gw', 'request', 'GET /search?q=…', 'A searches "running shoes" under ₹150', 'HTTPS · TCP 443 · HTTP/2', `GET /search?q=running shoes&maxPrice=150&inStock=true&page=1 with a JWT: the hot path, ~5,000 searches/s at peak.`),
+      hop('gw', 'search', 'request', 'GET /search', 'Gateway: auth, rate limit, route', 'JWT · per-IP limit · Path=/search/**', `The gateway validates the JWT, applies the per-IP rate limit (search is a favourite for scrapers) and routes /search to a Search Service instance.`),
+      hop('search', 'cache', 'request', 'GET q:running shoes|…', 'Query cache: ask Redis first', 'RESP · TCP 6379', `The key is the normalised request q:running shoes|price≤150|inStock|p1: lowercased, trimmed, filters sorted.`),
+      node('cache', 'MISS ✕', 'Decision: cache MISS', 'nil · key absent', `Popular pages live here for 30 s, but nobody asked this exact query + filters + page in the last 30 s: nil comes back in ~1 ms.`, { tagColor: RED }),
+      hop('search', 'es', 'request', 'bool: must + filter', 'Build a bool query and send it to the alias', 'HTTP · POST /products/_search · :9200', `must: multi_match on title^3 and description (BM25-scored); filter: price ≤ 150 and inStock: true (unscored, cached as bitsets); always the alias products, timeout 500ms.`),
+      hop('es', SH, 'request', null, 'Query phase on every shard', 'query_then_fetch · one copy per shard', `The node that received the search becomes the coordinating node and sends it to one copy (primary or replica) of every shard, in parallel.`, { tags: ['query', 'query', 'query'] }),
+      node(SH, null, 'Each shard: filter ∩ postings, score, top 10', 'filter bitset · BM25 · heap of 10', `Each shard intersects the cached filter bitset with the posting lists of run and shoe, scores only the survivors, keeps its top 10 in a small heap and counts brand facets on keyword doc values.`, { tags: ['top 6.9', 'top 7.3', 'top 5.8'], tagColor: BLUE, dur: 3 }),
+      hop(SH, 'es', 'response', null, 'Ids and scores come back, not documents', 'query phase · 3 × 10 entries', `Only ids, scores and partial facet counts travel back; the coordinator merges 30 candidates into the global top 10 (p-7 7.3, p-9 6.9, p-31 5.8 …).`, { tags: ['10 ids', '10 ids', '10 ids'] }),
+      hop('es', SH, 'request', null, 'Fetch phase: only the winners', 'fetch phase · _source by id', `The coordinator asks each owning shard for the _source of its winners only; page 500 would make every shard rank from + size docs, so deep pages use search_after.`, { tags: ['fetch 4', 'fetch 4', 'fetch 2'] }),
+      hop(SH, 'es', 'response', null, 'Winning documents returned', 'fetch phase · 10 × _source', `Ten full documents in total, merged with the summed facet counts (Asics 41, Nike 37 …).`, { tags: ['_source', '_source', '_source'] }),
+      hop('es', 'search', 'response', '10 hits + facets', 'Hits and facets to the Search Service', 'HTTP 200 · took 38 ms', `took: 38, timed_out: false; if a shard were slow, allow_partial_search_results would return what arrived in time.`),
+      hop('search', 'cache', 'request', 'SET … EX 30', 'Cache the page for 30 s', 'RESP · SET q:… EX 30', `A 30 s TTL means a price in the list can be 30 s old; the product page and checkout read the DB.`),
+      hop('search', 'gw', 'response', '200 · 10 hits', 'Results page returned', 'HTTP 200 · JSON', `10 products with title, price, image URL and score, plus brand and price-range facets.`),
+      hop('gw', 'userA', 'response', '10 hits · 45 ms', 'A sees 10 results in ~45 ms', 'HTTPS · 200', `End to end ~45 ms with a cold cache, well under the 200 ms p99 target.`),
+      hop('userB', 'gw', 'request', 'same query', 'A second later, B runs the same search', 'HTTPS · GET /search', `Shopper B searches "Running Shoes" under ₹150 too: popular queries follow a power law.`),
+      hop('gw', 'search', 'request', 'GET /search', 'Routed to any Search Service instance', 'HTTP/1.1 · :8080', `The instances are stateless and the cache is shared in Redis, so it does not matter which one B lands on.`),
+      hop('search', 'cache', 'request', 'GET q:running shoes|…', 'Same normalised key', 'RESP · GET', `Normalisation lowercases "Running Shoes", so B's request maps to exactly A's key.`),
+      node('cache', 'HIT ✓', 'Decision: cache HIT', '~1 ms · in-memory', `The page cached for A is still inside its 30 s TTL: Redis answers in ~1 ms and the Elasticsearch cluster is not touched at all.`, { tagColor: GREEN, stat: 'hit' }),
+      hop('cache', 'search', 'response', '10 hits (cached)', 'Cached page returned', 'RESP bulk string', `The serialized page comes back as is: no query, no fan-out, no fetch.`),
+      hop('search', 'gw', 'response', '200 · cache hit', 'Results returned', 'HTTP 200 · x-cache: HIT', `Same 10 results and facets as A got a second ago.`),
+      hop('gw', 'userB', 'response', 'cache hit · 4 ms ✓', 'B gets the page in ~4 ms', 'HTTPS · 200', `The head of the query distribution is absorbed by Redis, so the cluster only works for the long tail.`),
+    ],
   },
+  // Ported from the old page's "Seller changes a price" flow: DB only + version++, change stream → Kafka → _bulk, refresh.
+  index: {
+    name: 'Seller changes a price',
+    steps: [
+      hop('seller', 'gw', 'request', 'PATCH /products/p-7', 'Seller C lowers p-7 to ₹80', 'HTTPS · TCP 443', `PATCH /products/p-7 {"price": 80} from the seller portal, with the seller's JWT.`),
+      hop('gw', 'catalog', 'request', 'PATCH price 80', 'Routed to the Catalog Service', 'HTTP/1.1 · :8080 · Path=/products/**', `Writes take a different route from searches: the gateway checks the products:write scope and forwards to the Catalog Service.`),
+      hop('catalog', 'catdb', 'request', '$set · $inc version', 'Write the source of truth, and only it', 'Mongo wire · TCP 27017 · w:majority', `updateOne({_id:"p-7"}, {$set:{price:80}, $inc:{version:1}}): one write, one commit; the request path never calls Elasticsearch.`),
+      node('catdb', 'p-7 ₹80 · v4', 'Committed: version 3 → 4', 'majority ack · oplog entry', `The update is majority-acknowledged and appended to the oplog, the log replication uses; version 4 will order this change everywhere downstream.`, { tagColor: GREEN }),
+      { type: 'fork', title: 'Meanwhile: 200 to the seller, who reads the DB', proto: 'read-your-writes from MongoDB', text: `In parallel: 200 {version: 4} goes back to Seller C, whose product page reads the Catalog DB and shows ₹80 at once; public search catches up in about a second.`, steps: [
+        hop('catdb', 'catalog', 'response', 'ack v4', 'Write acknowledged', '{ acknowledged: true }', ''),
+        hop('catalog', 'gw', 'response', '200 · v4', '200 OK', 'HTTP 200', ''),
+        hop('gw', 'seller', 'response', 'sees ₹80 ✓', 'Seller sees ₹80', 'HTTPS · 200', ''),
+      ] },
+      hop('catdb', 'cdc', 'event', 'change p-7 v4', 'The change stream emits the committed update', 'watch() · fullDocument: updateLookup', `The publisher's change stream reads the oplog and receives the update with the full new document, exactly once and in commit order.`),
+      hop('cdc', 'kafka', 'event', 'key p-7', 'Publish to product-changes, keyed by productId', 'Kafka · TCP 9092 · acks=all', `send("product-changes", "p-7", event).get(): the key decides the partition, so every change of p-7 lands in one partition, in order (offset 910).`),
+      node('cdc', 'resume token ✓', 'Save the resume token after the ack', 'resumeAfter(token)', `Only after Kafka acknowledges does the publisher store the change stream's resume token, so a restart continues exactly where it stopped: nothing skipped, at worst a duplicate.`, { tagColor: GREEN }),
+      hop('kafka', 'indexer', 'event', 'poll ≤ 500', 'The indexer polls a batch', 'Kafka fetch · @KafkaListener(batch)', `The indexer consumer group polls up to 500 change events from its partitions in one fetch.`),
+      node('indexer', '500 → 1 _bulk', 'Map to search documents, one _bulk', 'version_type=external · version 4', `Each event becomes an index action carrying "version": 4, "version_type": "external"; ~500 changes go in one POST _bulk of 5–15 MB, 10–100× cheaper than single writes.`),
+      hop('indexer', 'es', 'event', '_bulk · v4 external', 'Bulk request to the cluster', 'HTTP · POST _bulk · :9200', `The coordinating node splits the bulk by shard and forwards each item to its primary.`),
+      hop('es', 's1', 'event', 'p-7 → shard 1', 'Routed to p-7\'s primary shard', 'routing: hash(_id) % 3 = 1', `Shard 1 checks 4 > 3 (the stored version), analyzes the document, writes it to the in-memory buffer and translog, and replicates it to its replica.`),
+      node('s1', 'not refreshed', 'Indexed, but not searchable yet', 'in-memory buffer · translog', `The change is durable in the translog but invisible to search until the next refresh opens a new segment.`, { tagColor: AMBER }),
+      hop('es', 'indexer', 'response', 'errors: false', 'Bulk response, then commit the offset', 'HTTP 200 · per-item status', `The indexer checks every item (201 ok, 409 already newer, 429 retry) and only then commits offset 910: commit after the bulk, never before.`),
+      node('s1', 'refresh 1 s ✓', 'Refresh: searchable about 1 s later', 'refresh_interval: 1s', `Near real-time: the periodic refresh opens a new segment and p-7 at ₹80 becomes visible; refresh=wait_for suits one write that must be visible at once, never refresh=true on bulks.`, { tagColor: GREEN, dur: 3 }),
+      hop('userA', 'gw', 'request', '"trail shoes"', 'Shopper A searches', 'HTTPS · GET /search', `About a second after the seller saved, A searches "trail shoes".`),
+      hop('gw', 'search', 'request', 'GET /search', 'Routed to the Search Service', 'HTTP/1.1 · :8080', `This query is not in the query cache (a cached page could be up to 30 s old), so it goes to the cluster.`),
+      hop('search', 'es', 'request', 'bool query', 'Query the alias', 'HTTP · POST products/_search', `The coordinating node fans out to the shards exactly as in the Search scenario.`),
+      hop('es', 'search', 'response', 'p-7 ₹80', 'Search shows the new price', 'HTTP 200 · _source.price = 80', `p-7's _source now says ₹80, version 4.`),
+      hop('search', 'gw', 'response', '200 · p-7 ₹80', 'Results returned', 'HTTP 200 · JSON', `The listing and the product page now agree.`),
+      hop('gw', 'userA', 'response', 'sees ₹80 ✓', 'A sees ₹80, ~1 s after the save', 'HTTPS · 200', `Near real-time search: DB → change stream → Kafka → _bulk → refresh, about a second end to end.`),
+    ],
+  },
+  // Ported from the old page's "Dual write vs CDC" flow: second write fails, copies drift; rewind to DB-only + CDC, ES down, converge.
+  dual: {
+    name: 'Dual write vs CDC',
+    steps: [
+      hop('seller', 'gw', 'request', 'PATCH price 80', '❌ Dual write: the service writes both stores', 'HTTPS · TCP 443', `Seller C lowers p-7 to ₹80; in this tempting design the Catalog Service writes MongoDB and then Elasticsearch itself.`),
+      hop('gw', 'catalog', 'request', 'PATCH price 80', 'Routed to the Catalog Service', 'HTTP/1.1 · :8080', `Same route as always; the difference is what the service does next.`),
+      hop('catalog', 'catdb', 'request', 'update v4', 'Write 1: MongoDB', 'Mongo wire · w:majority', `updateOne sets price 80 and bumps the version to 4; the commit succeeds.`),
+      hop('catdb', 'catalog', 'response', 'ack v4', 'MongoDB acknowledges', '{ acknowledged: true }', `The truth now says ₹80, version 4.`),
+      hop('catalog', 'es', 'request', 'index p-7 ₹80', 'Write 2: Elasticsearch, from the same request', 'HTTP · PUT products/_doc/p-7', `The service now calls the cluster directly: the thin Catalog → Elasticsearch line exists only for this anti-pattern.`),
+      node('es', 'timeout / 429', 'Decision: the second write fails', 'GC pause · 429 es_rejected_execution', `A long GC pause or a full write queue (429) makes the call time out after the first write already committed.`, { tagColor: RED }),
+      hop('es', 'catalog', 'error', 'timeout', 'The index write bounces', 'SocketTimeoutException · 429', `The service could retry, but the retry lives only in this pod's memory.`),
+      node('catalog', 'pod crashed ✕', '❌ The pod dies before its retry', 'no transaction spans both stores', `A deploy or an OOM kill takes the pod down before the retry: nothing remembers that the index still needs ₹80.`, { tagColor: RED }),
+      node('s1', '₹100 ≠ DB ₹80', '❌ The two copies drift', 'search ₹100 · product page ₹80', `Search shows ₹100 until p-7 changes again. Index-first is no better (a price that never existed), and two pods dual-writing can apply index writes in the wrong order.`, { tagColor: RED, dur: 3 }),
+      hop('catalog', 'catdb', 'request', 'update v4 (only)', '✅ Rewind: write only the DB', 'Mongo wire · w:majority', `One write, one commit: $set price, $inc version → v4. Need a business event too? An outbox document in the same MongoDB transaction; SQL databases use Debezium on the binlog / WAL.`),
+      hop('catdb', 'cdc', 'event', 'p-7 v4', 'The change stream publishes it', 'change stream · oplog', `The change stream reads the oplog, the same log replication uses, so every committed change appears exactly once, in commit order.`),
+      hop('cdc', 'kafka', 'event', 'key p-7', 'Kafka holds it, keyed by productId', 'Kafka · acks=all · offset 910', `The publisher sends to product-changes and then stores the resume token; after a crash it resumes from the token and skips nothing.`),
+      hop('kafka', 'indexer', 'event', 'poll', 'The indexer polls the change', 'Kafka fetch · batch', `The indexer picks up p-7 v4 with the rest of its batch.`),
+      hop('indexer', 'es', 'event', '_bulk', 'The cluster is down', 'HTTP · POST _bulk · connect timeout', `The cluster is unreachable for a minute, say a rolling restart gone wrong.`),
+      node('es', '✕ unreachable', 'Decision: the cluster is unreachable', 'ConnectException · 503', `The bulk fails as a whole, but this time nothing is lost: the change is still in Kafka.`, { tagColor: RED }),
+      node('indexer', 'retry · backoff 2 s', 'Back off, and do NOT commit the offset', 'exponential backoff · no ack', `The listener throws, Spring Kafka's error handler backs off (2 s, 4 s, 8 s …) and the offset stays uncommitted.`, { tagColor: AMBER }),
+      node('kafka', 'lag 1 240', 'Changes wait in Kafka', 'consumer lag ↑', `New price changes keep arriving and pile up in the partitions (lag 1,240); the request path is not affected at all.`, { tagColor: AMBER }),
+      hop('indexer', 'es', 'event', '_bulk catch-up', '✅ The cluster is back: drain the backlog', 'HTTP · POST _bulk · large batches', `The retry succeeds; the indexer drains the backlog in big bulks and commits offsets as each one succeeds.`),
+      hop('es', 's1', 'event', 'p-7 v4', 'p-7 reaches its shard', 'routing: hash(_id) % 3 = 1', `Shard 1 stores p-7 at ₹80, version 4.`),
+      node('kafka', 'lag 0', 'Lag back to 0', 'consumer lag = 0', `The backlog is gone; search is again about a second behind the DB.`, { tagColor: GREEN }),
+      node('s1', '₹80 v4 = DB ✓', 'The index converges', 'eventually consistent, never permanently wrong', `After the next refresh search shows ₹80 and the DB and the index agree again: the index can lag, but it cannot stay wrong.`, { tagColor: GREEN, dur: 3 }),
+    ],
+  },
+  // Ported from the old page's "Out-of-order updates" flow: v5 retried after v6, last write wins vs external version + 409.
+  order: {
+    name: 'Out-of-order updates',
+    steps: [
+      hop('seller', 'gw', 'request', null, 'Two quick price changes', 'HTTPS · PATCH ×2', `Seller C sets ₹90, then a second later ₹70.`, { count: 2, tags: ['₹90', '₹70'] }),
+      hop('gw', 'catalog', 'request', null, 'Both reach the Catalog Service', 'HTTP/1.1 · :8080', `Possibly on two different instances: ordering must come from the DB version, not from the services.`, { count: 2, tags: ['₹90', '₹70'] }),
+      hop('catalog', 'catdb', 'request', null, 'Each update bumps the version', '$set price · $inc version', `₹90 becomes version 5, ₹70 version 6.`, { count: 2, tags: ['→ v5', '→ v6'] }),
+      node('catdb', 'p-7 ₹70 · v6', 'The DB has the latest: ₹70, v6', 'source of truth', `Whatever happens downstream, the index must end up at version 6.`, { tagColor: GREEN }),
+      hop('catdb', 'cdc', 'event', null, 'Both changes leave through the change stream', 'oplog · commit order', `The change stream emits v5, then v6.`, { count: 2, tags: ['v5', 'v6'] }),
+      hop('cdc', 'kafka', 'event', null, 'Same key, same partition, in order', 'key p-7 · offsets 911, 912', `Kafka keeps order per key, but retries, replays, backfills and deploys can still deliver an older change after a newer one.`, { count: 2, tags: ['v5 ₹90', 'v6 ₹70'] }),
+      hop('kafka', 'indexer', 'event', null, 'The indexer gets both', 'Kafka fetch · batch', `Both events arrive in order in the same batch.`, { count: 2, tags: ['v5', 'v6'] }),
+      hop('indexer', 'es', 'event', null, 'Both go out in a _bulk', 'POST _bulk', `Two index actions for p-7, in order.`, { count: 2, tags: ['v5 ₹90', 'v6 ₹70'] }),
+      hop('es', 's1', 'event', null, 'Both routed to shard 1', 'routing: hash(_id) % 3', `Same _id, same shard.`, { count: 2, tags: ['v5', 'v6'] }),
+      node('s1', 'v5 429 · v6 ✓', 'v5 fails (429), v6 succeeds', 'per-item bulk status', `The shard's write queue was briefly full when v5 arrived (429); v6 made it, so the index shows ₹70, correct for now.`, { tagColor: AMBER }),
+      hop('es', 'indexer', 'response', null, 'Bulk results, per item', 'items[].status 429 · 201', `The indexer sends v5 to a retry topic so the rest of the partition is not blocked, and commits.`, { count: 2, kinds: ['error', 'response'], tags: ['v5 429', 'v6 ok'] }),
+      hop('indexer', 'es', 'event', 'retry v5 ₹90', '❌ Ten seconds later the retry runs', 'PUT products/_doc/p-7 · no version', `A plain index request {"price": 90}, with no version check.`),
+      hop('es', 's1', 'event', 'v5 ₹90', 'Routed to shard 1', 'routing: hash(_id) % 3', `Nothing stops it: without a version, the last write wins.`),
+      node('s1', '₹90 · stale ✕', '❌ Last write wins, and it is the older change', 'DB ₹70 v6 · index ₹90', `Search now says ₹90 while the DB says ₹70, until p-7 changes again.`, { tagColor: RED, dur: 2.8 }),
+      hop('indexer', 'es', 'event', 'v5 · external', '✅ Rewind: send the DB version as an external version', '…/_doc/p-7?version=5&version_type=external', `Elasticsearch stores the version with the document and accepts a write only if the new version is higher than the stored one.`),
+      hop('es', 's1', 'event', 'v5 · external', 'Routed to shard 1', 'routing: hash(_id) % 3', `The shard compares 5 with the stored version 6.`),
+      node('s1', '409 · 5 ≤ 6', 'Decision: 5 is not > 6 → 409', 'version_conflict_engine_exception', `Stored is 6, so v5 is rejected and the document keeps ₹70.`, { tagColor: AMBER }),
+      hop('s1', 'es', 'error', '409', 'Conflict', 'HTTP 409', `The shard reports the version conflict for that item.`),
+      hop('es', 'indexer', 'error', '409 conflict', 'The conflict reaches the indexer', 'items[].status 409', `The bulk response carries 409 for the v5 item.`),
+      node('indexer', '409 → skip ✓', '409 means "already newer": skip and commit', 'treat 409 as success', `Replays, retries, backfills and two indexer versions during a deploy all become harmless; deletes carry the version too (or a soft-delete flag) so an old update cannot resurrect a product.`, { tagColor: GREEN, dur: 3 }),
+      node('s1', '₹70 v6 = DB ✓', 'The index converges to the DB', 'highest version wins', `Search shows ₹70, the same as the DB, whatever order the events arrived in.`, { tagColor: GREEN }),
+    ],
+  },
+  // Ported from the old page's "Reindex, zero downtime" flow: delete/recreate outage vs v2 + backfill + dual live writes + alias swap.
+  reindex: {
+    name: 'Reindex, zero downtime',
+    steps: [
+      node('es', '"sneakers" → 0', 'Shoppers search "sneakers": 0 hits', 'alias products → products_v1', `Users type "sneakers" and "trainers", but the title analyzer has no synonyms, so the inverted index has no such terms.`, { tagColor: AMBER }),
+      node('es', '❌ DELETE + recreate', '❌ Delete and recreate the index?', 'DELETE products · PUT products', `An existing field's analyzer cannot change in place, but deleting the index leaves search empty or partial for the hour the rebuild takes, with no way back if the new analyzer is worse.`, { tagColor: RED, dur: 3 }),
+      hop('indexer', 'es', 'request', 'PUT products_v2', '✅ Build products_v2 next to v1', 'PUT /products_v2 · replicas 0 · refresh -1', `New mappings with a synonym filter and better stemming; replicas 0 and refresh_interval -1 make the load much faster, and searches still hit the alias → v1.`),
+      hop('catdb', 'cdc', 'event', 'snapshot', 'Backfill from the truth', 'note Kafka offset · scan products', `Note the current Kafka offset, then stream every product from the Catalog DB into the pipeline (or _reindex from v1 if v1 has every field).`),
+      hop('cdc', 'kafka', 'event', null, 'Snapshot events into Kafka', 'product-changes · key = productId', `50 M snapshot events carry their DB version like any other change.`, { count: 3, tags: ['p-1 …', 'p-2 …', '…'] }),
+      hop('kafka', 'indexer', 'event', null, 'The indexer consumes the backfill', 'Kafka fetch · large batches', `Same consumer code as for live changes, only bigger batches.`, { count: 3, tags: ['batch', '', ''] }),
+      node('indexer', 'live → v1 + v2', 'Live changes go to both indices', 'two bulk targets · external versions', `While the backfill runs, every live change is written to v1 and v2; overlaps are safe because external versions make the highest version win in both.`, { tagColor: '#7c3aed' }),
+      hop('indexer', 'es', 'event', null, 'Bulk into v2 (and live into both)', 'POST _bulk · ~10 MB', `Backfill bulks target products_v2 only; live bulks target both indices.`, { count: 2, tags: ['_bulk → v2', 'live → v1 + v2'] }),
+      hop('es', SH, 'event', null, 'v2 shards fill up', 'products_v2 · 3 primaries', `Each v2 primary shard analyzes its documents with the new synonym analyzer.`, { tags: ['v2', 'v2', 'v2'] }),
+      node(SH, null, 'v2 reaches 50 M documents', 'v2 fills while v1 serves', `Each shard holds about a third of products_v2 next to its products_v1 copy: double storage during the migration.`, { tags: ['v2 17 M', 'v2 17 M', 'v2 16 M'], tagColor: '#7c3aed' }),
+      { type: 'fork', title: 'Meanwhile: shoppers keep searching v1', proto: 'alias products → products_v1', text: `In parallel: the alias still points at v1, so every search during the backfill works exactly as before; nobody notices the migration.`, steps: [
+        hop('userB', 'gw', 'request', '"running shoes"', '', '', ''),
+        hop('gw', 'search', 'request', 'GET /search', '', '', ''),
+        hop('search', 'es', 'request', 'alias → v1', '', '', ''),
+        hop('es', 'search', 'response', 'v1 results', '', '', ''),
+        hop('search', 'gw', 'response', '200', '', '', ''),
+        hop('gw', 'userB', 'response', 'results ✓', '', '', ''),
+      ] },
+      hop('indexer', 'es', 'request', 'PUT _settings', 'Catch up, restore replicas and refresh', 'replicas 1 · refresh_interval 1s', `Once consumer lag is 0, v2 gets its replicas back and a 1 s refresh, like v1.`),
+      node('es', 'v1 = v2 = 50 M ✓', 'Verify before switching', '_count · shadow queries', `Compare document counts and run a sample of real queries (or shadow traffic) against both: "sneakers" finds 42 products on v2.`, { tagColor: GREEN }),
+      hop('indexer', 'es', 'request', 'POST _aliases', '✅ Swap the alias atomically', 'POST _aliases · remove v1 + add v2', `remove products_v1 and add products_v2 in ONE request: no query ever sees zero or both indices.`),
+      node('es', 'alias → products_v2', 'One atomic switch, zero downtime', 'v1 kept for rollback', `The next search uses v2; v1 stays for a quick rollback (swap back) and is deleted later.`, { tagColor: GREEN, dur: 3 }),
+      hop('userA', 'gw', 'request', '"sneakers"', 'A searches "sneakers" again', 'HTTPS · GET /search', `Same URL, same client code: clients only ever know the alias.`),
+      hop('gw', 'search', 'request', 'GET /search', 'Routed to the Search Service', 'HTTP/1.1 · :8080', `Nothing changed on the query side.`),
+      hop('search', 'es', 'request', 'alias → v2', 'The alias now resolves to v2', 'HTTP · POST products/_search', `The synonym filter maps sneakers ↔ trainers ↔ running shoes at analysis time.`),
+      hop('es', 'search', 'response', '42 hits', '"sneakers" finds 42 products', 'HTTP 200 · hits.total 42', `The same query that returned 0 hits now returns 42.`),
+      hop('search', 'gw', 'response', '200 · 42 hits', 'Results returned', 'HTTP 200 · JSON', `Relevance improved without a second of downtime.`),
+      hop('gw', 'userA', 'response', '42 hits ✓', 'Zero-downtime reindex', 'HTTPS · 200', `New index, backfill, live writes to both, atomic alias swap, old index kept for rollback.`),
+    ],
+  },
+  // Live-only (no button): the head of the query distribution, served from the query cache.
+  qhit: {
+    name: 'Cached query',
+    steps: [
+      hop('userB', 'gw', 'request', 'GET /search', '', '', ''),
+      hop('gw', 'search', 'request', 'GET /search', '', '', ''),
+      hop('search', 'cache', 'request', 'GET q:…', '', '', ''),
+      node('cache', 'HIT ✓', '', '', '', { tagColor: GREEN, stat: 'hit' }),
+      hop('cache', 'search', 'response', 'page', '', '', ''),
+      hop('search', 'gw', 'response', '200', '', '', ''),
+      hop('gw', 'userB', 'response', '200', '', '', ''),
+    ],
+  },
+};
+const LIVE_MIX = [['qhit', 0.45], ['query', 0.3], ['index', 0.25]];
 
-  // ---------------- 3 · flows ----------------
-  flows: [
-    {
-      id: 'why', title: 'Why Elasticsearch?', sub: 'regex scan vs inverted index', color: AMBER,
-      build: (s, v) => setup(s, v, { title: 'INVERTED INDEX · title', db: '50 M products', sh: ['—', '—', '—'], a: 'wants running shoes' }),
-      takeaway: 'A regex / `LIKE \'%…%\'` cannot use a B-tree index, so it **scans everything** and still matches characters, not words. Elasticsearch **analyzes** text into terms once (tokenize, lowercase, stem), keeps an **inverted index** (term → posting list), ranks with **BM25**, and splits the index into **shards** that a coordinating node queries in parallel and merges.',
-      steps: [
-        {
-          title: '❌ Search with a regex on MongoDB',
-          text: 'The first idea: `db.products.find({ title: /running shoes/i })` (SQL: `LIKE \'%running shoes%\'`). A B-tree index is sorted by the **start** of the value, so a pattern that can match **anywhere** cannot use it: MongoDB does a **COLLSCAN** of all 50 M products. Seconds per query, at 5 000 queries per second.',
-          observe: 'The Catalog DB scans 50 M documents for one search.',
-          say: 'A leading-wildcard or regex search cannot use a normal index, so it scans the whole collection.',
-          focus: v => [v.n.catdb, v.db],
-          async run(s, v) {
-            await s.send(['userA', 'gw', 'catalog', 'catdb'], '$regex /running shoes/i', AMBER);
-            s.tone(v.n.catdb, 'warn'); s.setSub(v.n.catdb, 'COLLSCAN 50 M', RED);
-            db(s, v, 'scanned 50 M · 4.2 s', RED);
-            await s.shake(v.n.catdb);
-            await s.send(['catdb', 'catalog', 'gw', 'userA'], '3 hits · 4.2 s', RED);
-            who(s, v, 'A', 'waited 4.2 s ✕', RED);
-          },
-        },
-        {
-          title: '❌ ...and it matches characters, not words',
-          text: '"Running Shoe" (singular), "shoes for running" (other order) and "runners" are **missed**; "shoestring running belt" **matches**. And there is **no ranking**: a product with "running shoes" in its title is no better than one that mentions it once deep in the description.',
-          observe: 'Wrong matches, missed matches, no order.',
-          say: 'Regex has no notion of words, stemming or relevance.',
-          focus: v => [v.n.catalog],
-          async run(s, v) {
-            await s.flash(375, 440, '✕ missed "Running Shoe"', bad, 650);
-            await s.flash(375, 440, '✕ missed "shoes for running"', bad, 650);
-            await s.flash(375, 440, '✕ matched "shoestring belt"', bad, 650);
-            who(s, v, 'A', 'bad results ✕', RED);
-          },
-        },
-        {
-          title: '✅ Analyze the text once, when indexing',
-          text: 'Elasticsearch passes every `text` field through an **analyzer**: **tokenize** on word boundaries, **lowercase**, drop stop words, **stem** (running → run, shoes → shoe). "Trail Running Shoes" becomes the terms `[trail, run, shoe]`. The **same analyzer** runs on the query later, so both sides speak the same terms.',
-          observe: 'p-7 becomes three terms, each pointing to p-7.',
-          say: 'An analyzer turns text into normalised terms: tokenize, lowercase, stem.',
-          focus: v => [v.n.indexer, v.log],
-          async run(s, v) {
-            s.tone(v.n.catdb, null); s.setSub(v.n.catdb, 'MongoDB · truth'); db(s, v, '50 M products');
-            who(s, v, 'A', 'wants running shoes');
-            await s.send(['catdb', 'kafka', 'indexer'], 'p-7 "Trail Running Shoes"', PURPLE);
-            idx(s, v, '[trail, run, shoe]', PURPLE); await s.pulse(v.idx);
-            await s.send(['indexer', 'es', 's1'], 'p-7 terms', PURPLE);
-            await put(s, v, 'trail', 'trail → p-7', 'IDX');
-            await put(s, v, 'run', 'run → p-7', 'IDX');
-            await put(s, v, 'shoe', 'shoe → p-7', 'IDX');
-          },
-        },
-        {
-          title: '✅ The inverted index: term → posting list',
-          text: 'More products arrive: p-9 "Road Running Shoe", p-12 "Running Socks". For each **term** the index keeps a sorted **posting list** of the documents that contain it, like the index at the back of a book. Finding a term is a dictionary lookup, not a scan: the cost depends on how many documents **match**, not on 50 M.',
-          observe: '"run" now points to three products, "shoe" to two.',
-          say: 'The inverted index maps each term to the list of documents that contain it.',
-          focus: v => [v.log],
-          async run(s, v) {
-            await s.send(['indexer', 'es', 's1'], 'p-9, p-12', PURPLE);
-            await put(s, v, 'run', 'run → p-7 p-9 p-12', 'IDX');
-            await put(s, v, 'shoe', 'shoe → p-7 p-9', 'IDX');
-            await put(s, v, 'sock', 'sock → p-12', 'IDX');
-            idx(s, v, 'idle');
-          },
-        },
-        {
-          title: '✅ Query: same analyzer, two lookups, BM25',
-          text: '"running shoes" → `[run, shoe]` → two posting lists → p-7, p-9, p-12. **BM25** scores each one: **term frequency** (more mentions help, with diminishing returns), **inverse document frequency** (a rare term like "trail" weighs more than a common one like "shoe") and **field length** (a match in a short title beats one in a long description). p-7 and p-9 match both terms, so they rank first.',
-          observe: 'Ranked: p-7 7.3, p-9 6.9, p-12 2.1, in milliseconds.',
-          say: 'Elasticsearch looks up each query term and ranks the matches with BM25.',
-          focus: v => [v.rows.run, v.rows.shoe],
-          async run(s, v) {
-            await s.send(['userA', 'gw', 'search', 'es'], '[run, shoe]', BLUE);
-            await put(s, v, 'run', 'run → p-7 p-9 p-12', 'OK');
-            await put(s, v, 'shoe', 'shoe → p-7 p-9', 'OK');
-            await s.flash(800, 255, 'p-7 7.3 · p-9 6.9 · p-12 2.1', info, 900);
-            await s.send(['es', 'search', 'gw', 'userA'], 'p-7, p-9, p-12', GREEN);
-            who(s, v, 'A', 'ranked · 30 ms ✓', GREEN);
-          },
-        },
-        {
-          title: 'Shards and replicas',
-          text: 'One index of 50 M products is split into **3 primary shards**: a document goes to shard `hash(_id) % 3`. Each shard is a complete little inverted index (a Lucene index) on its own node, and has a **replica** on a different node: the replica takes over if that node dies and also serves searches. The number of primaries is fixed when the index is created.',
-          observe: 'Each shard holds about a third of the products.',
-          say: 'The index is split into shards for scale, each with a replica for failover and reads.',
-          focus: v => [v.n.s0, v.n.s1, v.n.s2],
-          async run(s, v) {
-            await scatter(s, 'hash(_id) % 3', PURPLE);
-            ['17 M docs', '17 M docs', '16 M docs'].forEach((t, i) => shd(s, v, i, t, TEAL));
-            await s.flash(650, 395, 'every primary has a replica on another node', info, 1000);
-          },
-        },
-        {
-          title: 'Query fan-out: scatter, top-k, gather, fetch',
-          text: 'The node that receives a search is the **coordinating node**. **Query phase:** it sends the query to one copy of **every** shard; each scores locally and returns only its **top 10 ids + scores**. The coordinator merges 3 × 10 → the global top 10. **Fetch phase:** it asks the owning shards for the full `_source` of just those 10.',
-          observe: 'Three shards answer in parallel; only 10 full documents travel back.',
-          say: 'The coordinating node scatters the query to all shards, merges their top results, then fetches the winners.',
-          focus: v => [v.n.es, ...v.sh],
-          async run(s, v) {
-            await s.send(['userA', 'gw', 'search', 'es'], '"running shoes"', BLUE);
-            await scatter(s, 'query phase');
-            ['top · 6.9', 'top · 7.3', 'top · 5.8'].forEach((t, i) => shd(s, v, i, t, BLUE));
-            await gather(s, ['10 ids', '10 ids', '10 ids']);
-            await s.flash(800, 255, 'merge 30 → top 10', info, 700);
-            await both(s.send(['es', 's1'], 'fetch 6', TEAL, { ms: 360 }), s.send(['es', 's0'], 'fetch 4', TEAL, { ms: 360 }));
-            await s.send(['es', 'search', 'gw', 'userA'], '10 hits', GREEN);
-            who(s, v, 'A', '10 hits · 40 ms ✓', GREEN);
-          },
-        },
-      ],
-    },
-    {
-      id: 'query', title: 'Search with filters', sub: 'bool: must + filter · fan-out · cache', color: BLUE,
-      build: (s, v) => setup(s, v, { title: 'MERGED RESULTS · top 10', db: 'p-7 · ₹80 · v4', a: 'types running shoes' }),
-      takeaway: 'Put **free text** in `must` (scored with BM25) and **exact constraints** (price, stock, brand) in `filter`: no scoring, cached as bitsets and reused. Every shard returns its top-k, the coordinator merges and fetches. A short-TTL **query cache** absorbs the head of the query distribution.',
-      steps: [
-        {
-          title: 'A searches "running shoes" under ₹150',
-          text: '`GET /search?q=running shoes&maxPrice=150&inStock=true&page=1`. The gateway checks the token and the rate limit, then routes to the Search Service.',
-          observe: 'The request reaches the Search Service.',
-          focus: v => [v.n.search],
-          async run(s, v) {
-            who(s, v, 'A', 'searching…', AMBER);
-            await s.send(['userA', 'gw', 'search'], 'GET /search?q=…', BLUE);
-          },
-        },
-        {
-          title: 'Query cache: miss',
-          text: 'The key is the **normalised** request: `q:running shoes|price≤150|inStock|p1` (lowercased, trimmed, filters sorted). Popular queries are served from here; this one is not cached yet.',
-          observe: 'Redis answers (nil).',
-          focus: v => [v.cache],
-          async run(s, v) {
-            await s.send(['search', 'cache'], 'GET q:running shoes|…', RED);
-            await s.send(['cache', 'search'], '(nil)', GREY);
-            cch(s, v, 'miss', GREY);
-          },
-        },
-        {
-          title: 'Build a bool query: must + filter',
-          text: '`must`: `multi_match` "running shoes" on `title^3` and `description`: **scored** with BM25, the title boosted 3×. `filter`: `range price ≤ 150` and `term inStock: true`: **yes/no only**, no scoring, so Elasticsearch caches them as **bitsets** and reuses them for the next query with the same filter.',
-          observe: 'One query: a scored part and a cached filter part.',
-          say: 'Text goes in must and is scored; exact constraints go in filter, which is unscored and cached.',
-          focus: v => [v.n.es],
-          async run(s, v) {
-            await s.send(['search', 'es'], 'bool: must + filter', BLUE);
-            await s.flash(800, 255, 'filter: price ≤ 150 · inStock', info, 900);
-          },
-        },
-        {
-          title: 'Query phase on every shard',
-          text: 'Each shard intersects the **filter bitset** with the posting lists of `run` and `shoe`, scores only the surviving documents and keeps its **top 10** (a small heap). It returns ids and scores, not documents. Facet counts (brand, price ranges) are computed in the same pass with **aggregations** on `keyword` fields.',
-          observe: 'Shard 1 has the best score (7.3).',
-          say: 'Each shard filters, scores and returns only its top ten.',
-          focus: v => v.sh,
-          async run(s, v) {
-            await scatter(s, 'query phase');
-            ['top · 6.9', 'top · 7.3', 'top · 5.8'].forEach((t, i) => shd(s, v, i, t, BLUE));
-            await gather(s, ['10 ids', '10 ids', '10 ids']);
-          },
-        },
-        {
-          title: 'Merge, then fetch only the winners',
-          text: 'The coordinating node merges 30 candidates into the **global top 10** and adds up the facet counts. **Fetch phase:** it asks each owning shard for the `_source` of its winners only. Page 2 repeats this with `from: 10`; deep pages get expensive (see follow-ups: `search_after`).',
-          observe: 'The merged list: p-7, p-9, p-31 …',
-          focus: v => [v.log],
-          async run(s, v) {
-            await put(s, v, 'p-7', 'p-7 · 7.3 · ₹80 · shard 1', 'OK');
-            await put(s, v, 'p-9', 'p-9 · 6.9 · ₹120 · shard 0', 'OK');
-            await put(s, v, 'p-31', 'p-31 · 5.8 · ₹95 · shard 2', 'OK');
-            await put(s, v, 'more', '… 7 more · facets: Asics 41', 'DIM');
-            await both(s.send(['es', 's1'], 'fetch', TEAL, { ms: 360 }), s.send(['es', 's0'], 'fetch', TEAL, { ms: 360 }), s.send(['es', 's2'], 'fetch', TEAL, { ms: 360 }));
-            await s.send(['es', 'search'], 'hits + facets', GREEN);
-          },
-        },
-        {
-          title: 'Answer and cache for 30 s; B gets a hit',
-          text: 'The Search Service stores the page with `SET q:… EX 30` and returns 10 results with facets in ~45 ms. A second later Shopper B runs the same search: served from Redis in ~4 ms without touching the cluster. A 30 s TTL means a price can be 30 s old in the list; the product page and checkout read the DB.',
-          observe: 'A gets results; B gets the same page from the cache.',
-          say: 'Popular queries are cached for a few seconds.',
-          focus: v => [v.cache, v.ub],
-          async run(s, v) {
-            await s.send(['search', 'cache'], 'SET … EX 30', RED);
-            cch(s, v, 'q:running shoes · 30 s', RED);
-            await s.send(['search', 'gw', 'userA'], '10 hits + facets', GREEN);
-            who(s, v, 'A', '10 results · 45 ms', GREEN);
-            await s.send(['userB', 'gw', 'search', 'cache'], 'same query', BLUE);
-            await s.send(['search', 'gw', 'userB'], 'cache hit', GREEN);
-            who(s, v, 'B', 'cache hit · 4 ms ✓', GREEN);
-          },
-        },
-      ],
-    },
-    {
-      id: 'index', title: 'Seller changes a price', sub: 'DB → change stream → Kafka → _bulk', color: PURPLE,
-      build: (s, v) => setup(s, v, { rows: [['p-7', 'p-7 · Trail shoes · ₹100 · v3', 'OK'], ['p-9', 'p-9 · Road shoes · ₹120 · v7', 'OK']], c: 'lowers p-7 to ₹80' }),
-      takeaway: 'The request path writes **only the DB** (with `version++`). The DB\'s own change log drives the index: **change stream → Kafka (key = productId) → indexer → `_bulk` with the DB version**. Search is **near real-time** (~1 s after the refresh); the seller\'s own pages read the DB.',
-      steps: [
-        {
-          title: 'Seller C lowers the price',
-          text: '`PATCH /products/p-7 { price: 80 }` through the gateway to the Catalog Service.',
-          observe: 'The write reaches the Catalog Service.',
-          focus: v => [v.n.catalog],
-          async run(s, v) { await s.send(['seller', 'gw', 'catalog'], 'PATCH price 80', AMBER); },
-        },
-        {
-          title: 'Write the source of truth, and only it',
-          text: '`updateOne({ _id: "p-7" }, { $set: { price: 80 }, $inc: { version: 1 } })` → **version 4**. The version is what will keep the index correct later, whatever order events arrive in.',
-          observe: 'Catalog DB: p-7 ₹80 v4. The index still says ₹100.',
-          say: 'The service writes only the database and bumps a version.',
-          focus: v => [v.db],
-          async run(s, v) {
-            await s.send(['catalog', 'catdb'], '$set price · $inc version', TEAL);
-            db(s, v, 'p-7 · ₹80 · v4'); await s.pulse(v.db);
-          },
-        },
-        {
-          title: 'Saved: the seller\'s view reads the DB',
-          text: '`200 { version: 4 }`. The seller\'s product page and dashboard read the **Catalog DB**, so C sees ₹80 immediately (read-your-writes where it matters). Public search will catch up in about a second.',
-          observe: 'C sees the new price at once.',
-          focus: v => [v.uc],
-          async run(s, v) {
-            await s.send(['catalog', 'gw', 'seller'], '200 · v4', GREEN);
-            who(s, v, 'C', 'saved · sees ₹80 ✓', GREEN);
-          },
-        },
-        {
-          title: 'Change stream → Kafka, keyed by productId',
-          text: 'A small publisher watches `products.watch(…, { fullDocument: "updateLookup" })` and sends the new document to `product-changes` with **key "p-7"**: every change of p-7 goes to the same partition, in order. It saves the change stream\'s **resume token** after each send, so a restart continues where it stopped.',
-          observe: 'Kafka holds "p-7 v4 ₹80" at offset 910.',
-          say: 'A change stream publishes every product change to Kafka, keyed by product id.',
-          focus: v => [v.kaf],
-          async run(s, v) {
-            await s.send(['catdb', 'kafka'], 'change: p-7 v4', PURPLE);
-            kaf(s, v, 'p-7 v4 ₹80 @910'); await s.pulse(v.kaf);
-          },
-        },
-        {
-          title: 'Indexer: one _bulk with the DB version',
-          text: 'The indexer polls ~500 events and sends **one** `POST _bulk` request. Each item carries `"version": 4, "version_type": "external"`. Elasticsearch routes p-7 to shard 1 (`hash(_id) % 3`). The indexer commits the Kafka offset only after the bulk response.',
-          observe: 'Shard 1 has ₹80 v4, but it is not searchable yet.',
-          focus: v => [v.idx, v.rows['p-7']],
-          async run(s, v) {
-            await s.send(['kafka', 'indexer'], 'poll 500', PURPLE);
-            idx(s, v, '_bulk 500 · p-7 v4', PURPLE);
-            await s.send(['indexer', 'es', 's1'], '_bulk · v4 external', PURPLE);
-            await put(s, v, 'p-7', 'p-7 · ₹80 · v4 · not refreshed', 'NEW');
-          },
-        },
-        {
-          title: 'Refresh: searchable about 1 s later',
-          text: 'Elasticsearch is **near real-time**: new writes become visible to search at the next **refresh** (`refresh_interval: 1s`), which opens a new segment. A searches and sees ₹80. Never send `refresh=true` on bulk traffic (tiny segments); for a single seller write that must be searchable at once, `refresh=wait_for` is the tool.',
-          observe: 'A sees ₹80 in search, ~1 s after the seller saved.',
-          say: 'Search is near real-time: documents become visible after the next refresh, about a second.',
-          focus: v => [v.rows['p-7'], v.ua],
-          async run(s, v) {
-            tick(s, v, '15:00:01');
-            await s.flash(800, 255, 'refresh → new segment', ok, 700);
-            await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹80 · v4', 'OK');
-            idx(s, v, 'offset 910 committed', GREEN);
-            await s.send(['userA', 'gw', 'search', 'es'], '"trail shoes"', BLUE);
-            await s.send(['es', 'search', 'gw', 'userA'], 'p-7 ₹80', GREEN);
-            who(s, v, 'A', 'sees ₹80 ✓', GREEN);
-          },
-        },
-      ],
-    },
-    {
-      id: 'dual', title: 'Dual write vs CDC', sub: 'app writes both stores vs change stream', color: RED,
-      build: (s, v) => setup(s, v, { rows: [['p-7', 'p-7 · Trail shoes · ₹100 · v3', 'OK']], c: 'lowers p-7 to ₹80' }),
-      takeaway: 'Writing the DB **and** Elasticsearch from the service has no transaction across them: one can fail, the pod can die in between, two pods can interleave. Write **only the DB** and derive the index from its change log (**change stream / CDC**, or an **outbox** written in the same transaction). Kafka buffers while Elasticsearch is down, and the index **converges**.',
-      steps: [
-        {
-          title: '❌ Write the DB, then Elasticsearch, from the service',
-          text: 'The Catalog Service saves ₹80 in MongoDB (✓), then calls `index p-7` on Elasticsearch, which **times out** (a GC pause, or 429 because the cluster is busy).',
-          observe: 'DB updated; the index write bounces.',
-          say: 'With a dual write, the second write can fail after the first succeeded.',
-          focus: v => [v.n.catalog, v.n.es],
-          async run(s, v) {
-            await s.send(['seller', 'gw', 'catalog'], 'PATCH price 80', AMBER);
-            await s.send(['catalog', 'catdb'], 'update v4', TEAL);
-            db(s, v, 'p-7 · ₹80 · v4');
-            await s.bounce('catalog', 'es', 'index p-7 ₹80', BLUE);
-            await s.flash(475, 250, 'timeout / 429', bad, 700);
-          },
-        },
-        {
-          title: '❌ The two copies drift',
-          text: 'The pod crashes before its retry (or the retry fails too). The DB says ₹80, search says **₹100**, forever, until the product changes again. The reverse order is no better: index first, then the DB write fails → search shows a price that never existed. And two pods dual-writing can apply their index writes in the wrong order.',
-          observe: 'Search shows ₹100; the product page shows ₹80.',
-          say: 'There is no transaction across MongoDB and Elasticsearch, so dual writes drift.',
-          focus: v => [v.rows['p-7'], v.db],
-          async run(s, v) {
-            await put(s, v, 'p-7', 'p-7 · ₹100 · v3 · DB has ₹80!', 'BAD');
-            await s.send(['userA', 'gw', 'search', 'es'], '"trail shoes"', BLUE);
-            await s.send(['es', 'search', 'gw', 'userA'], 'p-7 ₹100', RED);
-            who(s, v, 'A', 'search ₹100 ≠ ₹80 ✕', RED);
-          },
-        },
-        {
-          title: '✅ Rewind: write only the DB',
-          text: 'One write, one commit: `$set price, $inc version` → v4. The request path never touches Elasticsearch, so there is nothing to half-fail. (If you also need a business event, write an **outbox** document in the **same** MongoDB transaction; for SQL databases **Debezium** reads the binlog / WAL.)',
-          observe: 'DB: ₹80 v4.',
-          say: 'Write only the database; derive the index from its change log.',
-          focus: v => [v.db],
-          async run(s, v) {
-            await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹100 · v3', 'OK');
-            who(s, v, 'A', 'browsing');
-            await s.send(['catalog', 'catdb'], 'update v4 (only)', TEAL);
-            await s.pulse(v.db);
-          },
-        },
-        {
-          title: '✅ The change stream publishes it',
-          text: 'The change stream reads MongoDB\'s **oplog**, the same log replication uses, so every committed change appears **exactly once in commit order**. The publisher sends it to Kafka and stores the resume token; after a crash it resumes from the token and skips nothing.',
-          observe: 'Kafka: p-7 v4 ₹80.',
-          focus: v => [v.kaf],
-          async run(s, v) {
-            await s.send(['catdb', 'kafka'], 'p-7 v4', PURPLE);
-            kaf(s, v, 'p-7 v4 ₹80 @910'); await s.pulse(v.kaf);
-          },
-        },
-        {
-          title: '✅ Elasticsearch is down? Events wait in Kafka',
-          text: 'The cluster is unreachable for a minute. The indexer\'s bulk fails; it **backs off and retries** and does **not commit** the offset. Changes pile up in Kafka (consumer lag grows); nothing is lost and the request path is not affected at all.',
-          observe: 'Bulk bounces; lag grows to 1 240.',
-          say: 'If Elasticsearch is down, changes wait in Kafka and the indexer retries.',
-          focus: v => [v.n.indexer, v.kaf],
-          async run(s, v) {
-            s.tone(v.n.es, 'fail'); s.setSub(v.n.es, '✕ unreachable', RED);
-            await s.send(['kafka', 'indexer'], 'poll', PURPLE);
-            await s.bounce('indexer', 'es', '_bulk', PURPLE);
-            idx(s, v, 'retry · backoff 2 s', AMBER);
-            tick(s, v, '15:01:00');
-            kaf(s, v, 'lag 1 240', AMBER); await s.pulse(v.kaf);
-          },
-        },
-        {
-          title: '✅ The cluster is back: the index converges',
-          text: 'The retry succeeds; the indexer drains the backlog in big bulks and commits offsets. Search shows ₹80, and the DB and the index agree again: the index is **eventually consistent**, never permanently wrong.',
-          observe: 'Lag 0; search shows ₹80.',
-          focus: v => [v.rows['p-7'], v.ua],
-          async run(s, v) {
-            s.tone(v.n.es, null); s.setSub(v.n.es, 'coordinating node');
-            await s.send(['indexer', 'es', 's1'], '_bulk catch-up', PURPLE);
-            await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹80 · v4', 'OK');
-            kaf(s, v, 'lag 0'); idx(s, v, 'caught up', GREEN);
-            await s.send(['userA', 'gw', 'search', 'es'], '"trail shoes"', BLUE);
-            await s.send(['es', 'search', 'gw', 'userA'], 'p-7 ₹80', GREEN);
-            who(s, v, 'A', 'search ₹80 ✓', GREEN);
-          },
-        },
-      ],
-    },
-    {
-      id: 'order', title: 'Out-of-order updates', sub: 'last write wins vs external version', color: TEAL,
-      build: (s, v) => setup(s, v, { rows: [['p-7', 'p-7 · Trail shoes · ₹80 · v4', 'OK']], db: 'p-7 · ₹80 · v4', c: 'changes price twice' }),
-      takeaway: 'Kafka keeps order per key, but **retries, replays, backfills and deploys** can still deliver an older change after a newer one. Index with `version_type=external` and the **DB version**: Elasticsearch rejects anything not newer with **409**, the indexer treats 409 as "already newer", and the index converges to the DB.',
-      steps: [
-        {
-          title: 'Two quick price changes',
-          text: 'C sets ₹90 (**v5**), then a second later ₹70 (**v6**). The DB has the latest, ₹70 v6. Both changes are in Kafka, in order, in p-7\'s partition.',
-          observe: 'DB: ₹70 v6. Kafka: v5 then v6.',
-          focus: v => [v.db, v.kaf],
-          async run(s, v) {
-            await s.send(['seller', 'gw', 'catalog', 'catdb'], '₹90 → v5', AMBER);
-            db(s, v, 'p-7 · ₹90 · v5');
-            await s.send(['seller', 'gw', 'catalog', 'catdb'], '₹70 → v6', AMBER);
-            db(s, v, 'p-7 · ₹70 · v6'); await s.pulse(v.db);
-            await s.send(['catdb', 'kafka'], 'v5, v6', PURPLE);
-            kaf(s, v, 'p-7 v5 ₹90 · v6 ₹70');
-          },
-        },
-        {
-          title: 'v5 fails, v6 succeeds',
-          text: 'In the bulk response, the item for v5 failed (429, shard busy); the indexer sends it to a **retry topic** so the rest of the partition is not blocked. The next batch with **v6** succeeds: the index shows ₹70, correct.',
-          observe: 'Index: ₹70 v6. v5 waits for a retry.',
-          say: 'Retries and replays can deliver an older change after a newer one.',
-          focus: v => [v.idx, v.rows['p-7']],
-          async run(s, v) {
-            await s.send(['kafka', 'indexer'], 'v5 ₹90', PURPLE);
-            await s.bounce('indexer', 'es', 'v5 → 429', PURPLE);
-            idx(s, v, 'v5 → retry topic', AMBER);
-            await s.send(['kafka', 'indexer'], 'v6 ₹70', PURPLE);
-            await s.send(['indexer', 'es', 's1'], 'v6 ₹70', PURPLE);
-            await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹70 · v6', 'OK');
-          },
-        },
-        {
-          title: '❌ The late retry overwrites the newer price',
-          text: 'Ten seconds later the retry of v5 runs as a plain `PUT products/_doc/p-7 { "price": 90 }`. Without a version check, **the last write wins, and the last write is the older change**. Search now says ₹90 while the DB says ₹70, until the product changes again.',
-          observe: 'Search shows ₹90; the DB has ₹70.',
-          focus: v => [v.rows['p-7'], v.ua],
-          async run(s, v) {
-            tick(s, v, '15:00:10');
-            await s.send(['indexer', 'es', 's1'], 'retry v5 ₹90', RED);
-            await put(s, v, 'p-7', 'p-7 · ₹90 · stale (DB ₹70)', 'BAD');
-            await s.send(['userA', 'gw', 'search', 'es'], '"trail shoes"', BLUE);
-            await s.send(['es', 'search', 'gw', 'userA'], 'p-7 ₹90', RED);
-            who(s, v, 'A', 'sees ₹90 ✕', RED);
-          },
-        },
-        {
-          title: '✅ Rewind: the DB version as an external version',
-          text: 'The retry sends `PUT products/_doc/p-7?version=5&version_type=external`. Elasticsearch stores the version with the document and accepts a write **only if the new version is higher** than the stored one. Stored is 6, so v5 is rejected: **409 version_conflict_engine_exception**.',
-          observe: 'v5 is rejected; the index keeps ₹70 v6.',
-          say: 'With external versioning, Elasticsearch rejects any change older than what it already has.',
-          focus: v => [v.rows['p-7']],
-          async run(s, v) {
-            await put(s, v, 'p-7', 'p-7 · Trail shoes · ₹70 · v6', 'OK');
-            who(s, v, 'A', 'browsing');
-            await s.send(['indexer', 'es', 's1'], 'v5 · external', TEAL);
-            await s.flash(650, 395, '409 · 5 is not > 6', bad, 800);
-            await s.send(['s1', 'es', 'indexer'], '409 conflict', AMBER);
-          },
-        },
-        {
-          title: '✅ 409 means "already newer": skip it',
-          text: 'The indexer treats a version conflict as **success** and commits the offset. Replays, retries, backfills and two indexer versions during a deploy all become harmless: the index always ends at the DB\'s highest version. Deletes use the version too (or a soft-delete flag) so an old update cannot resurrect a deleted product.',
-          observe: 'A sees ₹70, the same as the DB.',
-          focus: v => [v.idx, v.ua],
-          async run(s, v) {
-            idx(s, v, '409 → skip, commit', GREEN); await s.pulse(v.idx);
-            await s.send(['userA', 'gw', 'search', 'es'], '"trail shoes"', BLUE);
-            await s.send(['es', 'search', 'gw', 'userA'], 'p-7 ₹70', GREEN);
-            who(s, v, 'A', 'sees ₹70 ✓', GREEN);
-          },
-        },
-      ],
-    },
-    {
-      id: 'reindex', title: 'Reindex, zero downtime', sub: 'new index · backfill · alias swap', color: GREEN,
-      build: (s, v) => setup(s, v, { title: 'INDICES · alias "products"', rows: [['v1', 'products_v1 · standard · 50 M', 'OK']], es: 'alias → products_v1', db: '50 M products', a: 'searching all day' }),
-      takeaway: 'You cannot change an existing field\'s analyzer (or the primary shard count) in place. Build **products_v2** next to v1, **backfill** it from the DB while live changes go to both, **catch up**, then **swap the alias** in one atomic request. Clients always query the alias; v1 stays for rollback.',
-      steps: [
-        {
-          title: 'A new analyzer is needed',
-          text: 'Shoppers type "sneakers" and "trainers" and find nothing; we want a **synonym** filter and better stemming on `title`. The inverted index was built with the **old** terms, so an existing field\'s analyzer cannot be changed in place: every document must be re-analyzed into a **new index**.',
-          observe: '"sneakers" → 0 hits today.',
-          focus: v => [v.n.es, v.ua],
-          async run(s, v) {
-            await s.send(['userA', 'gw', 'search', 'es'], '"sneakers"', BLUE);
-            await s.send(['es', 'search', 'gw', 'userA'], '0 hits', GREY);
-            who(s, v, 'A', '"sneakers" → 0 hits', AMBER);
-            await s.flash(800, 255, 'title: + synonyms filter', info, 800);
-          },
-        },
-        {
-          title: '❌ Delete and recreate',
-          text: '`DELETE products`, create it again with the new mapping, re-index 50 M products. For the **hour** the rebuild takes, search returns **nothing or partial results**, and there is no way back if the new analyzer turns out worse.',
-          observe: 'Search is empty during the rebuild.',
-          say: 'Deleting and recreating the index means an outage.',
-          focus: v => [v.rows.v1, v.ua],
-          async run(s, v) {
-            await s.send(['indexer', 'es'], 'DELETE products', RED);
-            await put(s, v, 'v1', 'products · new · 0 → filling…', 'BAD');
-            s.setSub(v.n.es, 'rebuilding…', RED);
-            await s.send(['userA', 'gw', 'search', 'es'], '"running shoes"', BLUE);
-            await s.send(['es', 'search', 'gw', 'userA'], '0 hits', RED);
-            who(s, v, 'A', 'search empty ✕', RED);
-          },
-        },
-        {
-          title: '✅ Rewind: build products_v2 next to v1',
-          text: '`PUT products_v2` with the new mappings and analyzer. During the load use `number_of_replicas: 0` and `refresh_interval: -1` (much faster), then restore them. Searches still go to the **alias** `products` → v1, so nobody notices.',
-          observe: 'v2 exists and is empty; search still uses v1.',
-          say: 'Build a new index with the new mapping next to the old one.',
-          focus: v => [v.log],
-          async run(s, v) {
-            await put(s, v, 'v1', 'products_v1 · standard · 50 M', 'OK');
-            s.setSub(v.n.es, 'alias → products_v1', BLUE); who(s, v, 'A', 'searching all day');
-            await s.send(['indexer', 'es'], 'PUT products_v2', TEAL);
-            await put(s, v, 'v2', 'products_v2 · synonyms · 0', 'NEW');
-          },
-        },
-        {
-          title: 'Backfill from the truth; live changes go to both',
-          text: 'Note the Kafka offset, then stream every product from the **Catalog DB** into v2 through the indexer (or `_reindex` from v1 if v1 has every field). Meanwhile the live indexer writes each new change to **v1 and v2**. Overlaps are safe: external versions make the highest version win in both.',
-          observe: 'v2 fills up while v1 keeps serving.',
-          say: 'Backfill the new index from the database while live changes are written to both.',
-          focus: v => [v.idx, v.rows.v2],
-          async run(s, v) {
-            idx(s, v, 'live → v1 + v2', PURPLE);
-            await s.send(['catdb', 'kafka', 'indexer', 'es'], 'snapshot → v2', PURPLE);
-            await put(s, v, 'v2', 'products_v2 · synonyms · 31 M', 'NEW');
-            kaf(s, v, 'backfill 31 M / 50 M');
-            await s.send(['indexer', 'es'], 'snapshot → v2', PURPLE);
-            await put(s, v, 'v2', 'products_v2 · synonyms · 50 M', 'NEW');
-            kaf(s, v, 'lag 0', GREEN);
-          },
-        },
-        {
-          title: 'Catch up and verify',
-          text: 'Lag is 0. Set replicas back to 1 and refresh to 1 s, compare document counts, run a sample of real queries against both (or shadow traffic) and check the results look better.',
-          observe: 'Counts match; v2 is ready.',
-          focus: v => [v.rows.v2],
-          async run(s, v) {
-            await s.flash(800, 255, 'count v1 = v2 = 50 M ✓', ok, 800);
-            await put(s, v, 'v2', 'products_v2 · synonyms · 50 M', 'OK');
-          },
-        },
-        {
-          title: '✅ Swap the alias atomically',
-          text: '`POST _aliases` with `remove products_v1` **and** `add products_v2` in **one** request: the switch is atomic, so no query ever sees zero or both indices. A\'s next search uses v2. Keep v1 for a quick rollback (swap back), delete it later.',
-          observe: '"sneakers" now finds 42 products; zero downtime.',
-          say: 'Swap the alias atomically; clients always query the alias, so there is no downtime.',
-          focus: v => [v.n.es, v.ua],
-          async run(s, v) {
-            await s.send(['indexer', 'es'], 'POST _aliases', GREEN);
-            s.setSub(v.n.es, 'alias → products_v2', GREEN); await s.pulse(v.n.es);
-            await put(s, v, 'v1', 'products_v1 · kept for rollback', 'DIM');
-            await s.send(['userA', 'gw', 'search', 'es'], '"sneakers"', BLUE);
-            await s.send(['es', 'search', 'gw', 'userA'], '42 hits', GREEN);
-            who(s, v, 'A', '"sneakers" → 42 ✓', GREEN);
-          },
-        },
-      ],
-    },
-  ],
+// =====================================================================
+// rendering
+// =====================================================================
+const svg = document.getElementById('dia');
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const box = id => { const n = NODES[id]; return { l: n.x - 75, r: n.x + 75, t: n.y - 56, b: n.y + 56 }; };
 
+function edgePath(a, b) {
+  const A = NODES[a], B = NODES[b], dx = B.x - A.x, dy = B.y - A.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const s = Math.sign(dx) || 1, x1 = A.x + 75 * s, x2 = B.x - 75 * s, mx = (x1 + x2) / 2;
+    return { d: `M${x1} ${A.y} C${mx} ${A.y} ${mx} ${B.y} ${x2} ${B.y}`, horiz: true };
+  }
+  const s = Math.sign(dy) || 1, y1 = A.y + 56 * s, y2 = B.y - 56 * s, my = (y1 + y2) / 2;
+  return { d: `M${A.x} ${y1} C${A.x} ${my} ${B.x} ${my} ${B.x} ${y2}`, horiz: false };
+}
+
+function buildSvg() {
+  let s = `<defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#eef1f5"/></pattern>
+    <filter id="glow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect id="bg" x="-2000" y="-1200" width="5600" height="3000" fill="url(#grid)"/>`;
+  // zones: grouped by developer role (solid = outside our code, dashed = our backend)
+  for (const z of ZONES) {
+    const [f, st, lc] = ZT[z.t];
+    s += `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="18" fill="${f}" stroke="${st}" stroke-width="1.6"${z.dash ? ' stroke-dasharray="7 5"' : ''}/>`;
+    s += `<text class="zl" x="${z.x + 16}" y="${z.y + 24}" style="fill:${lc}">${esc(z.label)}</text>`;
+    if (z.cap) s += `<text class="nl" x="${z.x + 16}" y="${z.y + 41}" style="fill:${lc};opacity:.75">${esc(z.cap)}</text>`;
+  }
+  // edges + labels
+  s += '<g id="edges">';
+  EDGE_DEFS.forEach(([a, b], i) => { s += `<path class="edge" id="e${i}" d="${edgePath(a, b).d}"/>`; });
+  s += '</g><g id="elabels"></g><g id="ripples"></g><g id="nodes">';
+  // nodes
+  for (const [id, n] of Object.entries(NODES)) {
+    const [bg, st] = PAL[id];
+    let dots = '';
+    const r = n.replicas || 0;
+    for (let k = 0; k < r; k++) dots += `<circle cx="${75 + (k - (r - 1) / 2) * 10}" cy="104" r="3.2" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>`;
+    s += `<g class="node" data-id="${id}" transform="translate(${n.x - 75},${n.y - 56})">
+      <rect class="sel" x="-6" y="-6" width="162" height="124" rx="18" fill="none" stroke="#0b5cff" stroke-width="2" stroke-dasharray="6 5" opacity="0"/>
+      <rect class="card" width="150" height="112" rx="14" fill="${bg}" stroke="${st}" stroke-width="1.6"/>
+      <rect x="49" y="8" width="52" height="52" rx="12" fill="#fff" opacity=".85"/>
+      <g transform="translate(52.9,11.9) scale(.92)">${LOGO[id]}</g>
+      <text class="nlab" x="75" y="78">${esc(n.label)}</text>
+      <text class="nsub" x="75" y="95">${esc(n.sub)}</text>${dots}
+      <g class="tag" style="display:none"><rect y="-11" height="20" rx="10"/><text y="3.5"></text></g>
+    </g>`;
+  }
+  s += '</g><g id="packets"></g>';
+  svg.innerHTML = s;
+}
+buildSvg();
+
+const EDGES = EDGE_DEFS.map(([a, b, label], i) => {
+  const el = document.getElementById('e' + i);
+  return { a, b, label, el, len: el.getTotalLength(), hot: 0, horiz: edgePath(a, b).horiz };
+});
+// protocol labels at the path midpoint: above horizontal edges, right of vertical ones
+(function labels() {
+  const g = document.getElementById('elabels');
+  for (const e of EDGES) {
+    const p = e.el.getPointAtLength(e.len / 2);
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('class', 'elbl');
+    if (e.horiz) { t.setAttribute('x', p.x); t.setAttribute('y', p.y - 8); t.setAttribute('text-anchor', 'middle'); }
+    else { t.setAttribute('x', p.x + 8); t.setAttribute('y', p.y + 4); }
+    t.textContent = e.label;
+    g.appendChild(t);
+  }
+})();
+const NODE_EL = {};
+document.querySelectorAll('.node').forEach(g => { NODE_EL[g.dataset.id] = { g, act: 0, tagTok: 0 }; });
+
+// =====================================================================
+// engine: one rAF loop, own timer queue, everything scaled by speed
+// =====================================================================
+let speed = 1, paused = false, GEN = 0, current = 'query', view = 'flow';
+let timers = [], packets = [], ripples = [], dashOffset = 0, flows = 0;
+const stats = { req: 0, hit: 0, evt: 0, res: 0 };
+const STAT_EL = { req: document.getElementById('stReq'), hit: document.getElementById('stHit'), evt: document.getElementById('stEvt'), res: document.getElementById('stRes') };
+
+function wait(sec, cb) { timers.push({ t: sec, cb, gen: GEN }); }
+const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function bump(k, n = 1) { stats[k] += n; STAT_EL[k].textContent = stats[k]; }
+
+function findEdge(from, to) {
+  for (const e of EDGES) {
+    if (e.a === from && e.b === to) return { e, rev: false };
+    if (e.a === to && e.b === from) return { e, rev: true };
+  }
+  throw new Error('no edge ' + from + ' -> ' + to);
+}
+function heat(e, color) { e.hot++; e.el.classList.add('hot'); e.el.style.stroke = color; }
+function cool(e) { e.hot = Math.max(0, e.hot - 1); if (!e.hot) { e.el.classList.remove('hot'); e.el.style.stroke = ''; } }
+
+function activate(id, sec) {
+  const n = NODE_EL[id]; n.act++; n.g.classList.add('active');
+  wait(sec, () => { n.act = Math.max(0, n.act - 1); if (!n.act) n.g.classList.remove('active'); });
+}
+function ripple(id) {
+  const b = box(id), el = document.createElementNS(NS, 'rect');
+  el.setAttribute('rx', 16); el.setAttribute('fill', 'none'); el.setAttribute('stroke', PAL[id][1]); el.setAttribute('stroke-width', 2.5);
+  document.getElementById('ripples').appendChild(el);
+  ripples.push({ el, b, age: 0 });
+}
+function showTag(id, text, color, sec) {
+  const n = NODE_EL[id], tag = n.g.querySelector('.tag'), r = tag.querySelector('rect'), t = tag.querySelector('text');
+  const w = Math.max(34, text.length * 6.3 + 16);
+  t.textContent = text; r.setAttribute('width', w); r.setAttribute('x', 152 - w); r.setAttribute('fill', color);
+  t.setAttribute('x', 152 - w / 2); tag.setAttribute('transform', 'translate(0,0)');
+  tag.style.display = '';
+  const tok = ++n.tagTok;
+  wait(sec, () => { if (n.tagTok === tok) tag.style.display = 'none'; });
+}
+
+function spawn(from, to, kind, tag, onArrive) {
+  const { e, rev } = findEdge(from, to), color = KIND[kind];
+  const g = document.createElementNS(NS, 'g');
+  const trail = [];
+  for (let i = 0; i < 6; i++) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('r', 6 - i * 0.8); c.setAttribute('fill', color); c.setAttribute('opacity', (0.35 - i * 0.05).toFixed(2));
+    c.style.display = 'none'; g.appendChild(c); trail.push(c);
+  }
+  const head = document.createElementNS(NS, 'circle');
+  head.setAttribute('r', 7.5); head.setAttribute('fill', color); head.setAttribute('stroke', '#fff'); head.setAttribute('stroke-width', 2); head.setAttribute('filter', 'url(#glow)');
+  g.appendChild(head);
+  let txt = null;
+  if (tag) { txt = document.createElementNS(NS, 'text'); txt.setAttribute('class', 'ptag'); txt.setAttribute('fill', color); txt.textContent = tag; g.appendChild(txt); }
+  document.getElementById('packets').appendChild(g);
+  heat(e, color);
+  if (CLIENTS.has(from) && kind === 'request') bump('req');
+  const p = { e, rev, kind, to, dist: 0, hist: [], g, head, trail, txt, onArrive };
+  packets.push(p);
+  place(p, 0);
+}
+function place(p, t) {
+  const { e } = p, len = e.len;
+  let s = ease(t) * len; if (p.rev) s = len - s;
+  const a = e.el.getPointAtLength(s);
+  const b = s + 1 <= len ? e.el.getPointAtLength(s + 1) : e.el.getPointAtLength(s - 1);
+  let tx = b.x - a.x, ty = b.y - a.y; if (s + 1 > len) { tx = -tx; ty = -ty; }
+  const m = Math.hypot(tx, ty) || 1, off = p.rev ? -6 : 6;
+  const x = a.x + (-ty / m) * off, y = a.y + (tx / m) * off;
+  p.hist.unshift([x, y]); if (p.hist.length > 24) p.hist.pop();
+  p.head.setAttribute('cx', x); p.head.setAttribute('cy', y);
+  p.trail.forEach((c, i) => {
+    const h = p.hist[(i + 1) * 3];
+    if (h) { c.style.display = ''; c.setAttribute('cx', h[0]); c.setAttribute('cy', h[1]); } else c.style.display = 'none';
+  });
+  if (p.txt) { p.txt.setAttribute('x', x); p.txt.setAttribute('y', y - 13); }
+}
+function arrive(p) {
+  p.g.remove(); cool(p.e);
+  activate(p.to, 0.45); ripple(p.to);
+  if (p.to === 'kafka' && p.kind === 'event') bump('evt');
+  if (CLIENTS.has(p.to) && (p.kind === 'response' || p.kind === 'error')) bump('res');
+  p.onArrive && p.onArrive();
+}
+
+function update(k) {
+  dashOffset -= 40 * k;
+  for (const e of EDGES) if (!e.hot) e.el.style.strokeDashoffset = dashOffset;
+  // timers
+  for (const tm of timers) tm.t -= k;
+  const due = timers.filter(tm => tm.t <= 0);
+  if (due.length) { timers = timers.filter(tm => tm.t > 0); due.forEach(tm => { if (tm.gen === GEN) tm.cb(); }); }
+  // packets
+  const done = [];
+  for (const p of packets) {
+    p.dist += 260 * k;
+    const t = Math.min(1, p.dist / p.e.len);
+    place(p, t);
+    if (t >= 1) done.push(p);
+  }
+  if (done.length) { packets = packets.filter(p => !done.includes(p)); done.forEach(arrive); }
+  // ripples: grow ~14px and fade over 0.5s
+  ripples = ripples.filter(r => {
+    r.age += k;
+    const q = r.age / 0.5;
+    if (q >= 1) { r.el.remove(); return false; }
+    const g = 14 * q;
+    r.el.setAttribute('x', r.b.l - g); r.el.setAttribute('y', r.b.t - g);
+    r.el.setAttribute('width', 150 + 2 * g); r.el.setAttribute('height', 112 + 2 * g);
+    r.el.setAttribute('opacity', (1 - q).toFixed(3));
+    return true;
+  });
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused && view === 'flow') update(dt * speed);
+  requestAnimationFrame(frame);
+}
+
+// ---------------- step runner ----------------
+// o.footer: top-level scenario (updates footer, reading pauses); o.fast: live mode (short pauses, no packet tags)
+function runFlow(steps, o) {
+  let i = 0;
+  const next = () => {
+    if (i >= steps.length) { o.done && o.done(); return; }
+    const st = steps[i];
+    if (o.footer) showStep(i, steps.length, st);
+    i++;
+    exec(st, o, next);
+  };
+  next();
+}
+function exec(st, o, next) {
+  if (st.type === 'hop') {
+    // fan-out / fan-in: an array on one side = one packet per pair, all at once; otherwise `count` packets 0.25 s apart
+    const fan = Array.isArray(st.to) ? st.to.map(t => [st.from, t]) : Array.isArray(st.from) ? st.from.map(f => [f, st.to]) : null;
+    const pairs = fan || Array.from({ length: st.count || 1 }, () => [st.from, st.to]);
+    const n = pairs.length; let got = 0;
+    pairs.forEach(([from, to], k) => {
+      const kind = st.kinds ? st.kinds[k] : st.kind;
+      const tag = o.fast ? null : (st.tags ? st.tags[k] : st.tag);
+      const fire = () => spawn(from, to, kind, tag, () => { if (++got === n) wait(o.footer ? 1.1 : 0.08, next); });
+      if (k && !fan) wait(k * 0.25, fire); else fire();
+    });
+  } else if (st.type === 'node') {
+    const d = o.fast ? Math.max(0.25, (st.dur || 2.2) * 0.3) : (o.footer ? (st.dur || 2.4) : (st.dur || 1));
+    [].concat(st.id).forEach((id, k) => {
+      activate(id, d); ripple(id);
+      const tag = st.tags ? st.tags[k] : st.tag;
+      if (tag) showTag(id, tag, st.tagColor || '#0b5cff', d + (o.fast ? 0.15 : 0.6));
+    });
+    if (st.stat === 'hit') bump('hit');
+    wait(d, next);
+  } else if (st.type === 'fork') {
+    runFlow(st.steps, { fast: o.fast });
+    wait(o.footer ? 2.0 : 0.05, next);
+  }
+}
+
+// ---------------- footer ----------------
+const badge = document.getElementById('badge'), fTitle = document.getElementById('ftitle'), fProto = document.getElementById('fproto'), fText = document.getElementById('ftext'), dotsEl = document.getElementById('dots');
+function buildDots(n) { dotsEl.innerHTML = '<i></i>'.repeat(n); }
+function showStep(i, total, st) {
+  badge.className = ''; badge.textContent = `${i + 1}/${total}`;
+  fTitle.textContent = st.title; fProto.textContent = st.proto || '';
+  fText.textContent = st.text || ''; fText.title = st.text || '';
+  [...dotsEl.children].forEach((d, k) => d.classList.toggle('on', k <= i));
+}
+
+// ---------------- scenarios / live ----------------
+function reset() {
+  GEN++;
+  timers = [];
+  packets.forEach(p => p.g.remove()); packets = [];
+  ripples.forEach(r => r.el.remove()); ripples = [];
+  EDGES.forEach(e => { e.hot = 0; e.el.classList.remove('hot'); e.el.style.stroke = ''; });
+  Object.values(NODE_EL).forEach(n => { n.act = 0; n.g.classList.remove('active'); n.g.querySelector('.tag').style.display = 'none'; });
+  flows = 0;
+  for (const k in stats) { stats[k] = 0; STAT_EL[k].textContent = 0; }
+}
+function start(id) {
+  current = id;
+  document.querySelectorAll('#scSeg button').forEach(b => b.classList.toggle('on', b.dataset.sc === id));
+  reset();
+  if (id === 'live') startLive(); else runMain(id);
+}
+function runMain(id) {
+  const steps = SCEN[id].steps;
+  buildDots(steps.length);
+  runFlow(steps, {
+    footer: true,
+    done: () => {
+      badge.className = ''; badge.textContent = '✓';
+      fTitle.textContent = '✓ Journey complete'; fProto.textContent = SCEN[id].name;
+      fText.textContent = 'Looping in 2.5 s · press R to replay now, or pick another scenario.'; fText.title = '';
+      wait(2.5, () => runMain(id));
+    },
+  });
+}
+function pickMix() {
+  let r = Math.random();
+  for (const [id, w] of LIVE_MIX) { if ((r -= w) <= 0) return id; }
+  return 'qhit';
+}
+function startLive() {
+  dotsEl.innerHTML = '';
+  badge.className = 'live'; badge.textContent = 'LIVE';
+  fTitle.textContent = 'Live mixed traffic'; fProto.textContent = '45% cached query · 30% full search · 25% price change';
+  const tick = () => {
+    if (flows < 14) {
+      const id = pickMix(); flows++;
+      runFlow(SCEN[id].steps, { fast: true, done: () => { flows--; } });
+    }
+    wait(0.55 + Math.random() * 0.6, tick);
+  };
+  const info = () => {
+    const hr = Math.round(100 * stats.hit / Math.max(1, stats.req));
+    fText.textContent = `${flows} flows and ${packets.length} packets in flight · searches fan out to every shard while price changes stream through CDC → Kafka → _bulk · cache hits/requests ≈ ${hr}%`;
+    fText.title = '';
+    wait(0.5, info);
+  };
+  tick(); info();
+}
+
+// ---------------- drawer ----------------
+const drawer = document.getElementById('drawer');
+let selected = null;
+function openDrawer(id) {
+  const n = NODES[id], inf = INFO[id], [bg, st] = PAL[id];
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = id; NODE_EL[id].g.querySelector('.sel').setAttribute('opacity', 1);
+  document.getElementById('dHead').style.background = bg;
+  document.getElementById('dHead').style.borderBottomColor = st;
+  document.getElementById('dLogo').innerHTML = `<svg width="44" height="44" viewBox="0 0 48 48">${LOGO[id]}</svg>`;
+  document.getElementById('dTitle').textContent = n.label;
+  document.getElementById('dTag').textContent = inf.tag;
+  const body = document.getElementById('dBody');
+  const core = CORE[id];
+  body.innerHTML = `<div>${inf.desc}</div><h4>Key points</h4><ul>${inf.points.map(p => `<li>${p}</li>`).join('')}</ul><h4>Example</h4><pre></pre>`
+    + (core ? `<a class="core-link" href="00_Core_Components.html#${core[0]}/what">🧩 Basics: ${esc(core[1])} in Core Components →</a>` : '');
+  body.querySelector('pre').textContent = inf.code;
+  body.scrollTop = 0;
+  drawer.classList.add('open'); drawer.setAttribute('aria-hidden', 'false');
+}
+function closeDrawer() {
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = null; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true');
+}
+svg.addEventListener('click', ev => {
+  const g = ev.target.closest('.node');
+  if (g) openDrawer(g.dataset.id); else closeDrawer();
+});
+document.getElementById('dClose').onclick = closeDrawer;
+
+// ---------------- legend popover ----------------
+const legendPop = document.getElementById('legendPop'), legendBtn = document.getElementById('legendBtn');
+document.getElementById('lgKinds').innerHTML = Object.entries(KIND).map(([k, c]) => `<span><i style="--c:${c}"></i>${k}</span>`).join('');
+const legendOpen = () => legendPop.classList.contains('open');
+function setLegend(open) {
+  if (open) {   // point the little arrow at the button
+    const r = legendBtn.getBoundingClientRect();
+    legendPop.style.setProperty('--arrow', Math.max(12, window.innerWidth - 16 - (r.left + r.width / 2) - 6) + 'px');
+  }
+  legendPop.classList.toggle('open', open);
+  legendBtn.classList.toggle('on', open);
+  legendBtn.setAttribute('aria-expanded', open);
+}
+legendBtn.addEventListener('click', () => setLegend(!legendOpen()));
+document.addEventListener('mousedown', ev => {
+  if (legendOpen() && !legendPop.contains(ev.target) && !legendBtn.contains(ev.target)) setLegend(false);
+});
+
+// ---------------- controls ----------------
+function setSpeed(v) { speed = v; document.querySelectorAll('#spSeg button').forEach(b => b.classList.toggle('on', +b.dataset.sp === v)); }
+function togglePause() { paused = !paused; document.getElementById('pauseBtn').textContent = paused ? '▶ Play' : '⏸ Pause'; }
+document.querySelectorAll('header button').forEach(b => b.addEventListener('click', () => b.blur()));
+document.querySelectorAll('#scSeg button').forEach(b => b.onclick = () => start(b.dataset.sc));
+document.querySelectorAll('#spSeg button').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp));
+document.getElementById('pauseBtn').onclick = togglePause;
+document.getElementById('replayBtn').onclick = () => start(current);
+document.addEventListener('keydown', ev => {
+  if (ev.target.closest && ev.target.closest('input,textarea')) return;
+  if (view !== 'flow' || ev.ctrlKey || ev.metaKey || ev.altKey) return;   // shortcuts drive the Data flow tab only
+  if (ev.code === 'Space') { ev.preventDefault(); togglePause(); }
+  else if (ev.key === '1') setSpeed(0.5);
+  else if (ev.key === '2') setSpeed(1);
+  else if (ev.key === '3') setSpeed(2);
+  else if (ev.key === 'r' || ev.key === 'R') start(current);
+  else if (ev.key === 'l' || ev.key === 'L') setLegend(!legendOpen());
+  else if (ev.key === 'Escape') { if (legendOpen()) setLegend(false); else closeDrawer(); }
+});
+
+
+
+// ====================================================================
+// interview content: copied verbatim from 10_Search_System.html (v2.0)
+// ====================================================================
+const CONTENT = {
   // ---------------- 4 · how to explain ----------------
   explain: [
     {
@@ -1001,7 +1371,100 @@ POST _aliases
     { g: 'rr', q: 'An Elasticsearch node dies, or the indexer falls behind.', what: 'Shards on that node are gone; or search shows old prices.', why: 'Data lives on nodes; bulk throughput below the change rate.', how: 'Replicas are promoted and rebuilt elsewhere (total loss → reindex from the DB). For lag: scale consumers up to the partition count, tune bulk size, back off on 429, alert on lag.', trade: 'Replicas double storage; more indexing load on the cluster.', flow: 'dual' },
   ],
 };
+
+// =====================================================================
+// reading tabs: How to explain · Interview answer · Follow-ups (self-contained renderers)
+// =====================================================================
+const reader = document.getElementById('reader');
+// **bold** and `code` in plain-text content (same rules as engine/app.js)
+const rich = s => esc(s).replace(/"/g, '&quot;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+// old flow ids -> scenarios on the Data flow tab
+const FLOW_TO_SC = { why: 'why', query: 'query', index: 'index', dual: 'dual', order: 'order', reindex: 'reindex' };
+const STAGE_C = ['#fb923c', '#8b5cf6', '#3b82f6', '#0d9488', '#db2777', '#16a34a'];
+
+function renderExplain() {
+  const E = CONTENT.explain, total = E.reduce((a, s) => a + s.min, 0);
+  const who = { I: ['Interviewer', 'iv'], C: ['You', 'you'], P: ['Tip', 'tip'] };
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">How to explain it</span><h2>Drive the ${total}-minute interview, stage by stage</h2>
+    <p>Interviewers grade the <b>structure</b> as much as the design. Follow the stages in order and say out loud which stage you are in.</p></div></div>
+    <div class="timebar">${E.map((s, k) => `<button data-to="ex${k}" style="flex:${s.min};--c:${STAGE_C[k % STAGE_C.length]}"><b>${k + 1}. ${esc(s.t)}</b><span>${s.min} min</span></button>`).join('')}</div>
+    ${E.map((s, k) => `<section class="rcard stage" id="ex${k}" style="--c:${STAGE_C[k % STAGE_C.length]}">
+      <div class="stage-h"><span class="sn">${k + 1}</span><h3>${esc(s.t)}</h3><span class="mn">~${s.min} min</span></div>
+      <p class="goal"><b>Goal:</b> ${rich(s.goal)}</p>
+      ${s.lines.map(([w, t]) => `<div class="msg ${who[w][1]}"><span class="who">${who[w][0]}</span><p>${rich(t)}</p></div>`).join('')}
+      ${s.avoid ? `<p class="avoid"><b>⚠ Avoid</b> ${rich(s.avoid)}</p>` : ''}
+    </section>`).join('')}
+  </div>`;
+}
+
+function renderAnswer() {
+  const A = CONTENT.answer;
+  const jumps = [['a-pitch', '⏱ 60-second answer'], ...A.sections.map((s, k) => [`a-sec${k}`, s.h]), ['a-dec', '⚖ Trade-offs'], ['a-code', '{ } Code']];
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Interview-ready answer</span><h2>What to actually say</h2>
+    <p>Start with the 60-second version, then expand any section the interviewer picks.</p></div></div>
+    <nav class="jump">${jumps.map(([id, t]) => `<button data-to="${id}">${esc(t)}</button>`).join('')}</nav>
+    <section class="rcard pitch" id="a-pitch"><h3>⏱ The 60-second answer</h3>${[].concat(A.summary).map(p => `<p>${rich(p)}</p>`).join('')}</section>
+    <div class="ans-grid">${A.sections.map((s, k) => `<section class="rcard ans" id="a-sec${k}" style="--c:${s.color || '#0b5cff'}"><h3>${esc(s.h)}</h3>${s.html}</section>`).join('')}</div>
+    <section class="rcard ans" id="a-dec" style="--c:#7c3aed"><h3>⚖ Key decisions &amp; trade-offs</h3>
+      <table><thead><tr><th>Decision</th><th>Why</th><th>Trade-off</th></tr></thead><tbody>${A.decisions.map(r => `<tr>${r.map(c => `<td>${rich(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>
+    <div class="code-grid" id="a-code">${A.code.map(c => `<section class="rcard codeblk"><h3>${esc(c.t)}</h3><pre>${esc(c.code)}</pre></section>`).join('')}</div>
+  </div>`;
+}
+
+let fuGroup = 'all';
+function renderFollowups() {
+  const G = CONTENT.followGroups, F = CONTENT.followups, list = F.filter(f => fuGroup === 'all' || f.g === fuGroup);
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Follow-up questions</span><h2>What they ask next, and what to answer</h2>
+    <p>Each answer has the same shape: <b>what happens</b> → <b>why</b> → <b>how you handle it</b> → <b>the trade-off</b>. Saying the trade-off unprompted is what separates senior answers.</p></div></div>
+    <div class="chips"><button data-g="all" class="${fuGroup === 'all' ? 'on' : ''}">All <small>${F.length}</small></button>${Object.entries(G).map(([k, g]) => `<button data-g="${k}" class="${fuGroup === k ? 'on' : ''}" style="--c:${g.color}">${esc(g.name)} <small>${F.filter(f => f.g === k).length}</small></button>`).join('')}</div>
+    ${list.map((f, k) => `<details class="rcard fu" style="--c:${G[f.g].color}"${k === 0 ? ' open' : ''}>
+      <summary><span class="fu-g">${esc(G[f.g].name)}</span><span class="fu-q">${esc(f.q)}</span></summary>
+      <div class="fu-body">
+        <div><b>What happens</b><p>${rich(f.what)}</p></div>
+        <div><b>Why</b><p>${rich(f.why)}</p></div>
+        <div class="say"><b>🎤 Say this</b><p>${rich(f.how)}</p></div>
+        <div style="grid-column:1/-1"><b>Trade-off</b><p>${rich(f.trade)}</p></div>
+        ${f.flow ? `<button class="watch" data-sc="${FLOW_TO_SC[f.flow]}">▶ Watch flow: ${esc(SCEN[FLOW_TO_SC[f.flow]].name)}</button>` : ''}
+      </div></details>`).join('')}
+  </div>`;
+  reader.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { fuGroup = b.dataset.g; renderFollowups(); });
+  reader.querySelectorAll('.watch').forEach(b => b.onclick = () => { setView('flow'); start(b.dataset.sc); });
+}
+// sticky jump bars scroll inside the reading panel
+reader.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-to]');
+  if (!b) return;
+  const el = document.getElementById(b.dataset.to), bar = b.parentElement;
+  reader.scrollTo({ top: el.offsetTop - bar.offsetHeight - 8 });
+});
+
+function setView(v) {
+  view = v;
+  document.body.className = 'v-' + v;
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  if (v !== 'flow') {
+    closeDrawer(); setLegend(false);
+    if (v === 'explain') renderExplain(); else if (v === 'answer') renderAnswer(); else renderFollowups();
+    reader.scrollTop = 0;
+  }
+  last = performance.now();
+}
+document.querySelectorAll('#viewSeg button').forEach(b => b.onclick = () => { b.blur(); setView(b.dataset.view); });
+
+// ---------------- header: previous / next design + hub (engine/catalog.js) ----------------
+(function designNav() {
+  const cat = (window.SD_CATALOG || []).filter(c => c.file), at = cat.findIndex(c => c.id === 'search');
+  const link = (d, txt, dir) => d ? `<a href="${d.file}" title="${dir}: ${d.n} · ${esc(d.title)}">${txt}</a>` : `<span class="off" title="No ${dir.toLowerCase()} design">${txt}</span>`;
+  document.getElementById('dNav').innerHTML = link(cat[at - 1], '←', 'Previous') + link(cat[at + 1], '→', 'Next')
+    + `<a class="hub" href="../02_SD_Interview_Simulator.html" title="All designs">All designs</a>`;
+})();
+
+
+start('query');
+requestAnimationFrame(frame);
 </script>
-<script src="engine/app.js"></script>
 </body>
 </html>
