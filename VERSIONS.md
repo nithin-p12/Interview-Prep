@@ -44,7 +44,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `sd-chat` | Chat System | v3.0 | `03_System_Design/02_SD_Simulator/07_Chat_System.html` |
 | System Design | `sd-ticket-booking` | Ticket Booking | v2.3 | `03_System_Design/02_SD_Simulator/03_Ticket_Booking.html` |
 | System Design | `sd-file-upload` | File Upload & Storage | v3.0 | `03_System_Design/02_SD_Simulator/06_File_Upload.html` |
-| System Design | `sd-job-scheduler` | Distributed Job Scheduler | v2.0 | `03_System_Design/02_SD_Simulator/08_Job_Scheduler.html` |
+| System Design | `sd-job-scheduler` | Distributed Job Scheduler | v3.0 | `03_System_Design/02_SD_Simulator/08_Job_Scheduler.html` |
 | System Design | `sd-news-feed` | News Feed | v3.0 | `03_System_Design/02_SD_Simulator/09_News_Feed.html` |
 | System Design | `sd-search` | Search System | v3.0 | `03_System_Design/02_SD_Simulator/10_Search_System.html` |
 | System Design | `sd-video` | Video Streaming | v2.0 | `03_System_Design/02_SD_Simulator/11_Video_Streaming.html` |
@@ -339,7 +339,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v2.0 | 2026-11-13 | Own page, 6 tabs: overview loop, 7 components (links to Core Components for DB), 6 flows (atomic claim + lease + fence happy path, read-then-update race vs findOneAndUpdate, worker crash → lease expiry → run key, zombie worker → fencing token, heartbeat + retries with backoff → FAILED, misfire policy after downtime), how to explain, spoken interview answer, Spring/MongoDB code, 17 follow-ups. | current file · tag `sd-job-scheduler/v2.0` |
+| v3.0 | 2026-11-20 | CURRENT: self-contained animated data-flow page in the URL Shortener v6.0 style (zones by role: Client · Entry · Job API · Job state · Workers · Side effects; 10 logo cards incl. API Gateway, Job DB (MongoDB jobs + runs), 2 stateless workers, fenced Report Store, Email (SES), B's Inbox and Alerts, two-worker fan-in/fan-out hops, heartbeat forks, details drawers with Core Components links) + Explain, Answer and Follow-ups tabs ported verbatim (8 ▶ Watch flow buttons). 7 scenarios: A scheduled run, Two workers one job, Worker crashes mid-job, GC pause zombie worker, Long job then failures, Cluster down for 3 hours (misfire), Live mix. No longer uses the shared engine. | current file · tag `sd-job-scheduler/v3.0` |
+| v2.0 | 2026-11-13 | Own page, 6 tabs: overview loop, 7 components (links to Core Components for DB), 6 flows (atomic claim + lease + fence happy path, read-then-update race vs findOneAndUpdate, worker crash → lease expiry → run key, zombie worker → fencing token, heartbeat + retries with backoff → FAILED, misfire policy after downtime), how to explain, spoken interview answer, Spring/MongoDB code, 17 follow-ups. | git tag `sd-job-scheduler/v2.0` |
 | v1 | 2026-10-23 | Section of the all-in-one simulator. | `_archive/03_System_Design/02_SD_Interview_Simulator_v1.html#jobs/1` · tag `sd-job-scheduler/v1` |
 
 **News Feed** · `sd-news-feed`
