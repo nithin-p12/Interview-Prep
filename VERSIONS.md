@@ -43,7 +43,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `sd-ecommerce` | E-commerce Order System | v2.0 | `03_System_Design/02_SD_Simulator/05_Ecommerce_Order.html` |
 | System Design | `sd-chat` | Chat System | v3.0 | `03_System_Design/02_SD_Simulator/07_Chat_System.html` |
 | System Design | `sd-ticket-booking` | Ticket Booking | v2.3 | `03_System_Design/02_SD_Simulator/03_Ticket_Booking.html` |
-| System Design | `sd-file-upload` | File Upload & Storage | v2.3 | `03_System_Design/02_SD_Simulator/06_File_Upload.html` |
+| System Design | `sd-file-upload` | File Upload & Storage | v3.0 | `03_System_Design/02_SD_Simulator/06_File_Upload.html` |
 | System Design | `sd-job-scheduler` | Distributed Job Scheduler | v2.0 | `03_System_Design/02_SD_Simulator/08_Job_Scheduler.html` |
 | System Design | `sd-news-feed` | News Feed | v3.0 | `03_System_Design/02_SD_Simulator/09_News_Feed.html` |
 | System Design | `sd-search` | Search System | v3.0 | `03_System_Design/02_SD_Simulator/10_Search_System.html` |
@@ -328,7 +328,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v2.3 | 2026-11-13 | Components link to Core Components (gateway, DB, S3, queue); interview answer as 4 spoken paragraphs. | current file · tag `sd-file-upload/v2.3` |
+| v3.0 | 2026-11-20 | CURRENT: self-contained animated data-flow page in the URL Shortener v6.0 style (zones by role: Client · Entry · App services · Storage · Async scanning; 12 logo cards incl. Viewer B, Uploader A, Attacker C, CloudFront CDN, S3 bucket, S3 events (SQS), Virus Scanner, DLQ and Cleanup Job, two-leg hops through the gateway, details drawers with Core Components links) + Explain, Answer and Follow-ups tabs ported verbatim (8 ▶ Watch flow buttons). 7 scenarios: Upload & scan, Download via CDN, Large file: multipart, Virus scan result, Leaked upload URL, Duplicates & abandoned uploads, Live mix. No longer uses the shared engine. | current file · tag `sd-file-upload/v3.0` |
+| v2.3 | 2026-11-13 | Components link to Core Components (gateway, DB, S3, queue); interview answer as 4 spoken paragraphs. | git tag `sd-file-upload/v2.3` |
 | v2.2 | 2026-11-02 | Full-screen fix. | git tag `sd-file-upload/v2.2` |
 | v2.1 | 2026-10-31 | Icon-only stage controls, compact doc headers. | git tag `sd-file-upload/v2.1` |
 | v2.0 | 2026-10-30 | Own page, 6 tabs. | git tag `sd-file-upload/v2.0` |
