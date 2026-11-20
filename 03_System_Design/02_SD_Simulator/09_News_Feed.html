@@ -3,727 +3,1144 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="sd-news-feed">
-<meta name="doc-version" content="v2.0">
+<meta name="doc-version" content="v3.0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>News Feed · System Design · v2.0</title>
-<link rel="stylesheet" href="engine/sd.css">
-</head>
-<body>
-<script src="engine/scene.js"></script>
-<script src="engine/player.js"></script>
+<title>News Feed · System Design · v3.0</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:#ffffff;color:#0f172a}
+
+/* ---------- header ---------- */
+header{height:64px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.brand .logo{flex-shrink:0}
+.brand .txt{min-width:0}
+.brand .t{font-size:16px;font-weight:800;white-space:nowrap;display:flex;align-items:baseline;gap:10px}
+.brand .t a{font-size:11.5px;font-weight:600;color:#0b5cff;text-decoration:none}
+.brand .t a:hover{text-decoration:underline}
+.brand .s{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrls{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.seg{display:flex;align-items:center;background:#f1f5f9;border-radius:10px;padding:3px;gap:2px}
+.seg .lbl{font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;padding:0 6px 0 7px}
+.seg button{border:0;background:transparent;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#475569;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.seg button:hover{color:#0f172a}
+.seg button.on{background:#fff;color:#0b5cff;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.btn{border:1px solid #e2e8f0;background:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#334155;padding:7px 12px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f8fafc}
+
+/* ---------- main / svg ---------- */
+main{position:relative;height:calc(100vh - 64px - 78px)}
+#dia{display:block;width:100%;height:100%;user-select:none}
+.hint{position:absolute;left:12px;bottom:8px;font-size:11px;color:#64748b;background:rgba(255,255,255,.85);padding:3px 8px;border-radius:6px;pointer-events:none}
+.zl{font-size:13px;font-weight:800;letter-spacing:1.2px;fill:#334155}
+.nl{font:11px ui-monospace,Consolas,monospace;fill:#64748b}
+.edge{fill:none;stroke:#94a3b8;stroke-width:2;stroke-dasharray:6 7}
+.edge.hot{stroke-dasharray:none;stroke-width:3}
+.elbl{font-size:11px;font-weight:600;fill:#64748b;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.node{cursor:pointer}
+.node .card{transition:filter .2s,stroke-width .2s;filter:drop-shadow(0 1px 3px rgba(15,23,42,.08))}
+.node:hover .card{filter:drop-shadow(0 4px 10px rgba(15,23,42,.18))}
+.node.active .card{stroke-width:3.5;filter:drop-shadow(0 0 14px rgba(11,92,255,.55))}
+.nlab{font-size:14px;font-weight:700;fill:#0f172a;text-anchor:middle}
+.nsub{font-size:11px;fill:#64748b;text-anchor:middle}
+.tag text{font-size:10.5px;font-weight:700;fill:#fff;text-anchor:middle}
+.ptag{font-size:10.5px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3.5px;stroke-linejoin:round;text-anchor:middle}
+
+/* ---------- legend popover ---------- */
+.ibtn{width:34px;padding:7px 0;text-align:center;font-size:14px;line-height:1}
+.ibtn.on{background:#eef4ff;border-color:#cfe0ff;color:#0b5cff}
+#legendPop{position:fixed;top:70px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 44px rgba(15,23,42,.2),0 3px 10px rgba(15,23,42,.08);padding:12px 14px;z-index:7;display:none}
+#legendPop.open{display:block}
+#legendPop:before{content:"";position:absolute;top:-6px;right:var(--arrow,20px);width:10px;height:10px;background:#fff;border-left:1px solid #e5e7eb;border-top:1px solid #e5e7eb;transform:rotate(45deg)}
+.lgh{font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8;margin:2px 0 8px}
+.lgk{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+.lgk span{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569}
+.lgk i{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.06),0 0 7px var(--c);background:var(--c)}
+.lgs{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:10px}
+.lgs b{display:block;font-size:16px;font-weight:800;color:#0f172a;line-height:1.15}
+.lgs span{font-size:11px;color:#475569}
+.lgn{font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:8px}
+
+/* ---------- footer ---------- */
+footer{height:78px;background:#fff;border-top:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+#badge{flex-shrink:0;min-width:52px;height:44px;padding:0 8px;border-radius:12px;background:#0b5cff;color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+#badge.live{background:#16a34a;letter-spacing:1px}
+.fmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.frow{display:flex;align-items:center;gap:8px;min-width:0}
+#ftitle{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{flex-shrink:0;font:600 11px ui-monospace,Consolas,monospace;color:#0b5cff;background:#eef4ff;border:1px solid #cfe0ff;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill:empty{display:none}
+.grow{flex:1}
+#dots{display:flex;gap:3px;flex-shrink:0}
+#dots i{display:block;width:18px;height:4px;border-radius:2px;background:#e2e8f0}
+#dots i.on{background:#0b5cff}
+#ftext{font-size:12.5px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{display:flex;gap:8px;flex-shrink:0}
+.stat{width:78px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:6px 8px}
+.stat b{display:block;font-size:18px;line-height:1.1}
+.stat span{font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#64748b;white-space:nowrap}
+
+/* ---------- drawer ---------- */
+#drawer{position:fixed;right:14px;top:76px;bottom:90px;width:380px;max-width:calc(100vw - 28px);background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.22),0 4px 14px rgba(15,23,42,.08);transform:translateX(420px);transition:transform .35s ease;display:flex;flex-direction:column;overflow:hidden;z-index:5}
+#drawer.open{transform:translateX(0)}
+.dh{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #e5e7eb}
+.dh .dl{width:52px;height:52px;border-radius:12px;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dh h3{margin:0;font-size:16px}
+.dh p{margin:2px 0 0;font-size:12px;color:#475569}
+.dh button{margin-left:auto;align-self:flex-start;border:0;background:rgba(255,255,255,.7);border-radius:8px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#334155}
+.db{padding:14px 16px 18px;overflow:auto;font-size:13px;line-height:1.5;color:#334155}
+.db h4{margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.db ul{margin:0;padding-left:18px}
+.db li{margin:3px 0}
+.db pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.db code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px}
+.core-link{display:inline-block;margin-top:14px;font-size:12.5px;font-weight:600;color:#0b5cff;text-decoration:none;background:#eef4ff;border:1px solid #cfe0ff;padding:6px 10px;border-radius:9px}
+.core-link:hover{text-decoration:underline}
+
+/* ---------- header nav + view tabs ---------- */
+.brand .s{display:flex;align-items:center;gap:6px}
+.brand .s .sub{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.brand .nav{display:flex;align-items:center;gap:1px;flex-shrink:0}
+.brand .nav a,.brand .nav span{font-size:11.5px;font-weight:700;color:#0b5cff;text-decoration:none;padding:0 4px;border-radius:5px;line-height:16px}
+.brand .nav a:hover{background:#eef4ff}
+.brand .nav span.off{color:#cbd5e1;cursor:default}
+.brand .nav a.hub{color:#64748b;font-weight:600}
+body:not(.v-flow) .flowonly{display:none}
+body:not(.v-flow) main,body:not(.v-flow) footer,body:not(.v-flow) #drawer,body:not(.v-flow) #legendPop{display:none}
+body.v-flow #reader{display:none}
+
+/* ---------- reading panel (tabs 2-4) ---------- */
+#reader{position:relative;height:calc(100vh - 64px);overflow:auto;background:#f8fafc;scroll-behavior:smooth}
+.rd{max-width:1120px;margin:0 auto;padding:18px 20px 40px}
+.rd-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:12px}
+.rd-head h2{margin:0;font-size:20px;font-weight:800}
+.rd-head p{margin:4px 0 0;font-size:13px;color:#64748b;max-width:760px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.rcard{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.05);padding:14px 16px;margin-bottom:12px;font-size:13.5px;line-height:1.55;color:#334155}
+.rcard code,.fu code,.rd td code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px;color:#0f172a}
+.rcard h3{margin:0 0 6px;font-size:15px;color:#0f172a}
+/* explain */
+.timebar{position:sticky;top:0;z-index:2;display:flex;gap:4px;background:#f8fafc;padding:6px 0 10px}
+.timebar button{min-width:126px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:6px 8px;text-align:left;cursor:pointer;font:inherit;border-top:3px solid var(--c)}
+.timebar button:hover{background:#f1f5f9}
+.timebar b{display:block;font-size:12px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timebar span{font-size:11px;color:#64748b}
+.stage{border-left:4px solid var(--c);scroll-margin-top:70px}
+.stage-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.stage-h .sn{width:24px;height:24px;border-radius:50%;background:var(--c);color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center}
+.stage-h .mn{font-size:11px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:999px;padding:1px 8px}
+.goal{margin:2px 0 10px;color:#64748b}
+.msg{display:flex;gap:10px;margin:6px 0;align-items:flex-start}
+.msg .who{flex-shrink:0;width:88px;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding-top:3px}
+.msg p{margin:0;flex:1;padding:6px 10px;border-radius:10px}
+.msg.iv .who{color:#7c3aed}.msg.iv p{background:#f5f3ff}
+.msg.you .who{color:#0b5cff}.msg.you p{background:#eef4ff}
+.msg.tip .who{color:#a16207}.msg.tip p{background:#fefce8;font-style:italic}
+.avoid{margin:10px 0 0;padding:8px 12px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+/* answer */
+.jump{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.jump button,.chips button{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:4px 11px;font:600 12px "Segoe UI",system-ui,sans-serif;color:#475569;cursor:pointer}
+.jump button:hover,.chips button:hover{border-color:#cbd5e1;color:#0f172a}
+.pitch{border-left:4px solid #0b5cff;scroll-margin-top:56px}
+.pitch p{margin:0 0 8px}.pitch p:last-child{margin:0}
+.ans-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.ans-grid .rcard{margin:0}
+.ans{border-top:4px solid var(--c);scroll-margin-top:56px}
+.ans ul,.ans ol{margin:0;padding-left:20px}.ans li{margin:3px 0}
+.ans table{border-collapse:collapse;width:100%;font-size:13px}
+.ans td,.ans th{border-bottom:1px solid #f1f5f9;padding:5px 8px;text-align:left;vertical-align:top}
+.ans th{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8}
+.ans .m{font:12px ui-monospace,Consolas,monospace;white-space:nowrap;color:#0f172a}
+.ans pre,.codeblk pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.code-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;scroll-margin-top:56px}
+.codeblk{margin:0}
+.codeblk h3{font-size:13px}
+/* follow-ups */
+.chips{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.chips button small{color:#94a3b8;font-weight:700;margin-left:2px}
+.chips button.on{background:var(--c,#0b5cff);border-color:var(--c,#0b5cff);color:#fff}
+.chips button.on small{color:rgba(255,255,255,.8)}
+.fu{padding:0;border-left:4px solid var(--c)}
+.fu summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px}
+.fu summary::-webkit-details-marker{display:none}
+.fu summary:after{content:"▸";margin-left:auto;color:#94a3b8;transition:transform .2s}
+.fu[open] summary:after{transform:rotate(90deg)}
+.fu-g{flex-shrink:0;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border-radius:999px;padding:2px 9px}
+.fu-q{font-size:14px;font-weight:700;color:#0f172a}
+.fu-body{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:0 16px 14px}
+.fu-body > div > b{display:block;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8;margin-bottom:2px}
+.fu-body p{margin:0}
+.fu-body .say{grid-column:1/-1;background:#eef4ff;border-radius:10px;padding:8px 12px}
+.fu-body .say > b{color:#0b5cff}
+.watch{grid-column:1/-1;justify-self:start;border:0;background:#0b5cff;color:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;padding:7px 14px;border-radius:9px;cursor:pointer}
+.watch:hover{background:#0a4fe0}
+</style>
+<body class="v-flow">
+<header>
+  <div class="brand">
+    <svg class="logo" width="34" height="34" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#0b5cff"/><rect x="11" y="9" width="26" height="17" rx="3" fill="#fff"/><path d="M13.5 24l6.5-6.5 4.5 4.5 3-3 7 5" fill="none" stroke="#0b5cff" stroke-width="2.2" stroke-linejoin="round"/><circle cx="30" cy="14" r="2.2" fill="#0b5cff"/><rect x="11" y="30" width="26" height="3.6" rx="1.8" fill="#fff"/><rect x="11" y="36.5" width="17" height="3.6" rx="1.8" fill="#fff" opacity=".8"/></svg>
+    <div class="txt">
+      <div class="t">News Feed</div>
+      <div class="s"><span class="nav" id="dNav"></span><span class="sub">Instagram home feed · fan-out on write into Redis sorted sets · celebrities pulled at read time · hydrate ids · cursor pages</span></div>
+    </div>
+  </div>
+  <div class="ctrls">
+    <div class="seg" id="viewSeg">
+      <button data-view="flow" class="on" title="Animated data flow">Data flow</button>
+      <button data-view="explain" title="How to explain it, stage by stage">Explain</button>
+      <button data-view="answer" title="Interview-ready answer">Answer</button>
+      <button data-view="followups" title="Follow-up questions">Follow-ups</button>
+    </div>
+    <div class="seg flowonly" id="scSeg"><span class="lbl">Scenario</span>
+      <button data-sc="post" title="A posts → B's feed: fan-out on write · one ZREVRANGE">Post</button>
+      <button data-sc="celeb" title="Celebrity posts: 10 M ZADDs vs hybrid pull">Celebrity</button>
+      <button data-sc="page" title="Scroll to page 2: offset duplicates vs cursor">Page 2</button>
+      <button data-sc="delete" title="A deletes a post: timelines hold ids, not copies">Delete</button>
+      <button data-sc="rebuild" title="Back after 60 days: timeline miss → rebuild by pull">Rebuild</button>
+      <button data-sc="crash" title="Fan-out worker crashes: Kafka offsets · idempotent ZADD">Crash</button>
+      <button data-sc="live" title="Live mixed traffic">Live</button>
+    </div>
+    <div class="seg flowonly" id="spSeg"><span class="lbl">Speed</span>
+      <button data-sp="0.5">0.5x</button><button data-sp="1" class="on">1x</button><button data-sp="2">2x</button>
+    </div>
+    <button class="btn flowonly" id="pauseBtn">⏸ Pause</button>
+    <button class="btn flowonly" id="replayBtn">↻ Replay</button>
+    <button class="btn ibtn flowonly" id="legendBtn" title="Legend &amp; scale (L)" aria-haspopup="dialog" aria-expanded="false">ⓘ</button>
+  </div>
+</header>
+
+<main>
+  <svg id="dia" viewBox="0 0 1600 600" preserveAspectRatio="xMidYMid meet"></svg>
+  <div class="hint">Click any component for details · Space pause · 1 2 3 speed · R replay · L legend</div>
+</main>
+
+<footer>
+  <div id="badge">1/1</div>
+  <div class="fmid">
+    <div class="frow"><span id="ftitle"></span><span id="fproto" class="pill"></span><span class="grow"></span><div id="dots"></div></div>
+    <div id="ftext"></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="stReq">0</b><span>Requests</span></div>
+    <div class="stat"><b id="stHit">0</b><span>Cache hits</span></div>
+    <div class="stat"><b id="stEvt">0</b><span>Events</span></div>
+    <div class="stat"><b id="stRes">0</b><span>Responses</span></div>
+  </div>
+</footer>
+
+<section id="reader" aria-live="polite"></section>
+
+<div id="legendPop" role="dialog" aria-label="Legend and scale">
+  <div class="lgh">PACKETS</div>
+  <div class="lgk" id="lgKinds"></div>
+  <div class="lgh">SCALE (FROM THE FULL DESIGN)</div>
+  <div class="lgs">
+    <div><b>500 M</b><span>daily users</span></div>
+    <div><b>100 M</b><span>posts / day</span></div>
+    <div><b>800</b><span>ids per timeline</span></div>
+    <div><b>&lt; 200 ms</b><span>feed load p99</span></div>
+  </div>
+  <div class="lgn">Dashed edges crawl in the request direction · solid = packet in transit</div>
+</div>
+
+<aside id="drawer" aria-hidden="true">
+  <div class="dh" id="dHead"><div class="dl" id="dLogo"></div><div><h3 id="dTitle"></h3><p id="dTag"></p></div><button id="dClose" title="Close (Esc)">×</button></div>
+  <div class="db" id="dBody"></div>
+</aside>
+
 <script src="engine/catalog.js"></script>
 <script>
-// News feed (Instagram home feed): fan-out on write into Redis sorted-set timelines, celebrities pulled at read time
-// (hybrid), ids hydrated from the Post DB, cursor pagination. Kafka, Redis, API gateway and DB basics live in
-// 00_Core_Components.html.
-const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
-const KEEP = '#d5d9dc';
+'use strict';
+// =====================================================================
+// News Feed · Data Flow: nodes grouped by app role (client · entry · app services · data · async fan-out);
+// no infra containers, no CDN node (media delivery is out of scope here). Self-contained: no engine/ except catalog.js for prev/next.
+// Content comes from 09_News_Feed.html (v2.0): Post Service stores once + outbox → Kafka post-created → fan-out workers ZADD
+// post ids into Redis sorted sets tl:{user} (capped 800), celebrities pulled from recent:{celeb}, hydrate ids from MongoDB,
+// rank a candidate set, cursor pagination, rebuild on a timeline miss, commit offsets after the writes (idempotent ZADD).
+// =====================================================================
 
-// Timeline row colours (the table is B's Redis sorted set tl:B, newest first).
-const ST = {
-  OLD: { fill: '#f6f7fb', stroke: '#e3e6ee', color: '#203347' },
-  NEW: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
-  OK: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
-  PULL: { fill: '#faf6fd', stroke: PURPLE, color: PURPLE },
-  BAD: { fill: '#fff4f4', stroke: RED, color: RED },
+const NS = 'http://www.w3.org/2000/svg';
+const KIND = { request: '#2563eb', response: '#16a34a', event: '#f97316', error: '#dc2626' };
+const CLIENTS = new Set(['userA', 'userB', 'userC']);
+const PAL = {
+  userA: ['#eef0ff', '#818cf8'], userB: ['#eef0ff', '#818cf8'], userC: ['#e0f2fe', '#0284c7'],
+  gw: ['#ffffff', '#7c3aed'],
+  post: ['#fff9db', '#e0b400'], feed: ['#ffffff', '#2563eb'], ranker: ['#fdf4ff', '#c026d3'],
+  postdb: ['#e6f6ea', '#34a853'], timeline: ['#fff1f2', '#dc2626'], graph: ['#e6faf8', '#0d9488'],
+  kafka: ['#fff0e0', '#f59e0b'], fanout: ['#ffffff', '#db2777'],
 };
-const P = (id, by, t, note = '') => `${id} · by ${by} · ${t}${note ? ' · ' + note : ''}`;
-const TL0 = [['p-90', P('p-90', 'D', '19:58'), 'OLD'], ['p-88', P('p-88', 'E', '19:40'), 'OLD'], ['p-85', P('p-85', 'A', '19:12'), 'OLD']];
+// zone tints: [fill, stroke, label] (same palette as 01_URL_Shortener.html)
+const ZT = {
+  client: ['#fed7aa', '#fb923c', '#9a3412'], entry: ['#ddd6fe', '#8b5cf6', '#5b21b6'], app: ['#bfdbfe', '#3b82f6', '#1e3a8a'],
+  data: ['#e5e7eb', '#9ca3af', '#374151'], async: ['#ffe4e6', '#fb7185', '#9f1239'],
+};
 
-// State shown next to the components: B's timeline, Post DB, follow graph, Kafka, fan-out, users.
-function setup(s, v, { rows = TL0, title = 'TIMELINE tl:B · REDIS ZSET', clock = '20:00:00', pdb = 'posts · p-90 p-88 p-85', tl = 'tl:B · newest 800 ids', gr = 'A: 3 · C: 10 M followers', kaf = 'post-created · @499', fo = 'fan-out idle', a = 'has a new photo', b = 'will open the feed', c = '10 M followers' } = {}) {
-  v.clock = s.chip(15, 500, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
-  v.tl = s.store(840, 372, 248, title, { color: RED });
-  v.rows = {};
-  rows.forEach(([key, txt, st]) => { s.row(v.tl, txt, { ...ST[st], now: true }); v.rows[key] = v.tl.rows[v.tl.rows.length - 1]; });
-  v.pdb = s.chip(685, 108, pdb, { mono: true, color: TEAL });
-  v.tlc = s.chip(685, 316, tl, { mono: true, color: RED });
-  v.gr = s.chip(685, 476, gr, { mono: true, color: TEAL });
-  v.kaf = s.chip(960, 206, kaf, { mono: true, color: PURPLE });
-  v.fo = s.chip(960, 336, fo, { mono: true, color: PURPLE });
-  v.ua = s.chip(72, 121, a, { color: GREY });
-  v.ub = s.chip(72, 296, b, { color: GREY });
-  v.uc = s.chip(72, 466, c, { color: GREY });
-  return v;
+// ---------------- logos (48x48 inline SVG) ----------------
+const cube = (badge) => `<path d="M24 5l17 9.5v19L24 43 7 33.5v-19z" fill="#326ce5"/><path d="M24 24l17-9.5v19L24 43z" fill="#2557c4"/><path d="M24 5l17 9.5L24 24 7 14.5z" fill="#6f9cf0"/>${badge}`;
+const person = c => `<circle cx="24" cy="15" r="8.5" fill="${c}"/><path d="M7 43c0-10 7.6-16 17-16s17 6 17 16z" fill="${c}"/>`;
+// verified-account rosette (24 points alternating between two radii)
+const rosette = (() => { let d = ''; for (let i = 0; i < 24; i++) { const a = Math.PI * i / 12, r = i % 2 ? 17.2 : 20.5; d += (i ? 'L' : 'M') + (24 + r * Math.sin(a)).toFixed(1) + ' ' + (24 - r * Math.cos(a)).toFixed(1); } return d + 'z'; })();
+const LOGO = {
+  userA: person('#6366f1') + `<circle cx="37" cy="37" r="9" fill="#f97316" stroke="#fff" stroke-width="2"/><rect x="32" y="33.5" width="10" height="7.5" rx="1.6" fill="#fff"/><circle cx="37" cy="37.3" r="2.1" fill="#f97316"/>`,
+  userB: person('#6366f1') + `<circle cx="37" cy="37" r="9" fill="#2563eb" stroke="#fff" stroke-width="2"/><path d="M32.5 33.5h9M32.5 37h9M32.5 40.5h6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`,
+  userC: `<path d="${rosette}" fill="#0284c7"/><path d="M15.5 24.5l6 6 11.5-12" fill="none" stroke="#fff" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  gw: `<rect x="5" y="5" width="38" height="38" rx="10" fill="#7c3aed"/><path d="M15 38V23a9 9 0 0 1 18 0v15" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M11 38h26" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="28" cy="31" r="1.9" fill="#fff"/>`,
+  post: cube(`<circle cx="37" cy="37" r="9" fill="#e0b400" stroke="#fff" stroke-width="2"/><path d="M37 32.5v9M32.5 37h9" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>`),
+  feed: cube(`<circle cx="37" cy="37" r="9" fill="#2563eb" stroke="#fff" stroke-width="2"/><rect x="32.6" y="32.5" width="8.8" height="5" rx="1" fill="#fff"/><path d="M32.6 40.5h8.8" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`),
+  ranker: `<rect x="5" y="5" width="38" height="38" rx="9" fill="#c026d3"/><g fill="#fff"><rect x="11" y="27" width="6" height="10" rx="1.5"/><rect x="21" y="20" width="6" height="17" rx="1.5"/><rect x="31" y="13" width="6" height="24" rx="1.5"/></g><path d="M11 20l9-7 5 3 9-6" fill="none" stroke="#f5d0fe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  postdb: `<path d="M24 3c8 9 12 17 12 24.5 0 8.5-5.2 13.5-10.6 15.5h-2.8C17.2 41 12 36 12 27.5 12 20 16 12 24 3z" fill="#13aa52"/><path d="M24 9v37" stroke="#0b6b33" stroke-width="2"/>`,
+  timeline: `<path d="M5 31l19 8 19-8-19-8z" fill="#a41e11"/><path d="M5 24l19 8 19-8-19-8z" fill="#d82c20"/><path d="M5 17l19 8 19-8-19-8z" fill="#ff4438"/><path d="M24 12.5l1.6 3.1 3.4.4-2.5 2.2.7 3.3-3.2-1.7-3 1.7.6-3.3-2.5-2.2 3.4-.4z" fill="#fff"/>`,
+  graph: `<g stroke="#0d9488" stroke-width="2.6"><path d="M24 11L10 34M24 11l14 23M10 34h28M24 11v14M24 25L10 34M24 25l14 9"/></g><g stroke="#fff" stroke-width="2"><circle cx="24" cy="10" r="6" fill="#14b8a6"/><circle cx="10" cy="35" r="6" fill="#0d9488"/><circle cx="38" cy="35" r="6" fill="#0d9488"/><circle cx="24" cy="25" r="4.5" fill="#5eead4"/></g>`,
+  kafka: `<g stroke="#231f20" stroke-width="2.4" fill="none"><path d="M24 11v26M24 24l12-7M24 24l12 7"/></g><g fill="#fff" stroke="#231f20" stroke-width="2.8"><circle cx="24" cy="8" r="4.5"/><circle cx="24" cy="40" r="4.5"/><circle cx="24" cy="24" r="5.5"/><circle cx="37" cy="16" r="4"/><circle cx="37" cy="32" r="4"/></g>`,
+  fanout: `<circle cx="11" cy="24" r="8" fill="#db2777"/><circle cx="11" cy="24" r="3" fill="#fff"/><path d="M19.5 24H29M19 21.5l9.5-10.5M19 26.5l9.5 10.5" fill="none" stroke="#db2777" stroke-width="2.8" stroke-linecap="round"/><g fill="#f472b6" stroke="#db2777" stroke-width="1.6"><rect x="30" y="4" width="14" height="10" rx="2.5"/><rect x="30" y="19" width="14" height="10" rx="2.5"/><rect x="30" y="34" width="14" height="10" rx="2.5"/></g>`,
+};
+
+// ---------------- topology ----------------
+const NODES = {
+  userA: { x: 93, y: 110, label: 'User A', sub: 'posts a photo · 3 followers' },
+  userB: { x: 93, y: 300, label: 'User B', sub: 'reads the feed · follows 300' },
+  userC: { x: 93, y: 490, label: 'Celebrity C', sub: '10 M followers' },
+  gw: { x: 285, y: 300, label: 'API Gateway', sub: 'JWT · rate limit · routes', replicas: 2 },
+  post: { x: 512, y: 110, label: 'Post Service', sub: 'store once · outbox', replicas: 2 },
+  feed: { x: 512, y: 350, label: 'Feed Service', sub: 'merge · hydrate · cursor', replicas: 3 },
+  ranker: { x: 512, y: 508, label: 'Ranking', sub: 'scores ~hundreds · 50 ms', replicas: 2 },
+  postdb: { x: 790, y: 232, label: 'Post DB', sub: 'MongoDB · source of truth', replicas: 3 },
+  timeline: { x: 1110, y: 330, label: 'Timeline Cache', sub: 'Redis ZSET tl:{user} · 800', replicas: 3 },
+  graph: { x: 1110, y: 510, label: 'Follow Graph', sub: 'followers · following', replicas: 3 },
+  kafka: { x: 1444, y: 110, label: 'Kafka', sub: 'topic post-created', replicas: 3 },
+  fanout: { x: 1444, y: 330, label: 'Fan-out Workers', sub: '@KafkaListener → ZADD', replicas: 3 },
+};
+// grouped by developer role, not by infrastructure
+const ZONES = [
+  { x: 8, y: 8, w: 170, h: 584, t: 'client', label: 'CLIENT', cap: 'posters · readers' },
+  { x: 190, y: 8, w: 190, h: 584, t: 'entry', label: 'ENTRY', cap: 'one front door' },
+  { x: 392, y: 8, w: 240, h: 584, t: 'app', label: 'APP SERVICES', cap: 'Spring Boot · stateless', dash: true },
+  { x: 644, y: 8, w: 640, h: 584, t: 'data', label: 'DATA', cap: 'posts · timelines · follow graph', dash: true },
+  { x: 1296, y: 8, w: 296, h: 584, t: 'async', label: 'ASYNC FAN-OUT', cap: 'Kafka → ZADD per follower', dash: true },
+];
+// [from, to, protocol label]; the path direction is the request direction (dashes crawl that way).
+const EDGE_DEFS = [
+  ['userA', 'gw', 'HTTPS'], ['userB', 'gw', ''], ['userC', 'gw', 'HTTPS'],
+  ['gw', 'post', 'POST /posts'], ['gw', 'feed', 'GET /feed'],
+  ['post', 'postdb', 'insert + outbox'], ['post', 'kafka', 'PostCreated · outbox relay · key = author'],
+  ['kafka', 'fanout', 'poll'], ['fanout', 'timeline', 'ZADD pipeline'], ['fanout', 'graph', 'followers'],
+  ['feed', 'timeline', 'ZREVRANGE'], ['feed', 'postdb', '$in hydrate'], ['feed', 'graph', 'following'], ['feed', 'ranker', 'rank'],
+];
+
+// ---------------- drawer content ----------------
+const INFO = {
+  userA: {
+    tag: 'Poster · an ordinary account',
+    desc: 'An ordinary account with a few followers. Uploads the photo first (presigned URL to object storage), then sends <code>POST /posts { caption, mediaIds }</code>.',
+    points: ['Normal accounts are the cheap case for fan-out on write: a handful of timeline writes per post', '~100 M posts/day across all users (≈ 1.2 k/s)', 'Retries <code>POST /posts</code> with an <b>idempotency key</b> so a flaky network does not create two posts', 'Posting returns <code>201</code> before any follower timeline is written'],
+    code: `# 1) upload the image straight to object storage (presigned PUT)
+curl -X PUT "$PRESIGNED_URL" --data-binary @sunset.jpg
+
+# 2) create the post (ids only: the media is already stored)
+curl -X POST https://feed.ex/posts \\
+  -H 'Authorization: Bearer eyJ…(user A)' \\
+  -H 'Idempotency-Key: 7f3c-…' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"caption":"Sunset","mediaIds":["m-55"]}'
+# -> 201 {"postId":"p-91"}`,
+  },
+  userB: {
+    tag: 'Reader · opens the home feed',
+    desc: 'Opens the home feed, scrolls with a <b>cursor</b>, pulls to refresh. Follows A, D, E and the celebrity C (300 accounts in total).',
+    points: ['Reads dominate (≈ 100 reads per post), so the design optimises B\'s path', '500 M daily users × ~10 feed loads ≈ 58 k feed loads/s', 'Reads are idempotent: a failed refresh is simply retried', 'Keeps two cursors: the oldest item seen (next page) and the newest (pull to refresh)'],
+    code: `# first page
+curl 'https://feed.ex/feed?limit=20' -H 'Authorization: Bearer eyJ…(user B)'
+# -> 200 { "items": [ {"id":"p-91","author":"A","caption":"Sunset", …}, … ],
+#          "nextCursor": "1761243600000:p-72" }
+
+# next page: strictly older than the last item seen
+curl 'https://feed.ex/feed?limit=20&cursor=1761243600000:p-72'`,
+  },
+  userC: {
+    tag: 'Celebrity · 10 M followers',
+    desc: 'An account with <b>10 M followers</b>. One post from C would mean 10 M timeline writes with plain fan-out on write.',
+    points: ['The reason the design is <b>hybrid</b>: celebrities are pulled at read time, not pushed', 'A few thousand accounts sit above the threshold (e.g. 100 k followers)', 'Their posts go to a short <code>recent:{celeb}</code> list instead of 10 M timelines', 'Same app and same write path as everyone else: only the fan-out differs'],
+    code: `curl -X POST https://feed.ex/posts \\
+  -H 'Authorization: Bearer eyJ…(user C)' \\
+  -d '{"caption":"New album!","mediaIds":["m-80"]}'
+# -> 201 {"postId":"p-92"}
+
+# what the fan-out worker does with it (1 write, not 10 M)
+ZADD recent:C 1761249660000 "p-92"
+ZREMRANGEBYRANK recent:C 0 -51      # keep ~50`,
+  },
+  gw: {
+    tag: 'API gateway · entry point',
+    desc: 'Terminates TLS, validates the JWT, rate-limits per user, routes <code>/posts</code> to the Post Service and <code>/feed</code> to the Feed Service. One place for auth and limits instead of every service doing it.',
+    points: ['Without it each service re-implements auth, and a buggy client can hammer <code>/feed</code>', 'Write path and read path are separate services behind it', 'Stateless; several instances behind a load balancer, a dead one is taken out by health checks', 'Retries only idempotent calls (<code>GET /feed</code>, or <code>POST</code> with an idempotency key)'],
+    code: `# Spring Cloud Gateway: application.yml
+spring:
+  cloud:
+    gateway:
+      routes:
+      - id: posts                       # write path
+        uri: lb://post-service
+        predicates: [ Path=/posts/** ]
+      - id: feed                        # read path, hot
+        uri: lb://feed-service
+        predicates: [ Path=/feed/** ]
+        filters:
+        - name: RequestRateLimiter
+          args:
+            redis-rate-limiter.replenishRate: 10
+            redis-rate-limiter.burstCapacity: 20`,
+  },
+  post: {
+    tag: 'Spring Boot · owns the write path',
+    desc: 'Inserts the post into the Post DB and writes a <code>PostCreated</code> <b>outbox</b> row in the same transaction; a relay publishes it to Kafka. Answers <code>201 { postId }</code> right away.',
+    points: ['Posting stays fast no matter how many followers the author has', 'Without it: writing every follower\'s timeline inside the request, so a celebrity post would take minutes', 'Outbox → a post is never stored without its event (or the event sent without the post)', 'Delete = soft delete (<code>deleted: true</code>) + a <code>PostDeleted</code> event for background cleanup', 'Stateless; Spring Boot · MongoDB · KafkaTemplate'],
+    code: `@Transactional
+public Post create(String author, CreatePost req) {
+  Post p = mongo.insert(new Post(ids.next(), author, req.caption(),
+      req.mediaIds(), Instant.now(), false));
+  outbox.insert(new OutboxEvent("post-created", author,
+      new PostCreated(p.id(), author, p.createdAt())));   // same transaction
+  return p;                                                // 201 { postId }
 }
-// Re-stack the timeline rows after inserting at the top (a ZSET read with ZREVRANGE is newest first).
-function restack(st) { st.rows.forEach((r, i) => { r._x = 0; r._y = 18 + i * 24; r.setAttribute('transform', `translate(0 ${r._y}) scale(${r._s ?? 1})`); }); }
-async function onTop(s, v, key, txt, st) {
-  const p = s.row(v.tl, txt, ST[st]);
-  const r = v.tl.rows.pop(); v.tl.rows.unshift(r); restack(v.tl); v.rows[key] = r;
-  await p;
-  while (v.tl.rows.length > 5) {
-    const last = v.tl.rows[v.tl.rows.length - 1];
-    for (const k in v.rows) if (v.rows[k] === last) delete v.rows[k];
-    await s.unrow(v.tl, last);
+
+@Scheduled(fixedDelay = 200)          // or Debezium on the outbox collection
+void relay() {
+  for (OutboxEvent e : outbox.pending(500))
+    kafka.send("post-created", e.key(), e.payload())    // key = authorId
+         .thenRun(() -> outbox.markSent(e.id()));
+}`,
+  },
+  feed: {
+    tag: 'Spring Boot · owns the read path',
+    desc: '<code>ZREVRANGE tl:B</code> for pushed ids, pulls <code>recent:{celeb}</code> for followed celebrities, merges, <b>hydrates</b> ids from the Post DB (drops deleted), asks Ranking to order, returns <code>nextCursor</code>.',
+    points: ['All read-time logic in one stateless service: clients would otherwise assemble feeds from many calls', '~60 k feed loads/s average; stateless, scale out', 'Cursor = score + post id of the last item: the next page is strictly older, so no duplicates', 'Ranking slow → chronological fallback; timeline missing → rebuild by pull with a lock'],
+    code: `public FeedPage feed(String user, Cursor cursor, int limit) {
+  double max = cursor == null ? Double.POSITIVE_INFINITY : cursor.score();
+  var z = redis.opsForZSet();
+  var ids = z.reverseRangeByScoreWithScores("tl:" + user, NEG_INF, max, 0, limit * 2);
+  if (cursor == null && (ids == null || ids.isEmpty())) ids = rebuild(user);  // miss
+  for (String celeb : graph.celebritiesFollowedBy(user))                     // pull
+    ids.addAll(z.reverseRangeByScoreWithScores("recent:" + celeb, NEG_INF, max, 0, 10));
+
+  var page = ids.stream().filter(t -> cursor == null || cursor.isAfter(t))
+      .sorted(BY_SCORE_DESC_THEN_ID).limit(limit).toList();
+  var posts = mongo.find(query(where("_id").in(idsOf(page))
+      .and("deleted").ne(true)), Post.class);                     // one batch hydrate
+  var ranked = ranking.rank(user, posts, Duration.ofMillis(50)); // timeout → time order
+  return FeedPage.of(ranked, Cursor.after(page));
+}`,
+  },
+  ranker: {
+    tag: 'Scores a candidate set · strict timeout',
+    desc: 'Scores a <b>candidate set</b> of a few hundred posts by recency, affinity (how often B interacts with the author) and engagement. The timeline decides <b>which</b> posts are candidates; ranking only decides the <b>order</b>.',
+    points: ['Scores hundreds of posts per request, never millions', 'Without it: a pure chronological feed, fine but less engaging', 'Feature store + model server behind it', 'Strict timeout (~50 ms) → fall back to time order from the same candidates'],
+    code: `public List<Post> rank(String user, List<Post> candidates, Duration budget) {
+  try {
+    return CompletableFuture
+        .supplyAsync(() -> model.score(user, features.load(user, candidates)))
+        .orTimeout(budget.toMillis(), TimeUnit.MILLISECONDS)
+        .thenApply(scores -> sortByScore(candidates, scores))
+        .join();
+  } catch (CompletionException timeoutOrError) {
+    return candidates.stream()                    // chronological fallback
+        .sorted(comparing(Post::createdAt).reversed()).toList();
   }
 }
-async function put(s, v, key, txt, st) {
-  const r = v.rows[key];
-  if (!r) return onTop(s, v, key, txt, st);
-  if (txt) r.label.textContent = txt;
-  s.paintRow(r, ST[st]);
-  await s.pulse(r, 1, 1.05);
-}
-async function drop(s, v, key) { const r = v.rows[key]; if (!r) return; delete v.rows[key]; await s.unrow(v.tl, r); }
-async function clearRows(s, v) { for (const r of [...v.tl.rows]) await s.unrow(v.tl, r); v.rows = {}; }
-const paint = color => ({ color, stroke: color === GREY ? KEEP : color });
-const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
-const chip = (s, c, t, color) => s.setChip(c, t, color ? paint(color) : {});
-const who = (s, v, u, txt, color = GREY) => s.setChip(u === 'B' ? v.ub : u === 'C' ? v.uc : v.ua, txt, paint(color));
-const ok = { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, bad = { mono: true, color: RED, stroke: RED, fill: '#fff4f4' };
-
-window.DESIGN = {
-  id: 'feed', n: 9, title: 'News Feed (Instagram)', tagline: 'push post ids into follower timelines, pull celebrities, hydrate on read, page by cursor',
-  viewBox: [1100, 520],
-
-  // ---------------- architecture ----------------
-  layers: [
-    { id: 'entry', title: 'Users & gateway', x0: 0, x1: 300, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
-      why: 'Most users **read far more than they post** (≈ 100 : 1); a few **celebrities** have millions of followers. The **API gateway** authenticates and rate-limits every call.',
-      detail: 'The skew in follower counts is what shapes the whole design.' },
-    { id: 'app', title: 'Services', x0: 300, x1: 550, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
-      why: 'The **Post Service** owns the write path (store + event). The **Feed Service** owns the read path (timeline ids → merge → hydrate → rank → cursor). **Ranking** only reorders a small candidate set.',
-      detail: 'Both services are stateless Spring Boot apps; all state lives in the stores.' },
-    { id: 'data', title: 'Stores', x0: 550, x1: 820, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
-      why: '**Post DB** is the source of truth for content. The **timeline cache** keeps a Redis sorted set of **post ids** per active user. The **follow graph** answers "who follows A" and "whom does B follow".',
-      detail: 'Timelines are a rebuildable cache: losing one costs a slower first read, never data.' },
-    { id: 'async', title: 'Fan-out (async)', x0: 820, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
-      why: '**Kafka** buffers `PostCreated` events; **fan-out workers** push each new post id into every follower\'s timeline. Posting returns before any of this happens.',
-      detail: 'The table bottom right is B\'s timeline, `tl:B`, newest first.' },
-  ],
-  layersIntro: {
-    title: 'Write once, push ids, read one sorted set',
-    text: 'A post is stored once in the **Post DB** and announced on **Kafka**. **Fan-out workers** push its **id** into each follower\'s Redis **sorted set**, so reading a feed is one `ZREVRANGE` plus a batch **hydrate**. Celebrities are **pulled** at read time instead of pushed. Hover a layer or a component to see why it exists.',
+// score ≈ w1·recency + w2·affinity(B, author) + w3·engagement(post)`,
   },
-  nodes: {
-    userA: { x: 72, y: 75, w: 136, label: 'User A', sub: 'posts', icon: '👤', layer: 'entry' },
-    userB: { x: 72, y: 250, w: 136, label: 'User B', sub: 'reads feed', icon: '👤', layer: 'entry' },
-    userC: { x: 72, y: 420, w: 136, label: 'Celebrity', sub: 'C · 10 M', icon: '⭐', layer: 'entry' },
-    gateway: { x: 222, y: 250, w: 136, label: 'API Gateway', sub: 'auth · limits', icon: '🚪', layer: 'entry' },
-    post: { x: 425, y: 130, w: 160, label: 'Post Svc', sub: 'store · publish', icon: '📝', layer: 'app' },
-    feed: { x: 425, y: 340, w: 160, label: 'Feed Svc', sub: 'read · hydrate', icon: '📰', layer: 'app' },
-    ranker: { x: 425, y: 460, w: 160, label: 'Ranking', sub: 'score candidates', icon: '📊', layer: 'app' },
-    postdb: { x: 685, y: 62, w: 170, label: 'Post DB', sub: 'MongoDB · by id', icon: '🍃', layer: 'data' },
-    timeline: { x: 685, y: 270, w: 170, label: 'Timeline cache', sub: 'Redis ZSET / user', icon: '⚡', layer: 'data' },
-    graph: { x: 685, y: 430, w: 170, label: 'Follow Graph', sub: 'who follows whom', icon: '🔗', layer: 'data' },
-    kafka: { x: 960, y: 160, w: 170, label: 'Kafka', sub: 'post-created', icon: '📨', layer: 'async' },
-    fanout: { x: 960, y: 290, w: 170, label: 'Fan-out workers', sub: 'ZADD per follower', icon: '📤', layer: 'async' },
-  },
-  wires: [['userA', 'gateway'], ['userB', 'gateway'], ['userC', 'gateway'], ['gateway', 'post'], ['gateway', 'feed'], ['post', 'postdb'], ['post', 'kafka'], ['kafka', 'fanout'], ['fanout', 'graph'], ['fanout', 'timeline'], ['feed', 'timeline'], ['feed', 'postdb'], ['feed', 'graph'], ['feed', 'ranker']],
+  postdb: {
+    tag: 'MongoDB · the single copy of content',
+    desc: '<code>posts { _id: "p-91", author, caption, media, createdAt, deleted }</code>, plus index <code>{ author, createdAt }</code> for "recent posts of these authors". Edits and deletes happen here once.',
+    points: ['Without it as the one copy: content copied into millions of timelines goes stale', 'Sharded by <code>_id</code>; hot posts cached; media on S3, referenced by id', 'Read by batch <code>$in</code> of ~20–50 ids per page (hydration)', 'Slow → hydration becomes the bottleneck: cache hot posts, return fewer'],
+    code: `// posts (MongoDB, sharded by _id)
+{ _id: "p-91", author: "A", caption: "Sunset",
+  media: ["m-55"], createdAt: ISODate("2026-11-20T20:00:00Z"), deleted: false }
 
-  components: {
-    userA: {
-      name: 'Poster (A)',
-      what: 'An ordinary account with a few followers. Uploads the photo first (presigned URL to object storage), then sends `POST /posts { caption, mediaIds }`.',
-      why: 'Normal accounts are the cheap case for fan-out on write: a handful of timeline writes per post.',
-      without: '—',
-      tech: 'Mobile app', scale: '~100 M posts/day across all users.', fails: 'Retries `POST /posts` with an idempotency key so a flaky network does not create two posts.',
-    },
-    userB: {
-      name: 'Reader (B)',
-      what: 'Opens the home feed, scrolls with a **cursor**, pulls to refresh. Follows A, D, E and the celebrity C.',
-      why: 'Reads dominate (≈ 100 reads per post), so the design optimises B\'s path.',
-      without: '—',
-      tech: 'Mobile app', scale: '500 M daily users, ~10 feed loads each.', fails: 'Reads are idempotent: a failed refresh is simply retried.',
-    },
-    userC: {
-      name: 'Celebrity (C)',
-      what: 'An account with **10 M followers**. One post from C would mean 10 M timeline writes with plain fan-out on write.',
-      why: 'The reason the design is **hybrid**: celebrities are pulled at read time, not pushed.',
-      without: '—',
-      tech: 'Same app', scale: 'A few thousand accounts above the threshold (e.g. 100 k followers).', fails: '—',
-    },
-    gateway: {
-      name: 'API gateway',
-      what: 'Terminates TLS, validates the JWT, rate-limits per user, routes `/posts` to the Post Service and `/feed` to the Feed Service.',
-      why: 'One place for auth and limits instead of every service doing it.',
-      without: 'Each service re-implements auth; a buggy client can hammer `/feed`.',
-      tech: 'Spring Cloud Gateway / Kong / AWS API Gateway', scale: 'Stateless; scale out behind a load balancer.', fails: 'Several instances; a dead one is taken out by health checks.',
-      core: ['gw', 'API gateway'],
-    },
-    post: {
-      name: 'Post Service',
-      what: 'Inserts the post into the Post DB and writes a `PostCreated` **outbox** row in the same transaction; a relay publishes it to Kafka. Answers `201 { postId }` right away.',
-      why: 'Posting stays fast no matter how many followers the author has.',
-      without: 'Writing every follower\'s timeline inside the request: a celebrity post would take minutes.',
-      tech: 'Spring Boot · MongoDB · KafkaTemplate', scale: 'Stateless.', fails: 'Outbox → a post is never stored without its event (or the event sent without the post).',
-    },
-    feed: {
-      name: 'Feed Service',
-      what: '`ZREVRANGE tl:B` for pushed ids, pulls `recent:{celeb}` for followed celebrities, merges, **hydrates** ids from the Post DB (drops deleted), asks Ranking to order, returns `nextCursor`.',
-      why: 'All read-time logic in one stateless service.',
-      without: 'Clients would assemble feeds from many calls.',
-      tech: 'Spring Boot', scale: 'Stateless; ~60 k feed loads/s average.', fails: 'Ranking slow → chronological fallback; timeline missing → rebuild by pull.',
-    },
-    ranker: {
-      name: 'Ranking',
-      what: 'Scores a **candidate set** of a few hundred posts by recency, affinity (how often B interacts with the author) and engagement.',
-      why: 'The timeline decides **which** posts are candidates; ranking only decides the **order**.',
-      without: 'Pure chronological feed: fine, but less engaging.',
-      tech: 'Feature store + model server', scale: 'Scores hundreds of posts per request, never millions.', fails: 'Strict timeout (~50 ms) → fall back to time order.',
-    },
-    postdb: {
-      name: 'Post DB',
-      what: '`posts { _id: "p-91", author, caption, media, createdAt, deleted }`, plus index `{ author, createdAt }` for "recent posts of these authors".',
-      why: 'The single copy of content: edits and deletes happen here once.',
-      without: 'Content copied into millions of timelines goes stale.',
-      tech: 'MongoDB sharded by `_id`; hot posts cached; media on S3 + CDN', scale: 'Read by batch `$in` of ~20–50 ids per page.', fails: 'Slow → hydration is the bottleneck; cache hot posts, return fewer.',
-      core: ['db', 'DB scaling'],
-    },
-    timeline: {
-      name: 'Timeline cache (Redis)',
-      what: '`tl:{user}` = sorted set of **post ids** scored by `createdAt`, capped at **800**. Also `recent:{celeb}` per celebrity for the pull side.',
-      why: '`ZADD`, `ZREVRANGE`, `ZREVRANGEBYSCORE`, `ZREMRANGEBYRANK` are exactly the operations a feed needs, in memory.',
-      without: 'Every feed load = "recent posts of 300 accounts" query, merged on the fly.',
-      tech: 'Redis Cluster, sharded by user id', scale: 'Only **active** users keep one (TTL 30 days).', fails: 'Lost or expired → rebuild on read from followees.',
-      core: ['cache', 'Cache · Redis'],
-    },
-    graph: {
-      name: 'Follow graph',
-      what: '`follows { follower, followee }` with indexes on both sides: followers of A (fan-out), following of B (rebuild, celebrities B follows).',
-      why: 'Fan-out and pull both start with "who is connected to whom".',
-      without: '—',
-      tech: 'Sharded MongoDB / MySQL, or a graph store; follower counts cached', scale: 'Read in pages of 1 000 for big accounts.', fails: 'Stale list → a post lands in a just-unfollowed timeline; filter on read.',
-    },
-    kafka: {
-      name: 'Kafka (post-created)',
-      what: '`post-created` topic, key = author id. Fan-out workers consume it in a consumer group and **commit offsets after** writing the timelines.',
-      why: 'Decouples posting from fan-out and absorbs spikes.',
-      without: 'The Post Service blocks on thousands of Redis writes.',
-      tech: 'Kafka', scale: 'Partitions × workers set fan-out throughput.', fails: 'Lag → followers see posts later, never lost. Redelivery is harmless (idempotent ZADD).',
-      core: ['kafka', 'Queue · Kafka'],
-    },
-    fanout: {
-      name: 'Fan-out workers',
-      what: 'For each event: read the author\'s followers page by page, then pipeline `ZADD tl:{f} ts postId` + `ZREMRANGEBYRANK tl:{f} 0 -801`. Skip celebrities and inactive followers.',
-      why: 'Moves the cost of building feeds from read time to write time.',
-      without: 'Fan-out on read for everyone: every feed load merges hundreds of authors.',
-      tech: 'Spring Kafka `@KafkaListener` + Redis pipelines', scale: 'Cost ∝ followers → the celebrity threshold caps it.', fails: 'Crash mid-way → re-consume from the last committed offset; ZADD of the same id is idempotent.',
-    },
-  },
+db.posts.createIndex({ author: 1, createdAt: -1 })   // pull / rebuild
 
-  // ---------------- 1 · overview loop ----------------
-  intro: {
-    headline: 'Store once, push ids to followers, read one sorted set.',
-    points: [
-      { t: 'Post', color: TEAL, d: 'The post is stored in the **Post DB**; `PostCreated` goes to **Kafka**; A gets 201 at once.' },
-      { t: 'Fan-out', color: PURPLE, d: 'A worker reads A\'s **followers** and `ZADD`s the post **id** into each follower\'s timeline.' },
-      { t: 'Read', color: BLUE, d: 'B\'s feed = one `ZREVRANGE`, a batch **hydrate** from the Post DB, **rank**, return a **cursor**.' },
-      { t: 'Celebrities', color: AMBER, d: 'No fan-out for 10 M followers: B\'s read **pulls** `recent:C` and merges it.' },
+// hydration: one batch per page, deleted posts dropped
+db.posts.find({ _id: { $in: ["p-91", "p-90", "p-88" /* … */] },
+                deleted: { $ne: true } })`,
+  },
+  timeline: {
+    tag: 'Redis Cluster · one sorted set per active user',
+    desc: '<code>tl:{user}</code> = sorted set of <b>post ids</b> scored by <code>createdAt</code>, capped at <b>800</b>. Also <code>recent:{celeb}</code> per celebrity for the pull side.',
+    points: ['<code>ZADD</code>, <code>ZREVRANGE</code>, <code>ZREVRANGEBYSCORE</code>, <code>ZREMRANGEBYRANK</code> are exactly the operations a feed needs, in memory', 'Without it: every feed load = "recent posts of 300 accounts", merged on the fly', 'Only <b>active</b> users keep one (TTL 30 days); 800 × ~20 B × 300 M ≈ 5 TB', 'Lost or expired → rebuild on read from followees; a cache, never the source of truth'],
+    code: `# fan-out (one pipeline per page of followers)
+ZADD tl:B 1761249600000 "p-91"        # score = createdAt (from the event)
+ZREMRANGEBYRANK tl:B 0 -801           # keep the newest 800
+
+# read: first page, then strictly older than the cursor
+ZREVRANGE tl:B 0 19 WITHSCORES
+ZREVRANGEBYSCORE tl:B (1761243600000 -inf WITHSCORES LIMIT 0 20
+
+# celebrities: pulled at read time
+ZREVRANGE recent:C 0 9 WITHSCORES`,
+  },
+  graph: {
+    tag: 'Who follows whom · both directions',
+    desc: '<code>follows { follower, followee }</code> with indexes on both sides: followers of A (fan-out), following of B (rebuild, and the celebrities B follows).',
+    points: ['Fan-out and pull both start with "who is connected to whom"', 'Sharded MongoDB / MySQL, or a graph store; follower counts cached (the celebrity check)', 'Read in pages of 1 000 for big accounts', 'Stale list → a post lands in a just-unfollowed timeline: filter on read'],
+    code: `// follows
+{ follower: "B", followee: "A" }
+db.follows.createIndex({ followee: 1, follower: 1 })   // followers of A (fan-out)
+db.follows.createIndex({ follower: 1, followee: 1 })   // following of B (rebuild)
+
+// fan-out pages through followers
+db.follows.find({ followee: "A" }, { follower: 1 })
+  .sort({ follower: 1 }).limit(1000)                    // then follower > last`,
+  },
+  kafka: {
+    tag: 'Topic post-created · key = author id',
+    desc: '<code>post-created</code> topic, key = author id. Fan-out workers consume it in a consumer group and <b>commit offsets after</b> writing the timelines. Decouples posting from fan-out and absorbs spikes.',
+    points: ['Without it the Post Service blocks on thousands of Redis writes', 'Partitions × workers set fan-out throughput', 'Lag → followers see posts later, never lost', 'Redelivery is harmless: ZADD of the same id with the same score is idempotent'],
+    code: `# topic
+kafka-topics.sh --create --topic post-created \\
+  --partitions 48 --replication-factor 3
+
+# consumer (Spring Kafka): commit only after the timelines are written
+spring:
+  kafka:
+    consumer:
+      group-id: fanout
+      enable-auto-commit: false
+    listener:
+      ack-mode: manual`,
+  },
+  fanout: {
+    tag: 'Spring Kafka consumers · ZADD per follower',
+    desc: 'For each event: read the author\'s followers page by page, then pipeline <code>ZADD tl:{f} ts postId</code> + <code>ZREMRANGEBYRANK tl:{f} 0 -801</code>. Skip celebrities and inactive followers. Moves the cost of building feeds from read time to write time.',
+    points: ['Cost ∝ followers → the celebrity threshold (~100 k) caps it', 'Without it: fan-out on read for everyone, every feed load merges hundreds of authors', 'Crash mid-way → re-consume from the last committed offset; ZADD of the same id is idempotent', 'The score comes from the event\'s <code>createdAt</code>, never <code>now()</code>, so replays cannot reorder posts'],
+    code: `@KafkaListener(topics = "post-created", groupId = "fanout")
+public void onPost(PostCreated e, Acknowledgment ack) {
+  double score = e.createdAt().toEpochMilli();          // from the event
+  if (graph.followerCount(e.author()) > CELEBRITY_THRESHOLD) {
+    redis.opsForZSet().add("recent:" + e.author(), e.postId(), score);
+    ack.acknowledge(); return;                          // pulled at read time
+  }
+  for (List<String> page : graph.followerPages(e.author(), 1000))
+    redis.executePipelined((RedisCallback<Object>) c -> {
+      for (String f : page) {
+        if (!activeUsers.contains(f)) continue;       // rebuilt on next visit
+        byte[] key = ("tl:" + f).getBytes(UTF_8);
+        c.zSetCommands().zAdd(key, score, e.postId().getBytes(UTF_8));
+        c.zSetCommands().zRemRange(key, 0, -801);     // keep newest 800
+      }
+      return null;
+    });
+  ack.acknowledge();                                    // after every write
+}`,
+  },
+};
+
+// building blocks taught once in 00_Core_Components.html (same "#id/what" links as the engine pages)
+const CORE = {
+  gw: ['gw', 'API Gateway'], timeline: ['cache', 'Cache · Redis'], postdb: ['db', 'DB scaling'], kafka: ['kafka', 'Queue · Kafka'],
+};
+
+// ---------------- scenarios ----------------
+// hop: `from`/`to` may be an array (fan-out / fan-in: one packet per pair, all at once); `count` sends several packets 0.25 s apart.
+// node: `id` may be an array (several nodes work in parallel); `tags` gives one tag per node.
+const hop = (from, to, kind, tag, title, proto, text, extra) => Object.assign({ type: 'hop', from, to, kind, tag, title, proto, text }, extra || {});
+const node = (id, tag, title, proto, text, extra) => Object.assign({ type: 'node', id, tag, title, proto, text }, extra || {});
+const GREEN = '#16a34a', RED = '#dc2626', AMBER = '#d97706', BLUE = '#0b5cff';
+// "201 to the poster" runs in parallel with the fan-out in several scenarios
+const ack201 = (who, id, tag) => ({ type: 'fork', title: `Meanwhile: 201 to ${who}, before any follower is touched`, proto: '201 { postId } · no fan-out in the request', text: `In parallel: the transaction is acknowledged and ${who} gets 201 { postId: "${id}" } at once; posting does not wait for a single follower timeline.`, steps: [
+  hop('postdb', 'post', 'response', 'ack', '', '', ''),
+  hop('post', 'gw', 'response', `201 ${id}`, '', '', ''),
+  hop('gw', who === 'Celebrity C' ? 'userC' : 'userA', 'response', tag, '', '', ''),
+] });
+
+const SCEN = {
+  // Ported from the old page's "A posts → B's feed" flow: store + outbox, fan-out on write, one ZREVRANGE, hydrate, rank, cursor.
+  post: {
+    name: 'A posts → B\'s feed',
+    steps: [
+      hop('userA', 'gw', 'request', 'POST /posts', 'A posts a sunset photo', 'HTTPS · TCP 443 · HTTP/2', `The image is already in object storage (presigned PUT); the app now sends POST /posts {caption: "Sunset", mediaIds: ["m-55"]} with a JWT and an Idempotency-Key header.`),
+      hop('gw', 'post', 'request', 'POST /posts', 'Gateway: auth, rate limit, route', 'JWT · per-user limit · Path=/posts/**', `The gateway validates the JWT, applies the per-user rate limit and routes /posts to a Post Service instance on :8080.`),
+      hop('post', 'postdb', 'request', 'insert p-91 + outbox', 'Store the post and its event together', 'Mongo wire · TCP 27017 · transaction', `posts.insertOne({_id: "p-91", author: "A", caption: "Sunset", media: ["m-55"], createdAt: 20:00:00}) and an outbox row PostCreated(p-91) in the same transaction.`),
+      node('postdb', 'p-91 + outbox ✓', 'Committed: the post exists once, with its event', 'w:majority · one commit', `Both documents commit together, so the post never exists without its event; this is the only copy of the caption and media ids.`, { tagColor: GREEN }),
+      ack201('User A', 'p-91', 'posted ✓'),
+      hop('post', 'kafka', 'event', 'PostCreated p-91', 'The outbox relay publishes PostCreated', 'Kafka · TCP 9092 · acks=all · key = A', `The relay sends {postId: "p-91", author: "A", createdAt} to post-created with key = author id; it lands at offset 500 of A's partition.`),
+      hop('kafka', 'fanout', 'event', '@500 p-91', 'A fan-out worker polls the event', 'consumer group fanout · manual ack', `A worker in consumer group fanout polls offset 500; auto-commit is off, so the offset is committed only after the timelines are written.`),
+      hop('fanout', 'graph', 'request', 'followers of A', 'Read A\'s followers', 'follows.find({followee: "A"}) · pages of 1 000', `The worker pages through the followee index of the follow graph; for big accounts it reads 1,000 followers per page.`),
+      hop('graph', 'fanout', 'response', 'B, D, E', 'Three followers come back', 'cursor · 3 docs · followerCount = 3', `A has three followers, B, D and E, and the cached follower count is 3.`),
+      node('fanout', '3 ≤ 100 k → push', 'Decision: normal account → fan out on write', 'followerCount 3 ≤ threshold 100 000', `Below the celebrity threshold, pushing is cheap: three timeline writes now buy three cheap feed reads later. Inactive followers would be skipped.`, { tagColor: GREEN }),
+      hop('fanout', 'timeline', 'event', 'ZADD ×3 + trim', 'ZADD the id into each timeline, keep 800', 'RESP pipeline · ZADD + ZREMRANGEBYRANK 0 -801', `One pipeline: ZADD tl:B 1761249600000 "p-91" (score = createdAt) and ZREMRANGEBYRANK tl:B 0 -801, the same for tl:D and tl:E; only the id goes in, never the caption or image.`),
+      hop('userB', 'gw', 'request', 'GET /feed', 'B opens the feed', 'HTTPS · GET /feed?limit=20', `A minute later B opens the app and asks for the first page of the home feed.`),
+      hop('gw', 'feed', 'request', 'GET /feed', 'Routed to the Feed Service', 'HTTP/1.1 · :8080 · Path=/feed/**', `The read path is a different service from the write path; any stateless Feed Service instance can serve B.`),
+      hop('feed', 'timeline', 'request', 'ZREVRANGE tl:B 0 19', 'One ZREVRANGE on B\'s timeline', 'RESP · TCP 6379 · WITHSCORES', `ZREVRANGE tl:B 0 19 WITHSCORES returns the 20 newest ids, already sorted, from memory: no query across the 300 accounts B follows.`),
+      node('timeline', 'HIT · p-91 on top', 'Decision: timeline HIT', 'ZSET exists · 800 ids', `tl:B exists because B is active, and p-91 is on top with score 1761249600000; the read costs about a millisecond.`, { tagColor: GREEN, stat: 'hit' }),
+      hop('timeline', 'feed', 'response', '20 ids + scores', '20 ids come back, newest first', 'RESP array · 20 × (id, score)', `p-91, p-90, p-88 … with their scores; the Feed Service still has no content, only ids.`),
+      hop('feed', 'postdb', 'request', '$in [20 ids]', 'Hydrate the ids in one batch', 'Mongo wire · find $in · deleted ≠ true', `posts.find({_id: {$in: ids}, deleted: {$ne: true}}) fetches captions and media ids in one round trip and drops anything deleted since fan-out; hot posts usually come from a small post cache in front of MongoDB.`),
+      hop('feed', 'ranker', 'request', 'rank 20', 'Ranking orders the candidates', 'HTTP · POST /rank · timeout 50 ms', `Ranking scores the 20 candidates by recency, affinity (how often B interacts with A) and engagement; it only orders, it does not find posts.`),
+      hop('ranker', 'feed', 'response', 'ordered', 'Scores come back within budget', 'HTTP 200 · 12 ms', `The ranked order comes back well inside the 50 ms budget; on a timeout the Feed Service would keep time order.`),
+      hop('feed', 'gw', 'response', '200 + nextCursor', 'Page plus a cursor', 'HTTP 200 · nextCursor "1761243600000:p-72"', `The response carries nextCursor = score and id of the last item, so the next page asks for strictly older posts.`),
+      hop('gw', 'userB', 'response', 'sees A\'s sunset ✓', 'B sees A\'s sunset', 'HTTPS · 200 · ~30 ms', `Fan-out on write moved the work to posting time: the read was one ZREVRANGE, one batch hydrate and a quick rank.`),
     ],
-    stats: [['500 M', 'daily users'], ['100 M', 'posts / day'], ['800', 'ids per timeline'], ['< 200 ms', 'feed load p99']],
   },
-  async overview(s, v, ui) {
-    if (!v.ready) { setup(s, v); v.ready = true; }
-    await clearRows(s, v);
-    for (const [k, t, st] of TL0) { await s.row(v.tl, t, ST[st]); v.rows[k] = v.tl.rows[v.tl.rows.length - 1]; }
-    chip(s, v.pdb, 'posts · p-90 p-88 p-85'); chip(s, v.kaf, 'post-created · @499'); chip(s, v.fo, 'fan-out idle');
-    chip(s, v.gr, 'A: 3 · C: 10 M followers'); chip(s, v.tlc, 'tl:B · newest 800 ids');
-    who(s, v, 'A', 'has a new photo'); who(s, v, 'B', 'will open the feed'); who(s, v, 'C', '10 M followers');
-
-    ui.say(0); ui.cap('**Post** · A posts a photo: stored once in the Post DB, PostCreated goes to Kafka');
-    await s.send(['userA', 'gateway', 'post'], 'POST /posts', BLUE, { ms: 400 });
-    await s.send(['post', 'postdb'], 'insert p-91', TEAL, { ms: 400 });
-    chip(s, v.pdb, 'posts · p-91 (new) p-90 …');
-    await s.send(['post', 'gateway', 'userA'], '201 p-91', GREEN, { ms: 360 });
-    who(s, v, 'A', 'posted ✓', GREEN);
-    await s.send(['post', 'kafka'], 'PostCreated p-91', PURPLE, { ms: 420 });
-    chip(s, v.kaf, 'post-created · @500 p-91');
-    ui.say(1); ui.cap('**Fan-out** · a worker reads A\'s followers and ZADDs p-91 into each timeline');
-    await s.send(['kafka', 'fanout'], 'p-91 by A', PURPLE, { ms: 400 });
-    await s.send(['fanout', 'graph'], 'followers of A', TEAL, { ms: 400 });
-    chip(s, v.gr, 'A → B, D, E');
-    await s.send(['fanout', 'timeline'], 'ZADD ×3', RED, { ms: 420 });
-    chip(s, v.fo, 'ZADD tl:B tl:D tl:E ✓');
-    await onTop(s, v, 'p-91', P('p-91', 'A', '20:00', 'new'), 'NEW');
-    ui.say(2); ui.cap('**Read** · B opens the feed: one ZREVRANGE, hydrate the ids, rank, return a cursor');
-    await s.send(['userB', 'gateway', 'feed'], 'GET /feed', BLUE, { ms: 380 });
-    await s.send(['feed', 'timeline'], 'ZREVRANGE 0 19', RED, { ms: 380 });
-    await s.send(['feed', 'postdb'], '$in [20 ids]', TEAL, { ms: 380 });
-    await s.send(['feed', 'ranker'], 'rank 20', AMBER, { ms: 360 });
-    await s.send(['feed', 'gateway', 'userB'], '200 + cursor', GREEN, { ms: 360 });
-    await put(s, v, 'p-91', P('p-91', 'A', '20:00', 'shown'), 'OK');
-    who(s, v, 'B', 'sees A\'s sunset ✓', GREEN);
-    ui.say(3); ui.cap('**Celebrities** · C has 10 M followers: no fan-out; B\'s read pulls recent:C and merges');
-    tick(s, v, '20:01:00');
-    await s.send(['userC', 'gateway', 'post'], 'POST /posts', BLUE, { ms: 360 });
-    await s.send(['post', 'kafka', 'fanout'], 'p-92 by C', PURPLE, { ms: 360 });
-    await s.flash(960, 240, '10 M > 100 k → skip', { color: AMBER, stroke: AMBER }, 700);
-    await s.send(['fanout', 'timeline'], 'ZADD recent:C', PURPLE, { ms: 380 });
-    chip(s, v.tlc, 'recent:C · p-92');
-    await s.send(['userB', 'gateway', 'feed'], 'refresh', BLUE, { ms: 360 });
-    await s.send(['feed', 'timeline'], 'tl:B + recent:C', RED, { ms: 380 });
-    await onTop(s, v, 'p-92', P('p-92', 'C', '20:01', 'pulled'), 'PULL');
-    await s.send(['feed', 'gateway', 'userB'], '200 [p-92, p-91…]', GREEN, { ms: 360 });
-    who(s, v, 'B', 'sees C\'s post ✓', GREEN);
-    await s.wait(1800);
-    ui.say(-1); ui.cap('');
-    await s.wait(400);
+  // Ported from the old page's "Celebrity posts" flow: 10 M ZADDs vs hybrid (skip fan-out, recent:C pulled and merged at read time).
+  celeb: {
+    name: 'Celebrity posts',
+    steps: [
+      hop('userC', 'gw', 'request', 'POST /posts', 'Celebrity C posts "New album!"', 'HTTPS · TCP 443 · HTTP/2', `C has 10 M followers; the request looks exactly like A's: POST /posts {caption: "New album!", mediaIds: ["m-80"]}.`),
+      hop('gw', 'post', 'request', 'POST /posts', 'Same route as everyone', 'JWT · Path=/posts/**', `The gateway does not care who is posting; the write path is identical for every account.`),
+      hop('post', 'postdb', 'request', 'insert p-92 + outbox', 'Store p-92 once, with its outbox event', 'Mongo wire · transaction', `posts.insertOne({_id: "p-92", author: "C", …}) plus the PostCreated outbox row, committed together.`),
+      ack201('Celebrity C', 'p-92', 'posted ✓'),
+      hop('post', 'kafka', 'event', 'PostCreated p-92', 'PostCreated to Kafka', 'Kafka · acks=all · key = C · offset 501', `The relay publishes p-92 with key = C; the event looks like any other post.`),
+      hop('kafka', 'fanout', 'event', '@501 p-92', 'A fan-out worker takes it', 'consumer group fanout', `A worker polls offset 501 from C's partition.`),
+      hop('fanout', 'graph', 'request', 'followers of C', 'Read C\'s followers', 'follows.find({followee: "C"})', `The first page of 1,000 followers comes back, and the cached follower count says how many pages follow.`),
+      node('graph', '10,000,000', 'C has 10 million followers', 'followerCount = 10 000 000', `Ten thousand pages of followers: fan-out cost is proportional to follower count, and follower counts are extremely skewed.`, { tagColor: AMBER }),
+      hop('fanout', 'timeline', 'event', null, '❌ Plain fan-out: ZADD into 10 M timelines', 'RESP pipelines · 10 M × ZADD', `The worker starts pipelining ZADD tl:{f} for every follower; at ~100 k writes/s that is ~100 s for one post, mostly to people who will not open the app today.`, { count: 3, tags: ['ZADD 1 M', 'ZADD 2 M', 'ZADD 3 M'] }),
+      node(['fanout', 'kafka', 'timeline'], null, '❌ ~100 s per post, and everything queues behind it', 'consumer lag ↑ · hot Redis shards', `The worker is stuck on one event, A's and everyone's new posts wait behind it on the partition, and the Redis shards holding hot timelines saturate.`, { tags: ['3 M / 10 M …', 'lag ↑', 'hot shards'], tagColor: RED, dur: 3 }),
+      node('timeline', 'tl:B: no p-92 ✕', '❌ B refreshes 10 s later: no p-92 yet', 'ZREVRANGE tl:B → p-90, p-88 …', `B's timeline has not been reached yet, so B does not see C's post, and A's newer posts are missing too.`, { tagColor: RED, dur: 2.8 }),
+      node('fanout', '10 M > 100 k → skip', '✅ Rewind: the worker checks the follower count', 'followerCount 10 M > threshold 100 k', `Decision: above the celebrity threshold the worker skips fan-out entirely; one write replaces ten million.`, { tagColor: GREEN, dur: 2.8 }),
+      hop('fanout', 'timeline', 'event', 'ZADD recent:C', 'One write: C\'s own recent list', 'RESP · ZADD recent:C + trim to ~50', `ZADD recent:C 1761249660000 "p-92" and ZREMRANGEBYRANK recent:C 0 -51: a short list of C's recent posts, done in milliseconds.`),
+      hop('userB', 'gw', 'request', 'GET /feed', 'B pulls to refresh', 'HTTPS · GET /feed', `Ten seconds later B refreshes the feed.`),
+      hop('gw', 'feed', 'request', 'GET /feed', 'Routed to the Feed Service', 'HTTP/1.1 · :8080', `The Feed Service has a cached list of the celebrities B follows (usually a handful); here only C.`),
+      hop('feed', 'timeline', 'request', 'tl:B + recent:C', 'Read pushed and pulled lists in one pipeline', 'RESP pipeline · ZREVRANGE tl:B 0 19 · recent:C 0 9', `One round trip: the pushed timeline tl:B plus ZREVRANGE recent:C 0 9 for each followed celebrity.`),
+      hop('timeline', 'feed', 'response', 'ids + p-92', 'Both lists come back', 'RESP · 20 + 10 ids with scores', `p-90, p-88 … from tl:B and p-92 from recent:C, all scored by createdAt.`),
+      node('feed', 'merge by score', 'Hybrid: merge pushed and pulled by score', 'k-way merge · score desc, id', `The lists are merged by score, so p-92 (20:01) lands on top; the result is hydrated and ranked exactly like a normal page.`, { tagColor: BLUE }),
+      hop('feed', 'postdb', 'request', 'hydrate $in', 'Hydrate the merged page', 'Mongo wire · find $in', `One batch read for the 20 winners, deleted posts dropped.`),
+      hop('feed', 'gw', 'response', '200 [p-92 …]', 'Page with C\'s post on top', 'HTTP 200 · nextCursor', `Ranked page plus cursor; the cursor covers both sources because they share the same score space.`),
+      hop('gw', 'userB', 'response', 'sees C\'s post ✓', 'B sees C\'s post immediately', 'HTTPS · 200', `Push for normal accounts (cheap reads), pull for celebrities (cheap writes), merged at read time.`),
+    ],
   },
+  // Ported from the old page's "Scroll to page 2" flow: offset duplicates vs cursor, pull to refresh on the newer side.
+  page: {
+    name: 'Scroll to page 2',
+    steps: [
+      hop('userB', 'gw', 'request', 'GET /feed', 'B reads page 1', 'HTTPS · GET /feed?limit=20', `B opens the feed at 20:00; nothing special yet.`),
+      hop('gw', 'feed', 'request', 'GET /feed', 'Routed to the Feed Service', 'HTTP/1.1 · :8080', `Any Feed Service instance; all paging state travels in the cursor, none in the service.`),
+      hop('feed', 'timeline', 'request', 'ZREVRANGE 0 19', 'The 20 newest ids', 'RESP · ZREVRANGE tl:B 0 19 WITHSCORES', `Positions 0–19 of tl:B: p-91 … p-72.`),
+      hop('timeline', 'feed', 'response', 'p-91 … p-72', 'Page 1 ids with scores', 'RESP array · 20 × (id, score)', `The last item is p-72 with score 19:30:00.`),
+      node('feed', 'cursor 19:30:00:p-72', 'Build nextCursor from the last item', 'nextCursor = score + post id', `The cursor is the score and id of p-72; the app also remembers the first score it has (p-91, 20:00:00) for pull-to-refresh.`, { tagColor: BLUE }),
+      hop('feed', 'gw', 'response', '20 posts + cursor', 'Page 1 returned', 'HTTP 200 · hydrated + ranked', `Hydrated and ranked as usual, with nextCursor "19:30:00:p-72".`),
+      hop('gw', 'userB', 'response', 'page 1 ✓', 'B reads page 1', 'HTTPS · 200', `B starts scrolling through the first 20 posts.`),
+      hop('kafka', 'fanout', 'event', null, 'Three new posts arrive while B reads', 'post-created · 3 events', `D posts three times in a row at 20:02; the fan-out workers pick the events up.`, { count: 3, tags: ['p-93', 'p-94', 'p-95'] }),
+      hop('fanout', 'timeline', 'event', null, 'They land on top of tl:B', 'ZADD tl:B × 3', `p-93, p-94 and p-95 have the newest scores, so everything that was at positions 0–19 is now at 3–22.`, { count: 3, tags: ['ZADD p-93', 'ZADD p-94', 'ZADD p-95'] }),
+      hop('userB', 'gw', 'request', '?page=2', '❌ Offset pagination: page 2 = skip 20', 'HTTPS · GET /feed?page=2', `The naive client asks for page 2, meaning "skip the first 20".`),
+      hop('gw', 'feed', 'request', '?page=2', 'Routed to the Feed Service', 'HTTP/1.1 · :8080', `The service turns page 2 into positions 20–39.`),
+      hop('feed', 'timeline', 'request', 'ZREVRANGE 20 39', 'Read positions 20–39', 'RESP · ZREVRANGE tl:B 20 39', `Positions, not posts: and the positions moved by three since page 1.`),
+      node('timeline', 'p-74 p-73 p-72 again', 'Decision: positions shifted → duplicates', 'offset 20 now starts at p-74', `Positions 20–22 now hold p-74, p-73 and p-72, the last three posts of page 1; deletes would cause the opposite, skipped posts.`, { tagColor: RED, dur: 2.8 }),
+      hop('feed', 'gw', 'error', 'p-74 … (dups)', 'Page 2 starts with old posts', 'HTTP 200 · 3 duplicates', `Technically a 200, but the first three items repeat page 1.`),
+      hop('gw', 'userB', 'error', '3 posts twice ✕', 'B sees three posts twice', 'HTTPS · 200', `A feed grows at the top while you scroll, so offsets are the wrong unit.`),
+      hop('userB', 'gw', 'request', null, '✅ Rewind: cursors in both directions', 'GET /feed?cursor=… · GET /feed?after=…', `Page 2 sends the cursor of the last item seen; pull-to-refresh sends the first score B has (p-91, 20:00:00).`, { count: 2, tags: ['?cursor=19:30:00:p-72', 'refresh > p-91'] }),
+      hop('gw', 'feed', 'request', null, 'Both requests reach the Feed Service', 'HTTP/1.1 · :8080', `Older side and newer side, each a range by score.`, { count: 2, tags: ['older', 'newer'] }),
+      hop('feed', 'timeline', 'request', null, 'Range by score, not by position', 'ZREVRANGEBYSCORE tl:B (19:30:00 -inf LIMIT 0 20 · ZRANGEBYSCORE (20:00:00 +inf', `The "(" makes each bound exclusive, so the older page starts strictly after p-72 and the refresh returns only posts newer than p-91; equal scores are tie-broken by post id.`, { count: 2, tags: ['BYSCORE (19:30 -inf', 'BYSCORE (20:00 +inf'] }),
+      node('timeline', 'p-71 … p-52 · +3 new ✓', 'Decision: exclusive bounds → no repeats', 'new posts cannot move a score', `Page 2 is p-71 … p-52, the refresh is exactly p-93…p-95: whatever lands on top, a score never moves.`, { tagColor: GREEN, dur: 2.8 }),
+      hop('feed', 'gw', 'response', null, 'Both pages returned', 'HTTP 200 · nextCursor "19:10:00:p-52"', `Each response carries a new cursor for its direction.`, { count: 2, tags: ['p-71 … p-52', '[p-95, p-94, p-93]'] }),
+      hop('gw', 'userB', 'response', null, 'No repeats, new posts on top', 'HTTPS · 200', `The only downside of cursors: no "jump to page 37", which a feed never needs.`, { count: 2, tags: ['page 2 ✓', '3 new on top ✓'] }),
+    ],
+  },
+  // Ported from the old page's "A deletes a post" flow: soft delete, copies would go stale, hydration filters, background ZREM.
+  delete: {
+    name: 'A deletes a post',
+    steps: [
+      hop('userA', 'gw', 'request', 'DELETE /posts/p-91', 'A deletes p-91', 'HTTPS · DELETE /posts/p-91', `Five minutes after posting, A regrets the sunset photo.`),
+      hop('gw', 'post', 'request', 'DELETE p-91', 'Routed to the Post Service', 'JWT · owner check · Path=/posts/**', `The gateway forwards the delete; the Post Service checks that A owns p-91.`),
+      hop('post', 'postdb', 'request', 'deleted: true', 'Soft delete in the Post DB', 'Mongo wire · updateOne $set', `posts.updateOne({_id: "p-91"}, {$set: {deleted: true, deletedAt: now}}) plus a PostDeleted outbox row: a soft delete, so moderation and restores still work.`),
+      node('postdb', 'p-91 deleted', 'One write, in the only copy', 'deleted: true · deletedAt 20:05', `The content lives once, so this single write is the whole delete as far as correctness is concerned.`, { tagColor: RED }),
+      { type: 'fork', title: 'Meanwhile: 204 to A', proto: 'HTTP 204 No Content', text: `In parallel: A gets 204 at once; nothing waits for the timelines that still list p-91.`, steps: [
+        hop('postdb', 'post', 'response', 'ack', '', '', ''),
+        hop('post', 'gw', 'response', '204', '', '', ''),
+        hop('gw', 'userA', 'response', 'deleted ✓', '', '', ''),
+      ] },
+      hop('userB', 'gw', 'request', 'GET /feed', 'B refreshes the feed', 'HTTPS · GET /feed', `p-91 was fanned out to A's followers five minutes ago.`),
+      hop('gw', 'feed', 'request', 'GET /feed', 'Routed to the Feed Service', 'HTTP/1.1 · :8080', `Same read path as always.`),
+      hop('feed', 'timeline', 'request', 'ZREVRANGE 0 19', 'Read B\'s timeline', 'RESP · ZREVRANGE tl:B 0 19', `The timeline still lists p-91: nothing removed it yet.`),
+      node('timeline', 'p-91 still listed', 'The timeline still holds p-91', 'tl:B · p-91 at rank 0', `What the read path does next decides what B sees.`, { tagColor: AMBER }),
+      hop('timeline', 'feed', 'response', '20 ids incl. p-91', 'Ids come back, p-91 included', 'RESP array', `20 ids with scores, p-91 first.`),
+      node('feed', 'copy: "Sunset" …', '❌ If timelines held full copies', 'copy written at fan-out time', `Had fan-out copied {caption: "Sunset", media} into every timeline, the Feed Service would serve the copy: edits would never show either, and copies multiply memory per follower.`, { tagColor: RED, dur: 2.8 }),
+      hop('feed', 'gw', 'error', '200 [p-91 "Sunset"]', '❌ The stale copy is served', 'HTTP 200 · stale content', `Every one of A's followers keeps seeing a post that no longer exists until millions of copies are rewritten.`),
+      hop('gw', 'userB', 'error', 'still sees it ✕', '❌ B still sees the deleted post', 'HTTPS · 200', `Copies in timelines go stale on every edit or delete.`),
+      hop('feed', 'postdb', 'request', '$in, deleted ≠ true', '✅ Rewind: hydrate ids from the Post DB', 'Mongo wire · find $in · deleted $ne true', `Timelines hold only ids, so the Feed Service hydrates: posts.find({_id: {$in: ids}, deleted: {$ne: true}}).`),
+      node('postdb', 'p-91 filtered', 'Decision: deleted → dropped', 'filter deleted: {$ne: true}', `p-91 matches the id but not the filter, so it is simply not returned; edits are read fresh the same way. If that leaves the page short, the service reads a few more ids.`, { tagColor: GREEN }),
+      hop('postdb', 'feed', 'response', '19 posts', 'Only live posts come back', 'BSON cursor · 19 docs', `p-90, p-88, p-85 … without p-91.`),
+      hop('feed', 'gw', 'response', '200 [p-90, p-88 …]', 'Page without p-91', 'HTTP 200 · ranked', `Ranked and returned with a cursor as usual.`),
+      hop('gw', 'userB', 'response', 'post is gone ✓', 'B no longer sees the post', 'HTTPS · 200', `The delete showed on the very next refresh, with zero timeline writes.`),
+      hop('post', 'kafka', 'event', 'PostDeleted p-91', 'Background cleanup: PostDeleted', 'Kafka · key = A · outbox relay', `The outbox relay publishes PostDeleted(p-91) for housekeeping.`),
+      hop('kafka', 'fanout', 'event', 'PostDeleted', 'A worker picks it up', 'consumer group fanout', `Same workers, same follower pages as the original fan-out.`),
+      hop('fanout', 'timeline', 'event', 'ZREM p-91 ×3', 'ZREM p-91 from followers\' timelines', 'RESP pipeline · ZREM tl:B tl:D tl:E', `Nice for memory and page sizes, but users were already safe because of hydration.`),
+    ],
+  },
+  // Ported from the old page's "Back after 60 days" flow: expired timeline → lock → pull recent posts of followees → cache again.
+  rebuild: {
+    name: 'Back after 60 days',
+    steps: [
+      hop('userB', 'gw', 'request', 'GET /feed', 'B opens the app after 60 days', 'HTTPS · GET /feed', `B has been inactive for 60 days and opens the app at 09:00.`),
+      hop('gw', 'feed', 'request', 'GET /feed', 'Routed to the Feed Service', 'HTTP/1.1 · :8080', `Same request as every day; the difference is in the cache.`),
+      hop('feed', 'timeline', 'request', 'ZREVRANGE tl:B', 'Read B\'s timeline', 'RESP · ZREVRANGE tl:B 0 19', `The Feed Service asks Redis for the newest 20 ids as usual.`),
+      node('timeline', 'MISS · expired', 'Decision: timeline MISS', 'key tl:B absent · TTL 30 d expired', `tl:B expired after 30 days (the TTL is refreshed on each read), and fan-out skips inactive followers, so nothing refilled it.`, { tagColor: RED }),
+      hop('timeline', 'feed', 'response', '(empty)', 'Empty result', 'RESP empty array', `An empty timeline for an existing user means "rebuild", not "show nothing".`),
+      hop('feed', 'timeline', 'request', 'SET rebuild:B NX EX 10', 'Take a rebuild lock', 'RESP · SET rebuild:B 1 NX EX 10', `SET NX makes sure two app tabs (or two instances) do not rebuild the same timeline twice; the loser serves a pull-only page.`),
+      hop('feed', 'graph', 'request', 'following of B', 'Read who B follows', 'follows.find({follower: "B"})', `The follower-side index answers "whom does B follow".`),
+      hop('graph', 'feed', 'response', '300 accounts', '300 accounts, 2 of them celebrities', 'cursor · 300 docs', `B follows 300 accounts; the celebrities among them stay on the pull side.`),
+      hop('feed', 'postdb', 'request', 'author $in 300 · 7 d', 'Pull their recent posts (fan-out on read)', 'find({author: {$in}, createdAt > now-7d, deleted ≠ true}).sort(-1).limit(800)', `posts.find({author: {$in: following}, createdAt: {$gt: now - 7d}, deleted: {$ne: true}}).sort({createdAt: -1}).limit(800).`),
+      node('postdb', 'IXSCAN {author, createdAt}', 'Served by the {author, createdAt} index', 'IXSCAN · 300 index ranges · merge sort', `This is exactly what every read would cost without precomputed timelines: one index range per followed account, merged and sorted.`, { tagColor: AMBER, dur: 2.6 }),
+      hop('postdb', 'feed', 'response', '800 recent ids', 'Up to 800 recent posts', 'BSON cursor · 800 × (id, createdAt)', `Only ids and createdAt are needed for the timeline.`),
+      hop('feed', 'timeline', 'request', 'ZADD 800 + EXPIRE', 'Cache the rebuilt timeline', 'RESP · ZADD tl:B … · EXPIRE tl:B 2592000', `ZADD tl:B with the 800 ids, then EXPIRE tl:B 2592000 (30 days, refreshed on every read).`),
+      node(['timeline', 'fanout'], null, 'B is active again: fan-out resumes', 'activeUsers += B', `tl:B exists again, and B is marked active, so fan-out workers write new posts into tl:B from now on.`, { tags: ['tl:B · 800 ids ✓', 'tl:B resumes'], tagColor: GREEN }),
+      hop('feed', 'postdb', 'request', 'hydrate first 20', 'Hydrate the first 20', 'Mongo wire · find $in', `Only the first page is hydrated; the rest stay as ids.`),
+      hop('postdb', 'feed', 'response', '20 posts', 'Content for page 1', 'BSON cursor', `Twenty post documents.`),
+      hop('feed', 'ranker', 'request', 'rank 20', 'Rank the candidates', 'HTTP · POST /rank · 50 ms', `Same ranking step as every read.`),
+      hop('ranker', 'feed', 'response', 'ordered', 'Ranked order back', 'HTTP 200', `The page is ordered.`),
+      hop('feed', 'gw', 'response', '200 · ~300 ms', 'Slower first load', 'HTTP 200 · ~300 ms', `This first load takes ~300 ms instead of ~30 ms: one slower load, never lost data.`),
+      hop('gw', 'userB', 'response', 'feed loaded ✓', 'B sees a fresh feed', 'HTTPS · 200', `B gets the posts of the last week from the accounts B follows.`),
+      node('timeline', 'next read: HIT ✓', 'Every later read hits the cache again', 'ZREVRANGE tl:B · ~1 ms', `Timelines are a cache: idle ones expire to save memory, and a miss costs one rebuild by pull.`, { tagColor: GREEN, stat: 'hit' }),
+    ],
+  },
+  // Ported from the old page's "Fan-out worker crashes" flow: commit after the writes, rebalance, idempotent ZADD replay.
+  crash: {
+    name: 'Fan-out worker crashes',
+    steps: [
+      hop('userA', 'gw', 'request', 'POST /posts', 'A posts p-91', 'HTTPS · POST /posts', `Same write path as before.`),
+      hop('gw', 'post', 'request', 'POST /posts', 'Routed to the Post Service', 'JWT · Path=/posts/**', `The gateway forwards to a Post Service instance.`),
+      hop('post', 'postdb', 'request', 'insert p-91 + outbox', 'Store the post and its event', 'Mongo wire · transaction', `Post and outbox row committed together.`),
+      ack201('User A', 'p-91', 'posted ✓'),
+      hop('post', 'kafka', 'event', 'PostCreated p-91', 'PostCreated at offset 500', 'Kafka · acks=all · key = A', `The event lands at offset 500 of A's partition.`),
+      node('kafka', '@500 · committed @499', 'The group\'s committed offset is still 499', 'consumer group fanout · committed 499', `Offset 500 waits to be processed; the committed offset only moves when a worker acknowledges.`, { tagColor: AMBER }),
+      hop('kafka', 'fanout', 'event', '@500 p-91', 'Worker-1 polls offset 500', 'poll · enable.auto.commit=false', `Auto-commit is off: the listener uses AckMode.MANUAL.`),
+      hop('fanout', 'graph', 'request', 'followers of A', 'Read A\'s followers', 'follows.find({followee: "A"})', `The worker reads the followers of A.`),
+      hop('graph', 'fanout', 'response', 'B, D, E', 'B, D and E', 'cursor · 3 docs', `Three timelines to write.`),
+      hop('fanout', 'timeline', 'event', null, 'Worker-1 writes tl:B and tl:D …', 'RESP pipeline · ZADD', `ZADD tl:B 1761249600000 "p-91", then ZADD tl:D …`, { count: 2, tags: ['ZADD tl:B', 'ZADD tl:D'] }),
+      node('fanout', '✕ worker-1 OOM-killed', '… and crashes before tl:E and the commit', 'pod OOMKilled · no ack', `tl:E never got p-91 and the offset was not committed. Had the worker committed on receipt (auto-commit before processing), E would never see the post.`, { tagColor: RED, dur: 2.8 }),
+      node('kafka', 'committed @499 → redeliver', 'Decision: offset not committed → redeliver', 'session timeout · rebalance', `The broker notices the dead member after the session timeout and rebalances the partition; the group restarts from the last committed offset, 499 + 1 = 500.`, { tagColor: AMBER }),
+      hop('kafka', 'fanout', 'event', '@500 again', 'Worker-2 re-reads offset 500', 'rebalance · position 500', `Worker-2 takes the partition and processes p-91 a second time: at-least-once delivery.`),
+      hop('fanout', 'timeline', 'event', null, 'Replay: ZADD B, D and E again', 'RESP pipeline · ZADD × 3', `The same three ZADDs with the same score, because the score comes from the event.`, { count: 3, tags: ['tl:B', 'tl:D', 'tl:E'] }),
+      node('timeline', 'tl:B: 0 added · tl:E: 1', 'Replay is harmless: ZADD is idempotent', 'ZADD returns 0 for an existing member', `A sorted-set member is unique: tl:B and tl:D return 0 added (no duplicate), and tl:E finally gets p-91.`, { tagColor: GREEN, dur: 2.8 }),
+      node('fanout', 'score = event.createdAt', 'Why the score must come from the event', 'score = createdAt, never now()', `If the worker used now() as the score, the replay would move p-91 to a new position and reorder B's feed; the event's createdAt makes the replay a no-op.`, { tagColor: BLUE }),
+      hop('fanout', 'kafka', 'response', 'commit @500', 'Commit the offset after the writes', 'ack.acknowledge() · commitSync', `Only now does worker-2 acknowledge, moving the committed offset to 500.`),
+      node('kafka', 'committed @500 ✓', 'At-least-once + idempotent = exactly-once result', 'committed 500 · lag 0', `Every follower has p-91 exactly once, whatever crashed in between.`, { tagColor: GREEN }),
+      hop('userB', 'gw', 'request', 'GET /feed', 'B reads the feed', 'HTTPS · GET /feed', `B opens the feed after the replay.`),
+      hop('gw', 'feed', 'request', 'GET /feed', 'Routed to the Feed Service', 'HTTP/1.1 · :8080', `Normal read path.`),
+      hop('feed', 'timeline', 'request', 'ZREVRANGE tl:B 0 19', 'p-91 once, in its original position', 'RESP · ZREVRANGE', `p-91 appears once, at its original score: the crash is invisible to B.`),
+    ],
+  },
+  // Live-only (no button): the common read, served from the precomputed timeline.
+  read: {
+    name: 'Feed read',
+    steps: [
+      hop('userB', 'gw', 'request', 'GET /feed', '', '', ''),
+      hop('gw', 'feed', 'request', 'GET /feed', '', '', ''),
+      hop('feed', 'timeline', 'request', 'ZREVRANGE', '', '', ''),
+      node('timeline', 'HIT ✓', '', '', '', { tagColor: GREEN, stat: 'hit' }),
+      hop('timeline', 'feed', 'response', 'ids', '', '', ''),
+      hop('feed', 'postdb', 'request', '$in', '', '', ''),
+      hop('postdb', 'feed', 'response', 'posts', '', '', ''),
+      hop('feed', 'gw', 'response', '200', '', '', ''),
+      hop('gw', 'userB', 'response', '200', '', '', ''),
+    ],
+  },
+  // Live-only: a normal post fanned out on write.
+  write: {
+    name: 'Normal post',
+    steps: [
+      hop('userA', 'gw', 'request', 'POST', '', '', ''),
+      hop('gw', 'post', 'request', 'POST', '', '', ''),
+      hop('post', 'postdb', 'request', 'insert', '', '', ''),
+      { type: 'fork', steps: [hop('postdb', 'post', 'response', '', '', '', ''), hop('post', 'gw', 'response', '201', '', '', ''), hop('gw', 'userA', 'response', '201', '', '', '')] },
+      hop('post', 'kafka', 'event', 'PostCreated', '', '', ''),
+      hop('kafka', 'fanout', 'event', 'poll', '', '', ''),
+      hop('fanout', 'graph', 'request', 'followers', '', '', ''),
+      hop('graph', 'fanout', 'response', 'B, D, E', '', '', ''),
+      hop('fanout', 'timeline', 'event', 'ZADD', '', '', ''),
+    ],
+  },
+  // Live-only: a celebrity post (one write to recent:C).
+  celebw: {
+    name: 'Celebrity post',
+    steps: [
+      hop('userC', 'gw', 'request', 'POST', '', '', ''),
+      hop('gw', 'post', 'request', 'POST', '', '', ''),
+      hop('post', 'postdb', 'request', 'insert', '', '', ''),
+      { type: 'fork', steps: [hop('postdb', 'post', 'response', '', '', '', ''), hop('post', 'gw', 'response', '201', '', '', ''), hop('gw', 'userC', 'response', '201', '', '', '')] },
+      hop('post', 'kafka', 'event', 'PostCreated', '', '', ''),
+      hop('kafka', 'fanout', 'event', 'poll', '', '', ''),
+      node('fanout', 'skip → pull', '', '', '', { tagColor: AMBER }),
+      hop('fanout', 'timeline', 'event', 'recent:C', '', '', ''),
+    ],
+  },
+};
+const LIVE_MIX = [['read', 0.55], ['write', 0.3], ['celebw', 0.15]];
 
-  // ---------------- 3 · flows ----------------
-  flows: [
-    {
-      id: 'post', title: 'A posts → B\'s feed', sub: 'fan-out on write · one ZREVRANGE', color: BLUE,
-      build: (s, v) => setup(s, v),
-      takeaway: 'Fan-out on write moves the work to posting time: one **ZADD per follower**, done asynchronously from Kafka. Reading becomes one **ZREVRANGE** of ids, one batch **hydrate**, a quick **rank** and a **cursor** for the next page.',
-      steps: [
-        {
-          title: 'A posts a photo',
-          text: 'The app first uploads the image to object storage with a **presigned URL** (served later by the CDN), then sends `POST /posts { caption: "Sunset", mediaIds: ["m-55"] }`. The gateway checks the JWT and the rate limit.',
-          observe: 'The request reaches the Post Service.',
-          focus: v => [v.n.post],
-          async run(s, v) {
-            who(s, v, 'A', 'posting…', AMBER);
-            await s.send(['userA', 'gateway', 'post'], 'POST /posts', BLUE);
-          },
-        },
-        {
-          title: 'Store the post and its event together',
-          text: '`posts.insertOne({ _id: "p-91", author: "A", caption: "Sunset", media: ["m-55"], createdAt: 20:00:00 })` and an **outbox** row `PostCreated(p-91)` in the **same transaction**, so the post never exists without its event.',
-          observe: 'p-91 is in the Post DB.',
-          say: 'The post is stored once, in the Post DB, together with an outbox event.',
-          focus: v => [v.pdb],
-          async run(s, v) {
-            await s.send(['post', 'postdb'], 'insert p-91 + outbox', TEAL);
-            chip(s, v.pdb, 'posts · p-91 (new) p-90 …', TEAL); await s.pulse(v.pdb);
-          },
-        },
-        {
-          title: '201 to A, PostCreated to Kafka',
-          text: 'A gets `201 { postId: "p-91" }` immediately: posting does **not** wait for any follower. The outbox relay publishes `{ postId: "p-91", author: "A", createdAt }` to `post-created`, key = author id.',
-          observe: 'A sees "posted"; the event is at offset 500.',
-          focus: v => [v.kaf, v.n.userA],
-          async run(s, v) {
-            await s.send(['post', 'gateway', 'userA'], '201 p-91', GREEN);
-            who(s, v, 'A', 'posted ✓', GREEN);
-            await s.send(['post', 'kafka'], 'PostCreated p-91', PURPLE);
-            chip(s, v.kaf, 'post-created · @500 p-91'); await s.pulse(v.kaf);
-          },
-        },
-        {
-          title: 'A fan-out worker reads A\'s followers',
-          text: 'A worker in consumer group `fanout` polls offset 500, then pages through `follows.find({ followee: "A" })` → **B, D, E**. For big accounts this is read in pages of 1 000.',
-          observe: 'Three followers.',
-          focus: v => [v.n.fanout, v.gr],
-          async run(s, v) {
-            await s.send(['kafka', 'fanout'], 'p-91 by A', PURPLE);
-            await s.send(['fanout', 'graph'], 'followers of A', TEAL);
-            chip(s, v.gr, 'A → B, D, E (3)', TEAL); await s.pulse(v.gr);
-          },
-        },
-        {
-          title: 'ZADD the id into each timeline, keep 800',
-          text: 'One Redis pipeline: `ZADD tl:B 1761249600 "p-91"` (score = createdAt) and `ZREMRANGEBYRANK tl:B 0 -801` for B, D and E. Only the **id** goes in, never the caption or image. Posting cost = number of followers.',
-          observe: 'p-91 is on top of tl:B.',
-          say: 'Fan-out on write puts the post id into every follower\'s sorted-set timeline, capped at 800.',
-          focus: v => [v.tl, v.fo],
-          async run(s, v) {
-            await s.send(['fanout', 'timeline'], 'ZADD ×3 + trim', RED);
-            chip(s, v.fo, 'ZADD tl:B tl:D tl:E ✓', PURPLE);
-            await onTop(s, v, 'p-91', P('p-91', 'A', '20:00', 'new'), 'NEW');
-          },
-        },
-        {
-          title: 'B opens the feed: one ZREVRANGE',
-          text: '`GET /feed?limit=20` → `ZREVRANGE tl:B 0 19 WITHSCORES`: the 20 newest ids, already sorted, from memory. No query across the 300 accounts B follows.',
-          observe: 'The Feed Service has 20 ids.',
-          focus: v => [v.tl, v.n.feed],
-          async run(s, v) {
-            who(s, v, 'B', 'loading…', AMBER);
-            await s.send(['userB', 'gateway', 'feed'], 'GET /feed', BLUE);
-            await s.send(['feed', 'timeline'], 'ZREVRANGE 0 19', RED);
-            await s.pulse(v.rows['p-91'], 1, 1.05);
-          },
-        },
-        {
-          title: 'Hydrate, rank, return a cursor',
-          text: '`posts.find({ _id: { $in: ids }, deleted: { $ne: true } })` fetches the content in **one batch**. Ranking scores the 20 candidates (recency, affinity, engagement). The response carries `nextCursor: "1761243600:p-70"`: score and id of the last item.',
-          observe: 'B sees A\'s sunset.',
-          say: 'The read is one sorted-set range, one batch hydrate from the Post DB, a rank and a cursor.',
-          focus: v => [v.n.userB, v.rows['p-91']],
-          async run(s, v) {
-            await s.send(['feed', 'postdb'], '$in [20 ids]', TEAL);
-            await s.send(['feed', 'ranker'], 'rank 20', AMBER);
-            await s.send(['feed', 'gateway', 'userB'], '200 + nextCursor', GREEN);
-            await put(s, v, 'p-91', P('p-91', 'A', '20:00', 'shown'), 'OK');
-            who(s, v, 'B', 'sees A\'s sunset ✓', GREEN);
-          },
-        },
-      ],
-    },
-    {
-      id: 'celeb', title: 'Celebrity posts', sub: '10 M ZADDs vs hybrid pull', color: AMBER,
-      build: (s, v) => setup(s, v, { c: 'posting · 10 M fans', b: 'follows C' }),
-      takeaway: 'Fan-out cost is proportional to follower count, and follower counts are extremely skewed. **Hybrid**: push for normal accounts (cheap reads), **pull** for celebrities above a threshold (cheap writes), and merge both at read time.',
-      steps: [
-        {
-          title: 'C posts; stored and published as usual',
-          text: 'Celebrity C (10 M followers) posts "New album!". The Post Service does exactly what it did for A: insert **p-92**, `PostCreated` to Kafka, `201` to C.',
-          observe: 'The event is on Kafka.',
-          focus: v => [v.kaf],
-          async run(s, v) {
-            await s.send(['userC', 'gateway', 'post'], 'POST /posts', BLUE);
-            await s.send(['post', 'postdb'], 'insert p-92', TEAL);
-            chip(s, v.pdb, 'posts · p-92 (C) p-90 …', TEAL);
-            await s.send(['post', 'kafka'], 'PostCreated p-92', PURPLE);
-            chip(s, v.kaf, 'post-created · @501 p-92'); who(s, v, 'C', 'posted ✓', GREEN);
-          },
-        },
-        {
-          title: '❌ Fan out to all 10 M followers',
-          text: 'The worker pages through **10 000 000** followers and starts `ZADD`ing. At ~100 k writes/s that is **~100 s** for one post, hot Redis shards, and most writes go to people who will not open the app today. Every post queued behind it on the partition waits too.',
-          observe: 'The fan-out worker is still writing.',
-          say: 'Fan-out on write for a celebrity means millions of writes for a single post.',
-          focus: v => [v.n.fanout, v.fo],
-          async run(s, v) {
-            await s.send(['kafka', 'fanout'], 'p-92 by C', PURPLE);
-            await s.send(['fanout', 'graph'], 'followers of C', TEAL);
-            chip(s, v.gr, 'C → 10,000,000', RED);
-            for (const n of ['1 M', '2 M', '3 M']) {
-              await s.send(['fanout', 'timeline'], 'ZADD ×1 M', RED, { ms: 300 });
-              chip(s, v.fo, `ZADD ${n} / 10 M …`, RED);
-            }
-            s.tone(v.n.fanout, 'warn');
-            chip(s, v.kaf, 'post-created · lag ↑', RED);
-          },
-        },
-        {
-          title: '❌ B refreshes: C\'s post is not there yet',
-          text: 'Ten seconds later B pulls to refresh. B\'s timeline has not been reached yet, so the post is missing; meanwhile A\'s and everyone\'s new posts are stuck behind the celebrity in Kafka.',
-          observe: 'B does not see C\'s post.',
-          focus: v => [v.n.userB, v.tl],
-          async run(s, v) {
-            tick(s, v, '20:00:10');
-            await s.send(['userB', 'gateway', 'feed'], 'GET /feed', BLUE);
-            await s.send(['feed', 'timeline'], 'ZREVRANGE 0 19', RED);
-            await s.send(['feed', 'gateway', 'userB'], '200 (no p-92)', AMBER);
-            who(s, v, 'B', 'no C post yet ✕', RED);
-          },
-        },
-        {
-          title: '✅ Rewind: skip fan-out for celebrities',
-          text: 'The worker checks the cached follower count: **10 M > 100 k** → no fan-out. It only does `ZADD recent:C <ts> "p-92"` (C\'s own short list of recent posts, capped at ~50). One write instead of ten million.',
-          observe: 'One ZADD, done in milliseconds.',
-          say: 'For celebrities we skip fan-out and keep only a small recent-posts list.',
-          focus: v => [v.n.fanout, v.tlc],
-          async run(s, v) {
-            s.tone(v.n.fanout, null); tick(s, v, '20:00:00');
-            chip(s, v.gr, 'A: 3 · C: 10 M followers', TEAL); chip(s, v.kaf, 'post-created · @501 p-92', PURPLE);
-            who(s, v, 'B', 'follows C');
-            await s.flash(960, 240, '10 M > 100 k → skip', { color: AMBER, stroke: AMBER }, 700);
-            await s.send(['fanout', 'timeline'], 'ZADD recent:C', PURPLE);
-            chip(s, v.fo, '1 write, not 10 M ✓', GREEN); chip(s, v.tlc, 'recent:C · p-92', PURPLE);
-            await s.pulse(v.tlc);
-          },
-        },
-        {
-          title: '✅ B\'s read pulls and merges',
-          text: 'The Feed Service reads `tl:B` (pushed posts) **and**, for each celebrity B follows (a cached list, usually a handful), `ZREVRANGE recent:C 0 9`, in one pipeline. It merges by score, hydrates and ranks. C\'s post is visible **immediately**.',
-          observe: 'p-92 appears on top, marked "pulled".',
-          say: 'At read time we merge the pushed timeline with the recent posts of followed celebrities: a hybrid model.',
-          focus: v => [v.rows['p-92'], v.n.userB],
-          async run(s, v) {
-            tick(s, v, '20:00:10');
-            await s.send(['userB', 'gateway', 'feed'], 'GET /feed', BLUE);
-            await s.send(['feed', 'timeline'], 'tl:B + recent:C', RED);
-            await onTop(s, v, 'p-92', P('p-92', 'C', '20:00', 'pulled'), 'PULL');
-            await s.send(['feed', 'postdb'], 'hydrate', TEAL);
-            await s.send(['feed', 'gateway', 'userB'], '200 [p-92 …]', GREEN);
-            who(s, v, 'B', 'sees C\'s post ✓', GREEN);
-          },
-        },
-      ],
-    },
-    {
-      id: 'page', title: 'Scroll to page 2', sub: 'offset duplicates vs cursor', color: TEAL,
-      build: (s, v) => setup(s, v, {
-        rows: [['pg1', 'p-91 … p-72 · page 1 (20)', 'OLD'], ['pg2', 'p-71 … p-52 · older', 'OLD']],
-        b: 'reading page 1',
-      }),
-      takeaway: 'A feed grows at the **top** while you scroll, so offsets shift. A **cursor** says "strictly older than the last item I saw" (`ZREVRANGEBYSCORE tl:B (score -inf`), which new posts cannot move. Tie-break equal scores with the post id; pull-to-refresh fetches the newer side.',
-      steps: [
-        {
-          title: 'B reads page 1',
-          text: '`ZREVRANGE tl:B 0 19` → p-91 … p-72. The response includes `nextCursor` = score of **p-72** (19:30:00) plus its id.',
-          observe: 'B has page 1 and a cursor.',
-          focus: v => [v.rows.pg1],
-          async run(s, v) {
-            await s.send(['userB', 'gateway', 'feed'], 'GET /feed', BLUE);
-            await s.send(['feed', 'timeline'], 'ZREVRANGE 0 19', RED);
-            await put(s, v, 'pg1', 'p-91 … p-72 · page 1 ✓', 'OK');
-            await s.send(['feed', 'gateway', 'userB'], '20 posts + cursor', GREEN);
-            who(s, v, 'B', 'read page 1 ✓', GREEN);
-          },
-        },
-        {
-          title: 'Three new posts land on top',
-          text: 'While B is reading, fan-out adds **p-93, p-94, p-95** to `tl:B`. Everything that was at position 0–19 is now at 3–22.',
-          observe: 'Three new rows above page 1.',
-          focus: v => [v.tl],
-          async run(s, v) {
-            tick(s, v, '20:02:00');
-            await s.send(['kafka', 'fanout', 'timeline'], 'ZADD p-93..95', RED);
-            for (const id of ['p-93', 'p-94', 'p-95']) await onTop(s, v, id, P(id, 'D', '20:02', 'new'), 'NEW');
-          },
-        },
-        {
-          title: '❌ Offset pagination: page 2 = skip 20',
-          text: '`GET /feed?page=2` → `ZREVRANGE tl:B 20 39`. Positions moved, so it returns **p-74, p-73, p-72** again before p-71. B sees three posts twice. (Deletes cause the opposite: skipped posts.)',
-          observe: 'Page 2 starts with the last 3 posts of page 1.',
-          say: 'Offset pages shift when new posts arrive at the top, so users see duplicates.',
-          focus: v => [v.rows.pg1, v.n.userB],
-          async run(s, v) {
-            await s.send(['userB', 'gateway', 'feed'], '?page=2', BLUE);
-            await s.send(['feed', 'timeline'], 'ZREVRANGE 20 39', RED);
-            await put(s, v, 'pg1', 'p-74 p-73 p-72 · again ✕', 'BAD');
-            await s.send(['feed', 'gateway', 'userB'], 'p-74 … (dups)', RED);
-            who(s, v, 'B', 'sees 3 posts twice ✕', RED);
-          },
-        },
-        {
-          title: '✅ Rewind: continue below the cursor',
-          text: '`ZREVRANGEBYSCORE tl:B (19:30:00 -inf LIMIT 0 20`: the `(` makes the bound **exclusive**, so it starts strictly after p-72, whatever was added on top. Equal scores are tie-broken by post id inside the cursor.',
-          observe: 'Page 2 is p-71 … p-52, no repeats.',
-          say: 'Cursor pagination asks for items strictly older than the last one seen, so new posts never cause duplicates.',
-          focus: v => [v.rows.pg2, v.n.userB],
-          async run(s, v) {
-            await put(s, v, 'pg1', 'p-91 … p-72 · page 1 ✓', 'OK');
-            who(s, v, 'B', 'read page 1 ✓', GREEN);
-            await s.send(['userB', 'gateway', 'feed'], '?cursor=19:30:00:p-72', BLUE);
-            await s.send(['feed', 'timeline'], 'BYSCORE (cursor', RED);
-            await put(s, v, 'pg2', 'p-71 … p-52 · page 2 ✓', 'OK');
-            await s.send(['feed', 'gateway', 'userB'], 'p-71 … p-52', GREEN);
-            who(s, v, 'B', 'page 2, no repeats ✓', GREEN);
-          },
-        },
-        {
-          title: 'Pull to refresh: the newer side',
-          text: 'The app also remembers the **first** score it has (p-91). Pull-to-refresh asks for `ZRANGEBYSCORE tl:B (20:00:00 +inf`, gets p-93…p-95 and puts them on top. The downside of cursors: no "jump to page 37", which a feed never needs.',
-          observe: 'B gets exactly the 3 new posts.',
-          focus: v => [v.rows['p-95'], v.n.userB],
-          async run(s, v) {
-            await s.send(['userB', 'gateway', 'feed'], 'refresh > p-91', BLUE);
-            await s.send(['feed', 'timeline'], 'newer than p-91', RED);
-            for (const id of ['p-95', 'p-94', 'p-93']) await put(s, v, id, P(id, 'D', '20:02', 'shown'), 'OK');
-            await s.send(['feed', 'gateway', 'userB'], '[p-95, p-94, p-93]', GREEN);
-            who(s, v, 'B', '3 new on top ✓', GREEN);
-          },
-        },
-      ],
-    },
-    {
-      id: 'delete', title: 'A deletes a post', sub: 'timelines hold ids, not copies', color: RED,
-      build: (s, v) => setup(s, v, {
-        rows: [['p-91', P('p-91', 'A', '20:00'), 'OLD'], ...TL0],
-        pdb: 'posts · p-91 live', a: 'regrets p-91', b: 'will refresh',
-      }),
-      takeaway: 'Timelines store **ids**; content lives **once** in the Post DB and is read at hydration. A delete or edit is one write there and shows on the next refresh. Removing the id from millions of timelines is a background cleanup, not a correctness requirement.',
-      steps: [
-        {
-          title: 'A deletes p-91',
-          text: '`DELETE /posts/p-91` → `posts.updateOne({ _id: "p-91" }, { $set: { deleted: true, deletedAt: now } })`: a **soft delete**, so moderation and restores still work.',
-          observe: 'Post DB marks p-91 deleted.',
-          focus: v => [v.pdb],
-          async run(s, v) {
-            tick(s, v, '20:05:00');
-            await s.send(['userA', 'gateway', 'post'], 'DELETE p-91', BLUE);
-            await s.send(['post', 'postdb'], 'deleted: true', TEAL);
-            chip(s, v.pdb, 'posts · p-91 deleted', RED); await s.pulse(v.pdb);
-            await s.send(['post', 'gateway', 'userA'], '204', GREEN);
-            who(s, v, 'A', 'deleted ✓', GREEN);
-          },
-        },
-        {
-          title: 'B refreshes; the timeline still lists p-91',
-          text: 'p-91 was fanned out to A\'s followers, so `ZREVRANGE tl:B 0 19` still returns it. What the read path does next decides what B sees.',
-          observe: 'p-91 is still in tl:B.',
-          focus: v => [v.rows['p-91']],
-          async run(s, v) {
-            await s.send(['userB', 'gateway', 'feed'], 'GET /feed', BLUE);
-            await s.send(['feed', 'timeline'], 'ZREVRANGE 0 19', RED);
-            await put(s, v, 'p-91', P('p-91', 'A', '20:00', 'still listed'), 'NEW');
-          },
-        },
-        {
-          title: '❌ If timelines held full copies',
-          text: 'Had fan-out copied `{ caption: "Sunset", media }` into every timeline, the Feed Service would serve the copy and B would **still see the deleted post**. Edits would never show either, until millions of copies were rewritten. Copies also multiply memory per follower.',
-          observe: 'B still sees the deleted post.',
-          say: 'Copies in timelines go stale on every edit or delete.',
-          focus: v => [v.n.userB],
-          async run(s, v) {
-            await s.flash(960, 240, 'copy: "Sunset" …', bad, 700);
-            await s.send(['feed', 'gateway', 'userB'], '200 [p-91 "Sunset"]', RED);
-            who(s, v, 'B', 'still sees it ✕', RED);
-          },
-        },
-        {
-          title: '✅ Rewind: hydrate ids from the Post DB',
-          text: 'Timelines hold only ids, so the Feed Service hydrates: `posts.find({ _id: { $in: ids }, deleted: { $ne: true } })`. p-91 is **dropped**; edits are read fresh the same way. If that leaves the page short, it reads a few more ids.',
-          observe: 'p-91 is filtered out; B gets p-90, p-88 …',
-          say: 'Timelines hold ids only; hydration from the Post DB filters deleted posts and shows edits.',
-          focus: v => [v.rows['p-91'], v.n.userB],
-          async run(s, v) {
-            who(s, v, 'B', 'will refresh');
-            await s.send(['feed', 'postdb'], '$in, deleted ≠ true', TEAL);
-            await put(s, v, 'p-91', P('p-91', 'A', '20:00', 'dropped'), 'BAD');
-            await s.send(['feed', 'gateway', 'userB'], '200 [p-90, p-88 …]', GREEN);
-            who(s, v, 'B', 'post is gone ✓', GREEN);
-          },
-        },
-        {
-          title: 'Background cleanup',
-          text: 'The Post Service also emits `PostDeleted`; a worker `ZREM`s p-91 from followers\' timelines in the background. Nice for memory and page sizes, but users were already safe because of hydration.',
-          observe: 'p-91 leaves tl:B.',
-          focus: v => [v.tl],
-          async run(s, v) {
-            await s.send(['post', 'kafka', 'fanout'], 'PostDeleted p-91', PURPLE);
-            await s.send(['fanout', 'timeline'], 'ZREM p-91', RED);
-            chip(s, v.fo, 'ZREM tl:B tl:D tl:E ✓', PURPLE);
-            await drop(s, v, 'p-91');
-          },
-        },
-      ],
-    },
-    {
-      id: 'rebuild', title: 'Back after 60 days', sub: 'timeline miss → rebuild by pull', color: GREEN,
-      build: (s, v) => setup(s, v, { rows: [], clock: '09:00:00', tl: 'tl:B · (expired)', b: 'back after 60 days', gr: 'B follows 300' }),
-      takeaway: 'Timelines are a **cache**: fan-out only writes timelines of **active** users and idle ones expire. A miss is rebuilt by **pulling** recent posts of the accounts B follows, then the timeline is cached again. Cost: one slower first load, never lost data.',
-      steps: [
-        {
-          title: 'B opens the app: no timeline',
-          text: '`ZREVRANGE tl:B 0 19` → **empty**. B has been inactive for 60 days; `tl:B` expired after 30 (TTL refreshed on each read), and fan-out skips inactive followers, so nothing refilled it.',
-          observe: 'Cache miss for tl:B.',
-          say: 'Inactive users\' timelines expire to save memory; fan-out skips them.',
-          focus: v => [v.tlc, v.tl],
-          async run(s, v) {
-            who(s, v, 'B', 'loading…', AMBER);
-            await s.send(['userB', 'gateway', 'feed'], 'GET /feed', BLUE);
-            await s.send(['feed', 'timeline'], 'ZREVRANGE tl:B', RED);
-            await s.send(['timeline', 'feed'], '(empty)', GREY);
-            await s.flash(685, 220, 'MISS', bad, 600);
-          },
-        },
-        {
-          title: 'Take a rebuild lock, read who B follows',
-          text: '`SET rebuild:B 1 NX EX 10` so two app tabs do not rebuild twice. Then the follow graph: `follows.find({ follower: "B" })` → **300 accounts** (and which of them are celebrities).',
-          observe: 'B follows 300 accounts.',
-          focus: v => [v.gr],
-          async run(s, v) {
-            await s.send(['feed', 'graph'], 'following of B', TEAL);
-            chip(s, v.gr, 'B → 300 accounts', TEAL); await s.pulse(v.gr);
-          },
-        },
-        {
-          title: 'Pull their recent posts (fan-out on read)',
-          text: '`posts.find({ author: { $in: following }, createdAt: { $gt: now - 7d }, deleted: { $ne: true } }).sort({ createdAt: -1 }).limit(800)`, served by the index `{ author, createdAt }`. This is exactly what every read would cost without precomputed timelines.',
-          observe: 'Up to 800 recent post ids.',
-          say: 'On a miss we rebuild the timeline by pulling recent posts from the accounts the user follows.',
-          focus: v => [v.pdb],
-          async run(s, v) {
-            await s.send(['feed', 'postdb'], 'author $in 300 · 7 d', TEAL);
-            chip(s, v.pdb, '800 recent posts', TEAL); await s.pulse(v.pdb);
-          },
-        },
-        {
-          title: 'Cache the rebuilt timeline',
-          text: '`ZADD tl:B …800 ids…` then `EXPIRE tl:B 2592000` (30 days, refreshed on every read). B is marked **active** again, so fan-out resumes writing to `tl:B` from now on.',
-          observe: 'tl:B exists again.',
-          focus: v => [v.tl, v.tlc],
-          async run(s, v) {
-            await s.send(['feed', 'timeline'], 'ZADD 800 + EXPIRE', RED);
-            await onTop(s, v, 'more', '… 797 more ids', 'OLD');
-            for (const [id, by, t] of [['p-55', 'A', 'yday'], ['p-58', 'D', '08:12'], ['p-60', 'E', '08:40']]) await onTop(s, v, id, P(id, by, t), 'OK');
-            chip(s, v.tlc, 'tl:B · 800 ids · TTL 30 d', RED);
-          },
-        },
-        {
-          title: 'Rank and respond (slower first load)',
-          text: 'Hydrate the first 20, rank, return with a cursor. This first load takes **~300 ms** instead of ~30 ms; every later read hits the cache again.',
-          observe: 'B sees a fresh feed.',
-          focus: v => [v.n.userB],
-          async run(s, v) {
-            await s.send(['feed', 'ranker'], 'rank 20', AMBER);
-            await s.send(['feed', 'gateway', 'userB'], '200 · ~300 ms', GREEN);
-            who(s, v, 'B', 'feed loaded ✓', GREEN);
-          },
-        },
-      ],
-    },
-    {
-      id: 'crash', title: 'Fan-out worker crashes', sub: 'Kafka offsets · idempotent ZADD', color: PURPLE,
-      build: (s, v) => setup(s, v, { kaf: 'committed @499', fo: 'worker-1 · idle', gr: 'A → B, D, E (3)' }),
-      takeaway: 'Workers **commit the Kafka offset only after** all timelines are written. A crash means the event is consumed again: **at-least-once**. Because the score comes from the event and a sorted-set member is unique, re-running `ZADD` changes nothing: **idempotent**, so the end result is exactly once.',
-      steps: [
-        {
-          title: 'A posts p-91; the event is at offset 500',
-          text: 'Same write path as before: stored, `201`, `PostCreated` at offset **500**. The group\'s committed offset is still **499**.',
-          observe: 'Offset 500 waits to be processed.',
-          focus: v => [v.kaf],
-          async run(s, v) {
-            await s.send(['userA', 'gateway', 'post'], 'POST /posts', BLUE);
-            await s.send(['post', 'postdb'], 'insert p-91', TEAL);
-            await s.send(['post', 'kafka'], 'PostCreated p-91', PURPLE);
-            chip(s, v.kaf, '@500 p-91 · committed @499', PURPLE); await s.pulse(v.kaf);
-          },
-        },
-        {
-          title: 'Worker-1 writes tl:B and tl:D …',
-          text: 'Worker-1 polls offset 500, reads followers B, D, E and starts the pipeline: `ZADD tl:B 1761249600 "p-91"`, `ZADD tl:D …`.',
-          observe: 'p-91 is in tl:B.',
-          focus: v => [v.tl, v.fo],
-          async run(s, v) {
-            await s.send(['kafka', 'fanout'], '@500 p-91', PURPLE);
-            await s.send(['fanout', 'timeline'], 'ZADD tl:B, tl:D', RED);
-            chip(s, v.fo, 'worker-1 · B ✓ D ✓ E …', PURPLE);
-            await onTop(s, v, 'p-91', P('p-91', 'A', '20:00', 'new'), 'NEW');
-          },
-        },
-        {
-          title: '… and crashes before tl:E and the commit',
-          text: 'The pod is OOM-killed. tl:E never got p-91 and the offset was **not committed**. If we had committed on receipt (auto-commit before processing), E would **never** see the post.',
-          observe: 'Worker-1 is down; committed offset is still 499.',
-          say: 'Commit the Kafka offset only after the fan-out is done.',
-          focus: v => [v.n.fanout, v.kaf],
-          async run(s, v) {
-            s.tone(v.n.fanout, 'fail'); s.setSub(v.n.fanout, '✕ worker-1 crashed', RED);
-            await s.shake(v.n.fanout);
-            chip(s, v.fo, 'E missing · no commit', RED);
-            chip(s, v.kaf, '@500 p-91 · committed @499', RED);
-          },
-        },
-        {
-          title: 'Rebalance: worker-2 re-reads offset 500',
-          text: 'The consumer group rebalances; worker-2 takes the partition and starts from the last committed offset, **499 + 1 = 500**. p-91 is processed a second time.',
-          observe: 'The same event is delivered again.',
-          focus: v => [v.n.fanout],
-          async run(s, v) {
-            tick(s, v, '20:00:12');
-            s.tone(v.n.fanout, null); s.setSub(v.n.fanout, 'worker-2 took over', PURPLE);
-            await s.send(['kafka', 'fanout'], '@500 again', AMBER);
-            chip(s, v.fo, 'worker-2 · replay @500', AMBER);
-          },
-        },
-        {
-          title: 'Replay is harmless: ZADD is idempotent',
-          text: '`ZADD tl:B 1761249600 "p-91"` again: the member already exists with the same score → **0 added**, no duplicate. tl:E finally gets it. Then the offset is committed. The score must come from the **event\'s createdAt**, not `now()`, or replays would reorder posts.',
-          observe: 'tl:B unchanged, tl:E filled, committed @500.',
-          say: 'At-least-once delivery plus an idempotent ZADD gives an exactly-once result.',
-          focus: v => [v.rows['p-91'], v.kaf],
-          async run(s, v) {
-            await s.send(['fanout', 'timeline'], 'ZADD B, D, E', RED);
-            await s.flash(960, 240, 'tl:B: 0 added', ok, 700);
-            await put(s, v, 'p-91', P('p-91', 'A', '20:00', 'once'), 'OK');
-            chip(s, v.fo, 'B = D ✓ (no dup) · E ✓', GREEN);
-            await s.send(['fanout', 'kafka'], 'commit @500', GREEN);
-            chip(s, v.kaf, 'committed @500 ✓', GREEN);
-          },
-        },
-      ],
-    },
-  ],
 
+// =====================================================================
+// rendering
+// =====================================================================
+const svg = document.getElementById('dia');
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const box = id => { const n = NODES[id]; return { l: n.x - 75, r: n.x + 75, t: n.y - 56, b: n.y + 56 }; };
+
+function edgePath(a, b) {
+  const A = NODES[a], B = NODES[b], dx = B.x - A.x, dy = B.y - A.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const s = Math.sign(dx) || 1, x1 = A.x + 75 * s, x2 = B.x - 75 * s, mx = (x1 + x2) / 2;
+    return { d: `M${x1} ${A.y} C${mx} ${A.y} ${mx} ${B.y} ${x2} ${B.y}`, horiz: true };
+  }
+  const s = Math.sign(dy) || 1, y1 = A.y + 56 * s, y2 = B.y - 56 * s, my = (y1 + y2) / 2;
+  return { d: `M${A.x} ${y1} C${A.x} ${my} ${B.x} ${my} ${B.x} ${y2}`, horiz: false };
+}
+
+function buildSvg() {
+  let s = `<defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#eef1f5"/></pattern>
+    <filter id="glow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect id="bg" x="-2000" y="-1200" width="5600" height="3000" fill="url(#grid)"/>`;
+  // zones: grouped by developer role (solid = outside our code, dashed = our backend)
+  for (const z of ZONES) {
+    const [f, st, lc] = ZT[z.t];
+    s += `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="18" fill="${f}" stroke="${st}" stroke-width="1.6"${z.dash ? ' stroke-dasharray="7 5"' : ''}/>`;
+    s += `<text class="zl" x="${z.x + 16}" y="${z.y + 24}" style="fill:${lc}">${esc(z.label)}</text>`;
+    if (z.cap) s += `<text class="nl" x="${z.x + 16}" y="${z.y + 41}" style="fill:${lc};opacity:.75">${esc(z.cap)}</text>`;
+  }
+  // edges + labels
+  s += '<g id="edges">';
+  EDGE_DEFS.forEach(([a, b], i) => { s += `<path class="edge" id="e${i}" d="${edgePath(a, b).d}"/>`; });
+  s += '</g><g id="elabels"></g><g id="ripples"></g><g id="nodes">';
+  // nodes
+  for (const [id, n] of Object.entries(NODES)) {
+    const [bg, st] = PAL[id];
+    let dots = '';
+    const r = n.replicas || 0;
+    for (let k = 0; k < r; k++) dots += `<circle cx="${75 + (k - (r - 1) / 2) * 10}" cy="104" r="3.2" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>`;
+    s += `<g class="node" data-id="${id}" transform="translate(${n.x - 75},${n.y - 56})">
+      <rect class="sel" x="-6" y="-6" width="162" height="124" rx="18" fill="none" stroke="#0b5cff" stroke-width="2" stroke-dasharray="6 5" opacity="0"/>
+      <rect class="card" width="150" height="112" rx="14" fill="${bg}" stroke="${st}" stroke-width="1.6"/>
+      <rect x="49" y="8" width="52" height="52" rx="12" fill="#fff" opacity=".85"/>
+      <g transform="translate(52.9,11.9) scale(.92)">${LOGO[id]}</g>
+      <text class="nlab" x="75" y="78">${esc(n.label)}</text>
+      <text class="nsub" x="75" y="95">${esc(n.sub)}</text>${dots}
+      <g class="tag" style="display:none"><rect y="-11" height="20" rx="10"/><text y="3.5"></text></g>
+    </g>`;
+  }
+  s += '</g><g id="packets"></g>';
+  svg.innerHTML = s;
+}
+buildSvg();
+
+const EDGES = EDGE_DEFS.map(([a, b, label], i) => {
+  const el = document.getElementById('e' + i);
+  return { a, b, label, el, len: el.getTotalLength(), hot: 0, horiz: edgePath(a, b).horiz };
+});
+// protocol labels at the path midpoint: above horizontal edges, right of vertical ones
+(function labels() {
+  const g = document.getElementById('elabels');
+  for (const e of EDGES) {
+    const p = e.el.getPointAtLength(e.len / 2);
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('class', 'elbl');
+    if (e.horiz) { t.setAttribute('x', p.x); t.setAttribute('y', p.y - 8); t.setAttribute('text-anchor', 'middle'); }
+    else { t.setAttribute('x', p.x + 8); t.setAttribute('y', p.y + 4); }
+    t.textContent = e.label;
+    g.appendChild(t);
+  }
+})();
+const NODE_EL = {};
+document.querySelectorAll('.node').forEach(g => { NODE_EL[g.dataset.id] = { g, act: 0, tagTok: 0 }; });
+
+// =====================================================================
+// engine: one rAF loop, own timer queue, everything scaled by speed
+// =====================================================================
+let speed = 1, paused = false, GEN = 0, current = 'post', view = 'flow';
+let timers = [], packets = [], ripples = [], dashOffset = 0, flows = 0;
+const stats = { req: 0, hit: 0, evt: 0, res: 0 };
+const STAT_EL = { req: document.getElementById('stReq'), hit: document.getElementById('stHit'), evt: document.getElementById('stEvt'), res: document.getElementById('stRes') };
+
+function wait(sec, cb) { timers.push({ t: sec, cb, gen: GEN }); }
+const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function bump(k, n = 1) { stats[k] += n; STAT_EL[k].textContent = stats[k]; }
+
+function findEdge(from, to) {
+  for (const e of EDGES) {
+    if (e.a === from && e.b === to) return { e, rev: false };
+    if (e.a === to && e.b === from) return { e, rev: true };
+  }
+  throw new Error('no edge ' + from + ' -> ' + to);
+}
+function heat(e, color) { e.hot++; e.el.classList.add('hot'); e.el.style.stroke = color; }
+function cool(e) { e.hot = Math.max(0, e.hot - 1); if (!e.hot) { e.el.classList.remove('hot'); e.el.style.stroke = ''; } }
+
+function activate(id, sec) {
+  const n = NODE_EL[id]; n.act++; n.g.classList.add('active');
+  wait(sec, () => { n.act = Math.max(0, n.act - 1); if (!n.act) n.g.classList.remove('active'); });
+}
+function ripple(id) {
+  const b = box(id), el = document.createElementNS(NS, 'rect');
+  el.setAttribute('rx', 16); el.setAttribute('fill', 'none'); el.setAttribute('stroke', PAL[id][1]); el.setAttribute('stroke-width', 2.5);
+  document.getElementById('ripples').appendChild(el);
+  ripples.push({ el, b, age: 0 });
+}
+function showTag(id, text, color, sec) {
+  const n = NODE_EL[id], tag = n.g.querySelector('.tag'), r = tag.querySelector('rect'), t = tag.querySelector('text');
+  const w = Math.max(34, text.length * 6.3 + 16);
+  t.textContent = text; r.setAttribute('width', w); r.setAttribute('x', 152 - w); r.setAttribute('fill', color);
+  t.setAttribute('x', 152 - w / 2); tag.setAttribute('transform', 'translate(0,0)');
+  tag.style.display = '';
+  const tok = ++n.tagTok;
+  wait(sec, () => { if (n.tagTok === tok) tag.style.display = 'none'; });
+}
+
+function spawn(from, to, kind, tag, onArrive) {
+  const { e, rev } = findEdge(from, to), color = KIND[kind];
+  const g = document.createElementNS(NS, 'g');
+  const trail = [];
+  for (let i = 0; i < 6; i++) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('r', 6 - i * 0.8); c.setAttribute('fill', color); c.setAttribute('opacity', (0.35 - i * 0.05).toFixed(2));
+    c.style.display = 'none'; g.appendChild(c); trail.push(c);
+  }
+  const head = document.createElementNS(NS, 'circle');
+  head.setAttribute('r', 7.5); head.setAttribute('fill', color); head.setAttribute('stroke', '#fff'); head.setAttribute('stroke-width', 2); head.setAttribute('filter', 'url(#glow)');
+  g.appendChild(head);
+  let txt = null;
+  if (tag) { txt = document.createElementNS(NS, 'text'); txt.setAttribute('class', 'ptag'); txt.setAttribute('fill', color); txt.textContent = tag; g.appendChild(txt); }
+  document.getElementById('packets').appendChild(g);
+  heat(e, color);
+  if (CLIENTS.has(from) && kind === 'request') bump('req');
+  const p = { e, rev, kind, to, dist: 0, hist: [], g, head, trail, txt, onArrive };
+  packets.push(p);
+  place(p, 0);
+}
+function place(p, t) {
+  const { e } = p, len = e.len;
+  let s = ease(t) * len; if (p.rev) s = len - s;
+  const a = e.el.getPointAtLength(s);
+  const b = s + 1 <= len ? e.el.getPointAtLength(s + 1) : e.el.getPointAtLength(s - 1);
+  let tx = b.x - a.x, ty = b.y - a.y; if (s + 1 > len) { tx = -tx; ty = -ty; }
+  const m = Math.hypot(tx, ty) || 1, off = p.rev ? -6 : 6;
+  const x = a.x + (-ty / m) * off, y = a.y + (tx / m) * off;
+  p.hist.unshift([x, y]); if (p.hist.length > 24) p.hist.pop();
+  p.head.setAttribute('cx', x); p.head.setAttribute('cy', y);
+  p.trail.forEach((c, i) => {
+    const h = p.hist[(i + 1) * 3];
+    if (h) { c.style.display = ''; c.setAttribute('cx', h[0]); c.setAttribute('cy', h[1]); } else c.style.display = 'none';
+  });
+  if (p.txt) { p.txt.setAttribute('x', x); p.txt.setAttribute('y', y - 13); }
+}
+function arrive(p) {
+  p.g.remove(); cool(p.e);
+  activate(p.to, 0.45); ripple(p.to);
+  if (p.to === 'kafka' && p.kind === 'event') bump('evt');
+  if (CLIENTS.has(p.to) && (p.kind === 'response' || p.kind === 'error')) bump('res');
+  p.onArrive && p.onArrive();
+}
+
+function update(k) {
+  dashOffset -= 40 * k;
+  for (const e of EDGES) if (!e.hot) e.el.style.strokeDashoffset = dashOffset;
+  // timers
+  for (const tm of timers) tm.t -= k;
+  const due = timers.filter(tm => tm.t <= 0);
+  if (due.length) { timers = timers.filter(tm => tm.t > 0); due.forEach(tm => { if (tm.gen === GEN) tm.cb(); }); }
+  // packets
+  const done = [];
+  for (const p of packets) {
+    p.dist += 260 * k;
+    const t = Math.min(1, p.dist / p.e.len);
+    place(p, t);
+    if (t >= 1) done.push(p);
+  }
+  if (done.length) { packets = packets.filter(p => !done.includes(p)); done.forEach(arrive); }
+  // ripples: grow ~14px and fade over 0.5s
+  ripples = ripples.filter(r => {
+    r.age += k;
+    const q = r.age / 0.5;
+    if (q >= 1) { r.el.remove(); return false; }
+    const g = 14 * q;
+    r.el.setAttribute('x', r.b.l - g); r.el.setAttribute('y', r.b.t - g);
+    r.el.setAttribute('width', 150 + 2 * g); r.el.setAttribute('height', 112 + 2 * g);
+    r.el.setAttribute('opacity', (1 - q).toFixed(3));
+    return true;
+  });
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused && view === 'flow') update(dt * speed);
+  requestAnimationFrame(frame);
+}
+
+// ---------------- step runner ----------------
+// o.footer: top-level scenario (updates footer, reading pauses); o.fast: live mode (short pauses, no packet tags)
+function runFlow(steps, o) {
+  let i = 0;
+  const next = () => {
+    if (i >= steps.length) { o.done && o.done(); return; }
+    const st = steps[i];
+    if (o.footer) showStep(i, steps.length, st);
+    i++;
+    exec(st, o, next);
+  };
+  next();
+}
+function exec(st, o, next) {
+  if (st.type === 'hop') {
+    // fan-out / fan-in: an array on one side = one packet per pair, all at once; otherwise `count` packets 0.25 s apart
+    const fan = Array.isArray(st.to) ? st.to.map(t => [st.from, t]) : Array.isArray(st.from) ? st.from.map(f => [f, st.to]) : null;
+    const pairs = fan || Array.from({ length: st.count || 1 }, () => [st.from, st.to]);
+    const n = pairs.length; let got = 0;
+    pairs.forEach(([from, to], k) => {
+      const kind = st.kinds ? st.kinds[k] : st.kind;
+      const tag = o.fast ? null : (st.tags ? st.tags[k] : st.tag);
+      const fire = () => spawn(from, to, kind, tag, () => { if (++got === n) wait(o.footer ? 1.1 : 0.08, next); });
+      if (k && !fan) wait(k * 0.25, fire); else fire();
+    });
+  } else if (st.type === 'node') {
+    const d = o.fast ? Math.max(0.25, (st.dur || 2.2) * 0.3) : (o.footer ? (st.dur || 2.4) : (st.dur || 1));
+    [].concat(st.id).forEach((id, k) => {
+      activate(id, d); ripple(id);
+      const tag = st.tags ? st.tags[k] : st.tag;
+      if (tag) showTag(id, tag, st.tagColor || '#0b5cff', d + (o.fast ? 0.15 : 0.6));
+    });
+    if (st.stat === 'hit') bump('hit');
+    wait(d, next);
+  } else if (st.type === 'fork') {
+    runFlow(st.steps, { fast: o.fast });
+    wait(o.footer ? 2.0 : 0.05, next);
+  }
+}
+
+// ---------------- footer ----------------
+const badge = document.getElementById('badge'), fTitle = document.getElementById('ftitle'), fProto = document.getElementById('fproto'), fText = document.getElementById('ftext'), dotsEl = document.getElementById('dots');
+function buildDots(n) { dotsEl.innerHTML = '<i></i>'.repeat(n); }
+function showStep(i, total, st) {
+  badge.className = ''; badge.textContent = `${i + 1}/${total}`;
+  fTitle.textContent = st.title; fProto.textContent = st.proto || '';
+  fText.textContent = st.text || ''; fText.title = st.text || '';
+  [...dotsEl.children].forEach((d, k) => d.classList.toggle('on', k <= i));
+}
+
+// ---------------- scenarios / live ----------------
+function reset() {
+  GEN++;
+  timers = [];
+  packets.forEach(p => p.g.remove()); packets = [];
+  ripples.forEach(r => r.el.remove()); ripples = [];
+  EDGES.forEach(e => { e.hot = 0; e.el.classList.remove('hot'); e.el.style.stroke = ''; });
+  Object.values(NODE_EL).forEach(n => { n.act = 0; n.g.classList.remove('active'); n.g.querySelector('.tag').style.display = 'none'; });
+  flows = 0;
+  for (const k in stats) { stats[k] = 0; STAT_EL[k].textContent = 0; }
+}
+function start(id) {
+  current = id;
+  document.querySelectorAll('#scSeg button').forEach(b => b.classList.toggle('on', b.dataset.sc === id));
+  reset();
+  if (id === 'live') startLive(); else runMain(id);
+}
+function runMain(id) {
+  const steps = SCEN[id].steps;
+  buildDots(steps.length);
+  runFlow(steps, {
+    footer: true,
+    done: () => {
+      badge.className = ''; badge.textContent = '✓';
+      fTitle.textContent = '✓ Journey complete'; fProto.textContent = SCEN[id].name;
+      fText.textContent = 'Looping in 2.5 s · press R to replay now, or pick another scenario.'; fText.title = '';
+      wait(2.5, () => runMain(id));
+    },
+  });
+}
+function pickMix() {
+  let r = Math.random();
+  for (const [id, w] of LIVE_MIX) { if ((r -= w) <= 0) return id; }
+  return 'read';
+}
+function startLive() {
+  dotsEl.innerHTML = '';
+  badge.className = 'live'; badge.textContent = 'LIVE';
+  fTitle.textContent = 'Live mixed traffic'; fProto.textContent = '55% feed read · 30% normal post · 15% celebrity post';
+  const tick = () => {
+    if (flows < 14) {
+      const id = pickMix(); flows++;
+      runFlow(SCEN[id].steps, { fast: true, done: () => { flows--; } });
+    }
+    wait(0.55 + Math.random() * 0.6, tick);
+  };
+  const info = () => {
+    const hr = Math.round(100 * stats.hit / Math.max(1, stats.req));
+    fText.textContent = `${flows} flows and ${packets.length} packets in flight · reads hit precomputed timelines while posts fan out through Kafka → ZADD; celebrities only touch recent:C · timeline hits/requests ≈ ${hr}%`;
+    fText.title = '';
+    wait(0.5, info);
+  };
+  tick(); info();
+}
+
+// ---------------- drawer ----------------
+const drawer = document.getElementById('drawer');
+let selected = null;
+function openDrawer(id) {
+  const n = NODES[id], inf = INFO[id], [bg, st] = PAL[id];
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = id; NODE_EL[id].g.querySelector('.sel').setAttribute('opacity', 1);
+  document.getElementById('dHead').style.background = bg;
+  document.getElementById('dHead').style.borderBottomColor = st;
+  document.getElementById('dLogo').innerHTML = `<svg width="44" height="44" viewBox="0 0 48 48">${LOGO[id]}</svg>`;
+  document.getElementById('dTitle').textContent = n.label;
+  document.getElementById('dTag').textContent = inf.tag;
+  const body = document.getElementById('dBody');
+  const core = CORE[id];
+  body.innerHTML = `<div>${inf.desc}</div><h4>Key points</h4><ul>${inf.points.map(p => `<li>${p}</li>`).join('')}</ul><h4>Example</h4><pre></pre>`
+    + (core ? `<a class="core-link" href="00_Core_Components.html#${core[0]}/what">🧩 Basics: ${esc(core[1])} in Core Components →</a>` : '');
+  body.querySelector('pre').textContent = inf.code;
+  body.scrollTop = 0;
+  drawer.classList.add('open'); drawer.setAttribute('aria-hidden', 'false');
+}
+function closeDrawer() {
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = null; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true');
+}
+svg.addEventListener('click', ev => {
+  const g = ev.target.closest('.node');
+  if (g) openDrawer(g.dataset.id); else closeDrawer();
+});
+document.getElementById('dClose').onclick = closeDrawer;
+
+// ---------------- legend popover ----------------
+const legendPop = document.getElementById('legendPop'), legendBtn = document.getElementById('legendBtn');
+document.getElementById('lgKinds').innerHTML = Object.entries(KIND).map(([k, c]) => `<span><i style="--c:${c}"></i>${k}</span>`).join('');
+const legendOpen = () => legendPop.classList.contains('open');
+function setLegend(open) {
+  if (open) {   // point the little arrow at the button
+    const r = legendBtn.getBoundingClientRect();
+    legendPop.style.setProperty('--arrow', Math.max(12, window.innerWidth - 16 - (r.left + r.width / 2) - 6) + 'px');
+  }
+  legendPop.classList.toggle('open', open);
+  legendBtn.classList.toggle('on', open);
+  legendBtn.setAttribute('aria-expanded', open);
+}
+legendBtn.addEventListener('click', () => setLegend(!legendOpen()));
+document.addEventListener('mousedown', ev => {
+  if (legendOpen() && !legendPop.contains(ev.target) && !legendBtn.contains(ev.target)) setLegend(false);
+});
+
+// ---------------- controls ----------------
+function setSpeed(v) { speed = v; document.querySelectorAll('#spSeg button').forEach(b => b.classList.toggle('on', +b.dataset.sp === v)); }
+function togglePause() { paused = !paused; document.getElementById('pauseBtn').textContent = paused ? '▶ Play' : '⏸ Pause'; }
+document.querySelectorAll('header button').forEach(b => b.addEventListener('click', () => b.blur()));
+document.querySelectorAll('#scSeg button').forEach(b => b.onclick = () => start(b.dataset.sc));
+document.querySelectorAll('#spSeg button').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp));
+document.getElementById('pauseBtn').onclick = togglePause;
+document.getElementById('replayBtn').onclick = () => start(current);
+document.addEventListener('keydown', ev => {
+  if (ev.target.closest && ev.target.closest('input,textarea')) return;
+  if (view !== 'flow' || ev.ctrlKey || ev.metaKey || ev.altKey) return;   // shortcuts drive the Data flow tab only
+  if (ev.code === 'Space') { ev.preventDefault(); togglePause(); }
+  else if (ev.key === '1') setSpeed(0.5);
+  else if (ev.key === '2') setSpeed(1);
+  else if (ev.key === '3') setSpeed(2);
+  else if (ev.key === 'r' || ev.key === 'R') start(current);
+  else if (ev.key === 'l' || ev.key === 'L') setLegend(!legendOpen());
+  else if (ev.key === 'Escape') { if (legendOpen()) setLegend(false); else closeDrawer(); }
+});
+
+
+// ====================================================================
+// interview content: copied verbatim from 09_News_Feed.html (v2.0)
+// ====================================================================
+const CONTENT = {
   // ---------------- 4 · how to explain ----------------
   explain: [
     {
@@ -955,7 +1372,100 @@ public void onPost(PostCreated e, Acknowledgment ack) {
     { g: 'sc', q: 'How are photos and videos served?', what: 'Media is far bigger than post metadata.', why: 'The feed API should only move ids and small JSON.', how: 'Upload directly to S3 with a presigned URL, transcode async, serve through a CDN; the post stores media ids / URLs.', trade: 'CDN cost; signed URLs for private accounts.' },
   ],
 };
+
+// =====================================================================
+// reading tabs: How to explain · Interview answer · Follow-ups (self-contained renderers)
+// =====================================================================
+const reader = document.getElementById('reader');
+// **bold** and `code` in plain-text content (same rules as engine/app.js)
+const rich = s => esc(s).replace(/"/g, '&quot;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+// old flow ids -> scenarios on the Data flow tab
+const FLOW_TO_SC = { post: 'post', celeb: 'celeb', page: 'page', delete: 'delete', rebuild: 'rebuild', crash: 'crash' };
+const STAGE_C = ['#fb923c', '#8b5cf6', '#3b82f6', '#0d9488', '#db2777', '#16a34a'];
+
+function renderExplain() {
+  const E = CONTENT.explain, total = E.reduce((a, s) => a + s.min, 0);
+  const who = { I: ['Interviewer', 'iv'], C: ['You', 'you'], P: ['Tip', 'tip'] };
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">How to explain it</span><h2>Drive the ${total}-minute interview, stage by stage</h2>
+    <p>Interviewers grade the <b>structure</b> as much as the design. Follow the stages in order and say out loud which stage you are in.</p></div></div>
+    <div class="timebar">${E.map((s, k) => `<button data-to="ex${k}" style="flex:${s.min};--c:${STAGE_C[k % STAGE_C.length]}"><b>${k + 1}. ${esc(s.t)}</b><span>${s.min} min</span></button>`).join('')}</div>
+    ${E.map((s, k) => `<section class="rcard stage" id="ex${k}" style="--c:${STAGE_C[k % STAGE_C.length]}">
+      <div class="stage-h"><span class="sn">${k + 1}</span><h3>${esc(s.t)}</h3><span class="mn">~${s.min} min</span></div>
+      <p class="goal"><b>Goal:</b> ${rich(s.goal)}</p>
+      ${s.lines.map(([w, t]) => `<div class="msg ${who[w][1]}"><span class="who">${who[w][0]}</span><p>${rich(t)}</p></div>`).join('')}
+      ${s.avoid ? `<p class="avoid"><b>⚠ Avoid</b> ${rich(s.avoid)}</p>` : ''}
+    </section>`).join('')}
+  </div>`;
+}
+
+function renderAnswer() {
+  const A = CONTENT.answer;
+  const jumps = [['a-pitch', '⏱ 60-second answer'], ...A.sections.map((s, k) => [`a-sec${k}`, s.h]), ['a-dec', '⚖ Trade-offs'], ['a-code', '{ } Code']];
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Interview-ready answer</span><h2>What to actually say</h2>
+    <p>Start with the 60-second version, then expand any section the interviewer picks.</p></div></div>
+    <nav class="jump">${jumps.map(([id, t]) => `<button data-to="${id}">${esc(t)}</button>`).join('')}</nav>
+    <section class="rcard pitch" id="a-pitch"><h3>⏱ The 60-second answer</h3>${[].concat(A.summary).map(p => `<p>${rich(p)}</p>`).join('')}</section>
+    <div class="ans-grid">${A.sections.map((s, k) => `<section class="rcard ans" id="a-sec${k}" style="--c:${s.color || '#0b5cff'}"><h3>${esc(s.h)}</h3>${s.html}</section>`).join('')}</div>
+    <section class="rcard ans" id="a-dec" style="--c:#7c3aed"><h3>⚖ Key decisions &amp; trade-offs</h3>
+      <table><thead><tr><th>Decision</th><th>Why</th><th>Trade-off</th></tr></thead><tbody>${A.decisions.map(r => `<tr>${r.map(c => `<td>${rich(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>
+    <div class="code-grid" id="a-code">${A.code.map(c => `<section class="rcard codeblk"><h3>${esc(c.t)}</h3><pre>${esc(c.code)}</pre></section>`).join('')}</div>
+  </div>`;
+}
+
+let fuGroup = 'all';
+function renderFollowups() {
+  const G = CONTENT.followGroups, F = CONTENT.followups, list = F.filter(f => fuGroup === 'all' || f.g === fuGroup);
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Follow-up questions</span><h2>What they ask next, and what to answer</h2>
+    <p>Each answer has the same shape: <b>what happens</b> → <b>why</b> → <b>how you handle it</b> → <b>the trade-off</b>. Saying the trade-off unprompted is what separates senior answers.</p></div></div>
+    <div class="chips"><button data-g="all" class="${fuGroup === 'all' ? 'on' : ''}">All <small>${F.length}</small></button>${Object.entries(G).map(([k, g]) => `<button data-g="${k}" class="${fuGroup === k ? 'on' : ''}" style="--c:${g.color}">${esc(g.name)} <small>${F.filter(f => f.g === k).length}</small></button>`).join('')}</div>
+    ${list.map((f, k) => `<details class="rcard fu" style="--c:${G[f.g].color}"${k === 0 ? ' open' : ''}>
+      <summary><span class="fu-g">${esc(G[f.g].name)}</span><span class="fu-q">${esc(f.q)}</span></summary>
+      <div class="fu-body">
+        <div><b>What happens</b><p>${rich(f.what)}</p></div>
+        <div><b>Why</b><p>${rich(f.why)}</p></div>
+        <div class="say"><b>🎤 Say this</b><p>${rich(f.how)}</p></div>
+        <div style="grid-column:1/-1"><b>Trade-off</b><p>${rich(f.trade)}</p></div>
+        ${f.flow ? `<button class="watch" data-sc="${FLOW_TO_SC[f.flow]}">▶ Watch flow: ${esc(SCEN[FLOW_TO_SC[f.flow]].name)}</button>` : ''}
+      </div></details>`).join('')}
+  </div>`;
+  reader.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { fuGroup = b.dataset.g; renderFollowups(); });
+  reader.querySelectorAll('.watch').forEach(b => b.onclick = () => { setView('flow'); start(b.dataset.sc); });
+}
+// sticky jump bars scroll inside the reading panel
+reader.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-to]');
+  if (!b) return;
+  const el = document.getElementById(b.dataset.to), bar = b.parentElement;
+  reader.scrollTo({ top: el.offsetTop - bar.offsetHeight - 8 });
+});
+
+function setView(v) {
+  view = v;
+  document.body.className = 'v-' + v;
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  if (v !== 'flow') {
+    closeDrawer(); setLegend(false);
+    if (v === 'explain') renderExplain(); else if (v === 'answer') renderAnswer(); else renderFollowups();
+    reader.scrollTop = 0;
+  }
+  last = performance.now();
+}
+document.querySelectorAll('#viewSeg button').forEach(b => b.onclick = () => { b.blur(); setView(b.dataset.view); });
+
+// ---------------- header: previous / next design + hub (engine/catalog.js) ----------------
+(function designNav() {
+  const cat = (window.SD_CATALOG || []).filter(c => c.file), at = cat.findIndex(c => c.id === 'feed');
+  const link = (d, txt, dir) => d ? `<a href="${d.file}" title="${dir}: ${d.n} · ${esc(d.title)}">${txt}</a>` : `<span class="off" title="No ${dir.toLowerCase()} design">${txt}</span>`;
+  document.getElementById('dNav').innerHTML = link(cat[at - 1], '←', 'Previous') + link(cat[at + 1], '→', 'Next')
+    + `<a class="hub" href="../02_SD_Interview_Simulator.html" title="All designs">All designs</a>`;
+})();
+
+
+start('post');
+requestAnimationFrame(frame);
 </script>
-<script src="engine/app.js"></script>
 </body>
 </html>

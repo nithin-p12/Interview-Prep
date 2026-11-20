@@ -45,7 +45,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `sd-ticket-booking` | Ticket Booking | v2.3 | `03_System_Design/02_SD_Simulator/03_Ticket_Booking.html` |
 | System Design | `sd-file-upload` | File Upload & Storage | v2.3 | `03_System_Design/02_SD_Simulator/06_File_Upload.html` |
 | System Design | `sd-job-scheduler` | Distributed Job Scheduler | v2.0 | `03_System_Design/02_SD_Simulator/08_Job_Scheduler.html` |
-| System Design | `sd-news-feed` | News Feed | v2.0 | `03_System_Design/02_SD_Simulator/09_News_Feed.html` |
+| System Design | `sd-news-feed` | News Feed | v3.0 | `03_System_Design/02_SD_Simulator/09_News_Feed.html` |
 | System Design | `sd-search` | Search System | v3.0 | `03_System_Design/02_SD_Simulator/10_Search_System.html` |
 | System Design | `sd-video` | Video Streaming | v2.0 | `03_System_Design/02_SD_Simulator/11_Video_Streaming.html` |
 | System Design | `sd-distributed-cache` | Distributed Cache | v2.0 | `03_System_Design/02_SD_Simulator/12_Distributed_Cache.html` |
@@ -342,7 +342,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v2.0 | 2026-11-13 | Own page, 6 tabs: overview loop, 12 components (links to Core Components for gateway, Redis, Kafka, DB), 6 flows (post + fan-out on write, celebrity: hybrid pull, offset vs cursor pagination, delete via hydration, rebuild expired timeline, fan-out worker crash + idempotent ZADD), how to explain, spoken interview answer, Spring/Kafka/Redis code, 17 follow-ups. | current file · tag `sd-news-feed/v2.0` |
+| v3.0 | 2026-11-20 | CURRENT: self-contained animated data-flow page in the URL Shortener v6.0 style (zones by role: Client · Entry · App services · Data · Async fan-out; 12 logo cards incl. 3 clients (poster, reader, celebrity), Post / Feed / Ranking services, MongoDB Post DB, Redis timeline cache, follow graph, Kafka and fan-out workers, details drawers with Core Components links) + Explain, Answer and Follow-ups tabs ported verbatim (10 ▶ Watch flow buttons). 7 scenarios: A posts → B's feed, Celebrity posts, Scroll to page 2, A deletes a post, Back after 60 days, Fan-out worker crashes, Live mix. No longer uses the shared engine. | current file · tag `sd-news-feed/v3.0` |
+| v2.0 | 2026-11-13 | Own page, 6 tabs: overview loop, 12 components (links to Core Components for gateway, Redis, Kafka, DB), 6 flows (post + fan-out on write, celebrity: hybrid pull, offset vs cursor pagination, delete via hydration, rebuild expired timeline, fan-out worker crash + idempotent ZADD), how to explain, spoken interview answer, Spring/Kafka/Redis code, 17 follow-ups. | git tag `sd-news-feed/v2.0` |
 | v1 | 2026-10-23 | Section of the all-in-one simulator. | `_archive/03_System_Design/02_SD_Interview_Simulator_v1.html#feed/1` · tag `sd-news-feed/v1` |
 
 **Search System** · `sd-search`
