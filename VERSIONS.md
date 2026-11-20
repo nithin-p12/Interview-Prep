@@ -40,7 +40,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `sd-url-shortener` | URL Shortener (TinyURL) | v6.0 | `03_System_Design/02_SD_Simulator/01_URL_Shortener.html` |
 | System Design | `sd-rate-limiter` | Rate Limiter | v3.0 | `03_System_Design/02_SD_Simulator/02_Rate_Limiter.html` |
 | System Design | `sd-notification` | Notification System | v3.0 | `03_System_Design/02_SD_Simulator/04_Notification_System.html` |
-| System Design | `sd-ecommerce` | E-commerce Order System | v2.0 | `03_System_Design/02_SD_Simulator/05_Ecommerce_Order.html` |
+| System Design | `sd-ecommerce` | E-commerce Order System | v3.0 | `03_System_Design/02_SD_Simulator/05_Ecommerce_Order.html` |
 | System Design | `sd-chat` | Chat System | v3.0 | `03_System_Design/02_SD_Simulator/07_Chat_System.html` |
 | System Design | `sd-ticket-booking` | Ticket Booking | v2.3 | `03_System_Design/02_SD_Simulator/03_Ticket_Booking.html` |
 | System Design | `sd-file-upload` | File Upload & Storage | v3.0 | `03_System_Design/02_SD_Simulator/06_File_Upload.html` |
@@ -303,7 +303,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v2.0 | 2026-11-12 | Own page, 6 tabs: overview loop, 12 components (links to Core Components for gateway, Kafka, DB), 5 flows (saga happy path with outbox, last-unit race: read-then-write vs conditional decrement, payment declined → compensation, late payment after hold expiry → refund, client retry + Kafka down + redelivered command), how to explain, spoken interview answer, Spring/Stripe code, 16 follow-ups. | current file · tag `sd-ecommerce/v2.0` |
+| v3.0 | 2026-11-20 | CURRENT: self-contained animated data-flow page in the URL Shortener v6.0 style (zones by role: Client · Entry · Order service · Order data · Async messaging · Participants · Inventory data · Payment provider; 12 logo cards incl. Outbox Relay (change stream), Kafka commands/replies, Inventory/Payment/Shipping participants with their own DBs and the external provider, A-vs-B fan-in and ConfirmHold/OrderConfirmed fan-out hops, details drawers with Core Components links) + Explain, Answer and Follow-ups tabs ported verbatim (12 ▶ Watch flow buttons). 6 scenarios: A buys SKU-42, Last unit: A vs B, Payment declined, Late payment, Retries & duplicates, Live mix. No longer uses the shared engine. | current file · tag `sd-ecommerce/v3.0` |
+| v2.0 | 2026-11-12 | Own page, 6 tabs: overview loop, 12 components (links to Core Components for gateway, Kafka, DB), 5 flows (saga happy path with outbox, last-unit race: read-then-write vs conditional decrement, payment declined → compensation, late payment after hold expiry → refund, client retry + Kafka down + redelivered command), how to explain, spoken interview answer, Spring/Stripe code, 16 follow-ups. | git tag `sd-ecommerce/v2.0` |
 | v1 | 2026-10-23 | Section of the all-in-one simulator. | `_archive/03_System_Design/02_SD_Interview_Simulator_v1.html#shop/1` · tag `sd-ecommerce/v1` |
 
 **Chat System** · `sd-chat`

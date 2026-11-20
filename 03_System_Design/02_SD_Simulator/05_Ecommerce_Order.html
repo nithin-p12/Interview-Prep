@@ -3,660 +3,1117 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="sd-ecommerce">
-<meta name="doc-version" content="v2.0">
+<meta name="doc-version" content="v3.0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>E-commerce Order System · System Design · v2.0</title>
-<link rel="stylesheet" href="engine/sd.css">
+<title>E-commerce Order System · System Design · v3.0</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:#ffffff;color:#0f172a}
+
+/* ---------- header ---------- */
+header{height:64px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.brand .logo{flex-shrink:0}
+.brand .txt{min-width:0}
+.brand .t{font-size:16px;font-weight:800;white-space:nowrap;display:flex;align-items:baseline;gap:10px}
+.brand .t a{font-size:11.5px;font-weight:600;color:#0b5cff;text-decoration:none}
+.brand .t a:hover{text-decoration:underline}
+.brand .s{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrls{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.seg{display:flex;align-items:center;background:#f1f5f9;border-radius:10px;padding:3px;gap:2px}
+.seg .lbl{font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;padding:0 6px 0 7px}
+.seg button{border:0;background:transparent;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#475569;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.seg button:hover{color:#0f172a}
+.seg button.on{background:#fff;color:#0b5cff;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.btn{border:1px solid #e2e8f0;background:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#334155;padding:7px 12px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f8fafc}
+
+/* ---------- main / svg ---------- */
+main{position:relative;height:calc(100vh - 64px - 78px)}
+#dia{display:block;width:100%;height:100%;user-select:none}
+.hint{position:absolute;left:12px;bottom:8px;font-size:11px;color:#64748b;background:rgba(255,255,255,.85);padding:3px 8px;border-radius:6px;pointer-events:none}
+.zl{font-size:13px;font-weight:800;letter-spacing:1.2px;fill:#334155}
+.nl{font:11px ui-monospace,Consolas,monospace;fill:#64748b}
+.edge{fill:none;stroke:#94a3b8;stroke-width:2;stroke-dasharray:6 7}
+.edge.hot{stroke-dasharray:none;stroke-width:3}
+.elbl{font-size:11px;font-weight:600;fill:#64748b;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.node{cursor:pointer}
+.node .card{transition:filter .2s,stroke-width .2s;filter:drop-shadow(0 1px 3px rgba(15,23,42,.08))}
+.node:hover .card{filter:drop-shadow(0 4px 10px rgba(15,23,42,.18))}
+.node.active .card{stroke-width:3.5;filter:drop-shadow(0 0 14px rgba(11,92,255,.55))}
+.nlab{font-size:14px;font-weight:700;fill:#0f172a;text-anchor:middle}
+.nsub{font-size:11px;fill:#64748b;text-anchor:middle}
+.tag text{font-size:10.5px;font-weight:700;fill:#fff;text-anchor:middle}
+.ptag{font-size:10.5px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3.5px;stroke-linejoin:round;text-anchor:middle}
+
+/* ---------- legend popover ---------- */
+.ibtn{width:34px;padding:7px 0;text-align:center;font-size:14px;line-height:1}
+.ibtn.on{background:#eef4ff;border-color:#cfe0ff;color:#0b5cff}
+#legendPop{position:fixed;top:70px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 44px rgba(15,23,42,.2),0 3px 10px rgba(15,23,42,.08);padding:12px 14px;z-index:7;display:none}
+#legendPop.open{display:block}
+#legendPop:before{content:"";position:absolute;top:-6px;right:var(--arrow,20px);width:10px;height:10px;background:#fff;border-left:1px solid #e5e7eb;border-top:1px solid #e5e7eb;transform:rotate(45deg)}
+.lgh{font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8;margin:2px 0 8px}
+.lgk{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+.lgk span{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569}
+.lgk i{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.06),0 0 7px var(--c);background:var(--c)}
+.lgs{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:10px}
+.lgs b{display:block;font-size:16px;font-weight:800;color:#0f172a;line-height:1.15}
+.lgs span{font-size:11px;color:#475569}
+.lgn{font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:8px}
+
+/* ---------- footer ---------- */
+footer{height:78px;background:#fff;border-top:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+#badge{flex-shrink:0;min-width:52px;height:44px;padding:0 8px;border-radius:12px;background:#0b5cff;color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+#badge.live{background:#16a34a;letter-spacing:1px}
+.fmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.frow{display:flex;align-items:center;gap:8px;min-width:0}
+#ftitle{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{flex-shrink:0;font:600 11px ui-monospace,Consolas,monospace;color:#0b5cff;background:#eef4ff;border:1px solid #cfe0ff;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill:empty{display:none}
+.grow{flex:1}
+#dots{display:flex;gap:3px;flex-shrink:0}
+#dots i{display:block;width:18px;height:4px;border-radius:2px;background:#e2e8f0}
+#dots i.on{background:#0b5cff}
+#ftext{font-size:12.5px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{display:flex;gap:8px;flex-shrink:0}
+.stat{width:78px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:6px 8px}
+.stat b{display:block;font-size:18px;line-height:1.1}
+.stat span{font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#64748b;white-space:nowrap}
+
+/* ---------- drawer ---------- */
+#drawer{position:fixed;right:14px;top:76px;bottom:90px;width:380px;max-width:calc(100vw - 28px);background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.22),0 4px 14px rgba(15,23,42,.08);transform:translateX(420px);transition:transform .35s ease;display:flex;flex-direction:column;overflow:hidden;z-index:5}
+#drawer.open{transform:translateX(0)}
+.dh{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #e5e7eb}
+.dh .dl{width:52px;height:52px;border-radius:12px;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dh h3{margin:0;font-size:16px}
+.dh p{margin:2px 0 0;font-size:12px;color:#475569}
+.dh button{margin-left:auto;align-self:flex-start;border:0;background:rgba(255,255,255,.7);border-radius:8px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#334155}
+.db{padding:14px 16px 18px;overflow:auto;font-size:13px;line-height:1.5;color:#334155}
+.db h4{margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.db ul{margin:0;padding-left:18px}
+.db li{margin:3px 0}
+.db pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.db code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px}
+.core-link{display:inline-block;margin-top:14px;font-size:12.5px;font-weight:600;color:#0b5cff;text-decoration:none;background:#eef4ff;border:1px solid #cfe0ff;padding:6px 10px;border-radius:9px}
+.core-link:hover{text-decoration:underline}
+
+/* ---------- header nav + view tabs ---------- */
+.brand .s{display:flex;align-items:center;gap:6px}
+.brand .s .sub{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.brand .nav{display:flex;align-items:center;gap:1px;flex-shrink:0}
+.brand .nav a,.brand .nav span{font-size:11.5px;font-weight:700;color:#0b5cff;text-decoration:none;padding:0 4px;border-radius:5px;line-height:16px}
+.brand .nav a:hover{background:#eef4ff}
+.brand .nav span.off{color:#cbd5e1;cursor:default}
+.brand .nav a.hub{color:#64748b;font-weight:600}
+body:not(.v-flow) .flowonly{display:none}
+body:not(.v-flow) main,body:not(.v-flow) footer,body:not(.v-flow) #drawer,body:not(.v-flow) #legendPop{display:none}
+body.v-flow #reader{display:none}
+
+/* ---------- reading panel (tabs 2-4) ---------- */
+#reader{position:relative;height:calc(100vh - 64px);overflow:auto;background:#f8fafc;scroll-behavior:smooth}
+.rd{max-width:1120px;margin:0 auto;padding:18px 20px 40px}
+.rd-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:12px}
+.rd-head h2{margin:0;font-size:20px;font-weight:800}
+.rd-head p{margin:4px 0 0;font-size:13px;color:#64748b;max-width:760px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.rcard{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.05);padding:14px 16px;margin-bottom:12px;font-size:13.5px;line-height:1.55;color:#334155}
+.rcard code,.fu code,.rd td code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px;color:#0f172a}
+.rcard h3{margin:0 0 6px;font-size:15px;color:#0f172a}
+/* explain */
+.timebar{position:sticky;top:0;z-index:2;display:flex;gap:4px;background:#f8fafc;padding:6px 0 10px}
+.timebar button{min-width:126px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:6px 8px;text-align:left;cursor:pointer;font:inherit;border-top:3px solid var(--c)}
+.timebar button:hover{background:#f1f5f9}
+.timebar b{display:block;font-size:12px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timebar span{font-size:11px;color:#64748b}
+.stage{border-left:4px solid var(--c);scroll-margin-top:70px}
+.stage-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.stage-h .sn{width:24px;height:24px;border-radius:50%;background:var(--c);color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center}
+.stage-h .mn{font-size:11px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:999px;padding:1px 8px}
+.goal{margin:2px 0 10px;color:#64748b}
+.msg{display:flex;gap:10px;margin:6px 0;align-items:flex-start}
+.msg .who{flex-shrink:0;width:88px;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding-top:3px}
+.msg p{margin:0;flex:1;padding:6px 10px;border-radius:10px}
+.msg.iv .who{color:#7c3aed}.msg.iv p{background:#f5f3ff}
+.msg.you .who{color:#0b5cff}.msg.you p{background:#eef4ff}
+.msg.tip .who{color:#a16207}.msg.tip p{background:#fefce8;font-style:italic}
+.avoid{margin:10px 0 0;padding:8px 12px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+/* answer */
+.jump{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.jump button,.chips button{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:4px 11px;font:600 12px "Segoe UI",system-ui,sans-serif;color:#475569;cursor:pointer}
+.jump button:hover,.chips button:hover{border-color:#cbd5e1;color:#0f172a}
+.pitch{border-left:4px solid #0b5cff;scroll-margin-top:56px}
+.pitch p{margin:0 0 8px}.pitch p:last-child{margin:0}
+.ans-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.ans-grid .rcard{margin:0}
+.ans{border-top:4px solid var(--c);scroll-margin-top:56px}
+.ans ul,.ans ol{margin:0;padding-left:20px}.ans li{margin:3px 0}
+.ans table{border-collapse:collapse;width:100%;font-size:13px}
+.ans td,.ans th{border-bottom:1px solid #f1f5f9;padding:5px 8px;text-align:left;vertical-align:top}
+.ans th{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8}
+.ans .m{font:12px ui-monospace,Consolas,monospace;white-space:nowrap;color:#0f172a}
+.ans pre,.codeblk pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.code-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;scroll-margin-top:56px}
+.codeblk{margin:0}
+.codeblk h3{font-size:13px}
+/* follow-ups */
+.chips{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.chips button small{color:#94a3b8;font-weight:700;margin-left:2px}
+.chips button.on{background:var(--c,#0b5cff);border-color:var(--c,#0b5cff);color:#fff}
+.chips button.on small{color:rgba(255,255,255,.8)}
+.fu{padding:0;border-left:4px solid var(--c)}
+.fu summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px}
+.fu summary::-webkit-details-marker{display:none}
+.fu summary:after{content:"▸";margin-left:auto;color:#94a3b8;transition:transform .2s}
+.fu[open] summary:after{transform:rotate(90deg)}
+.fu-g{flex-shrink:0;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border-radius:999px;padding:2px 9px}
+.fu-q{font-size:14px;font-weight:700;color:#0f172a}
+.fu-body{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:0 16px 14px}
+.fu-body > div > b{display:block;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8;margin-bottom:2px}
+.fu-body p{margin:0}
+.fu-body .say{grid-column:1/-1;background:#eef4ff;border-radius:10px;padding:8px 12px}
+.fu-body .say > b{color:#0b5cff}
+.watch{grid-column:1/-1;justify-self:start;border:0;background:#0b5cff;color:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;padding:7px 14px;border-radius:9px;cursor:pointer}
+.watch:hover{background:#0a4fe0}
+</style>
 </head>
-<body>
-<script src="engine/scene.js"></script>
-<script src="engine/player.js"></script>
+<body class="v-flow">
+<header>
+  <div class="brand">
+    <svg class="logo" width="34" height="34" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#0b5cff"/><path d="M9 12h5l4.5 18h17l3.5-12H16" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="36.5" r="2.8" fill="#fff"/><circle cx="33" cy="36.5" r="2.8" fill="#fff"/></svg>
+    <div class="txt">
+      <div class="t" title="E-commerce Order System">E-commerce Orders</div>
+      <div class="s"><span class="nav" id="dNav"></span><span class="sub">Orchestrated saga · outbox + relay · conditional decrement + expiring hold · idempotency keys · compensations · late payment → refund</span></div>
+    </div>
+  </div>
+  <div class="ctrls">
+    <div class="seg" id="viewSeg">
+      <button data-view="flow" class="on" title="Animated data flow">Data flow</button>
+      <button data-view="explain" title="How to explain it, stage by stage">Explain</button>
+      <button data-view="answer" title="Interview-ready answer">Answer</button>
+      <button data-view="followups" title="Follow-up questions">Follow-ups</button>
+    </div>
+    <div class="seg flowonly" id="scSeg"><span class="lbl">Scenario</span>
+      <button data-sc="happy" title="A buys SKU-42: outbox · reserve · charge · confirm">Happy</button>
+      <button data-sc="race" title="Last unit: A vs B · read-then-write vs conditional update">Race</button>
+      <button data-sc="comp" title="Payment declined: compensate, release the hold">Declined</button>
+      <button data-sc="late" title="Late payment: hold expires, then refund">Late</button>
+      <button data-sc="dup" title="Retries &amp; duplicates: Idempotency-Key · outbox · redelivery">Retries</button>
+      <button data-sc="live" title="Live mixed traffic">Live</button>
+    </div>
+    <div class="seg flowonly" id="spSeg"><span class="lbl">Speed</span>
+      <button data-sp="0.5">0.5x</button><button data-sp="1" class="on">1x</button><button data-sp="2">2x</button>
+    </div>
+    <button class="btn flowonly" id="pauseBtn">⏸ Pause</button>
+    <button class="btn flowonly" id="replayBtn">↻ Replay</button>
+    <button class="btn ibtn flowonly" id="legendBtn" title="Legend &amp; scale (L)" aria-haspopup="dialog" aria-expanded="false">ⓘ</button>
+  </div>
+</header>
+
+<main>
+  <svg id="dia" viewBox="0 0 1600 600" preserveAspectRatio="xMidYMid meet"></svg>
+  <div class="hint">Click any component for details · Space pause · 1 2 3 speed · R replay · L legend</div>
+</main>
+
+<footer>
+  <div id="badge">1/1</div>
+  <div class="fmid">
+    <div class="frow"><span id="ftitle"></span><span id="fproto" class="pill"></span><span class="grow"></span><div id="dots"></div></div>
+    <div id="ftext"></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="stReq">0</b><span>Requests</span></div>
+    <div class="stat"><b id="stHit">0</b><span>Holds</span></div>
+    <div class="stat"><b id="stEvt">0</b><span>Kafka msgs</span></div>
+    <div class="stat"><b id="stRes">0</b><span>Charges</span></div>
+  </div>
+</footer>
+
+<section id="reader" aria-live="polite"></section>
+
+<div id="legendPop" role="dialog" aria-label="Legend and scale">
+  <div class="lgh">PACKETS</div>
+  <div class="lgk" id="lgKinds"></div>
+  <div class="lgh">SCALE (FROM THE FULL DESIGN)</div>
+  <div class="lgs">
+    <div><b>1 k</b><span>orders / s · ~5 k Kafka msgs/s</span></div>
+    <div><b>100×</b><span>flash-sale peak</span></div>
+    <div><b>0</b><span>oversold units</span></div>
+    <div><b>1</b><span>charge per order</span></div>
+  </div>
+  <div class="lgn">Dashed edges crawl in the request direction · solid = packet in transit</div>
+</div>
+
+<aside id="drawer" aria-hidden="true">
+  <div class="dh" id="dHead"><div class="dl" id="dLogo"></div><div><h3 id="dTitle"></h3><p id="dTag"></p></div><button id="dClose" title="Close (Esc)">×</button></div>
+  <div class="db" id="dBody"></div>
+</aside>
+
 <script src="engine/catalog.js"></script>
 <script>
-// E-commerce order flow as an orchestrated saga (Order → Inventory → Payment → Shipping). Everything specific to this
-// design lives here; engine/app.js renders it. Kafka, API gateway and DB basics are taught in 00_Core_Components.html.
-const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f', INDIGO = '#5a5fc8';
+'use strict';
+// =====================================================================
+// E-commerce Order System · Data Flow: nodes grouped by app role (client · entry · order service · order data · async messaging ·
+// participants · inventory data · payment provider); no infra containers, no CDN (nothing here is static content).
+// Self-contained: no engine/ except catalog.js for prev/next.
+// Content comes from 05_Ecommerce_Order.html (v2.0): an orchestrated saga of local transactions (Order → Inventory → Payment →
+// Shipping), a transactional outbox + change-stream relay, a conditional decrement with an expiring hold, idempotency keys for the
+// client and the provider, status-guarded transitions, compensations instead of rollbacks.
+// =====================================================================
 
-// Order status colours (the order status IS the saga state).
-const ST = {
-  PENDING: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
-  PAYMENT_PENDING: { fill: '#f3f6fe', stroke: BLUE, color: BLUE },
-  CONFIRMED: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
-  CANCELLING: { fill: '#fff8f0', stroke: AMBER, color: RED },
-  CANCELLED: { fill: '#fff4f4', stroke: RED, color: RED },
+const NS = 'http://www.w3.org/2000/svg';
+const KIND = { request: '#2563eb', response: '#16a34a', event: '#f97316', error: '#dc2626' };
+const CLIENTS = new Set(['userA', 'userB']);
+const PAL = {
+  userA: ['#eef0ff', '#818cf8'], userB: ['#eef0ff', '#818cf8'],
+  gw: ['#ffffff', '#7c3aed'],
+  order: ['#fff9db', '#e0b400'], orderdb: ['#e6f6ea', '#34a853'],
+  relay: ['#f0f9e8', '#65a30d'], kafka: ['#fff0e0', '#f59e0b'],
+  inventory: ['#e3f4f2', '#0d9488'], payment: ['#fdf4ff', '#c026d3'], shipping: ['#fff7ed', '#ea580c'],
+  stockdb: ['#e6f6ea', '#34a853'], provider: ['#eef2ff', '#635bff'],
 };
-const fmt = (id, user, label) => `${id.padEnd(5)}${user.padEnd(3)}${label}`;
-const KEEP = '#d5d9dc';
+// zone tints: [fill, stroke, label] (same palette as 01_URL_Shortener.html; ext = outside our code, as in 04_Notification_System.html)
+const ZT = {
+  client: ['#fed7aa', '#fb923c', '#9a3412'], entry: ['#ddd6fe', '#8b5cf6', '#5b21b6'], app: ['#bfdbfe', '#3b82f6', '#1e3a8a'],
+  data: ['#e5e7eb', '#9ca3af', '#374151'], async: ['#ffe4e6', '#fb7185', '#9f1239'], ext: ['#ccfbf1', '#14b8a6', '#115e59'],
+};
 
-// State shown next to the components: orders, outbox, Kafka offsets, stock, holds, payments, shipments, users.
-function setup(s, v, { rows = [], clock = '11:00:00', stock = [5, 0], hold = 'holds —', pay = 'payments —', box = 'outbox —', kaf = 'cmd — · events —', a = 'browsing', b = 'browsing', ship = 'shipments —' } = {}) {
-  v.clock = s.chip(15, 500, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
-  v.log = s.store(15, 392, 262, 'ORDER DB · orders', { color: AMBER });
-  v.rows = {};
-  rows.forEach(([id, user, st, label]) => { s.row(v.log, fmt(id, user, label || st), { ...ST[st], now: true }); v.rows[id] = v.log.rows[v.log.rows.length - 1]; });
-  v.box = s.chip(420, 470, box, { mono: true, color: AMBER });
-  v.kaf = s.chip(665, 305, kaf, { mono: true, color: PURPLE });
-  v.stk = s.chip(940, 140, '', { mono: true, color: TEAL });
-  stk(s, v, ...stock);
-  v.hold = s.chip(940, 167, hold, { mono: true, color: GREY });
-  v.pay = s.chip(940, 320, pay, { mono: true, color: GREY });
-  v.ship = s.chip(855, 478, ship, { mono: true, color: GREY });
-  v.ua = s.chip(70, 126, a, { color: GREY });
-  v.ub = s.chip(70, 336, b, { color: GREY });
-  return v;
+// ---------------- logos (48x48 inline SVG) ----------------
+const cube = (badge) => `<path d="M24 5l17 9.5v19L24 43 7 33.5v-19z" fill="#326ce5"/><path d="M24 24l17-9.5v19L24 43z" fill="#2557c4"/><path d="M24 5l17 9.5L24 24 7 14.5z" fill="#6f9cf0"/>${badge}`;
+const person = (c, l) => `<circle cx="22" cy="15" r="8.5" fill="${c}"/><path d="M5 43c0-10 7.6-16 17-16s17 6 17 16z" fill="${c}"/><circle cx="38" cy="36" r="8.5" fill="#f97316" stroke="#fff" stroke-width="2"/><text x="38" y="40.2" text-anchor="middle" font-size="11.5" font-weight="800" fill="#fff" font-family="Segoe UI,Arial,sans-serif">${l}</text>`;
+const leaf = badge => `<path d="M24 3c8 9 12 17 12 24.5 0 8.5-5.2 13.5-10.6 15.5h-2.8C17.2 41 12 36 12 27.5 12 20 16 12 24 3z" fill="#13aa52"/><path d="M24 9v37" stroke="#0b6b33" stroke-width="2"/>${badge}`;
+const LOGO = {
+  userA: person('#6366f1', 'A'),
+  userB: person('#6366f1', 'B'),
+  gw: `<rect x="5" y="5" width="38" height="38" rx="10" fill="#7c3aed"/><path d="M15 38V23a9 9 0 0 1 18 0v15" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M11 38h26" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="28" cy="31" r="1.9" fill="#fff"/>`,
+  // Spring service cube + receipt badge (the order)
+  order: cube(`<path d="M30 28h14v17l-2.3-1.6-2.4 1.6-2.3-1.6-2.4 1.6-2.3-1.6L30 45z" fill="#e0b400" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M33.5 33h7M33.5 37h7M33.5 41h4" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`),
+  // MongoDB leaf + outbox tray badge
+  orderdb: leaf(`<circle cx="37" cy="37" r="9.5" fill="#0b6b33" stroke="#fff" stroke-width="2"/><path d="M31.5 37.5h3.2l1.2 2h2.2l1.2-2h3.2v3.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z" fill="#fff"/><path d="M37 30.5v5M34.8 32.6l2.2-2.2 2.2 2.2" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`),
+  // change stream: outbox rows flowing out to the right
+  relay: `<rect x="4" y="8" width="26" height="32" rx="5" fill="#65a30d"/><g fill="#fff"><rect x="8.5" y="13" width="17" height="4" rx="2"/><rect x="8.5" y="21.5" width="17" height="4" rx="2" opacity=".85"/><rect x="8.5" y="30" width="11" height="4" rx="2" opacity=".7"/></g><path d="M29 24h12M35.5 18.5l5.5 5.5-5.5 5.5" fill="none" stroke="#ea580c" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="35" cy="37" r="2.3" fill="#f97316"/><circle cx="41" cy="37" r="2.3" fill="#f97316" opacity=".7"/><circle cx="46" cy="37" r="1.9" fill="#f97316" opacity=".45"/>`,
+  kafka: `<g stroke="#231f20" stroke-width="2.4" fill="none"><path d="M24 11v26M24 24l12-7M24 24l12 7"/></g><g fill="#fff" stroke="#231f20" stroke-width="2.8"><circle cx="24" cy="8" r="4.5"/><circle cx="24" cy="40" r="4.5"/><circle cx="24" cy="24" r="5.5"/><circle cx="37" cy="16" r="4"/><circle cx="37" cy="32" r="4"/></g>`,
+  // service cube + cardboard box badge
+  inventory: cube(`<path d="M37 28l8.5 4.5v9L37 46l-8.5-4.5v-9z" fill="#0d9488" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M28.8 32.6L37 37l8.2-4.4M37 37v8.6" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M32.5 30.2l8.3 4.5" stroke="#99f6e4" stroke-width="1.8"/>`),
+  // service cube + card badge
+  payment: cube(`<rect x="27" y="29" width="20" height="14" rx="2.6" fill="#c026d3" stroke="#fff" stroke-width="1.8"/><path d="M27.5 33.5h19" stroke="#fff" stroke-width="2.4"/><rect x="30" y="37.5" width="6" height="2.4" rx="1" fill="#fff"/>`),
+  // service cube + truck badge
+  shipping: cube(`<path d="M26 31h12v10H26z" fill="#ea580c" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/><path d="M38 34h4.5l3 3.5V41H38z" fill="#ea580c" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/><circle cx="30.5" cy="42.5" r="2.6" fill="#fff" stroke="#ea580c" stroke-width="1.4"/><circle cx="41.5" cy="42.5" r="2.6" fill="#fff" stroke="#ea580c" stroke-width="1.4"/>`),
+  // MongoDB leaf + stock box badge
+  stockdb: leaf(`<circle cx="37" cy="37" r="9.5" fill="#0b6b33" stroke="#fff" stroke-width="2"/><path d="M37 31.5l5 2.7v5.6L37 42.5l-5-2.7v-5.6z" fill="#fff"/><path d="M32 34.2l5 2.7 5-2.7M37 36.9v5.6" fill="none" stroke="#0b6b33" stroke-width="1.3"/>`),
+  // card / UPI provider: indigo tile, card + bank columns
+  provider: `<rect x="3" y="5" width="42" height="38" rx="10" fill="#635bff"/><path d="M11 21l13-8 13 8z" fill="#fff"/><g fill="#fff"><rect x="13" y="23" width="3.6" height="10" rx="1"/><rect x="22.2" y="23" width="3.6" height="10" rx="1"/><rect x="31.4" y="23" width="3.6" height="10" rx="1"/></g><rect x="10" y="35" width="28" height="3.4" rx="1.2" fill="#fff"/><circle cx="38" cy="12" r="4" fill="#a5b4fc"/>`,
+};
+
+// ---------------- topology ----------------
+const NODES = {
+  userA: { x: 93, y: 180, label: 'User A', sub: 'web / app' },
+  userB: { x: 93, y: 420, label: 'User B', sub: 'web / app' },
+  gw: { x: 300, y: 300, label: 'API Gateway', sub: 'JWT · rate limits', replicas: 2 },
+  order: { x: 520, y: 148, label: 'Order Service', sub: 'saga orchestrator', replicas: 3 },
+  orderdb: { x: 520, y: 446, label: 'Order DB', sub: 'Mongo · orders + outbox', replicas: 3 },
+  relay: { x: 740, y: 446, label: 'Outbox Relay', sub: 'change stream' },
+  kafka: { x: 960, y: 300, label: 'Kafka', sub: 'commands · replies', replicas: 3 },
+  inventory: { x: 1230, y: 140, label: 'Inventory Svc', sub: 'reserve · hold · release', replicas: 2 },
+  payment: { x: 1230, y: 300, label: 'Payment Svc', sub: 'charge · refund', replicas: 2 },
+  shipping: { x: 1230, y: 460, label: 'Shipping Svc', sub: 'on OrderConfirmed' },
+  stockdb: { x: 1470, y: 140, label: 'Stock DB', sub: 'Mongo · stock + holds', replicas: 3 },
+  provider: { x: 1470, y: 400, label: 'Payment Provider', sub: 'card / UPI · external' },
+};
+// grouped by developer role, not by infrastructure; one database per service
+const ZONES = [
+  { x: 8, y: 8, w: 170, h: 584, t: 'client', label: 'CLIENT', cap: 'shoppers' },
+  { x: 190, y: 8, w: 218, h: 584, t: 'entry', label: 'ENTRY', cap: 'one front door' },
+  { x: 420, y: 8, w: 200, h: 282, t: 'app', label: 'ORDER SERVICE', cap: 'saga orchestrator', dash: true },
+  { x: 420, y: 302, w: 200, h: 290, t: 'data', label: 'ORDER DATA', cap: 'orders + outbox · 1 txn', dash: true },
+  { x: 632, y: 8, w: 480, h: 584, t: 'async', label: 'ASYNC MESSAGING', cap: 'outbox relay → Kafka · key = orderId', dash: true },
+  { x: 1124, y: 8, w: 212, h: 584, t: 'app', label: 'PARTICIPANTS', cap: 'Spring · own DB each', dash: true },
+  { x: 1348, y: 8, w: 244, h: 242, t: 'data', label: 'INVENTORY DATA', cap: 'stock + expiring holds', dash: true },
+  { x: 1348, y: 262, w: 244, h: 330, t: 'ext', label: 'PAYMENT PROVIDER', cap: 'external · refund, no rollback' },
+];
+// [from, to, protocol label]; the path direction is the request direction (dashes crawl that way).
+const EDGE_DEFS = [
+  ['userA', 'gw', 'HTTPS'], ['userB', 'gw', 'HTTPS'], ['gw', 'order', '/orders'],
+  ['order', 'orderdb', 'txn'], ['orderdb', 'relay', 'changes'], ['relay', 'kafka', 'publish'],
+  ['kafka', 'order', 'saga-events'],
+  ['kafka', 'inventory', 'inventory-cmd'], ['kafka', 'payment', 'payment-cmd'], ['kafka', 'shipping', 'order-events'],
+  ['inventory', 'stockdb', '$gte · hold'], ['payment', 'provider', 'charge · key'],
+];
+
+// ---------------- drawer content ----------------
+const INFO = {
+  userA: {
+    tag: 'Shopper · web or mobile app',
+    desc: 'Places orders from the web or the app, then polls <code>GET /orders/{id}</code> or gets a push with the final status. The app creates a fresh <b>Idempotency-Key</b> per checkout and reuses it on every retry of that checkout.',
+    points: ['A timeout does not tell the app whether the server succeeded', 'Without the key, a timeout followed by a retry creates a second order (and a second charge)', 'Retries with the same key are safe: the server returns the same order', 'Flash sales concentrate thousands of buyers on a few SKUs'],
+    code: `// one key per checkout, reused by every retry of that checkout
+const key = sessionStorage.checkoutKey ??= crypto.randomUUID();   // "ck-A-77"
+const res = await fetch('/orders', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+  body: JSON.stringify({ sku: 'SKU-42', qty: 1 }),
+});
+// 202 { orderId: "o-1", status: "PENDING" } -> poll GET /orders/o-1`,
+  },
+  userB: {
+    tag: 'Another shopper · competes for the last unit',
+    desc: 'Competes with A for the last unit in the race scenario. Shows why the stock check must be <b>inside</b> the write, not before it: B must be told "sold out" <b>before</b> being charged.',
+    points: ['Same API and the same Idempotency-Key rules as A', 'Its ReserveInventory command lands on another partition (key = orderId)', 'A conditional decrement cancels the loser before any charge', 'The UI must handle PENDING and then CANCELLED'],
+    code: `GET /orders/o-2
+-> 200 { "orderId": "o-2", "status": "CANCELLED",
+         "reason": "OUT_OF_STOCK", "charged": false }`,
+  },
+  gw: {
+    tag: 'L7 gateway · auth, limits, routes /orders',
+    desc: 'Single entry: <b>JWT auth</b>, rate limits per user and routing of <code>/orders</code> to the Order Service. Cross-cutting concerns live in one place; bots hammering checkout are stopped here. It holds no order state.',
+    points: ['Stateless pods behind the load balancer', 'Per-user limits protect checkout during flash sales', 'Retries only idempotent calls: <code>POST /orders</code> is safe because of the Idempotency-Key', 'Without it every service re-implements auth and limits'],
+    code: `# Spring Cloud Gateway: application.yml
+spring:
+  cloud:
+    gateway:
+      routes:
+      - id: orders
+        uri: lb://order-service
+        predicates: [ Path=/orders/** ]
+        filters:
+        - TokenRelay=
+        - name: RequestRateLimiter          # per-user checkout cap
+          args:
+            redis-rate-limiter.replenishRate: 5
+            redis-rate-limiter.burstCapacity: 10`,
+  },
+  order: {
+    tag: 'Spring Boot · the saga orchestrator',
+    desc: 'Creates the order, then drives the steps: <b>reserve stock → charge → confirm</b>, or <b>compensate</b> on failure. Reacts to replies on <code>saga-events</code>. The order status <b>is</b> the saga state, so a crashed pod loses nothing.',
+    points: ['Every step = one local transaction: status change + next command in the outbox', 'Transitions are guarded by the expected status: <code>{_id, status: "PENDING"}</code>', 'A duplicate or stale reply matches 0 documents and is ignored', 'Choreography only would spread the flow over many handlers; Shipping is fine as a simple reaction', 'Must not absorb other services\' business logic'],
+    code: `@KafkaListener(topics = "saga-events", groupId = "order-saga")
+@Transactional
+void on(SagaEvent e) {
+  switch (e) {
+    case InventoryReserved r -> advance(r.orderId(), PENDING, PAYMENT_PENDING,
+                                        new ProcessPayment(r.orderId()));
+    case PaymentFailed p     -> advance(p.orderId(), PAYMENT_PENDING, CANCELLING,
+                                        new ReleaseHold(p.orderId()));
+    default -> { }
+  }
+}`,
+  },
+  orderdb: {
+    tag: 'MongoDB replica set · orders + outbox',
+    desc: '<code>orders { _id, user, items, status, idemKey }</code> with a <b>unique index</b> on <code>idemKey</code>, and an <code>outbox</code> collection written <b>in the same transaction</b>. The state change and the message to send are committed together: never one without the other.',
+    points: ['Save then <code>kafka.send()</code> would leave a stuck order (or a message for an order that does not exist) after a crash', 'Multi-document transactions need a replica set', 'Shard by <code>orderId</code> or <code>userId</code> (~170 GB/day)', 'Failover pauses writes for a few seconds; the client retries with the same key'],
+    code: `// orders · unique index on idemKey
+{ _id: "o-1", user: "A", items: [{ sku: "SKU-42", qty: 1 }],
+  status: "PAYMENT_PENDING", idemKey: "ck-A-77" }
+// outbox (same DB, same transaction)
+{ _id: ObjectId(...), type: "ProcessPayment", orderId: "o-1",
+  published: false, createdAt: ISODate(...) }
+
+db.orders.createIndex({ idemKey: 1 }, { unique: true })`,
+  },
+  relay: {
+    tag: 'Change stream / Debezium / poller',
+    desc: 'Reads unpublished outbox rows (MongoDB <b>change stream</b> or a poller), sends them to Kafka, then marks them published. Turns "committed in the DB" into "published to Kafka", even if Kafka was down at commit time.',
+    points: ['One active relay per shard (leader) or partitioned by key', 'Persists the change-stream <b>resume token</b> so a restart continues where it stopped', 'Crash after send, before marking → sends again: consumers must dedupe (they do)', 'Alert on the age of the oldest unpublished row'],
+    code: `mongo.changeStream("outbox",
+      ChangeStreamOptions.builder()
+          .filter(newAggregation(match(where("operationType").is("insert"))))
+          .resumeAt(tokens.load()).build(),
+      Outbox.class)
+  .doOnNext(ev -> {
+    Outbox o = ev.getBody();
+    kafka.send(o.topic(), o.orderId(), o.payload()).get();   // acks=all
+    mongo.updateFirst(query(where("_id").is(o.id())),
+                      Update.update("published", true), Outbox.class);
+    tokens.save(ev.getResumeToken());
+  }).subscribe();`,
+  },
+  kafka: {
+    tag: 'Commands & replies · key = orderId',
+    desc: 'Command topics <code>inventory-cmd</code>, <code>payment-cmd</code>; reply topic <code>saga-events</code>; <code>order-events</code> for reactions like Shipping. Key = <code>orderId</code>, so one order\'s messages stay in order. Services stay decoupled: commands wait in the log while a participant is slow or down.',
+    points: ['A synchronous REST chain would make checkout depend on every service: Payment down = checkout down', 'Delivery is <b>at-least-once</b> after a crash or rebalance → every consumer is idempotent', 'Partitions per topic; consumers up to one per partition', 'Kafka transactions do not cover the DB writes or the payment provider'],
+    code: `@Bean
+NewTopic inventoryCmd() {
+  return TopicBuilder.name("inventory-cmd").partitions(12).replicas(3).build();
 }
-async function ord(s, v, id, user, st, label = st) {
-  const txt = fmt(id, user, label), r = v.rows[id];
-  if (!r) { v.rows[id] = await s.row(v.log, txt, ST[st]); return; }
-  r.label.textContent = txt;
-  s.paintRow(r, ST[st]);
-  await s.pulse(r, 1, 1.05);
-}
-const paint = color => ({ color, stroke: color === GREY ? KEEP : color });
-const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
-const stk = (s, v, a, r, color) => s.setChip(v.stk, `SKU-42 · available ${a} · reserved ${r}`, paint(color || (a < 0 ? RED : TEAL)));
-const hld = (s, v, t, color = GREY) => s.setChip(v.hold, t, paint(color));
-const pay = (s, v, t, color = GREY) => s.setChip(v.pay, t, paint(color));
-const obx = (s, v, t, color = AMBER) => s.setChip(v.box, t, { color, stroke: color === GREEN ? GREEN : KEEP });
-const kaf = (s, v, t, color = PURPLE) => s.setChip(v.kaf, t, { color });
-const shp = (s, v, t, color = GREY) => s.setChip(v.ship, t, paint(color));
-const who = (s, v, u, txt, color = GREY) => s.setChip(u === 'B' ? v.ub : v.ua, txt, paint(color));
-const both = (...ps) => Promise.all(ps);
 
-window.DESIGN = {
-  id: 'shop', n: 5, title: 'E-commerce Order System', tagline: 'no distributed transaction: local transactions, outbox, idempotent steps, compensations',
-  viewBox: [1100, 520],
-
-  // ---------------- architecture ----------------
-  layers: [
-    { id: 'entry', title: 'Shoppers & edge', x0: 0, x1: 290, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
-      why: 'Shoppers place orders with an **Idempotency-Key** (one per checkout) through the **API gateway**, and get **202 PENDING** back in milliseconds; the final status arrives later.',
-      detail: 'The gateway does auth and rate limits; it holds no order state.' },
-    { id: 'app', title: 'Order service (orchestrator)', x0: 290, x1: 560, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
-      why: 'The **Order Service** owns the order and drives the saga. Every step is a **local transaction** that updates the order **and** writes the next command to an **outbox** table; a **relay** publishes it.',
-      detail: 'The order status **is** the saga state, so a crashed pod loses nothing: the next reply continues from the stored status.' },
-    { id: 'async', title: 'Kafka · commands & replies', x0: 560, x1: 770, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
-      why: 'Commands (`inventory-cmd`, `payment-cmd`) go to the participants; replies come back on `saga-events`. Key = `orderId`.',
-      detail: 'Delivery is **at-least-once**, so every consumer must be **idempotent**.' },
-    { id: 'data', title: 'Participant services', x0: 770, x1: 1100, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
-      why: '**Inventory** reserves stock with a **conditional decrement** and an expiring **hold**; **Payment** charges with a provider **idempotency key**; **Shipping** reacts to OrderConfirmed. Each owns **its own database**.',
-      detail: 'No 2PC across these databases: on failure the saga runs **compensations** (release the hold, refund).' },
-  ],
-  layersIntro: {
-    title: 'A saga of local transactions',
-    text: 'The **Order Service** saves the order and an **outbox** command in one transaction and answers **202**. Through **Kafka** it asks **Inventory** to reserve stock, then **Payment** to charge, then confirms; if a step fails it **compensates** instead of rolling back. Hover a layer or a component to see why it exists.',
+kafkaTemplate.send("inventory-cmd", order.id(),          // key = orderId
+                   new ReserveInventory(order.id(), "SKU-42", 1));`,
   },
-  nodes: {
-    userA: { x: 70, y: 80, w: 120, label: 'User A', sub: 'web / app', icon: '👤', layer: 'entry' },
-    userB: { x: 70, y: 290, w: 120, label: 'User B', sub: 'web / app', icon: '👤', layer: 'entry' },
-    gw: { x: 215, y: 195, w: 120, label: 'API Gateway', sub: 'auth · limits', icon: '🚪', layer: 'entry' },
-    order: { x: 420, y: 110, w: 160, label: 'Order Svc', sub: 'saga orchestrator', icon: '🧾', layer: 'app' },
-    orderdb: { x: 420, y: 250, w: 160, label: 'Order DB', sub: 'orders · outbox', icon: '🍃', layer: 'app' },
-    relay: { x: 420, y: 400, w: 160, label: 'Outbox relay', sub: 'change stream', icon: '📤', layer: 'app' },
-    kafka: { x: 665, y: 220, w: 170, label: 'Kafka', sub: 'commands · events', icon: '📨', layer: 'async' },
-    inventory: { x: 855, y: 90, w: 150, label: 'Inventory Svc', sub: 'holds stock', icon: '📦', layer: 'data' },
-    stockdb: { x: 1025, y: 90, w: 140, label: 'Stock DB', sub: 'stock · holds', icon: '🍃', layer: 'data' },
-    payment: { x: 855, y: 270, w: 150, label: 'Payment Svc', sub: 'charge · refund', icon: '💳', layer: 'data' },
-    provider: { x: 1025, y: 270, w: 140, label: 'Provider', sub: 'card / UPI', icon: '🏦', layer: 'data' },
-    shipping: { x: 855, y: 430, w: 150, label: 'Shipping Svc', sub: 'on confirmed', icon: '🚚', layer: 'data' },
+  inventory: {
+    tag: 'Spring Boot · conditional decrement + hold',
+    desc: 'Reserves stock with <code>available ≥ qty</code> <b>in the update filter</b> and a <b>hold</b> with <code>_id = orderId</code> that <b>expires</b> after 15 minutes. Confirms or releases the hold later; an expiry job gives abandoned stock back.',
+    points: ['The conditional update makes overselling impossible; read-then-write lets two buyers both get the last unit', 'Redelivered command → hold <code>o-1</code> already exists → skip, resend the reply', 'Release is guarded by <code>status: "HELD"</code>, so a duplicate changes nothing', 'Hot SKUs contend on one document → split stock into buckets for flash sales'],
+    code: `boolean reserve(ReserveInventory c) {             // inside TransactionTemplate
+  if (mongo.exists(query(where("_id").is(c.orderId())), Hold.class))
+    return true;                                    // redelivered → already reserved
+  UpdateResult r = mongo.updateFirst(
+      query(where("_id").is(c.sku()).and("available").gte(c.qty())),
+      new Update().inc("available", -c.qty()).inc("reserved", c.qty()),
+      Stock.class);
+  if (r.getModifiedCount() == 0) return false;      // sold out → InventoryRejected
+  mongo.insert(Hold.held(c.orderId(), c.sku(), c.qty(), now().plus(15, MINUTES)));
+  return true;                                      // → InventoryReserved
+}`,
   },
-  wires: [['userA', 'gw'], ['userB', 'gw'], ['gw', 'order'], ['order', 'orderdb'], ['orderdb', 'relay'], ['relay', 'kafka'], ['kafka', 'order'], ['kafka', 'inventory'], ['kafka', 'payment'], ['kafka', 'shipping'], ['inventory', 'stockdb'], ['payment', 'provider']],
-
-  components: {
-    userA: {
-      name: 'Shoppers',
-      what: 'Place orders from the web or the app, then poll `GET /orders/{id}` or get a push with the final status.',
-      why: 'They create a fresh **Idempotency-Key** per checkout and reuse it on every retry of that checkout.',
-      without: 'A timeout followed by a retry would create a second order (and a second charge).',
-      tech: 'Browser / mobile app', scale: 'Flash sales concentrate thousands of buyers on a few SKUs.', fails: 'Retries with the same key are safe; the server returns the same order.',
-    },
-    userB: {
-      name: 'Another shopper',
-      what: 'Competes with A for the last unit in the race flow.',
-      why: 'Shows why the stock check must be **inside** the write, not before it.',
-      without: '—',
-      tech: 'Browser / mobile app', scale: '—', fails: 'Must be told "sold out" **before** being charged.',
-    },
-    gw: {
-      name: 'API Gateway',
-      what: 'Single entry: JWT auth, rate limits per user, routing `/orders` to the Order Service.',
-      why: 'Cross-cutting concerns in one place; bots hammering checkout are stopped here.',
-      without: 'Every service re-implements auth and limits.',
-      tech: 'Spring Cloud Gateway / Kong', scale: 'Stateless pods.', fails: 'Retries only idempotent calls; `POST /orders` is safe because of the Idempotency-Key.',
-      core: ['gw', 'API Gateway'],
-    },
-    order: {
-      name: 'Order Service (saga orchestrator)',
-      what: 'Creates the order, then drives the steps: **reserve stock → charge → confirm**, or **compensate** on failure. Reacts to replies on `saga-events`.',
-      why: 'One place owns the multi-step flow, so it is easy to follow, debug and change.',
-      without: 'Choreography only: the flow is spread across many event handlers and compensations are hard to see.',
-      tech: 'Spring Boot, `@KafkaListener` on `saga-events`, MongoDB transactions', scale: 'Stateless pods; state lives in the order document.', fails: 'A crash mid-saga is safe: the status is stored, and every transition is guarded by the expected status.',
-    },
-    orderdb: {
-      name: 'Order DB (orders + outbox)',
-      what: '`orders { _id, user, items, status, idemKey }` with a unique index on `idemKey`, and an `outbox` collection written **in the same transaction**.',
-      why: 'The state change and the message to send are committed together: never one without the other.',
-      without: 'Save then `kafka.send()`: a crash between them leaves an order that never progresses (or a message for an order that does not exist).',
-      tech: 'MongoDB replica set (multi-document transactions)', scale: 'Shard by `orderId` or `userId`.', fails: 'Failover pauses writes for a few seconds; the client retries with the same key.',
-      core: ['db', 'DB scaling'],
-    },
-    relay: {
-      name: 'Outbox relay',
-      what: 'Reads unpublished outbox rows (MongoDB **change stream** or a poller), sends them to Kafka, marks them published.',
-      why: 'Turns "committed in the DB" into "published to Kafka", even if Kafka was down at commit time.',
-      without: 'Dual writes: DB and Kafka can disagree after a crash.',
-      tech: 'Change stream / Debezium / scheduled poller', scale: 'One active relay per shard (leader) or partitioned by key.', fails: 'Crash after send, before marking → sends again, so consumers must dedupe (they do).',
-    },
-    kafka: {
-      name: 'Kafka (commands & replies)',
-      what: 'Command topics `inventory-cmd`, `payment-cmd`; reply topic `saga-events`. Key = `orderId`, so one order\'s messages stay in order.',
-      why: 'Services stay decoupled and keep working when another one is slow or down; commands wait in the log.',
-      without: 'Synchronous REST chain: Payment down = checkout down.',
-      tech: 'Kafka; `KafkaTemplate` + `@KafkaListener`', scale: 'Partitions per topic; consumers up to one per partition.', fails: 'Redelivery after a crash or rebalance → **at-least-once**.',
-      core: ['kafka', 'Queue · Kafka'],
-    },
-    inventory: {
-      name: 'Inventory Service',
-      what: 'Reserves stock: `available ≥ qty` **in the update filter**, and a **hold** with `_id = orderId` that **expires** (15 min). Confirms or releases the hold later.',
-      why: 'The conditional update makes overselling impossible; the hold gives stock back if the buyer never pays.',
-      without: 'Read-then-write: two buyers both see 1 unit and both get it.',
-      tech: 'Spring Boot, `MongoTemplate.updateFirst` with a condition, TTL / expiry job', scale: 'Hot SKUs contend on one document → split stock into buckets for flash sales.', fails: 'Redelivered command → hold `o-1` already exists → skip, resend the reply.',
-    },
-    stockdb: {
-      name: 'Stock DB',
-      what: '`stock { _id: sku, available, reserved }` and `holds { _id: orderId, sku, qty, status, expiresAt }`.',
-      why: 'Database per service: only Inventory writes stock.',
-      without: 'Shared DB: other services update stock directly and bypass the rules.',
-      tech: 'MongoDB', scale: 'Shard by SKU.', fails: 'Down → ReserveInventory commands wait in Kafka; orders stay PENDING.',
-      core: ['db', 'DB scaling'],
-    },
-    payment: {
-      name: 'Payment Service',
-      what: 'Charges with an **idempotency key** per order (`pay-o-1`), refunds with its own key (`refund-o-1`), handles provider webhooks.',
-      why: 'A retried charge must never become a second charge.',
-      without: 'A timeout + retry charges the customer twice.',
-      tech: 'Stripe / Razorpay SDK, signed webhooks', scale: 'Stateless; provider rate limits apply.', fails: 'A timeout is **unknown**, not failed: retry with the same key or query the provider.',
-    },
-    provider: {
-      name: 'Payment provider',
-      what: 'Moves the money. Returns succeeded, declined, or answers late (3-D Secure, bank delays).',
-      why: 'External: we cannot roll it back, only refund.',
-      without: '—',
-      tech: 'Stripe / Razorpay style API', scale: 'Rate limits per account.', fails: 'Slow, declined or late answers; the saga must handle all three.',
-    },
-    shipping: {
-      name: 'Shipping Service',
-      what: 'Creates a shipment when **OrderConfirmed** arrives.',
-      why: 'A simple reaction to an event: no compensation needed, so choreography is fine here.',
-      without: '—',
-      tech: 'Kafka consumer', scale: 'Batch-friendly.', fails: 'Redelivery → dedupe by `orderId` (shipment `_id`).',
-    },
+  payment: {
+    tag: 'Spring Boot · provider idempotency keys',
+    desc: 'Charges with an <b>idempotency key</b> per order (<code>pay-o-1</code>), refunds with its own key (<code>refund-o-1</code>) and handles signed provider webhooks. A retried charge must never become a second charge.',
+    points: ['A timeout is <b>unknown</b>, not failed: retry with the same key, wait for the webhook or query the provider', 'Never charge again with a new key', 'Stateless; provider rate limits apply', 'Replies PaymentCompleted / PaymentFailed on <code>saga-events</code>'],
+    code: `PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
+    .setAmount(99_900L).setCurrency("inr")
+    .setPaymentMethod(cmd.paymentMethodId()).setConfirm(true)
+    .build();
+RequestOptions opts = RequestOptions.builder()
+    .setIdempotencyKey("pay-" + cmd.orderId())      // retry → same charge
+    .build();
+PaymentIntent pi = PaymentIntent.create(params, opts);`,
   },
+  shipping: {
+    tag: 'Kafka consumer · reacts to OrderConfirmed',
+    desc: 'Creates a shipment when <b>OrderConfirmed</b> arrives. A simple reaction to an event: no compensation needed, so choreography is fine here.',
+    points: ['Batch-friendly consumer', 'Redelivery → dedupe by <code>orderId</code> (shipment <code>_id</code>)', 'Delivery tracking is out of scope'],
+    code: `@KafkaListener(topics = "order-events", groupId = "shipping")
+void on(OrderConfirmed e) {
+  try {
+    shipments.insert(new Shipment("s-" + e.orderId(), e.orderId(), e.address()));
+  } catch (DuplicateKeyException dup) {
+    // redelivered OrderConfirmed: shipment already exists → no-op
+  }
+}`,
+  },
+  stockdb: {
+    tag: 'MongoDB · only Inventory writes stock',
+    desc: '<code>stock { _id: sku, available, reserved }</code> and <code>holds { _id: orderId, sku, qty, status, expiresAt }</code>. Database per service: only Inventory writes stock, so nobody bypasses the rules.',
+    points: ['A single-document update is atomic: the <code>$gte</code> filter and the <code>$inc</code> cannot be split by another writer', 'Shard by SKU', 'Down → ReserveInventory commands wait in Kafka; orders stay PENDING', 'Hold statuses: HELD → CONFIRMED | RELEASED | EXPIRED'],
+    code: `db.stock.updateOne(
+  { _id: "SKU-42", available: { $gte: 1 } },       // never below zero
+  { $inc: { available: -1, reserved: 1 } })
+// -> { matchedCount: 1, modifiedCount: 1 }  or 0 = sold out
 
-  // ---------------- 1 · overview loop ----------------
-  intro: {
-    headline: 'Accept, reserve, charge, confirm: or compensate.',
-    points: [
-      { t: 'Accept', color: BLUE, d: 'Save the order **and** an outbox command in one transaction; answer **202 PENDING**.' },
-      { t: 'Reserve', color: TEAL, d: 'Inventory decrements only if `available ≥ 1` and writes a **hold** that expires.' },
-      { t: 'Charge', color: PURPLE, d: 'Payment charges with an **idempotency key**, so a retry never charges twice.' },
-      { t: 'Confirm', color: GREEN, d: 'The order becomes **CONFIRMED** and Shipping starts. On failure: **release the hold**.' },
+db.holds.insertOne({ _id: "o-1", sku: "SKU-42", qty: 1,
+                     status: "HELD", expiresAt: ISODate("…11:15") })`,
+  },
+  provider: {
+    tag: 'External · card / UPI (Stripe / Razorpay style)',
+    desc: 'Moves the money. Returns succeeded, declined, or answers late (3-D Secure, bank delays). It is external: we cannot roll it back, only <b>refund</b>.',
+    points: ['Same idempotency key → the same charge is returned, never a second one', 'Slow, declined or late answers: the saga must handle all three', 'Rate limits per account', 'Final status also arrives as a signed webhook'],
+    code: `POST /v1/payment_intents
+Idempotency-Key: pay-o-1
+amount=99900&currency=inr&confirm=true
+-> 200 { "id": "pi_3Q...", "status": "succeeded" }
+-> 402 { "error": { "code": "card_declined" } }
+
+POST /v1/refunds
+Idempotency-Key: refund-o-1
+payment_intent=pi_3Q...`,
+  },
+};
+
+// building blocks taught once in 00_Core_Components.html (same "#id/what" links as the engine pages)
+const CORE = {
+  gw: ['gw', 'API Gateway'], orderdb: ['db', 'DB scaling'], kafka: ['kafka', 'Queue · Kafka'], stockdb: ['db', 'DB scaling'],
+};
+
+// ---------------- scenarios ----------------
+// hop: `from`/`to` may be an array (one packet per pair, all at the same time); `count` sends several packets 0.25 s apart.
+// node: `id` may be an array (several nodes work in parallel); `tags` gives one tag per node.
+// `stat`: 'hit' = a stock hold taken, 'res' = a call to the payment provider (footer counters).
+const hop = (from, to, kind, tag, title, proto, text, extra) => Object.assign({ type: 'hop', from, to, kind, tag, title, proto, text }, extra || {});
+const node = (id, tag, title, proto, text, extra) => Object.assign({ type: 'node', id, tag, title, proto, text }, extra || {});
+const GREEN = '#16a34a', RED = '#dc2626', AMBER = '#d97706', BLUE = '#0b5cff';
+const DECR = 'updateOne({_id:"SKU-42", available:{$gte:1}}, {$inc:{available:-1, reserved:1}})';
+
+const SCEN = {
+  // Ported from the old page's "A buys SKU-42" flow: outbox · reserve · charge · confirm.
+  happy: {
+    name: 'A buys SKU-42',
+    steps: [
+      hop('userA', 'gw', 'request', 'POST /orders · ck-A-77', 'A places the order with an Idempotency-Key', 'HTTPS · Idempotency-Key: ck-A-77', 'POST /orders {"sku":"SKU-42","qty":1} carries Idempotency-Key: ck-A-77, generated once per checkout and reused on every retry of it.'),
+      hop('gw', 'order', 'request', 'POST /orders', 'Gateway authenticates and routes', 'JWT · Path=/orders/** → :8080', 'The gateway validates A\'s JWT, applies the per-user checkout limit and routes to an Order Service pod, where findByIdemKey("ck-A-77") finds nothing: a new checkout.'),
+      hop('order', 'orderdb', 'request', 'txn: order + outbox', 'Order + outbox command in one transaction', 'MongoDB txn · w:majority', 'One MongoDB transaction inserts order o-1 as PENDING (unique index on idemKey) and an outbox row ReserveInventory(o-1): both commit, or neither does.', { tag: 'o-1 PENDING + outbox' }),
+      { type: 'fork', title: 'Answer 202 now (in parallel)', proto: 'HTTP 202 Accepted', text: 'The API returns 202 {orderId:"o-1", status:"PENDING"} in a few milliseconds; stock and payment continue asynchronously while the app polls or waits for a push.', steps: [
+        hop('order', 'gw', 'response', '202 PENDING', '202 PENDING', 'HTTP 202', 'Accepted, not finished.'),
+        hop('gw', 'userA', 'response', '202 o-1', 'A sees "order pending"', 'HTTPS · 202', 'The app shows "order pending".'),
+      ] },
+      hop('orderdb', 'relay', 'event', 'outbox insert', 'The relay sees the new outbox row', 'change stream · watch(outbox)', 'A MongoDB change stream on the outbox collection (resume token persisted) delivers the committed insert to the outbox relay.'),
+      hop('relay', 'kafka', 'event', 'ReserveInventory o-1', 'Publish the command, then mark it published', 'inventory-cmd · key o-1 · acks=all', 'KafkaTemplate.send("inventory-cmd", "o-1", cmd) with acks=all; only after the broker acknowledges does the relay set published:true on the outbox row.'),
+      hop('kafka', 'inventory', 'event', 'ReserveInventory', 'Inventory consumes the command', '@KafkaListener inventory-cmd', 'Key o-1 keeps every message of this order on one partition, so its commands arrive in order.'),
+      hop('inventory', 'stockdb', 'request', 'available ≥ 1 ? −1', 'Reserve: conditional decrement + hold', 'updateOne · $gte filter · txn', `${DECR} and insert hold {_id:"o-1", status:"HELD", expiresAt:11:15} run in one local transaction.`),
+      node('stockdb', 'available 4 · hold o-1 HELD', 'Decision: modifiedCount 1 → reserved', 'stock 5 → 4 · reserved 0 → 1', 'The filter matched, so available drops to 4 and hold o-1 is HELD until 11:15; modifiedCount 0 would have meant sold out → InventoryRejected.', { tagColor: GREEN, stat: 'hit' }),
+      hop('inventory', 'kafka', 'event', 'InventoryReserved', 'Reply on saga-events', 'saga-events · key o-1', 'Inventory replies InventoryReserved(o-1) on saga-events and commits its consumer offset.'),
+      hop('kafka', 'order', 'event', 'InventoryReserved', 'The orchestrator receives the reply', '@KafkaListener saga-events', 'Any Order Service pod can handle it: the saga state is the stored order status, not memory.'),
+      hop('order', 'orderdb', 'request', 'PENDING → PAYMENT_PENDING', 'Status-guarded transition + next command', 'updateOne · status filter · txn', 'updateOne({_id:"o-1", status:"PENDING"}, {$set:{status:"PAYMENT_PENDING"}}) plus outbox ProcessPayment(o-1), again in one transaction.', { tag: 'o-1 PAYMENT_PENDING' }),
+      hop('relay', 'kafka', 'event', 'ProcessPayment o-1', 'The relay publishes ProcessPayment', 'payment-cmd · key o-1', 'The change stream hands the new outbox row to the relay, which publishes ProcessPayment(o-1) to payment-cmd and marks it published.'),
+      hop('kafka', 'payment', 'event', 'ProcessPayment', 'Payment consumes the command', '@KafkaListener payment-cmd', 'Payment reads ProcessPayment(o-1) for ₹999 with the stored payment method.'),
+      hop('payment', 'provider', 'request', 'charge · key pay-o-1', 'Charge with an idempotency key', 'HTTPS · Idempotency-Key: pay-o-1', 'PaymentIntent.create(params, RequestOptions.setIdempotencyKey("pay-o-1")): a retried call returns the same charge instead of making a new one.', { stat: 'res' }),
+      hop('provider', 'payment', 'response', 'succeeded ₹999', 'The provider captures ₹999 once', 'HTTP 200 · status succeeded', 'The provider answers succeeded; Payment records pay-o-1 CAPTURED.'),
+      hop('payment', 'kafka', 'event', 'PaymentCompleted', 'Reply PaymentCompleted', 'saga-events · key o-1', 'Payment replies PaymentCompleted(o-1) on saga-events.'),
+      hop('kafka', 'order', 'event', 'PaymentCompleted', 'The orchestrator receives the payment reply', '@KafkaListener saga-events', 'The listener calls advance(o-1, PAYMENT_PENDING, CONFIRMED, ConfirmHold).'),
+      hop('order', 'orderdb', 'request', 'CONFIRMED + 2 outbox rows', 'Confirm: o-1 CONFIRMED', 'updateOne · status filter · txn', 'o-1 moves PAYMENT_PENDING → CONFIRMED (matched 1) with outbox rows ConfirmHold(o-1) and OrderConfirmed(o-1) in the same transaction.', { tag: 'o-1 CONFIRMED' }),
+      { type: 'fork', title: 'In parallel: A gets the final status', proto: 'push / GET /orders/o-1', text: 'The app\'s poll (or a push) now returns CONFIRMED.', steps: [
+        hop('order', 'gw', 'response', 'CONFIRMED', 'CONFIRMED', 'HTTP 200', 'Final status.'),
+        hop('gw', 'userA', 'response', 'CONFIRMED ✓', 'A sees CONFIRMED', 'HTTPS', 'Order confirmed.'),
+      ] },
+      hop('kafka', ['inventory', 'shipping'], 'event', null, 'Hold becomes a sale, Shipping starts', 'inventory-cmd · order-events', 'The relay publishes ConfirmHold and OrderConfirmed: Inventory marks hold o-1 CONFIRMED (reserved −1) and Shipping creates shipment s-9, deduped by orderId.', { tags: ['ConfirmHold', 'OrderConfirmed'] }),
     ],
-    stats: [['1 k', 'orders / s'], ['100×', 'flash-sale peak'], ['0', 'oversold units'], ['1', 'charge per order']],
   },
-  async overview(s, v, ui) {
-    if (!v.ready) { setup(s, v); v.ready = true; }
-    for (const r of [...v.log.rows]) await s.unrow(v.log, r);
-    v.rows = {}; stk(s, v, 5, 0); hld(s, v, 'holds —'); pay(s, v, 'payments —'); obx(s, v, 'outbox —'); kaf(s, v, 'cmd — · events —'); shp(s, v, 'shipments —'); who(s, v, 'A', 'browsing');
-
-    ui.say(0); ui.cap('**Accept** · A places the order; order + outbox command in one transaction, then 202');
-    await s.send(['userA', 'gw', 'order'], 'POST /orders', BLUE, { ms: 420 });
-    await s.send(['order', 'orderdb'], 'order + outbox', BLUE, { ms: 420 });
-    await ord(s, v, 'o-1', 'A', 'PENDING');
-    obx(s, v, 'outbox: ReserveInventory ⏳');
-    await s.send(['order', 'gw', 'userA'], '202 PENDING', GREEN, { ms: 380 });
-    who(s, v, 'A', 'order pending', AMBER);
-    ui.say(1); ui.cap('**Reserve** · the relay publishes the command; Inventory decrements only if stock is left');
-    await s.send(['orderdb', 'relay', 'kafka'], 'ReserveInventory', AMBER, { ms: 400 });
-    obx(s, v, 'outbox: ReserveInventory ✓', GREEN);
-    await s.send(['kafka', 'inventory', 'stockdb'], 'available ≥ 1 ?', TEAL, { ms: 400 });
-    stk(s, v, 4, 1); hld(s, v, 'hold o-1 HELD · 11:15', TEAL);
-    await s.send(['inventory', 'kafka', 'order'], 'InventoryReserved', TEAL, { ms: 400 });
-    await ord(s, v, 'o-1', 'A', 'PAYMENT_PENDING');
-    ui.say(2); ui.cap('**Charge** · Payment charges with idempotency key `pay-o-1`');
-    await s.send(['kafka', 'payment', 'provider'], 'charge · pay-o-1', PURPLE, { ms: 400 });
-    await s.send(['provider', 'payment'], 'succeeded', GREEN, { ms: 380 });
-    pay(s, v, 'pay-o-1 CAPTURED ₹999', GREEN);
-    await s.send(['payment', 'kafka', 'order'], 'PaymentCompleted', PURPLE, { ms: 400 });
-    ui.say(3); ui.cap('**Confirm** · order CONFIRMED, hold becomes a sale, Shipping starts');
-    await ord(s, v, 'o-1', 'A', 'CONFIRMED');
-    await both(s.send(['kafka', 'inventory'], 'ConfirmHold', GREEN, { ms: 400 }), s.send(['kafka', 'shipping'], 'OrderConfirmed', GREEN, { ms: 400 }));
-    stk(s, v, 4, 0); hld(s, v, 'hold o-1 CONFIRMED', GREEN); shp(s, v, 'shipment s-9 · o-1', GREEN);
-    await s.send(['order', 'gw', 'userA'], 'CONFIRMED', GREEN, { ms: 380 });
-    who(s, v, 'A', 'order confirmed ✓', GREEN);
-    await s.wait(1800);
-    ui.say(-1); ui.cap('');
-    await s.wait(400);
+  // Ported from the old page's "Last unit: A vs B" flow: read-then-write vs conditional update.
+  race: {
+    name: 'Last unit: A vs B',
+    steps: [
+      hop(['userA', 'userB'], 'gw', 'request', null, 'A and B check out the last unit', 'HTTPS · POST /orders ×2', 'Only 1 unit of SKU-42 is left; A and B press "Place order" within the same second, each with their own Idempotency-Key.', { tags: ['POST · ck-A-77', 'POST · ck-B-12'] }),
+      hop('gw', 'order', 'request', null, 'Both reach the Order Service', 'Path=/orders/** ×2', 'Two different keys mean two genuine orders: o-1 for A and o-2 for B.', { count: 2, tags: ['o-1', 'o-2'] }),
+      hop('order', 'orderdb', 'request', null, 'Two orders, two outbox rows', 'MongoDB txn ×2', 'Each order is inserted as PENDING with its own ReserveInventory outbox row; the Order Service does not look at stock at all.', { count: 2, tags: ['o-1 PENDING', 'o-2 PENDING'] }),
+      hop('relay', 'kafka', 'event', null, 'Commands keyed by orderId', 'inventory-cmd · keys o-1, o-2', 'Keyed by orderId, ReserveInventory(o-1) and (o-2) land on different partitions, so different Inventory instances take them.', { count: 2, tags: ['key o-1 → p0', 'key o-2 → p1'] }),
+      hop('kafka', 'inventory', 'event', null, 'Two instances, same SKU, same moment', '2 partitions · 2 consumers', 'Instance 1 handles o-1 and instance 2 handles o-2 in parallel; both want SKU-42.', { count: 2, tags: ['o-1 (inst 1)', 'o-2 (inst 2)'] }),
+      hop('inventory', 'stockdb', 'request', null, '❌ Read the stock in Java first', 'findOne({_id:"SKU-42"}) ×2', 'Naive handler: stock = findOne("SKU-42"), then if (stock.available >= 1) decrement in a second call.', { count: 2, tags: ['read (o-1)', 'read (o-2)'] }),
+      hop('stockdb', 'inventory', 'response', null, '❌ Both reads return available: 1', 'two separate operations', 'Neither decrement has happened yet, so both instances read available: 1.', { count: 2, tags: ['sees 1', 'sees 1'] }),
+      node('inventory', '1 ≥ 1 ✓ (both)', '❌ Both checks pass in Java', 'check-then-act race', 'The check and the write are separate, so nothing stops the second instance from also deciding there is stock.', { tagColor: RED }),
+      hop('inventory', 'stockdb', 'error', null, '❌ Both decrement without a condition', 'updateOne({_id}) · $inc −1 ×2', 'updateOne({_id:"SKU-42"}, {$inc:{available:-1}}) has no condition, so both updates apply.', { count: 2, tags: ['$inc −1', '$inc −1'] }),
+      node('stockdb', 'available −1 ✕', '❌ Oversold: available 1 → 0 → −1', 'both holds HELD', 'Both orders move on to payment, both buyers get charged for one unit, and someone gets a cancellation and a refund after paying.', { tagColor: RED }),
+      node('stockdb', '↺ rewind', '✅ Rewind: the condition goes in the filter', DECR.slice(0, 44) + '…', `Same race, but each instance runs ${DECR}: MongoDB applies a single-document update atomically.`, { tagColor: AMBER }),
+      hop('inventory', 'stockdb', 'request', null, 'Both send the conditional decrement', 'updateOne · $gte filter ×2', 'Same timing as before: both conditional updates reach the primary within the same millisecond.', { count: 2, tags: ['≥ 1 ? (o-1)', '≥ 1 ? (o-2)'] }),
+      node('stockdb', 'o-1: modified 1 · o-2: 0', 'Decision: only one update can match', 'single-document atomicity', 'o-1\'s update applies first (available 1 → 0, hold o-1 HELD); for o-2 available is already 0, so modifiedCount 0 and its transaction inserts no hold.', { tagColor: GREEN, stat: 'hit' }),
+      hop('inventory', 'kafka', 'event', null, 'Two different replies', 'saga-events · Reserved / Rejected', 'Inventory replies InventoryReserved(o-1) and InventoryRejected(o-2, OUT_OF_STOCK).', { count: 2, kinds: ['event', 'error'], tags: ['Reserved o-1', 'Rejected o-2'] }),
+      hop('kafka', 'order', 'event', null, 'The orchestrator handles both', '@KafkaListener saga-events', 'Each reply is applied to its own order with a status-guarded update.', { count: 2, kinds: ['event', 'error'], tags: ['Reserved o-1', 'Rejected o-2'] }),
+      hop('order', 'orderdb', 'request', null, 'o-1 goes to payment, o-2 is cancelled', 'updateOne · status filter ×2', 'o-1: PENDING → PAYMENT_PENDING + outbox ProcessPayment; o-2: PENDING → CANCELLED (sold out), with no payment command at all.', { count: 2, tags: ['o-1 PAYMENT_PENDING', 'o-2 CANCELLED'] }),
+      node('order', 'reserve first, charge second', 'Decision: reserve before charge', 'nobody pays for a missing item', 'Because Inventory runs before Payment, the loser of the race is cancelled before any money moves.', { tagColor: GREEN }),
+      hop('order', 'gw', 'error', 'sold out · o-2', 'B is told "sold out"', 'HTTP 200 · status CANCELLED', 'GET /orders/o-2 (or a push) returns status CANCELLED, reason OUT_OF_STOCK.'),
+      hop('gw', 'userB', 'error', 'sold out, not charged', 'B sees "sold out, not charged"', 'HTTPS', 'B was never charged: no ProcessPayment was ever written for o-2.'),
+      node('userB', 'not charged ✓', 'One unit, one buyer, zero refunds', 'flash sale: buckets + admission', 'For hot SKUs the single stock document becomes the bottleneck: split stock into N buckets and admit buyers through a queue or tokens.', { tagColor: GREEN, dur: 3 }),
+    ],
   },
+  // Ported from the old page's "Payment declined" flow: compensate, release the hold.
+  comp: {
+    name: 'Payment declined',
+    steps: [
+      node('orderdb', 'o-1 PAYMENT_PENDING', 'Start: stock is held, payment is next', 'hold o-1 HELD · expires 11:15', 'Inventory already committed available 5 → 4 and hold o-1 in its own database; ProcessPayment(o-1) is waiting on payment-cmd.', { tagColor: BLUE }),
+      hop('kafka', 'payment', 'event', 'ProcessPayment o-1', 'Payment consumes the command', '@KafkaListener payment-cmd', 'Payment reads ProcessPayment(o-1) and calls the provider.'),
+      hop('payment', 'provider', 'request', 'charge · key pay-o-1', 'Charge with key pay-o-1', 'HTTPS · Idempotency-Key: pay-o-1', 'POST /v1/payment_intents with Idempotency-Key: pay-o-1 and confirm=true.', { stat: 'res' }),
+      hop('provider', 'payment', 'error', '402 card_declined', 'The card is declined', 'HTTP 402 · card_declined', 'The provider answers 402 card_declined: a definite failure, not a timeout, so no retry.'),
+      hop('payment', 'kafka', 'event', 'PaymentFailed', 'Reply PaymentFailed', 'saga-events · key o-1', 'Payment records pay-o-1 FAILED and replies PaymentFailed(o-1, card_declined).'),
+      hop('kafka', 'order', 'event', 'PaymentFailed', 'The orchestrator receives the failure', '@KafkaListener saga-events', 'The listener matches case PaymentFailed p.'),
+      node('order', 'no rollback → compensate', 'Decision: no rollback across services', 'saga compensation', 'Stock was committed in another database, so nothing can "roll back": the saga runs a compensating step, ReleaseHold, instead.', { tagColor: AMBER }),
+      hop('order', 'orderdb', 'request', 'CANCELLING + ReleaseHold', 'Move to CANCELLING, write the compensation', 'updateOne · status filter · txn', 'updateOne({_id:"o-1", status:"PAYMENT_PENDING"}, {$set:{status:"CANCELLING"}}) plus outbox ReleaseHold(o-1) in one transaction.', { tag: 'o-1 CANCELLING' }),
+      hop('orderdb', 'relay', 'event', 'ReleaseHold', 'The relay sees the compensation', 'change stream · watch(outbox)', 'The change stream delivers the new outbox row.'),
+      hop('relay', 'kafka', 'event', 'ReleaseHold o-1', 'Publish ReleaseHold', 'inventory-cmd · key o-1', 'Same key o-1, so it is ordered after the earlier ReserveInventory on that partition.'),
+      hop('kafka', 'inventory', 'event', 'ReleaseHold', 'Inventory consumes ReleaseHold', '@KafkaListener inventory-cmd', 'The compensation is an ordinary command handled by the participant that owns the data.'),
+      hop('inventory', 'stockdb', 'request', 'HELD → RELEASED', 'Release the hold, guarded by its status', 'updateOne · status: "HELD" · txn', 'holds.updateOne({_id:"o-1", status:"HELD"}, {$set:{status:"RELEASED"}}) and, only if it matched, $inc available +1, reserved −1, in one transaction.'),
+      node('stockdb', 'RELEASED · available 5', 'Stock is back on sale', 'matched 1', 'The hold is RELEASED and available goes back to 5 for other buyers.', { tagColor: GREEN }),
+      hop('kafka', 'inventory', 'event', 'ReleaseHold (again)', 'Kafka redelivers ReleaseHold', 'rebalance · offset not committed', 'After a consumer-group rebalance the same ReleaseHold(o-1) is delivered a second time.'),
+      hop('inventory', 'stockdb', 'request', 'HELD → RELEASED ?', 'The duplicate runs the same guarded update', 'updateOne · status: "HELD"', 'The filter {_id:"o-1", status:"HELD"} is evaluated again.'),
+      node('stockdb', 'matched 0 → no-op', 'Decision: status ≠ HELD → nothing changes', 'idempotent compensation', 'The hold is already RELEASED, so matched 0 and stock is not incremented twice: compensations must be idempotent too.', { tagColor: GREEN }),
+      hop('inventory', 'kafka', 'event', 'HoldReleased', 'Reply HoldReleased', 'saga-events · key o-1', 'Inventory replies HoldReleased(o-1).'),
+      hop('kafka', 'order', 'event', 'HoldReleased', 'The orchestrator finishes the saga', '@KafkaListener saga-events', 'case HoldReleased h → advance(o-1, CANCELLING, CANCELLED).'),
+      hop('order', 'orderdb', 'request', 'CANCELLING → CANCELLED', 'o-1 CANCELLED (payment failed)', 'updateOne · status filter', 'o-1 moves CANCELLING → CANCELLED with reason "payment failed"; a duplicate HoldReleased would match 0.', { tag: 'o-1 CANCELLED' }),
+      hop('order', 'gw', 'error', 'payment failed', 'Report the final status', 'HTTP 200 · status CANCELLED', 'GET /orders/o-1 now returns CANCELLED, reason PAYMENT_FAILED.'),
+      hop('gw', 'userA', 'error', 'payment failed ✕', 'A sees "payment failed"', 'HTTPS', 'A is told the card was declined; the unit is already back on sale for others.'),
+    ],
+  },
+  // Ported from the old page's "Late payment" flow: hold expires, then refund.
+  late: {
+    name: 'Late payment',
+    steps: [
+      node('orderdb', 'o-1 PAYMENT_PENDING', 'Start: o-1 waits for payment', 'hold o-1 HELD · expires 11:15', 'At 11:00:30 stock is held (available 4, reserved 1) and ProcessPayment(o-1) is on payment-cmd.', { tagColor: BLUE }),
+      hop('kafka', 'payment', 'event', 'ProcessPayment o-1', 'Payment consumes the command', '@KafkaListener payment-cmd', 'Payment reads ProcessPayment(o-1).'),
+      hop('payment', 'provider', 'request', 'charge · key pay-o-1', 'Charge with key pay-o-1', 'HTTPS · Idempotency-Key: pay-o-1', 'POST /v1/payment_intents with Idempotency-Key: pay-o-1.', { stat: 'res' }),
+      node('provider', 'PROCESSING… 15 min', 'The provider hangs', '3-D Secure · UPI pending', 'The bank is slow (3-D Secure, UPI collect pending): no answer for 15 minutes.', { tagColor: AMBER }),
+      node('payment', 'unknown ≠ failed', 'Decision: a timeout is unknown, not failed', 'same key · webhook · query', 'Payment waits for the signed webhook or queries the provider with the same key; it never charges again with a new key.', { tagColor: AMBER }),
+      hop('inventory', 'stockdb', 'request', 'expire HELD < now', '11:15: the expiry job runs', '@Scheduled · HELD → EXPIRED', 'An expiry job finds holds {status:"HELD", expiresAt:{$lt:now}} and releases each with the same guarded update: HELD → EXPIRED, available +1.'),
+      node('stockdb', 'EXPIRED · available 5', 'The hold expires: stock goes back', 'abandoned checkouts free stock', 'Hold o-1 is EXPIRED and available is 5 again; stuck or abandoned checkouts must not lock stock forever.', { tagColor: RED }),
+      hop('inventory', 'kafka', 'event', 'HoldExpired', 'Reply HoldExpired', 'saga-events · key o-1', 'Inventory replies HoldExpired(o-1).'),
+      hop('kafka', 'order', 'event', 'HoldExpired', 'The orchestrator cancels', '@KafkaListener saga-events', 'case HoldExpired → advance(o-1, PAYMENT_PENDING, CANCELLED).'),
+      hop('order', 'orderdb', 'request', 'CANCELLED · hold expired', 'o-1 CANCELLED (hold expired)', 'updateOne · status filter', 'o-1 moves PAYMENT_PENDING → CANCELLED, reason "hold expired".', { tag: 'o-1 CANCELLED' }),
+      hop('provider', 'payment', 'response', 'succeeded (late)', '11:16: the charge succeeds after all', 'webhook · payment_intent.succeeded', 'The provider finally answers succeeded: pay-o-1 is CAPTURED, one minute after the order was cancelled.'),
+      hop('payment', 'kafka', 'event', 'PaymentCompleted', 'Reply PaymentCompleted', 'saga-events · key o-1', 'Payment does not know the order state; it simply reports PaymentCompleted(o-1).'),
+      hop('kafka', 'order', 'event', 'PaymentCompleted', 'The orchestrator tries to confirm', '@KafkaListener saga-events', 'advance(o-1, PAYMENT_PENDING, CONFIRMED, ConfirmHold) is attempted.'),
+      hop('order', 'orderdb', 'request', 'status PAYMENT_PENDING ?', 'Status-guarded confirm', 'updateOne({_id, status:"PAYMENT_PENDING"})', 'The filter requires PAYMENT_PENDING, but o-1 is already CANCELLED.'),
+      node('orderdb', 'CANCELLED → matched 0', 'Decision: a late reply cannot confirm', 'matched 0 → refundIfCancelled', 'matched 0, so the order is not confirmed; refundIfCancelled sees CANCELLED + paid and writes outbox RefundPayment(o-1) in the same transaction.', { tagColor: RED }),
+      hop('orderdb', 'relay', 'event', 'RefundPayment', 'The relay sees the refund command', 'change stream · watch(outbox)', 'The change stream delivers the RefundPayment outbox row (alternative: try to re-reserve if stock is still there).'),
+      hop('relay', 'kafka', 'event', 'RefundPayment o-1', 'Publish RefundPayment', 'payment-cmd · key o-1', 'Same key o-1, same partition as the original ProcessPayment.'),
+      { type: 'fork', title: 'In parallel: A is told', proto: 'status CANCELLED · refund', text: 'A sees "cancelled, refund on its way".', steps: [
+        hop('order', 'gw', 'response', 'cancelled · refund', 'Cancelled + refund', 'HTTP 200', 'Final status.'),
+        hop('gw', 'userA', 'response', 'cancelled · refund', 'A is told', 'HTTPS', 'Refunds take days.'),
+      ] },
+      hop('kafka', 'payment', 'event', 'RefundPayment', 'Payment consumes RefundPayment', '@KafkaListener payment-cmd', 'Payment looks up pay-o-1 and builds the refund request.'),
+      hop('payment', 'provider', 'request', 'refund · key refund-o-1', 'Refund with its own idempotency key', 'HTTPS · Idempotency-Key: refund-o-1', 'POST /v1/refunds with Idempotency-Key: refund-o-1, so a redelivered RefundPayment never refunds twice.', { stat: 'res' }),
+      hop('provider', 'payment', 'response', 'refunded ✓', 'The money goes back', 'HTTP 200 · refund succeeded', 'pay-o-1 is REFUNDED: payment success alone never confirms an order whose reservation is gone.'),
+    ],
+  },
+  // Ported from the old page's "Retries & duplicates" flow: Idempotency-Key · outbox · redelivery.
+  dup: {
+    name: 'Retries & duplicates',
+    steps: [
+      hop('userA', 'gw', 'request', 'POST · ck-A-77', 'A places the order', 'HTTPS · Idempotency-Key: ck-A-77', 'POST /orders with Idempotency-Key: ck-A-77 goes through the gateway.'),
+      hop('gw', 'order', 'request', 'POST /orders', 'Routed to the Order Service', 'Path=/orders/**', 'findByIdemKey("ck-A-77") finds nothing yet.'),
+      hop('order', 'orderdb', 'request', 'txn: order + outbox', 'Order o-1 + outbox committed', 'MongoDB txn', 'o-1 PENDING and outbox ReserveInventory(o-1) are committed together.', { tag: 'o-1 PENDING' }),
+      hop('order', 'gw', 'response', '202 o-1', 'The service answers 202', 'HTTP 202', 'The 202 leaves the Order Service and the gateway.'),
+      hop('gw', 'userA', 'error', '202 lost ✕', 'The response is lost: A times out', 'mobile network drop', 'The 202 never reaches the app; from its point of view the call failed, although o-1 exists.'),
+      hop('userA', 'gw', 'request', 'retry · ck-A-77', 'Retry with the SAME key', 'HTTPS · Idempotency-Key: ck-A-77', 'The app retries the same checkout, so it reuses the same Idempotency-Key.'),
+      hop('gw', 'order', 'request', 'retry · ck-A-77', 'The retry reaches the Order Service', 'Path=/orders/**', 'Possibly another pod: the idempotency check lives in the database, not in memory.'),
+      hop('order', 'orderdb', 'request', 'find idemKey', 'Look up the key', 'findByIdemKey("ck-A-77")', 'The unique index on idemKey answers the lookup; a concurrent retry inserting the same key would hit E11000.'),
+      node('orderdb', 'ck-A-77 → o-1 exists', 'Decision: key seen → return the same order', 'unique index on idemKey', 'The key maps to o-1, so no second row and no second charge; the same key with a different body would get 422.', { tagColor: GREEN }),
+      { type: 'fork', title: 'Retry answered: 202 o-1 again', proto: 'HTTP 202 · same orderId', text: 'A gets the existing order back: one order, one charge.', steps: [
+        hop('order', 'gw', 'response', '202 o-1', '202 o-1', 'HTTP 202', 'Same order.'),
+        hop('gw', 'userA', 'response', '202 o-1 (once)', 'A has o-1, once', 'HTTPS', 'One order.'),
+      ] },
+      hop('orderdb', 'relay', 'event', 'unpublished ev-1', 'The relay picks up the outbox row', 'change stream · watch(outbox)', 'The relay receives ReserveInventory(o-1) from the change stream.'),
+      hop('relay', 'kafka', 'error', 'send ✕ unreachable', 'Kafka is down', 'TimeoutException · no ack', 'The send fails because Kafka is unreachable; the row stays published:false and nothing is lost.'),
+      node('relay', 'outbox · retrying', 'The outbox keeps the command', 'retry with backoff', 'The order is safe in the outbox; without it, save() then kafka.send() would leave o-1 stuck forever. Alert on the oldest unpublished row.', { tagColor: AMBER }),
+      hop('relay', 'kafka', 'event', '11:02 ReserveInventory', 'Kafka is back: published', 'inventory-cmd · key o-1', 'Two minutes later the relay publishes; a crash after sending but before marking the row would send it again, so consumers must dedupe.'),
+      hop('kafka', 'inventory', 'event', 'ReserveInventory', 'Inventory consumes offset 0', '@KafkaListener inventory-cmd', 'Inventory handles ReserveInventory(o-1) at offset 0.'),
+      hop('inventory', 'stockdb', 'request', 'reserve o-1', 'Reserve: hold o-1, available 5 → 4', 'conditional decrement + hold', 'The conditional decrement and hold {_id:"o-1"} commit in one transaction.', { stat: 'hit' }),
+      node('inventory', '✕ crashed before commit', 'Inventory crashes before committing the offset', 'reply sent · offset not committed', 'Inventory sends InventoryReserved, then dies before committing offset 0; after the rebalance the same command is delivered again.', { tagColor: RED }),
+      hop('kafka', 'inventory', 'event', 'offset 0 again', 'The same command is redelivered', 'at-least-once', 'Another Inventory instance now owns the partition and reads offset 0 again.'),
+      hop('inventory', 'stockdb', 'request', 'hold o-1 exists?', 'Check the hold first', 'exists({_id:"o-1"}) on holds', 'The handler first checks hold o-1; a racing duplicate insert would hit E11000 on _id and abort.'),
+      node('stockdb', 'already held → skip', 'Decision: hold _id = orderId → no-op', 'natural key', 'The hold exists, so the decrement is skipped and the reply is re-sent; with a random hold id it would reserve a second unit for the same order.', { tagColor: GREEN }),
+      node('order', 'duplicate → matched 0', 'The orchestrator ignores the duplicate reply', 'status-guarded transition', 'The first InventoryReserved moved o-1 PENDING → PAYMENT_PENDING; the duplicate finds PAYMENT_PENDING, matches 0 and is ignored, so no second ProcessPayment is written.', { tagColor: GREEN, dur: 3 }),
+    ],
+  },
+  // live-mix only: quiet orders, payments, shipping reactions and status polls
+  buyA: {
+    name: 'Order by A (live)',
+    steps: [
+      hop('userA', 'gw', 'request', null, '', '', ''),
+      hop('gw', 'order', 'request', null, '', '', ''),
+      hop('order', 'orderdb', 'request', null, '', '', ''),
+      { type: 'fork', steps: [hop('order', 'gw', 'response', null, '', '', ''), hop('gw', 'userA', 'response', null, '', '', '')] },
+      hop('orderdb', 'relay', 'event', null, '', '', ''),
+      hop('relay', 'kafka', 'event', null, '', '', ''),
+      hop('kafka', 'inventory', 'event', null, '', '', ''),
+      hop('inventory', 'stockdb', 'request', null, '', '', '', { stat: 'hit' }),
+      hop('inventory', 'kafka', 'event', null, '', '', ''),
+      hop('kafka', 'order', 'event', null, '', '', ''),
+    ],
+  },
+  buyB: {
+    name: 'Order by B (live)',
+    steps: [
+      hop('userB', 'gw', 'request', null, '', '', ''),
+      hop('gw', 'order', 'request', null, '', '', ''),
+      hop('order', 'orderdb', 'request', null, '', '', ''),
+      { type: 'fork', steps: [hop('order', 'gw', 'response', null, '', '', ''), hop('gw', 'userB', 'response', null, '', '', '')] },
+      hop('orderdb', 'relay', 'event', null, '', '', ''),
+      hop('relay', 'kafka', 'event', null, '', '', ''),
+      hop('kafka', 'inventory', 'event', null, '', '', ''),
+      hop('inventory', 'stockdb', 'request', null, '', '', '', { stat: 'hit' }),
+      hop('inventory', 'kafka', 'event', null, '', '', ''),
+      hop('kafka', 'order', 'event', null, '', '', ''),
+    ],
+  },
+  pay: {
+    name: 'Payment step (live)',
+    steps: [
+      hop('order', 'orderdb', 'request', null, '', '', ''),
+      hop('orderdb', 'relay', 'event', null, '', '', ''),
+      hop('relay', 'kafka', 'event', null, '', '', ''),
+      hop('kafka', 'payment', 'event', null, '', '', ''),
+      hop('payment', 'provider', 'request', null, '', '', '', { stat: 'res' }),
+      hop('provider', 'payment', 'response', null, '', '', ''),
+      hop('payment', 'kafka', 'event', null, '', '', ''),
+      hop('kafka', 'order', 'event', null, '', '', ''),
+    ],
+  },
+  confirm: {
+    name: 'Confirm + ship (live)',
+    steps: [
+      hop('order', 'orderdb', 'request', null, '', '', ''),
+      hop('orderdb', 'relay', 'event', null, '', '', ''),
+      hop('relay', 'kafka', 'event', null, '', '', ''),
+      hop('kafka', ['inventory', 'shipping'], 'event', null, '', '', ''),
+      hop('inventory', 'stockdb', 'request', null, '', '', ''),
+    ],
+  },
+  status: {
+    name: 'Status poll (live)',
+    steps: [
+      hop('userA', 'gw', 'request', null, '', '', ''),
+      hop('gw', 'order', 'request', null, '', '', ''),
+      hop('order', 'orderdb', 'request', null, '', '', ''),
+      hop('orderdb', 'order', 'response', null, '', '', ''),
+      hop('order', 'gw', 'response', null, '', '', ''),
+      hop('gw', 'userA', 'response', null, '', '', ''),
+    ],
+  },
+};
+const LIVE_MIX = [['buyA', 0.22], ['buyB', 0.18], ['pay', 0.25], ['confirm', 0.15], ['status', 0.2]];
 
-  // ---------------- 3 · flows ----------------
-  flows: [
-    {
-      id: 'happy', title: 'A buys SKU-42', sub: 'outbox · reserve · charge · confirm', color: BLUE,
-      build: (s, v) => setup(s, v),
-      takeaway: 'Each step is a **local transaction** plus an **outbox** command; the orchestrator moves the order status forward on each reply. The user gets **202** at once and the final status later.',
-      steps: [
-        {
-          title: 'A places the order with an Idempotency-Key',
-          text: '`POST /orders { sku: "SKU-42", qty: 1 }` with header `Idempotency-Key: ck-A-77`. The app generates the key **once per checkout** and reuses it on every retry.',
-          observe: 'The request reaches the Order Service through the gateway.',
-          focus: v => [v.n.order],
-          async run(s, v) {
-            who(s, v, 'A', 'placing order…', AMBER);
-            await s.send(['userA', 'gw', 'order'], 'POST /orders · ck-A-77', BLUE);
-          },
-        },
-        {
-          title: 'Order + outbox command in one transaction',
-          text: 'In **one MongoDB transaction**: insert order `o-1` as **PENDING** (unique index on `idemKey`) **and** insert an outbox row `ReserveInventory(o-1)`. Both are committed, or neither is.',
-          observe: 'o-1 appears as PENDING; the outbox holds an unpublished command.',
-          say: 'The order and the first command are saved in one local transaction, the outbox pattern.',
-          focus: v => [v.log, v.box],
-          async run(s, v) {
-            await s.send(['order', 'orderdb'], 'txn: order + outbox', BLUE);
-            await ord(s, v, 'o-1', 'A', 'PENDING');
-            obx(s, v, 'outbox: ReserveInventory ⏳'); await s.pulse(v.box);
-          },
-        },
-        {
-          title: 'Answer 202 now',
-          text: 'The API returns **202 { orderId: "o-1", status: "PENDING" }** in a few milliseconds. Stock and payment happen asynchronously; the app polls or gets a push.',
-          observe: 'A sees "order pending".',
-          focus: v => [v.n.userA],
-          async run(s, v) {
-            await s.send(['order', 'gw', 'userA'], '202 PENDING', GREEN);
-            who(s, v, 'A', 'order o-1 pending', AMBER);
-          },
-        },
-        {
-          title: 'The relay publishes the command',
-          text: 'The outbox relay (a MongoDB **change stream**) sees the new row, sends `ReserveInventory(o-1)` to `inventory-cmd` with key `o-1`, and marks the row published.',
-          observe: 'The command lands on inventory-cmd; the outbox row is published.',
-          focus: v => [v.n.relay, v.kaf],
-          async run(s, v) {
-            await s.send(['orderdb', 'relay', 'kafka'], 'ReserveInventory', AMBER);
-            obx(s, v, 'outbox: ReserveInventory ✓', GREEN);
-            kaf(s, v, 'inventory-cmd @0 · events —'); await s.pulse(v.kaf);
-          },
-        },
-        {
-          title: 'Reserve: conditional decrement + hold',
-          text: 'Inventory runs `updateOne({ _id: "SKU-42", available: { $gte: 1 } }, { $inc: { available: -1, reserved: 1 } })` and inserts hold `{ _id: "o-1", status: "HELD", expiresAt: 11:15 }`, in one local transaction. The filter refuses to go below zero.',
-          observe: 'available 5 → 4, reserved 0 → 1; hold o-1 is HELD until 11:15.',
-          say: 'Inventory reserves with a conditional decrement and a hold that expires.',
-          focus: v => [v.stk, v.hold],
-          async run(s, v) {
-            await s.send(['kafka', 'inventory'], 'ReserveInventory o-1', TEAL);
-            await s.send(['inventory', 'stockdb'], 'available ≥ 1 ? −1', TEAL);
-            stk(s, v, 4, 1); hld(s, v, 'hold o-1 HELD · expires 11:15', TEAL);
-            await s.pulse(v.stk);
-          },
-        },
-        {
-          title: 'Reply → the orchestrator takes the next step',
-          text: 'Inventory replies `InventoryReserved(o-1)`. The orchestrator runs `updateOne({ _id: "o-1", status: "PENDING" }, { $set: { status: "PAYMENT_PENDING" } })` **plus** an outbox `ProcessPayment(o-1)`, again in one transaction.',
-          observe: 'o-1 moves to PAYMENT_PENDING.',
-          say: 'Each reply moves the order status forward and writes the next command in the same transaction.',
-          focus: v => [v.rows['o-1']],
-          async run(s, v) {
-            await s.send(['inventory', 'kafka', 'order'], 'InventoryReserved', TEAL);
-            kaf(s, v, 'inventory-cmd @0 · saga-events @0');
-            await s.send(['order', 'orderdb'], 'status + outbox', BLUE);
-            await ord(s, v, 'o-1', 'A', 'PAYMENT_PENDING');
-            obx(s, v, 'outbox: ProcessPayment ⏳');
-          },
-        },
-        {
-          title: 'Charge with an idempotency key',
-          text: 'The relay publishes `ProcessPayment(o-1)`. Payment calls the provider with `Idempotency-Key: pay-o-1`: if this call is ever retried, the provider returns the **same** charge instead of making a new one.',
-          observe: 'The provider captures ₹999 once.',
-          say: 'Payment uses an idempotency key per order, so a retry never charges twice.',
-          focus: v => [v.pay],
-          async run(s, v) {
-            await s.send(['orderdb', 'relay', 'kafka'], 'ProcessPayment', AMBER);
-            obx(s, v, 'outbox: ProcessPayment ✓', GREEN);
-            await s.send(['kafka', 'payment'], 'ProcessPayment o-1', PURPLE);
-            await s.send(['payment', 'provider'], 'charge · key pay-o-1', PURPLE);
-            await s.send(['provider', 'payment'], 'succeeded', GREEN);
-            pay(s, v, 'pay-o-1 CAPTURED ₹999', GREEN); await s.pulse(v.pay);
-          },
-        },
-        {
-          title: 'Confirm, turn the hold into a sale, ship',
-          text: '`PaymentCompleted` → o-1 **CONFIRMED** + outbox `ConfirmHold` and `OrderConfirmed`. Inventory marks the hold CONFIRMED (`reserved −1`); Shipping creates shipment `s-9`. A gets the final status.',
-          observe: 'o-1 is CONFIRMED, the hold is sold, a shipment exists.',
-          focus: v => [v.rows['o-1'], v.ship],
-          async run(s, v) {
-            await s.send(['payment', 'kafka', 'order'], 'PaymentCompleted', PURPLE);
-            await ord(s, v, 'o-1', 'A', 'CONFIRMED');
-            kaf(s, v, 'inventory-cmd @1 · saga-events @2');
-            await both(s.send(['kafka', 'inventory', 'stockdb'], 'ConfirmHold', GREEN), s.send(['kafka', 'shipping'], 'OrderConfirmed', GREEN));
-            stk(s, v, 4, 0); hld(s, v, 'hold o-1 CONFIRMED (sold)', GREEN); shp(s, v, 'shipment s-9 · o-1', GREEN);
-            await s.send(['order', 'gw', 'userA'], 'CONFIRMED', GREEN);
-            who(s, v, 'A', 'order confirmed ✓', GREEN);
-          },
-        },
-      ],
-    },
-    {
-      id: 'race', title: 'Last unit: A vs B', sub: 'read-then-write vs conditional update', color: RED,
-      build: (s, v) => setup(s, v, { stock: [1, 0], rows: [['o-1', 'A', 'PENDING'], ['o-2', 'B', 'PENDING']], kaf: 'cmd p0: o-1 · p1: o-2', a: 'order o-1 pending', b: 'order o-2 pending' }),
-      takeaway: 'The stock check must be **inside the write**: `available ≥ 1` in the update filter. MongoDB applies a single-document update atomically, so only one buyer matches; the other is cancelled **before** any charge.',
-      steps: [
-        {
-          title: 'Two commands, two instances, same SKU',
-          text: 'Only **1 unit** is left. `ReserveInventory(o-1)` and `(o-2)` are keyed by orderId, so they land on **different partitions** and two Inventory instances process them **at the same time**.',
-          observe: 'Both commands reach Inventory in parallel.',
-          focus: v => [v.n.inventory, v.stk],
-          async run(s) {
-            await both(s.send(['kafka', 'inventory'], 'o-1 (inst 1)', BLUE), s.send(['kafka', 'inventory'], 'o-2 (inst 2)', AMBER, { ms: 900, pulse: false }));
-          },
-        },
-        {
-          title: '❌ Read the stock in Java first',
-          text: 'Naive handler: `stock = findOne("SKU-42")`, `if (stock.available >= 1)` then `$inc available −1`. Both instances read **available: 1**, both checks pass.',
-          observe: 'Both reads return 1 unit.',
-          focus: v => [v.stk],
-          async run(s, v) {
-            await both(s.send(['inventory', 'stockdb'], 'read (o-1)', BLUE), s.send(['inventory', 'stockdb'], 'read (o-2)', AMBER, { ms: 900, pulse: false }));
-            await s.flash(940, 40, 'o-1 sees 1 · o-2 sees 1', { mono: true, color: AMBER, stroke: AMBER }, 800);
-          },
-        },
-        {
-          title: '❌ Both decrement: oversold',
-          text: 'The `$inc` has **no condition**, so both apply: available **1 → 0 → −1**. Both orders go to PAYMENT_PENDING and both buyers will be charged for **one** unit; someone gets a cancellation and a refund after paying.',
-          observe: 'available goes to −1 and both orders move on to payment.',
-          say: 'Check-then-write in application code oversells under concurrency.',
-          focus: v => [v.stk, v.n.userB],
-          async run(s, v) {
-            await both(s.send(['inventory', 'stockdb'], '$inc −1', BLUE), s.send(['inventory', 'stockdb'], '$inc −1', AMBER, { ms: 900, pulse: false }));
-            stk(s, v, -1, 2); hld(s, v, 'holds o-1, o-2 HELD', RED); await s.shake(v.stk);
-            await ord(s, v, 'o-1', 'A', 'PAYMENT_PENDING'); await ord(s, v, 'o-2', 'B', 'PAYMENT_PENDING');
-            who(s, v, 'B', 'charged, no unit ✕', RED);
-          },
-        },
-        {
-          title: '✅ Rewind: the condition goes in the filter',
-          text: 'Same race, but each instance runs `updateOne({ _id: "SKU-42", available: { $gte: 1 } }, { $inc: … })`. The update is atomic on one document: the first one matches (**modifiedCount 1**); for the second, available is already 0, so **modifiedCount 0** and its transaction aborts (no hold).',
-          observe: 'available 1 → 0; only o-1 gets a hold.',
-          say: 'With the condition in the update filter, only one buyer can take the last unit.',
-          focus: v => [v.stk, v.hold],
-          async run(s, v) {
-            stk(s, v, 1, 0); hld(s, v, 'holds —'); who(s, v, 'B', 'order o-2 pending');
-            await ord(s, v, 'o-1', 'A', 'PENDING'); await ord(s, v, 'o-2', 'B', 'PENDING');
-            await both(s.send(['inventory', 'stockdb'], 'available ≥ 1 ? (o-1)', BLUE), s.send(['inventory', 'stockdb'], 'available ≥ 1 ? (o-2)', AMBER, { ms: 900, pulse: false }));
-            stk(s, v, 0, 1); hld(s, v, 'hold o-1 HELD · expires 11:15', TEAL);
-            await s.flash(940, 40, 'o-1: modified 1 · o-2: modified 0', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 900);
-          },
-        },
-        {
-          title: 'B is told before any charge',
-          text: 'Inventory replies `InventoryReserved(o-1)` and `InventoryRejected(o-2, OUT_OF_STOCK)`. o-1 goes to payment; o-2 is **CANCELLED** and B is told "sold out, not charged". **Reserve first, charge second.**',
-          observe: 'o-2 is cancelled; B was never charged.',
-          focus: v => [v.rows['o-2'], v.n.userB],
-          async run(s, v) {
-            await s.send(['inventory', 'kafka', 'order'], 'Reserved o-1 · Rejected o-2', TEAL);
-            await ord(s, v, 'o-1', 'A', 'PAYMENT_PENDING');
-            await ord(s, v, 'o-2', 'B', 'CANCELLED', 'CANCELLED · sold out');
-            await s.send(['order', 'gw', 'userB'], 'sold out', RED);
-            who(s, v, 'B', 'sold out, no charge', AMBER); who(s, v, 'A', 'paying…', BLUE);
-          },
-        },
-      ],
-    },
-    {
-      id: 'comp', title: 'Payment declined', sub: 'compensate: release the hold', color: PURPLE,
-      build: (s, v) => setup(s, v, { clock: '11:00:30', stock: [4, 1], hold: 'hold o-1 HELD · expires 11:15', rows: [['o-1', 'A', 'PAYMENT_PENDING']], box: 'outbox: ProcessPayment ✓', kaf: 'payment-cmd @0', a: 'paying…' }),
-      takeaway: 'There is **no rollback across services**. The saga runs a **compensating step** (ReleaseHold) that undoes the reservation, and it is **idempotent**: guarded by `status: "HELD"`, so a duplicate changes nothing.',
-      steps: [
-        {
-          title: 'The card is declined',
-          text: 'Payment consumes `ProcessPayment(o-1)` and charges with key `pay-o-1`. The provider answers **402 card_declined**.',
-          observe: 'The charge fails.',
-          focus: v => [v.pay],
-          async run(s, v) {
-            await s.send(['kafka', 'payment'], 'ProcessPayment o-1', PURPLE);
-            await s.send(['payment', 'provider'], 'charge · key pay-o-1', PURPLE);
-            await s.send(['provider', 'payment'], '402 card_declined', RED);
-            pay(s, v, 'pay-o-1 FAILED · card_declined', RED); await s.shake(v.pay);
-          },
-        },
-        {
-          title: 'No rollback: start the compensation',
-          text: 'Payment replies `PaymentFailed(o-1)`. Stock was already committed in another database, so nothing can "roll back". The orchestrator moves o-1 from PAYMENT_PENDING to **CANCELLING** and writes outbox `ReleaseHold(o-1)`.',
-          observe: 'o-1 is CANCELLING; ReleaseHold is in the outbox.',
-          say: 'There is no rollback across services, so the saga runs a compensating step.',
-          focus: v => [v.rows['o-1'], v.box],
-          async run(s, v) {
-            await s.send(['payment', 'kafka', 'order'], 'PaymentFailed', RED);
-            await s.send(['order', 'orderdb'], 'status + outbox', BLUE);
-            await ord(s, v, 'o-1', 'A', 'CANCELLING');
-            obx(s, v, 'outbox: ReleaseHold ⏳'); await s.pulse(v.box);
-          },
-        },
-        {
-          title: 'Release the hold, guarded by its status',
-          text: 'Inventory runs `holds.updateOne({ _id: "o-1", status: "HELD" }, { $set: { status: "RELEASED" } })` and, **only if it matched**, `$inc available +1, reserved −1`, in one transaction.',
-          observe: 'The hold is RELEASED; available goes back to 5.',
-          focus: v => [v.hold, v.stk],
-          async run(s, v) {
-            await s.send(['orderdb', 'relay', 'kafka'], 'ReleaseHold', AMBER);
-            obx(s, v, 'outbox: ReleaseHold ✓', GREEN);
-            await s.send(['kafka', 'inventory', 'stockdb'], 'HELD → RELEASED', TEAL);
-            hld(s, v, 'hold o-1 RELEASED', AMBER); stk(s, v, 5, 0); await s.pulse(v.stk);
-          },
-        },
-        {
-          title: 'A duplicate ReleaseHold changes nothing',
-          text: 'Kafka redelivers `ReleaseHold(o-1)` after a rebalance. The filter `status: "HELD"` no longer matches (**matched 0**), so stock is **not** incremented twice. Compensations must be idempotent too.',
-          observe: 'The duplicate is a no-op; available stays 5.',
-          say: 'Compensations are idempotent: the hold status guards the release.',
-          focus: v => [v.stk],
-          async run(s, v) {
-            await s.send(['kafka', 'inventory', 'stockdb'], 'ReleaseHold (again)', AMBER);
-            await s.flash(940, 40, 'status ≠ HELD → no-op', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 800);
-            await s.pulse(v.stk);
-          },
-        },
-        {
-          title: 'Cancelled, and A is told',
-          text: 'Inventory replies `HoldReleased(o-1)`; the orchestrator moves CANCELLING → **CANCELLED (payment failed)** and notifies A. The unit is back on sale for others.',
-          observe: 'o-1 is CANCELLED; A sees "payment failed".',
-          focus: v => [v.rows['o-1'], v.n.userA],
-          async run(s, v) {
-            await s.send(['inventory', 'kafka', 'order'], 'HoldReleased', TEAL);
-            await ord(s, v, 'o-1', 'A', 'CANCELLED', 'CANCELLED · payment failed');
-            await s.send(['order', 'gw', 'userA'], 'payment failed', RED);
-            who(s, v, 'A', 'payment failed ✕', RED);
-          },
-        },
-      ],
-    },
-    {
-      id: 'late', title: 'Late payment', sub: 'hold expires · then refund', color: AMBER,
-      build: (s, v) => setup(s, v, { clock: '11:00:30', stock: [4, 1], hold: 'hold o-1 HELD · expires 11:15', rows: [['o-1', 'A', 'PAYMENT_PENDING']], box: 'outbox: ProcessPayment ✓', kaf: 'payment-cmd @0', a: 'paying…' }),
-      takeaway: 'Payment success alone does **not** confirm an order: the reservation may be gone. The orchestrator only moves from the **expected status**; a payment on a CANCELLED order triggers a **refund** with its own idempotency key.',
-      steps: [
-        {
-          title: 'The provider hangs',
-          text: 'Payment sends the charge; the bank is slow (3-D Secure, UPI pending). A timeout is **unknown**, not failed: Payment waits for the webhook or queries the provider, it never charges again with a new key.',
-          observe: 'The charge is PROCESSING with no answer.',
-          focus: v => [v.pay],
-          async run(s, v) {
-            await s.send(['kafka', 'payment'], 'ProcessPayment o-1', PURPLE);
-            await s.send(['payment', 'provider'], 'charge · key pay-o-1', PURPLE);
-            pay(s, v, 'pay-o-1 PROCESSING…', AMBER);
-            tick(s, v, '11:15:00');
-            await s.flash(1025, 225, 'no answer for 15 min', { color: AMBER, stroke: AMBER }, 800);
-          },
-        },
-        {
-          title: 'The hold expires: stock goes back',
-          text: 'An expiry job finds `holds { status: "HELD", expiresAt < now }` and releases them with the same idempotent update (HELD → **EXPIRED**, `available +1`). Abandoned checkouts must not lock stock forever.',
-          observe: 'Hold o-1 is EXPIRED; available is 5 again.',
-          say: 'Holds expire, so abandoned or stuck checkouts give their stock back.',
-          focus: v => [v.hold, v.stk],
-          async run(s, v) {
-            await s.send(['inventory', 'stockdb'], 'expire HELD < now', TEAL);
-            hld(s, v, 'hold o-1 EXPIRED', RED); stk(s, v, 5, 0); await s.pulse(v.stk);
-          },
-        },
-        {
-          title: 'The order is cancelled',
-          text: 'Inventory replies `HoldExpired(o-1)`; the orchestrator moves o-1 from PAYMENT_PENDING to **CANCELLED (hold expired)**.',
-          observe: 'o-1 is CANCELLED.',
-          focus: v => [v.rows['o-1']],
-          async run(s, v) {
-            await s.send(['inventory', 'kafka', 'order'], 'HoldExpired', AMBER);
-            await ord(s, v, 'o-1', 'A', 'CANCELLED', 'CANCELLED · hold expired');
-          },
-        },
-        {
-          title: 'The charge succeeds after all',
-          text: 'At 11:16 the provider answers **succeeded**. Payment replies `PaymentCompleted(o-1)`. The orchestrator tries `updateOne({ _id: "o-1", status: "PAYMENT_PENDING" }, …)` → **matched 0**, because the order is already CANCELLED.',
-          observe: 'The late success does not confirm the order.',
-          say: 'The orchestrator only moves from the expected status, so a late reply cannot confirm a cancelled order.',
-          focus: v => [v.pay, v.rows['o-1']],
-          async run(s, v) {
-            tick(s, v, '11:16:10');
-            await s.send(['provider', 'payment'], 'succeeded (late)', AMBER);
-            pay(s, v, 'pay-o-1 CAPTURED (late)', AMBER);
-            await s.send(['payment', 'kafka', 'order'], 'PaymentCompleted', PURPLE);
-            await s.flash(420, 40, 'status is CANCELLED → matched 0', { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, 900);
-          },
-        },
-        {
-          title: 'Refund with its own idempotency key',
-          text: 'The orchestrator writes outbox `RefundPayment(o-1)`; Payment refunds with `Idempotency-Key: refund-o-1`, so a redelivered refund command never refunds twice. (Alternative: try to re-reserve if stock is still there.)',
-          observe: 'The money goes back; A is told.',
-          focus: v => [v.pay, v.n.userA],
-          async run(s, v) {
-            await s.send(['order', 'orderdb'], 'outbox RefundPayment', BLUE);
-            await s.send(['orderdb', 'relay', 'kafka', 'payment'], 'RefundPayment', AMBER);
-            await s.send(['payment', 'provider'], 'refund · key refund-o-1', PURPLE);
-            pay(s, v, 'pay-o-1 REFUNDED', GREEN);
-            await s.send(['order', 'gw', 'userA'], 'cancelled · refund', AMBER);
-            who(s, v, 'A', 'cancelled · refund', AMBER);
-          },
-        },
-      ],
-    },
-    {
-      id: 'dup', title: 'Retries & duplicates', sub: 'Idempotency-Key · outbox · redelivery', color: INDIGO,
-      build: (s, v) => setup(s, v),
-      takeaway: 'Every hop can repeat: the client retries, the relay re-sends, Kafka redelivers. **Natural keys** (idemKey, hold `_id` = orderId) and **status-guarded updates** make each repeat a no-op, and the **outbox** keeps orders safe while Kafka is down.',
-      steps: [
-        {
-          title: 'The order is saved, the response is lost',
-          text: 'A posts with `Idempotency-Key: ck-A-77`; order o-1 + outbox are committed. The 202 never reaches the app (mobile network drop); from its point of view the call **failed**.',
-          observe: 'o-1 exists, but A times out.',
-          focus: v => [v.rows['o-1'], v.n.userA],
-          async run(s, v) {
-            await s.send(['userA', 'gw', 'order'], 'POST · ck-A-77', BLUE);
-            await s.send(['order', 'orderdb'], 'txn: order + outbox', BLUE);
-            await ord(s, v, 'o-1', 'A', 'PENDING');
-            obx(s, v, 'outbox: ReserveInventory ⏳');
-            await s.send(['order', 'gw'], '202', GREEN);
-            await s.bounce('gw', 'userA', '202', RED);
-            who(s, v, 'A', 'timeout ✕', RED);
-          },
-        },
-        {
-          title: 'Retry with the same key: same order',
-          text: 'The app retries with the **same** key. `findByIdemKey("ck-A-77")` returns o-1 (a concurrent retry would hit **E11000** on the unique index). The API returns **202 o-1** again: one order, one charge. Same key with a **different body** → 422.',
-          observe: 'A gets the existing order back; no second row.',
-          say: 'A client retry with the same Idempotency-Key returns the same order.',
-          focus: v => [v.rows['o-1']],
-          async run(s, v) {
-            await s.send(['userA', 'gw', 'order'], 'retry · ck-A-77', BLUE);
-            await s.send(['order', 'orderdb'], 'find idemKey', BLUE);
-            await s.flash(420, 190, 'ck-A-77 → o-1 exists', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 700);
-            await s.pulse(v.rows['o-1'], 1, 1.05);
-            await s.send(['order', 'gw', 'userA'], '202 o-1', GREEN);
-            who(s, v, 'A', 'order o-1 (once)', GREEN);
-          },
-        },
-        {
-          title: 'Kafka is down: the order is still safe',
-          text: 'The relay tries to publish and Kafka is unreachable. Nothing is lost: the command sits in the **outbox**, the relay retries with backoff. Without an outbox, a `save()` then `kafka.send()` would leave o-1 stuck forever.',
-          observe: 'The send bounces; the outbox row stays unpublished.',
-          say: 'The outbox keeps the command while Kafka is down; the relay publishes it later.',
-          focus: v => [v.box, v.n.kafka],
-          async run(s, v) {
-            s.tone(v.n.kafka, 'fail'); s.setSub(v.n.kafka, '✕ unreachable', RED);
-            await s.send(['orderdb', 'relay'], 'unpublished ev-1', AMBER);
-            await s.bounce('relay', 'kafka', 'send', AMBER);
-            obx(s, v, 'outbox: ReserveInventory · retrying', RED); await s.pulse(v.box);
-          },
-        },
-        {
-          title: 'Kafka is back: published',
-          text: 'Two minutes later Kafka recovers and the relay publishes. If the relay crashes **after** sending but **before** marking the row, it sends again: consumers must dedupe (next step).',
-          observe: 'The command is on inventory-cmd.',
-          focus: v => [v.kaf],
-          async run(s, v) {
-            tick(s, v, '11:02:00');
-            s.tone(v.n.kafka, null); s.setSub(v.n.kafka, 'commands · events');
-            await s.send(['relay', 'kafka'], 'ReserveInventory', AMBER);
-            obx(s, v, 'outbox: ReserveInventory ✓', GREEN);
-            kaf(s, v, 'inventory-cmd @0 · committed —'); await s.pulse(v.kaf);
-          },
-        },
-        {
-          title: 'Inventory crashes before committing the offset',
-          text: 'Inventory reserves (hold o-1, available 5 → 4), sends `InventoryReserved`, then **dies before committing** the offset. After the rebalance the same command is delivered **again**.',
-          observe: 'Inventory crashes; offset 0 is redelivered.',
-          focus: v => [v.n.inventory],
-          async run(s, v) {
-            await s.send(['kafka', 'inventory', 'stockdb'], 'reserve o-1', TEAL);
-            stk(s, v, 4, 1); hld(s, v, 'hold o-1 HELD · expires 11:15', TEAL);
-            await s.send(['inventory', 'kafka'], 'InventoryReserved', TEAL);
-            s.tone(v.n.inventory, 'fail'); s.setSub(v.n.inventory, '✕ crashed', RED);
-            await s.shake(v.n.inventory);
-            s.tone(v.n.inventory, null); s.setSub(v.n.inventory, 'holds stock');
-            await s.send(['kafka', 'inventory'], 'offset 0 again', AMBER);
-          },
-        },
-        {
-          title: 'The hold _id = orderId makes it a no-op',
-          text: 'The handler first checks hold `o-1`: it exists, so it **skips** the decrement and just re-sends the reply (a racing duplicate would hit **E11000** on `_id` and abort). With a random hold id it would reserve a **second** unit for the same order.',
-          observe: 'Stock stays at 4; the reply is sent again.',
-          say: 'The hold id is the order id, so a redelivered command cannot reserve twice.',
-          focus: v => [v.stk, v.hold],
-          async run(s, v) {
-            await s.send(['inventory', 'stockdb'], 'hold o-1 exists?', TEAL);
-            await s.flash(940, 40, 'already held → skip', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 800);
-            await s.pulse(v.stk);
-            await s.send(['inventory', 'kafka'], 'InventoryReserved (again)', AMBER);
-            kaf(s, v, 'inventory-cmd committed @1');
-          },
-        },
-        {
-          title: 'The orchestrator ignores the duplicate reply',
-          text: 'The first `InventoryReserved` moves o-1 **PENDING → PAYMENT_PENDING** (matched 1). The duplicate finds status PAYMENT_PENDING, not PENDING → **matched 0** → ignored. No second ProcessPayment is written.',
-          observe: 'o-1 moves forward exactly once.',
-          focus: v => [v.rows['o-1']],
-          async run(s, v) {
-            await s.send(['kafka', 'order'], 'InventoryReserved', TEAL);
-            await ord(s, v, 'o-1', 'A', 'PAYMENT_PENDING');
-            await s.send(['kafka', 'order'], 'duplicate', AMBER);
-            await s.flash(420, 40, 'PENDING? no → matched 0 → ignore', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 900);
-          },
-        },
-      ],
-    },
-  ],
+// =====================================================================
+// rendering
+// =====================================================================
+const svg = document.getElementById('dia');
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const box = id => { const n = NODES[id]; return { l: n.x - 75, r: n.x + 75, t: n.y - 56, b: n.y + 56 }; };
 
+function edgePath(a, b) {
+  const A = NODES[a], B = NODES[b], dx = B.x - A.x, dy = B.y - A.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const s = Math.sign(dx) || 1, x1 = A.x + 75 * s, x2 = B.x - 75 * s, mx = (x1 + x2) / 2;
+    return { d: `M${x1} ${A.y} C${mx} ${A.y} ${mx} ${B.y} ${x2} ${B.y}`, horiz: true };
+  }
+  const s = Math.sign(dy) || 1, y1 = A.y + 56 * s, y2 = B.y - 56 * s, my = (y1 + y2) / 2;
+  return { d: `M${A.x} ${y1} C${A.x} ${my} ${B.x} ${my} ${B.x} ${y2}`, horiz: false };
+}
+
+function buildSvg() {
+  let s = `<defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#eef1f5"/></pattern>
+    <filter id="glow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect id="bg" x="-2000" y="-1200" width="5600" height="3000" fill="url(#grid)"/>`;
+  // zones: grouped by developer role (solid = outside our code, dashed = our backend)
+  for (const z of ZONES) {
+    const [f, st, lc] = ZT[z.t];
+    s += `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="18" fill="${f}" stroke="${st}" stroke-width="1.6"${z.dash ? ' stroke-dasharray="7 5"' : ''}/>`;
+    s += `<text class="zl" x="${z.x + 16}" y="${z.y + 24}" style="fill:${lc}">${esc(z.label)}</text>`;
+    if (z.cap) s += `<text class="nl" x="${z.x + 16}" y="${z.y + 41}" style="fill:${lc};opacity:.75">${esc(z.cap)}</text>`;
+  }
+  // edges + labels
+  s += '<g id="edges">';
+  EDGE_DEFS.forEach(([a, b], i) => { s += `<path class="edge" id="e${i}" d="${edgePath(a, b).d}"/>`; });
+  s += '</g><g id="elabels"></g><g id="ripples"></g><g id="nodes">';
+  // nodes
+  for (const [id, n] of Object.entries(NODES)) {
+    const [bg, st] = PAL[id];
+    let dots = '';
+    const r = n.replicas || 0;
+    for (let k = 0; k < r; k++) dots += `<circle cx="${75 + (k - (r - 1) / 2) * 10}" cy="104" r="3.2" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>`;
+    s += `<g class="node" data-id="${id}" transform="translate(${n.x - 75},${n.y - 56})">
+      <rect class="sel" x="-6" y="-6" width="162" height="124" rx="18" fill="none" stroke="#0b5cff" stroke-width="2" stroke-dasharray="6 5" opacity="0"/>
+      <rect class="card" width="150" height="112" rx="14" fill="${bg}" stroke="${st}" stroke-width="1.6"/>
+      <rect x="49" y="8" width="52" height="52" rx="12" fill="#fff" opacity=".85"/>
+      <g transform="translate(52.9,11.9) scale(.92)">${LOGO[id]}</g>
+      <text class="nlab" x="75" y="78">${esc(n.label)}</text>
+      <text class="nsub" x="75" y="95">${esc(n.sub)}</text>${dots}
+      <g class="tag" style="display:none"><rect y="-11" height="20" rx="10"/><text y="3.5"></text></g>
+    </g>`;
+  }
+  s += '</g><g id="packets"></g>';
+  svg.innerHTML = s;
+}
+buildSvg();
+
+const EDGES = EDGE_DEFS.map(([a, b, label], i) => {
+  const el = document.getElementById('e' + i);
+  return { a, b, label, el, len: el.getTotalLength(), hot: 0, horiz: edgePath(a, b).horiz };
+});
+// protocol labels at the path midpoint: above horizontal edges, right of vertical ones
+(function labels() {
+  const g = document.getElementById('elabels');
+  for (const e of EDGES) {
+    const p = e.el.getPointAtLength(e.len / 2);
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('class', 'elbl');
+    if (e.horiz) { t.setAttribute('x', p.x); t.setAttribute('y', p.y - 8); t.setAttribute('text-anchor', 'middle'); }
+    else { t.setAttribute('x', p.x + 8); t.setAttribute('y', p.y + 4); }
+    t.textContent = e.label;
+    g.appendChild(t);
+  }
+})();
+const NODE_EL = {};
+document.querySelectorAll('.node').forEach(g => { NODE_EL[g.dataset.id] = { g, act: 0, tagTok: 0 }; });
+
+// =====================================================================
+// engine: one rAF loop, own timer queue, everything scaled by speed
+// =====================================================================
+let speed = 1, paused = false, GEN = 0, current = 'happy', view = 'flow';
+let timers = [], packets = [], ripples = [], dashOffset = 0, flows = 0;
+const stats = { req: 0, hit: 0, evt: 0, res: 0 };
+const STAT_EL = { req: document.getElementById('stReq'), hit: document.getElementById('stHit'), evt: document.getElementById('stEvt'), res: document.getElementById('stRes') };
+
+function wait(sec, cb) { timers.push({ t: sec, cb, gen: GEN }); }
+const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function bump(k, n = 1) { stats[k] += n; STAT_EL[k].textContent = stats[k]; }
+
+function findEdge(from, to) {
+  for (const e of EDGES) {
+    if (e.a === from && e.b === to) return { e, rev: false };
+    if (e.a === to && e.b === from) return { e, rev: true };
+  }
+  throw new Error('no edge ' + from + ' -> ' + to);
+}
+function heat(e, color) { e.hot++; e.el.classList.add('hot'); e.el.style.stroke = color; }
+function cool(e) { e.hot = Math.max(0, e.hot - 1); if (!e.hot) { e.el.classList.remove('hot'); e.el.style.stroke = ''; } }
+
+function activate(id, sec) {
+  const n = NODE_EL[id]; n.act++; n.g.classList.add('active');
+  wait(sec, () => { n.act = Math.max(0, n.act - 1); if (!n.act) n.g.classList.remove('active'); });
+}
+function ripple(id) {
+  const b = box(id), el = document.createElementNS(NS, 'rect');
+  el.setAttribute('rx', 16); el.setAttribute('fill', 'none'); el.setAttribute('stroke', PAL[id][1]); el.setAttribute('stroke-width', 2.5);
+  document.getElementById('ripples').appendChild(el);
+  ripples.push({ el, b, age: 0 });
+}
+function showTag(id, text, color, sec) {
+  const n = NODE_EL[id], tag = n.g.querySelector('.tag'), r = tag.querySelector('rect'), t = tag.querySelector('text');
+  const w = Math.max(34, text.length * 6.3 + 16);
+  t.textContent = text; r.setAttribute('width', w); r.setAttribute('x', 152 - w); r.setAttribute('fill', color);
+  t.setAttribute('x', 152 - w / 2); tag.setAttribute('transform', 'translate(0,0)');
+  tag.style.display = '';
+  const tok = ++n.tagTok;
+  wait(sec, () => { if (n.tagTok === tok) tag.style.display = 'none'; });
+}
+
+function spawn(from, to, kind, tag, onArrive) {
+  const { e, rev } = findEdge(from, to), color = KIND[kind];
+  const g = document.createElementNS(NS, 'g');
+  const trail = [];
+  for (let i = 0; i < 6; i++) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('r', 6 - i * 0.8); c.setAttribute('fill', color); c.setAttribute('opacity', (0.35 - i * 0.05).toFixed(2));
+    c.style.display = 'none'; g.appendChild(c); trail.push(c);
+  }
+  const head = document.createElementNS(NS, 'circle');
+  head.setAttribute('r', 7.5); head.setAttribute('fill', color); head.setAttribute('stroke', '#fff'); head.setAttribute('stroke-width', 2); head.setAttribute('filter', 'url(#glow)');
+  g.appendChild(head);
+  let txt = null;
+  if (tag) { txt = document.createElementNS(NS, 'text'); txt.setAttribute('class', 'ptag'); txt.setAttribute('fill', color); txt.textContent = tag; g.appendChild(txt); }
+  document.getElementById('packets').appendChild(g);
+  heat(e, color);
+  if (CLIENTS.has(from) && kind === 'request') bump('req');
+  const p = { e, rev, kind, to, dist: 0, hist: [], g, head, trail, txt, onArrive };
+  packets.push(p);
+  place(p, 0);
+}
+function place(p, t) {
+  const { e } = p, len = e.len;
+  let s = ease(t) * len; if (p.rev) s = len - s;
+  const a = e.el.getPointAtLength(s);
+  const b = s + 1 <= len ? e.el.getPointAtLength(s + 1) : e.el.getPointAtLength(s - 1);
+  let tx = b.x - a.x, ty = b.y - a.y; if (s + 1 > len) { tx = -tx; ty = -ty; }
+  const m = Math.hypot(tx, ty) || 1, off = p.rev ? -6 : 6;
+  const x = a.x + (-ty / m) * off, y = a.y + (tx / m) * off;
+  p.hist.unshift([x, y]); if (p.hist.length > 24) p.hist.pop();
+  p.head.setAttribute('cx', x); p.head.setAttribute('cy', y);
+  p.trail.forEach((c, i) => {
+    const h = p.hist[(i + 1) * 3];
+    if (h) { c.style.display = ''; c.setAttribute('cx', h[0]); c.setAttribute('cy', h[1]); } else c.style.display = 'none';
+  });
+  if (p.txt) { p.txt.setAttribute('x', x); p.txt.setAttribute('y', y - 13); }
+}
+function arrive(p) {
+  p.g.remove(); cool(p.e);
+  activate(p.to, 0.45); ripple(p.to);
+  if (p.to === 'kafka' && p.kind === 'event') bump('evt');
+  p.onArrive && p.onArrive();
+}
+
+function update(k) {
+  dashOffset -= 40 * k;
+  for (const e of EDGES) if (!e.hot) e.el.style.strokeDashoffset = dashOffset;
+  // timers
+  for (const tm of timers) tm.t -= k;
+  const due = timers.filter(tm => tm.t <= 0);
+  if (due.length) { timers = timers.filter(tm => tm.t > 0); due.forEach(tm => { if (tm.gen === GEN) tm.cb(); }); }
+  // packets
+  const done = [];
+  for (const p of packets) {
+    p.dist += 260 * k;
+    const t = Math.min(1, p.dist / p.e.len);
+    place(p, t);
+    if (t >= 1) done.push(p);
+  }
+  if (done.length) { packets = packets.filter(p => !done.includes(p)); done.forEach(arrive); }
+  // ripples: grow ~14px and fade over 0.5s
+  ripples = ripples.filter(r => {
+    r.age += k;
+    const q = r.age / 0.5;
+    if (q >= 1) { r.el.remove(); return false; }
+    const g = 14 * q;
+    r.el.setAttribute('x', r.b.l - g); r.el.setAttribute('y', r.b.t - g);
+    r.el.setAttribute('width', 150 + 2 * g); r.el.setAttribute('height', 112 + 2 * g);
+    r.el.setAttribute('opacity', (1 - q).toFixed(3));
+    return true;
+  });
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused && view === 'flow') update(dt * speed);
+  requestAnimationFrame(frame);
+}
+
+// ---------------- step runner ----------------
+// o.footer: top-level scenario (updates footer, reading pauses); o.fast: live mode (short pauses, no packet tags)
+function runFlow(steps, o) {
+  let i = 0;
+  const next = () => {
+    if (i >= steps.length) { o.done && o.done(); return; }
+    const st = steps[i];
+    if (o.footer) showStep(i, steps.length, st);
+    i++;
+    exec(st, o, next);
+  };
+  next();
+}
+function exec(st, o, next) {
+  if (st.stat) bump(st.stat);   // 'hit' = stock hold taken · 'res' = payment provider call
+  if (st.type === 'hop') {
+    // fan-out / fan-in: an array on one side = one packet per pair, all at once; otherwise `count` packets 0.25 s apart
+    const fan = Array.isArray(st.to) ? st.to.map(t => [st.from, t]) : Array.isArray(st.from) ? st.from.map(f => [f, st.to]) : null;
+    const pairs = fan || Array.from({ length: st.count || 1 }, () => [st.from, st.to]);
+    const n = pairs.length; let got = 0;
+    pairs.forEach(([from, to], k) => {
+      const kind = st.kinds ? st.kinds[k] : st.kind;
+      const tag = o.fast ? null : (st.tags ? st.tags[k] : st.tag);
+      const fire = () => spawn(from, to, kind, tag, () => { if (++got === n) wait(o.footer ? 1.1 : 0.08, next); });
+      if (k && !fan) wait(k * 0.25, fire); else fire();
+    });
+  } else if (st.type === 'node') {
+    const d = o.fast ? Math.max(0.25, (st.dur || 2.2) * 0.3) : (o.footer ? (st.dur || 2.4) : (st.dur || 1));
+    [].concat(st.id).forEach((id, k) => {
+      activate(id, d); ripple(id);
+      const tag = st.tags ? st.tags[k] : st.tag;
+      if (tag) showTag(id, tag, st.tagColor || '#0b5cff', d + (o.fast ? 0.15 : 0.6));
+    });
+    wait(d, next);
+  } else if (st.type === 'fork') {
+    runFlow(st.steps, { fast: o.fast });
+    wait(o.footer ? 2.0 : 0.05, next);
+  }
+}
+
+// ---------------- footer ----------------
+const badge = document.getElementById('badge'), fTitle = document.getElementById('ftitle'), fProto = document.getElementById('fproto'), fText = document.getElementById('ftext'), dotsEl = document.getElementById('dots');
+function buildDots(n) { dotsEl.innerHTML = '<i></i>'.repeat(n); }
+function showStep(i, total, st) {
+  badge.className = ''; badge.textContent = `${i + 1}/${total}`;
+  fTitle.textContent = st.title; fProto.textContent = st.proto || '';
+  fText.textContent = st.text || ''; fText.title = st.text || '';
+  [...dotsEl.children].forEach((d, k) => d.classList.toggle('on', k <= i));
+}
+
+// ---------------- scenarios / live ----------------
+function reset() {
+  GEN++;
+  timers = [];
+  packets.forEach(p => p.g.remove()); packets = [];
+  ripples.forEach(r => r.el.remove()); ripples = [];
+  EDGES.forEach(e => { e.hot = 0; e.el.classList.remove('hot'); e.el.style.stroke = ''; });
+  Object.values(NODE_EL).forEach(n => { n.act = 0; n.g.classList.remove('active'); n.g.querySelector('.tag').style.display = 'none'; });
+  flows = 0;
+  for (const k in stats) { stats[k] = 0; STAT_EL[k].textContent = 0; }
+}
+function start(id) {
+  current = id;
+  document.querySelectorAll('#scSeg button').forEach(b => b.classList.toggle('on', b.dataset.sc === id));
+  reset();
+  if (id === 'live') startLive(); else runMain(id);
+}
+function runMain(id) {
+  const steps = SCEN[id].steps;
+  buildDots(steps.length);
+  runFlow(steps, {
+    footer: true,
+    done: () => {
+      badge.className = ''; badge.textContent = '✓';
+      fTitle.textContent = '✓ Journey complete'; fProto.textContent = SCEN[id].name;
+      fText.textContent = 'Looping in 2.5 s · press R to replay now, or pick another scenario.'; fText.title = '';
+      wait(2.5, () => runMain(id));
+    },
+  });
+}
+function pickMix() {
+  let r = Math.random();
+  for (const [id, w] of LIVE_MIX) { if ((r -= w) <= 0) return id; }
+  return 'buyA';
+}
+function startLive() {
+  dotsEl.innerHTML = '';
+  badge.className = 'live'; badge.textContent = 'LIVE';
+  fTitle.textContent = 'Live mixed traffic'; fProto.textContent = '40% new orders · 25% payments · 15% confirms · 20% status polls';
+  const tick = () => {
+    if (flows < 14) {
+      const id = pickMix(); flows++;
+      runFlow(SCEN[id].steps, { fast: true, done: () => { flows--; } });
+    }
+    wait(0.55 + Math.random() * 0.6, tick);
+  };
+  const info = () => {
+    fText.textContent = `${flows} flows and ${packets.length} packets in flight · every saga step is a local transaction + outbox row; commands and replies travel through Kafka keyed by orderId, so each order stays in order while thousands run in parallel`;
+    fText.title = '';
+    wait(0.5, info);
+  };
+  tick(); info();
+}
+
+// ---------------- drawer ----------------
+const drawer = document.getElementById('drawer');
+let selected = null;
+function openDrawer(id) {
+  const n = NODES[id], inf = INFO[id], [bg, st] = PAL[id];
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = id; NODE_EL[id].g.querySelector('.sel').setAttribute('opacity', 1);
+  document.getElementById('dHead').style.background = bg;
+  document.getElementById('dHead').style.borderBottomColor = st;
+  document.getElementById('dLogo').innerHTML = `<svg width="44" height="44" viewBox="0 0 48 48">${LOGO[id]}</svg>`;
+  document.getElementById('dTitle').textContent = n.label;
+  document.getElementById('dTag').textContent = inf.tag;
+  const body = document.getElementById('dBody');
+  const core = CORE[id];
+  body.innerHTML = `<div>${inf.desc}</div><h4>Key points</h4><ul>${inf.points.map(p => `<li>${p}</li>`).join('')}</ul><h4>Example</h4><pre></pre>`
+    + (core ? `<a class="core-link" href="00_Core_Components.html#${core[0]}/what">🧩 Basics: ${esc(core[1])} in Core Components →</a>` : '');
+  body.querySelector('pre').textContent = inf.code;
+  body.scrollTop = 0;
+  drawer.classList.add('open'); drawer.setAttribute('aria-hidden', 'false');
+}
+function closeDrawer() {
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = null; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true');
+}
+svg.addEventListener('click', ev => {
+  const g = ev.target.closest('.node');
+  if (g) openDrawer(g.dataset.id); else closeDrawer();
+});
+document.getElementById('dClose').onclick = closeDrawer;
+
+// ---------------- legend popover ----------------
+const legendPop = document.getElementById('legendPop'), legendBtn = document.getElementById('legendBtn');
+document.getElementById('lgKinds').innerHTML = Object.entries(KIND).map(([k, c]) => `<span><i style="--c:${c}"></i>${k}</span>`).join('');
+const legendOpen = () => legendPop.classList.contains('open');
+function setLegend(open) {
+  if (open) {   // point the little arrow at the button
+    const r = legendBtn.getBoundingClientRect();
+    legendPop.style.setProperty('--arrow', Math.max(12, window.innerWidth - 16 - (r.left + r.width / 2) - 6) + 'px');
+  }
+  legendPop.classList.toggle('open', open);
+  legendBtn.classList.toggle('on', open);
+  legendBtn.setAttribute('aria-expanded', open);
+}
+legendBtn.addEventListener('click', () => setLegend(!legendOpen()));
+document.addEventListener('mousedown', ev => {
+  if (legendOpen() && !legendPop.contains(ev.target) && !legendBtn.contains(ev.target)) setLegend(false);
+});
+
+// ---------------- controls ----------------
+function setSpeed(v) { speed = v; document.querySelectorAll('#spSeg button').forEach(b => b.classList.toggle('on', +b.dataset.sp === v)); }
+function togglePause() { paused = !paused; document.getElementById('pauseBtn').textContent = paused ? '▶ Play' : '⏸ Pause'; }
+document.querySelectorAll('header button').forEach(b => b.addEventListener('click', () => b.blur()));
+document.querySelectorAll('#scSeg button').forEach(b => b.onclick = () => start(b.dataset.sc));
+document.querySelectorAll('#spSeg button').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp));
+document.getElementById('pauseBtn').onclick = togglePause;
+document.getElementById('replayBtn').onclick = () => start(current);
+document.addEventListener('keydown', ev => {
+  if (ev.target.closest && ev.target.closest('input,textarea')) return;
+  if (view !== 'flow' || ev.ctrlKey || ev.metaKey || ev.altKey) return;   // shortcuts drive the Data flow tab only
+  if (ev.code === 'Space') { ev.preventDefault(); togglePause(); }
+  else if (ev.key === '1') setSpeed(0.5);
+  else if (ev.key === '2') setSpeed(1);
+  else if (ev.key === '3') setSpeed(2);
+  else if (ev.key === 'r' || ev.key === 'R') start(current);
+  else if (ev.key === 'l' || ev.key === 'L') setLegend(!legendOpen());
+  else if (ev.key === 'Escape') { if (legendOpen()) setLegend(false); else closeDrawer(); }
+});
+
+
+
+
+// ====================================================================
+// interview content: copied verbatim from 05_Ecommerce_Order.html (v2.0)
+// ====================================================================
+const CONTENT = {
   // ---------------- 4 · how to explain ----------------
   explain: [
     {
@@ -866,7 +1323,100 @@ PaymentIntent pi = PaymentIntent.create(params, opts);
     { g: 'rr', q: 'The payment call times out. Failed or not?', what: 'Unknown: the provider may have charged.', why: 'A timeout is not a failure.', how: 'Retry with the same idempotency key, wait for the webhook, or query the provider; never charge again with a new key.', trade: 'The order stays pending longer.', flow: 'late' },
   ],
 };
+
+// =====================================================================
+// reading tabs: How to explain · Interview answer · Follow-ups (self-contained renderers)
+// =====================================================================
+const reader = document.getElementById('reader');
+// **bold** and `code` in plain-text content (same rules as engine/app.js)
+const rich = s => esc(s).replace(/"/g, '&quot;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+// old flow ids -> scenarios on the Data flow tab
+const FLOW_TO_SC = { happy: 'happy', race: 'race', comp: 'comp', late: 'late', dup: 'dup' };
+const STAGE_C = ['#fb923c', '#8b5cf6', '#3b82f6', '#0d9488', '#db2777', '#16a34a'];
+
+function renderExplain() {
+  const E = CONTENT.explain, total = E.reduce((a, s) => a + s.min, 0);
+  const who = { I: ['Interviewer', 'iv'], C: ['You', 'you'], P: ['Tip', 'tip'] };
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">How to explain it</span><h2>Drive the ${total}-minute interview, stage by stage</h2>
+    <p>Interviewers grade the <b>structure</b> as much as the design. Follow the stages in order and say out loud which stage you are in.</p></div></div>
+    <div class="timebar">${E.map((s, k) => `<button data-to="ex${k}" style="flex:${s.min};--c:${STAGE_C[k % STAGE_C.length]}"><b>${k + 1}. ${esc(s.t)}</b><span>${s.min} min</span></button>`).join('')}</div>
+    ${E.map((s, k) => `<section class="rcard stage" id="ex${k}" style="--c:${STAGE_C[k % STAGE_C.length]}">
+      <div class="stage-h"><span class="sn">${k + 1}</span><h3>${esc(s.t)}</h3><span class="mn">~${s.min} min</span></div>
+      <p class="goal"><b>Goal:</b> ${rich(s.goal)}</p>
+      ${s.lines.map(([w, t]) => `<div class="msg ${who[w][1]}"><span class="who">${who[w][0]}</span><p>${rich(t)}</p></div>`).join('')}
+      ${s.avoid ? `<p class="avoid"><b>⚠ Avoid</b> ${rich(s.avoid)}</p>` : ''}
+    </section>`).join('')}
+  </div>`;
+}
+
+function renderAnswer() {
+  const A = CONTENT.answer;
+  const jumps = [['a-pitch', '⏱ 60-second answer'], ...A.sections.map((s, k) => [`a-sec${k}`, s.h]), ['a-dec', '⚖ Trade-offs'], ['a-code', '{ } Code']];
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Interview-ready answer</span><h2>What to actually say</h2>
+    <p>Start with the 60-second version, then expand any section the interviewer picks.</p></div></div>
+    <nav class="jump">${jumps.map(([id, t]) => `<button data-to="${id}">${esc(t)}</button>`).join('')}</nav>
+    <section class="rcard pitch" id="a-pitch"><h3>⏱ The 60-second answer</h3>${[].concat(A.summary).map(p => `<p>${rich(p)}</p>`).join('')}</section>
+    <div class="ans-grid">${A.sections.map((s, k) => `<section class="rcard ans" id="a-sec${k}" style="--c:${s.color || '#0b5cff'}"><h3>${esc(s.h)}</h3>${s.html}</section>`).join('')}</div>
+    <section class="rcard ans" id="a-dec" style="--c:#7c3aed"><h3>⚖ Key decisions &amp; trade-offs</h3>
+      <table><thead><tr><th>Decision</th><th>Why</th><th>Trade-off</th></tr></thead><tbody>${A.decisions.map(r => `<tr>${r.map(c => `<td>${rich(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>
+    <div class="code-grid" id="a-code">${A.code.map(c => `<section class="rcard codeblk"><h3>${esc(c.t)}</h3><pre>${esc(c.code)}</pre></section>`).join('')}</div>
+  </div>`;
+}
+
+let fuGroup = 'all';
+function renderFollowups() {
+  const G = CONTENT.followGroups, F = CONTENT.followups, list = F.filter(f => fuGroup === 'all' || f.g === fuGroup);
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Follow-up questions</span><h2>What they ask next, and what to answer</h2>
+    <p>Each answer has the same shape: <b>what happens</b> → <b>why</b> → <b>how you handle it</b> → <b>the trade-off</b>. Saying the trade-off unprompted is what separates senior answers.</p></div></div>
+    <div class="chips"><button data-g="all" class="${fuGroup === 'all' ? 'on' : ''}">All <small>${F.length}</small></button>${Object.entries(G).map(([k, g]) => `<button data-g="${k}" class="${fuGroup === k ? 'on' : ''}" style="--c:${g.color}">${esc(g.name)} <small>${F.filter(f => f.g === k).length}</small></button>`).join('')}</div>
+    ${list.map((f, k) => `<details class="rcard fu" style="--c:${G[f.g].color}"${k === 0 ? ' open' : ''}>
+      <summary><span class="fu-g">${esc(G[f.g].name)}</span><span class="fu-q">${esc(f.q)}</span></summary>
+      <div class="fu-body">
+        <div><b>What happens</b><p>${rich(f.what)}</p></div>
+        <div><b>Why</b><p>${rich(f.why)}</p></div>
+        <div class="say"><b>🎤 Say this</b><p>${rich(f.how)}</p></div>
+        <div style="grid-column:1/-1"><b>Trade-off</b><p>${rich(f.trade)}</p></div>
+        ${f.flow ? `<button class="watch" data-sc="${FLOW_TO_SC[f.flow]}">▶ Watch flow: ${esc(SCEN[FLOW_TO_SC[f.flow]].name)}</button>` : ''}
+      </div></details>`).join('')}
+  </div>`;
+  reader.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { fuGroup = b.dataset.g; renderFollowups(); });
+  reader.querySelectorAll('.watch').forEach(b => b.onclick = () => { setView('flow'); start(b.dataset.sc); });
+}
+// sticky jump bars scroll inside the reading panel
+reader.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-to]');
+  if (!b) return;
+  const el = document.getElementById(b.dataset.to), bar = b.parentElement;
+  reader.scrollTo({ top: el.offsetTop - bar.offsetHeight - 8 });
+});
+
+function setView(v) {
+  view = v;
+  document.body.className = 'v-' + v;
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  if (v !== 'flow') {
+    closeDrawer(); setLegend(false);
+    if (v === 'explain') renderExplain(); else if (v === 'answer') renderAnswer(); else renderFollowups();
+    reader.scrollTop = 0;
+  }
+  last = performance.now();
+}
+document.querySelectorAll('#viewSeg button').forEach(b => b.onclick = () => { b.blur(); setView(b.dataset.view); });
+
+// ---------------- header: previous / next design + hub (engine/catalog.js) ----------------
+(function designNav() {
+  const cat = (window.SD_CATALOG || []).filter(c => c.file), at = cat.findIndex(c => c.id === 'shop');
+  const link = (d, txt, dir) => d ? `<a href="${d.file}" title="${dir}: ${d.n} · ${esc(d.title)}">${txt}</a>` : `<span class="off" title="No ${dir.toLowerCase()} design">${txt}</span>`;
+  document.getElementById('dNav').innerHTML = link(cat[at - 1], '←', 'Previous') + link(cat[at + 1], '→', 'Next')
+    + `<a class="hub" href="../02_SD_Interview_Simulator.html" title="All designs">All designs</a>`;
+})();
+
+
+start('happy');
+requestAnimationFrame(frame);
 </script>
-<script src="engine/app.js"></script>
 </body>
 </html>
