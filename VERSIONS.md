@@ -41,7 +41,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `sd-rate-limiter` | Rate Limiter | v2.0 | `03_System_Design/02_SD_Simulator/02_Rate_Limiter.html` |
 | System Design | `sd-notification` | Notification System | v3.0 | `03_System_Design/02_SD_Simulator/04_Notification_System.html` |
 | System Design | `sd-ecommerce` | E-commerce Order System | v2.0 | `03_System_Design/02_SD_Simulator/05_Ecommerce_Order.html` |
-| System Design | `sd-chat` | Chat System | v2.0 | `03_System_Design/02_SD_Simulator/07_Chat_System.html` |
+| System Design | `sd-chat` | Chat System | v3.0 | `03_System_Design/02_SD_Simulator/07_Chat_System.html` |
 | System Design | `sd-ticket-booking` | Ticket Booking | v2.3 | `03_System_Design/02_SD_Simulator/03_Ticket_Booking.html` |
 | System Design | `sd-file-upload` | File Upload & Storage | v2.3 | `03_System_Design/02_SD_Simulator/06_File_Upload.html` |
 | System Design | `sd-job-scheduler` | Distributed Job Scheduler | v2.0 | `03_System_Design/02_SD_Simulator/08_Job_Scheduler.html` |
@@ -309,7 +309,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v2.0 | 2026-11-12 | Own page, 6 tabs: overview loop, 11 components (links to Core Components for LB, Redis, Kafka, DB), 6 flows (why WebSockets: polling vs upgrade + heartbeats, A → B with seq and receipts, group order: clocks vs server seq, lost ack → clientMsgId dedupe, offline: push hint + sync, gateway crash: stale presence, jittered reconnect, sync), how to explain, spoken interview answer, Spring WebSocket code, 16 follow-ups. | current file · tag `sd-chat/v2.0` |
+| v3.0 | 2026-11-20 | CURRENT: self-contained animated data-flow page in the URL Shortener v6.0 style (zones by role: Client · Realtime entry · App services · Data · Async delivery; 12 logo cards incl. 2 WebSocket gateways, Redis presence and a Push Worker, fan-out hops to several gateways and devices, details drawers with Core Components links) + Explain, Answer and Follow-ups tabs ported verbatim (10 ▶ Watch flow buttons). 7 scenarios: Why WebSockets?, A → B: "Hi", Group: who spoke first?, Lost ack → resend, B is offline, Gateway 2 crashes, Live mix. WebSockets still taught here. No longer uses the shared engine. | current file · tag `sd-chat/v3.0` |
+| v2.0 | 2026-11-12 | Own page, 6 tabs: overview loop, 11 components (links to Core Components for LB, Redis, Kafka, DB), 6 flows (why WebSockets: polling vs upgrade + heartbeats, A → B with seq and receipts, group order: clocks vs server seq, lost ack → clientMsgId dedupe, offline: push hint + sync, gateway crash: stale presence, jittered reconnect, sync), how to explain, spoken interview answer, Spring WebSocket code, 16 follow-ups. | git tag `sd-chat/v2.0` |
 | v1 | 2026-10-23 | Section of the all-in-one simulator. | `_archive/03_System_Design/02_SD_Interview_Simulator_v1.html#chat/1` · tag `sd-chat/v1` |
 
 **Ticket Booking** · `sd-ticket-booking`
