@@ -3,572 +3,1128 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="sd-notification">
-<meta name="doc-version" content="v2.0">
+<meta name="doc-version" content="v3.0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Notification System · System Design · v2.0</title>
-<link rel="stylesheet" href="engine/sd.css">
+<title>Notification System · System Design · v3.0</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:#ffffff;color:#0f172a}
+
+/* ---------- header ---------- */
+header{height:64px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.brand .logo{flex-shrink:0}
+.brand .txt{min-width:0}
+.brand .t{font-size:16px;font-weight:800;white-space:nowrap;display:flex;align-items:baseline;gap:10px}
+.brand .t a{font-size:11.5px;font-weight:600;color:#0b5cff;text-decoration:none}
+.brand .t a:hover{text-decoration:underline}
+.brand .s{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrls{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.seg{display:flex;align-items:center;background:#f1f5f9;border-radius:10px;padding:3px;gap:2px}
+.seg .lbl{font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;padding:0 6px 0 7px}
+.seg button{border:0;background:transparent;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#475569;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.seg button:hover{color:#0f172a}
+.seg button.on{background:#fff;color:#0b5cff;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.btn{border:1px solid #e2e8f0;background:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#334155;padding:7px 12px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f8fafc}
+
+/* ---------- main / svg ---------- */
+main{position:relative;height:calc(100vh - 64px - 78px)}
+#dia{display:block;width:100%;height:100%;user-select:none}
+.hint{position:absolute;left:12px;bottom:8px;font-size:11px;color:#64748b;background:rgba(255,255,255,.85);padding:3px 8px;border-radius:6px;pointer-events:none}
+.zl{font-size:13px;font-weight:800;letter-spacing:1.2px;fill:#334155}
+.nl{font:11px ui-monospace,Consolas,monospace;fill:#64748b}
+.edge{fill:none;stroke:#94a3b8;stroke-width:2;stroke-dasharray:6 7}
+.edge.hot{stroke-dasharray:none;stroke-width:3}
+.elbl{font-size:11px;font-weight:600;fill:#64748b;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.node{cursor:pointer}
+.node .card{transition:filter .2s,stroke-width .2s;filter:drop-shadow(0 1px 3px rgba(15,23,42,.08))}
+.node:hover .card{filter:drop-shadow(0 4px 10px rgba(15,23,42,.18))}
+.node.active .card{stroke-width:3.5;filter:drop-shadow(0 0 14px rgba(11,92,255,.55))}
+.nlab{font-size:14px;font-weight:700;fill:#0f172a;text-anchor:middle}
+.nsub{font-size:11px;fill:#64748b;text-anchor:middle}
+.tag text{font-size:10.5px;font-weight:700;fill:#fff;text-anchor:middle}
+.ptag{font-size:10.5px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3.5px;stroke-linejoin:round;text-anchor:middle}
+
+/* ---------- legend popover ---------- */
+.ibtn{width:34px;padding:7px 0;text-align:center;font-size:14px;line-height:1}
+.ibtn.on{background:#eef4ff;border-color:#cfe0ff;color:#0b5cff}
+#legendPop{position:fixed;top:70px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 44px rgba(15,23,42,.2),0 3px 10px rgba(15,23,42,.08);padding:12px 14px;z-index:7;display:none}
+#legendPop.open{display:block}
+#legendPop:before{content:"";position:absolute;top:-6px;right:var(--arrow,20px);width:10px;height:10px;background:#fff;border-left:1px solid #e5e7eb;border-top:1px solid #e5e7eb;transform:rotate(45deg)}
+.lgh{font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8;margin:2px 0 8px}
+.lgk{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+.lgk span{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569}
+.lgk i{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.06),0 0 7px var(--c);background:var(--c)}
+.lgs{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:10px}
+.lgs b{display:block;font-size:16px;font-weight:800;color:#0f172a;line-height:1.15}
+.lgs span{font-size:11px;color:#475569}
+.lgn{font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:8px}
+
+/* ---------- footer ---------- */
+footer{height:78px;background:#fff;border-top:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+#badge{flex-shrink:0;min-width:52px;height:44px;padding:0 8px;border-radius:12px;background:#0b5cff;color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+#badge.live{background:#16a34a;letter-spacing:1px}
+.fmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.frow{display:flex;align-items:center;gap:8px;min-width:0}
+#ftitle{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{flex-shrink:0;font:600 11px ui-monospace,Consolas,monospace;color:#0b5cff;background:#eef4ff;border:1px solid #cfe0ff;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill:empty{display:none}
+.grow{flex:1}
+#dots{display:flex;gap:3px;flex-shrink:0}
+#dots i{display:block;width:18px;height:4px;border-radius:2px;background:#e2e8f0}
+#dots i.on{background:#0b5cff}
+#ftext{font-size:12.5px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{display:flex;gap:8px;flex-shrink:0}
+.stat{width:78px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:6px 8px}
+.stat b{display:block;font-size:18px;line-height:1.1}
+.stat span{font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#64748b;white-space:nowrap}
+
+/* ---------- drawer ---------- */
+#drawer{position:fixed;right:14px;top:76px;bottom:90px;width:380px;max-width:calc(100vw - 28px);background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.22),0 4px 14px rgba(15,23,42,.08);transform:translateX(420px);transition:transform .35s ease;display:flex;flex-direction:column;overflow:hidden;z-index:5}
+#drawer.open{transform:translateX(0)}
+.dh{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #e5e7eb}
+.dh .dl{width:52px;height:52px;border-radius:12px;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dh h3{margin:0;font-size:16px}
+.dh p{margin:2px 0 0;font-size:12px;color:#475569}
+.dh button{margin-left:auto;align-self:flex-start;border:0;background:rgba(255,255,255,.7);border-radius:8px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#334155}
+.db{padding:14px 16px 18px;overflow:auto;font-size:13px;line-height:1.5;color:#334155}
+.db h4{margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.db ul{margin:0;padding-left:18px}
+.db li{margin:3px 0}
+.db pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.db code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px}
+.core-link{display:inline-block;margin-top:14px;font-size:12.5px;font-weight:600;color:#0b5cff;text-decoration:none;background:#eef4ff;border:1px solid #cfe0ff;padding:6px 10px;border-radius:9px}
+.core-link:hover{text-decoration:underline}
+
+/* ---------- header nav + view tabs ---------- */
+.brand .s{display:flex;align-items:center;gap:6px}
+.brand .s .sub{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.brand .nav{display:flex;align-items:center;gap:1px;flex-shrink:0}
+.brand .nav a,.brand .nav span{font-size:11.5px;font-weight:700;color:#0b5cff;text-decoration:none;padding:0 4px;border-radius:5px;line-height:16px}
+.brand .nav a:hover{background:#eef4ff}
+.brand .nav span.off{color:#cbd5e1;cursor:default}
+.brand .nav a.hub{color:#64748b;font-weight:600}
+body:not(.v-flow) .flowonly{display:none}
+body:not(.v-flow) main,body:not(.v-flow) footer,body:not(.v-flow) #drawer,body:not(.v-flow) #legendPop{display:none}
+body.v-flow #reader{display:none}
+
+/* ---------- reading panel (tabs 2-4) ---------- */
+#reader{position:relative;height:calc(100vh - 64px);overflow:auto;background:#f8fafc;scroll-behavior:smooth}
+.rd{max-width:1120px;margin:0 auto;padding:18px 20px 40px}
+.rd-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:12px}
+.rd-head h2{margin:0;font-size:20px;font-weight:800}
+.rd-head p{margin:4px 0 0;font-size:13px;color:#64748b;max-width:760px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.rcard{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.05);padding:14px 16px;margin-bottom:12px;font-size:13.5px;line-height:1.55;color:#334155}
+.rcard code,.fu code,.rd td code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px;color:#0f172a}
+.rcard h3{margin:0 0 6px;font-size:15px;color:#0f172a}
+/* explain */
+.timebar{position:sticky;top:0;z-index:2;display:flex;gap:4px;background:#f8fafc;padding:6px 0 10px}
+.timebar button{min-width:126px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:6px 8px;text-align:left;cursor:pointer;font:inherit;border-top:3px solid var(--c)}
+.timebar button:hover{background:#f1f5f9}
+.timebar b{display:block;font-size:12px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timebar span{font-size:11px;color:#64748b}
+.stage{border-left:4px solid var(--c);scroll-margin-top:70px}
+.stage-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.stage-h .sn{width:24px;height:24px;border-radius:50%;background:var(--c);color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center}
+.stage-h .mn{font-size:11px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:999px;padding:1px 8px}
+.goal{margin:2px 0 10px;color:#64748b}
+.msg{display:flex;gap:10px;margin:6px 0;align-items:flex-start}
+.msg .who{flex-shrink:0;width:88px;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding-top:3px}
+.msg p{margin:0;flex:1;padding:6px 10px;border-radius:10px}
+.msg.iv .who{color:#7c3aed}.msg.iv p{background:#f5f3ff}
+.msg.you .who{color:#0b5cff}.msg.you p{background:#eef4ff}
+.msg.tip .who{color:#a16207}.msg.tip p{background:#fefce8;font-style:italic}
+.avoid{margin:10px 0 0;padding:8px 12px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+/* answer */
+.jump{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.jump button,.chips button{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:4px 11px;font:600 12px "Segoe UI",system-ui,sans-serif;color:#475569;cursor:pointer}
+.jump button:hover,.chips button:hover{border-color:#cbd5e1;color:#0f172a}
+.pitch{border-left:4px solid #0b5cff;scroll-margin-top:56px}
+.pitch p{margin:0 0 8px}.pitch p:last-child{margin:0}
+.ans-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.ans-grid .rcard{margin:0}
+.ans{border-top:4px solid var(--c);scroll-margin-top:56px}
+.ans ul,.ans ol{margin:0;padding-left:20px}.ans li{margin:3px 0}
+.ans table{border-collapse:collapse;width:100%;font-size:13px}
+.ans td,.ans th{border-bottom:1px solid #f1f5f9;padding:5px 8px;text-align:left;vertical-align:top}
+.ans th{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8}
+.ans .m{font:12px ui-monospace,Consolas,monospace;white-space:nowrap;color:#0f172a}
+.ans pre,.codeblk pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.code-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;scroll-margin-top:56px}
+.codeblk{margin:0}
+.codeblk h3{font-size:13px}
+/* follow-ups */
+.chips{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.chips button small{color:#94a3b8;font-weight:700;margin-left:2px}
+.chips button.on{background:var(--c,#0b5cff);border-color:var(--c,#0b5cff);color:#fff}
+.chips button.on small{color:rgba(255,255,255,.8)}
+.fu{padding:0;border-left:4px solid var(--c)}
+.fu summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px}
+.fu summary::-webkit-details-marker{display:none}
+.fu summary:after{content:"▸";margin-left:auto;color:#94a3b8;transition:transform .2s}
+.fu[open] summary:after{transform:rotate(90deg)}
+.fu-g{flex-shrink:0;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border-radius:999px;padding:2px 9px}
+.fu-q{font-size:14px;font-weight:700;color:#0f172a}
+.fu-body{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:0 16px 14px}
+.fu-body > div > b{display:block;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8;margin-bottom:2px}
+.fu-body p{margin:0}
+.fu-body .say{grid-column:1/-1;background:#eef4ff;border-radius:10px;padding:8px 12px}
+.fu-body .say > b{color:#0b5cff}
+.watch{grid-column:1/-1;justify-self:start;border:0;background:#0b5cff;color:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;padding:7px 14px;border-radius:9px;cursor:pointer}
+.watch:hover{background:#0a4fe0}
+</style>
 </head>
-<body>
-<script src="engine/scene.js"></script>
-<script src="engine/player.js"></script>
+<body class="v-flow">
+<header>
+  <div class="brand">
+    <svg class="logo" width="34" height="34" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#0b5cff"/><path d="M24 11a8.5 8.5 0 0 0-8.5 8.5v6.6l-3.3 5.4h23.6l-3.3-5.4v-6.6A8.5 8.5 0 0 0 24 11z" fill="#fff"/><circle cx="24" cy="35.2" r="3.2" fill="#fff"/></svg>
+    <div class="txt">
+      <div class="t">Notification System</div>
+      <div class="s"><span class="nav" id="dNav"></span><span class="sub">Email + push · dedupe key as _id · Kafka topic per channel and priority · retry topics → DLQ · at-least-once</span></div>
+    </div>
+  </div>
+  <div class="ctrls">
+    <div class="seg" id="viewSeg">
+      <button data-view="flow" class="on" title="Animated data flow">Data flow</button>
+      <button data-view="explain" title="How to explain it, stage by stage">Explain</button>
+      <button data-view="answer" title="Interview-ready answer">Answer</button>
+      <button data-view="followups" title="Follow-up questions">Follow-ups</button>
+    </div>
+    <div class="seg flowonly" id="scSeg"><span class="lbl">Scenario</span>
+      <button data-sc="happy" title="Order shipped: email A · prefs · log · Kafka · SES">Email</button>
+      <button data-sc="dedupe" title="Producer retries: timeout · same dedupe key · E11000">Dedupe</button>
+      <button data-sc="retry" title="Provider throttles: retry topics · backoff · DLQ">Retry</button>
+      <button data-sc="dup" title="Worker crash: duplicate? at-least-once · status check">Crash</button>
+      <button data-sc="priority" title="Campaign vs OTP: shared topic vs push-high">Priority</button>
+      <button data-sc="live" title="Live mixed traffic">Live</button>
+    </div>
+    <div class="seg flowonly" id="spSeg"><span class="lbl">Speed</span>
+      <button data-sp="0.5">0.5x</button><button data-sp="1" class="on">1x</button><button data-sp="2">2x</button>
+    </div>
+    <button class="btn flowonly" id="pauseBtn">⏸ Pause</button>
+    <button class="btn flowonly" id="replayBtn">↻ Replay</button>
+    <button class="btn ibtn flowonly" id="legendBtn" title="Legend &amp; scale (L)" aria-haspopup="dialog" aria-expanded="false">ⓘ</button>
+  </div>
+</header>
+
+<main>
+  <svg id="dia" viewBox="0 0 1600 600" preserveAspectRatio="xMidYMid meet"></svg>
+  <div class="hint">Click any component for details · Space pause · 1 2 3 speed · R replay · L legend</div>
+</main>
+
+<footer>
+  <div id="badge">1/1</div>
+  <div class="fmid">
+    <div class="frow"><span id="ftitle"></span><span id="fproto" class="pill"></span><span class="grow"></span><div id="dots"></div></div>
+    <div id="ftext"></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="stReq">0</b><span>Requests</span></div>
+    <div class="stat"><b id="stHit">0</b><span>Cache hits</span></div>
+    <div class="stat"><b id="stEvt">0</b><span>Events</span></div>
+    <div class="stat"><b id="stRes">0</b><span>Responses</span></div>
+  </div>
+</footer>
+
+<section id="reader" aria-live="polite"></section>
+
+<div id="legendPop" role="dialog" aria-label="Legend and scale">
+  <div class="lgh">PACKETS</div>
+  <div class="lgk" id="lgKinds"></div>
+  <div class="lgh">SCALE (FROM THE FULL DESIGN)</div>
+  <div class="lgs">
+    <div><b>10 M</b><span>notifications / day</span></div>
+    <div><b>1 M</b><span>campaign in minutes</span></div>
+    <div><b>&lt; 5 s</b><span>OTP end to end</span></div>
+    <div><b>≥ 1</b><span>delivery (at-least-once)</span></div>
+  </div>
+  <div class="lgn">Dashed edges crawl in the request direction · solid = packet in transit</div>
+</div>
+
+<aside id="drawer" aria-hidden="true">
+  <div class="dh" id="dHead"><div class="dl" id="dLogo"></div><div><h3 id="dTitle"></h3><p id="dTag"></p></div><button id="dClose" title="Close (Esc)">×</button></div>
+  <div class="db" id="dBody"></div>
+</aside>
+
 <script src="engine/catalog.js"></script>
 <script>
-// Notification System (email + push, transactional + campaigns). Everything specific to this design lives here;
-// engine/app.js renders it. Kafka basics are taught in 00_Core_Components.html (Queue · Kafka).
-const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+'use strict';
+// =====================================================================
+// Notification System · Data Flow: nodes grouped by app role (producers · intake · async queue · data · workers ·
+// providers & recipients); no infra containers, no CDN. Self-contained: no engine/ except catalog.js for prev/next.
+// Content comes from 04_Notification_System.html (v2.0): Notify API checks preferences, inserts with the dedupe key as _id
+// (E11000 = already accepted), produces to a Kafka topic per channel and priority (key = userId) and answers 202; channel
+// workers check the status, call SES / FCM, mark SENT and commit last; failures go to retry topics → DLQ (@RetryableTopic).
+// =====================================================================
 
-// Notification status colours (the Notify DB is the delivery log).
-const ST = {
-  QUEUED: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
-  SENT: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
-  FAILED: { fill: '#fff4f4', stroke: RED, color: RED },
+const NS = 'http://www.w3.org/2000/svg';
+const KIND = { request: '#2563eb', response: '#16a34a', event: '#f97316', error: '#dc2626' };
+const CLIENTS = new Set(['orderSvc', 'authSvc', 'campaign', 'userA', 'userB']);
+const PAL = {
+  orderSvc: ['#fff9db', '#e0b400'], authSvc: ['#e0f2fe', '#0284c7'], campaign: ['#fdf2f8', '#db2777'],
+  napi: ['#ffffff', '#7c3aed'],
+  kafka: ['#fff0e0', '#f59e0b'], retry: ['#ffffff', '#e11d48'],
+  prefs: ['#fff1f2', '#dc2626'], ndb: ['#e6f6ea', '#34a853'],
+  emailw: ['#ffffff', '#2563eb'], pushw: ['#fdf4ff', '#c026d3'],
+  ses: ['#fff7ed', '#ea8a00'], fcm: ['#fffbeb', '#f59e0b'], userA: ['#eef0ff', '#818cf8'], userB: ['#eef0ff', '#818cf8'],
 };
-const NK = 'order-9:shipped';
-const fmt = (id, status, n) => `${id.padEnd(16)}${status.padEnd(7)}×${n}`;
+// zone tints: [fill, stroke, label] (same palette as 01_URL_Shortener.html, plus teal for the external last mile)
+const ZT = {
+  client: ['#fed7aa', '#fb923c', '#9a3412'], entry: ['#ddd6fe', '#8b5cf6', '#5b21b6'], app: ['#bfdbfe', '#3b82f6', '#1e3a8a'],
+  data: ['#e5e7eb', '#9ca3af', '#374151'], async: ['#ffe4e6', '#fb7185', '#9f1239'], ext: ['#ccfbf1', '#14b8a6', '#115e59'],
+};
 
-// State shown next to the components: the notifications log, the topic offsets, the retry topics, the users.
-function setup(s, v, { rows = [], clock = '14:00:00', off = 'email p0 · next 12 · committed 12', retry = 'retry-1m — · retry-10m — · dlq 0', a = 'waiting for an update', b = 'idle' } = {}) {
-  v.clock = s.chip(15, 500, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
-  v.log = s.store(15, 392, 270, 'NOTIFY DB · notifications', { color: AMBER });
-  v.rows = {};
-  rows.forEach(([id, st, n]) => { s.row(v.log, fmt(id, st, n), { ...ST[st], now: true }); v.rows[id] = v.log.rows[v.log.rows.length - 1]; v.rows[id].meta = [id, st, n]; });
-  v.off = s.chip(420, 268, off, { mono: true, color: AMBER });
-  v.retry = s.chip(685, 298, retry, { mono: true, color: PURPLE });
-  v.ua = s.chip(965, 236, a, { color: GREY });
-  v.ub = s.chip(965, 486, b, { color: GREY });
-  return v;
+// ---------------- logos (48x48 inline SVG) ----------------
+const cube = (badge) => `<path d="M24 5l17 9.5v19L24 43 7 33.5v-19z" fill="#326ce5"/><path d="M24 24l17-9.5v19L24 43z" fill="#2557c4"/><path d="M24 5l17 9.5L24 24 7 14.5z" fill="#6f9cf0"/>${badge}`;
+const person = c => `<circle cx="24" cy="15" r="8.5" fill="${c}"/><path d="M7 43c0-10 7.6-16 17-16s17 6 17 16z" fill="${c}"/>`;
+const gear = (c, d) => `<circle cx="19" cy="21" r="13.5" fill="none" stroke="${c}" stroke-width="6.5" stroke-dasharray="5.3 5.3"/><circle cx="19" cy="21" r="10.8" fill="${d}"/><circle cx="19" cy="21" r="4.2" fill="#fff"/>`;
+const LOGO = {
+  orderSvc: cube(`<circle cx="37" cy="37" r="9" fill="#e0b400" stroke="#fff" stroke-width="2"/><path d="M32.6 34.6l4.4-2.4 4.4 2.4v4.9L37 41.9l-4.4-2.4z" fill="#fff"/><path d="M32.6 34.6l4.4 2.4 4.4-2.4M37 37v4.9" fill="none" stroke="#e0b400" stroke-width="1.2"/>`),
+  authSvc: cube(`<circle cx="37" cy="37" r="9" fill="#0284c7" stroke="#fff" stroke-width="2"/><rect x="33" y="36" width="8" height="6.2" rx="1.2" fill="#fff"/><path d="M34.8 36v-1.9a2.2 2.2 0 0 1 4.4 0V36" fill="none" stroke="#fff" stroke-width="1.6"/>`),
+  campaign: `<path d="M8 19h7l18-10v30L15 29H8a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3z" fill="#db2777"/><path d="M11 29l3.4 11h5.4L17.6 29" fill="#9d174d"/><path d="M37.5 17.5a9 9 0 0 1 0 13M41.5 13a15 15 0 0 1 0 22" fill="none" stroke="#f472b6" stroke-width="2.8" stroke-linecap="round"/>`,
+  napi: `<rect x="5" y="5" width="38" height="38" rx="10" fill="#7c3aed"/><path d="M24 11.5a8.3 8.3 0 0 0-8.3 8.3v6.4l-3.2 5.3h23l-3.2-5.3v-6.4a8.3 8.3 0 0 0-8.3-8.3z" fill="#fff"/><circle cx="24" cy="35.3" r="3.1" fill="#fff"/><circle cx="33.5" cy="13.5" r="4.3" fill="#fbbf24" stroke="#7c3aed" stroke-width="1.6"/>`,
+  kafka: `<g stroke="#231f20" stroke-width="2.4" fill="none"><path d="M24 11v26M24 24l12-7M24 24l12 7"/></g><g fill="#fff" stroke="#231f20" stroke-width="2.8"><circle cx="24" cy="8" r="4.5"/><circle cx="24" cy="40" r="4.5"/><circle cx="24" cy="24" r="5.5"/><circle cx="37" cy="16" r="4"/><circle cx="37" cy="32" r="4"/></g>`,
+  retry: `<path d="M24 7.5a16.5 16.5 0 1 0 15.8 11.8" fill="none" stroke="#e11d48" stroke-width="4" stroke-linecap="round"/><path d="M42.6 9.6l-1.9 11.4-10.4-4.8z" fill="#e11d48"/><circle cx="24" cy="24" r="9.2" fill="#fff1f2" stroke="#e11d48" stroke-width="2"/><path d="M24 18.6V24l3.8 2.5" fill="none" stroke="#be123c" stroke-width="2.3" stroke-linecap="round"/>`,
+  prefs: `<rect x="5" y="7" width="38" height="34" rx="8" fill="#dc2626"/><g stroke="#fecaca" stroke-width="3" stroke-linecap="round"><path d="M12 16h24M12 24h24M12 32h24"/></g><g fill="#fff" stroke="#991b1b" stroke-width="1.6"><circle cx="30" cy="16" r="4"/><circle cx="18" cy="24" r="4"/><circle cx="27" cy="32" r="4"/></g>`,
+  ndb: `<path d="M24 3c8 9 12 17 12 24.5 0 8.5-5.2 13.5-10.6 15.5h-2.8C17.2 41 12 36 12 27.5 12 20 16 12 24 3z" fill="#13aa52"/><path d="M24 9v37" stroke="#0b6b33" stroke-width="2"/>`,
+  emailw: gear('#2563eb', '#3b82f6') + `<rect x="24" y="27" width="21" height="15" rx="2.5" fill="#fff" stroke="#2563eb" stroke-width="2.2"/><path d="M25.2 29l9.3 6.6 9.3-6.6" fill="none" stroke="#2563eb" stroke-width="2"/>`,
+  pushw: gear('#c026d3', '#d946ef') + `<rect x="29" y="20" width="14.5" height="24" rx="3" fill="#fff" stroke="#c026d3" stroke-width="2.2"/><circle cx="36.2" cy="39.6" r="1.4" fill="#c026d3"/><circle cx="42.5" cy="21" r="3.8" fill="#ef4444" stroke="#fff" stroke-width="1.4"/>`,
+  ses: `<rect x="5" y="6" width="38" height="36" rx="8" fill="#232f3e"/><rect x="11" y="12" width="26" height="17" rx="2.5" fill="#fff"/><path d="M11.6 13.2l12.4 9 12.4-9" fill="none" stroke="#232f3e" stroke-width="2"/><path d="M12 34c7 4.2 17 4.2 24 0" fill="none" stroke="#ff9900" stroke-width="2.8" stroke-linecap="round"/><path d="M32.4 32l4 2-1.2 4.2" fill="none" stroke="#ff9900" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  fcm: `<path d="M9 37L14.5 5.5l7.5 14z" fill="#ffa000"/><path d="M9 37l13.5-24.5 5.5 10z" fill="#f57c00"/><path d="M9 37L33 9.5l6 27.5-15 8z" fill="#ffca28"/><path d="M9 37l15 8 15-8z" fill="#ffa000"/>`,
+  userA: person('#6366f1') + `<rect x="27" y="29" width="17" height="12" rx="2" fill="#fff" stroke="#4338ca" stroke-width="1.8"/><path d="M28 30.5l7.5 5.2 7.5-5.2" fill="none" stroke="#4338ca" stroke-width="1.6"/>`,
+  userB: `<rect x="12" y="3" width="24" height="42" rx="5" fill="#6366f1"/><rect x="15" y="8" width="18" height="29" rx="2" fill="#fff"/><text x="24" y="26" text-anchor="middle" font-size="8.5" font-weight="800" fill="#4338ca" font-family="Segoe UI,Arial,sans-serif">OTP</text><circle cx="24" cy="41" r="1.7" fill="#fff"/>`,
+};
+
+// ---------------- topology ----------------
+const NODES = {
+  orderSvc: { x: 93, y: 125, label: 'Order Service', sub: 'producer · "shipped"', replicas: 2 },
+  authSvc: { x: 93, y: 300, label: 'Auth Service', sub: 'OTP · high priority', replicas: 2 },
+  campaign: { x: 93, y: 475, label: 'Campaign Job', sub: 'marketing fan-out' },
+  napi: { x: 285, y: 300, label: 'Notify API', sub: 'validate · dedupe · 202', replicas: 3 },
+  kafka: { x: 560, y: 108, label: 'Kafka', sub: 'email · push-high · bulk', replicas: 3 },
+  retry: { x: 976, y: 108, label: 'Retry / DLQ', sub: 'retry-1m · 10m · dlq' },
+  prefs: { x: 480, y: 500, label: 'Preferences', sub: 'MongoDB + Redis cache', replicas: 2 },
+  ndb: { x: 680, y: 400, label: 'Notify DB', sub: 'MongoDB · status log', replicas: 3 },
+  emailw: { x: 976, y: 300, label: 'Email Worker', sub: 'group email-svc', replicas: 3 },
+  pushw: { x: 976, y: 495, label: 'Push Worker', sub: 'push-high · push-bulk', replicas: 3 },
+  ses: { x: 1215, y: 220, label: 'Amazon SES', sub: 'email provider' },
+  fcm: { x: 1215, y: 440, label: 'FCM / APNs', sub: 'push provider' },
+  userA: { x: 1470, y: 220, label: 'User A', sub: 'email inbox' },
+  userB: { x: 1470, y: 440, label: 'User B', sub: 'phone · waits for OTP' },
+};
+// grouped by developer role, not by infrastructure
+const ZONES = [
+  { x: 8, y: 8, w: 170, h: 584, t: 'client', label: 'PRODUCERS', cap: 'business services' },
+  { x: 190, y: 8, w: 190, h: 584, t: 'entry', label: 'INTAKE', cap: 'one front door · 202' },
+  { x: 392, y: 8, w: 688, h: 170, t: 'async', label: 'ASYNC QUEUE', cap: 'Kafka topics · retry · DLQ', dash: true },
+  { x: 392, y: 190, w: 468, h: 402, t: 'data', label: 'DATA', cap: 'prefs · status log', dash: true },
+  { x: 872, y: 190, w: 208, h: 402, t: 'app', label: 'WORKERS', cap: 'channel consumers · Spring', dash: true },
+  { x: 1092, y: 8, w: 500, h: 584, t: 'ext', label: 'PROVIDERS & RECIPIENTS', cap: 'last mile · outside our code' },
+];
+// [from, to, protocol label]; the path direction is the request direction (dashes crawl that way).
+const EDGE_DEFS = [
+  ['orderSvc', 'napi', 'POST /notifications'], ['authSvc', 'napi', ''], ['campaign', 'napi', 'bulk'],
+  ['napi', 'prefs', 'GET prefs'], ['napi', 'ndb', 'insert · _id = key'], ['napi', 'kafka', 'produce · key userId'],
+  ['kafka', 'emailw', 'topic email'], ['kafka', 'pushw', 'push-high · push-bulk'], ['emailw', 'retry', 'retry-1m · 10m · dlq'],
+  ['emailw', 'ndb', 'SENT / FAILED'], ['pushw', 'ndb', 'status'],
+  ['emailw', 'ses', 'SendEmail'], ['pushw', 'fcm', 'FCM HTTP v1'], ['ses', 'userA', 'SMTP'], ['fcm', 'userB', 'push'],
+];
+
+// ---------------- drawer content ----------------
+const INFO = {
+  orderSvc: {
+    tag: 'Producer · business service',
+    desc: 'Business services ask for a notification, e.g. "order 9 shipped": <code>{ userId, template, channel, priority, dedupeKey }</code>. They own the business event; the notification platform owns how it reaches the user.',
+    points: ['Without a shared platform every team integrates SES / FCM itself, with its own retries, templates and (missing) opt-out checks', 'Gets <b>202</b> at once and never waits for delivery', 'Retries with the <b>same dedupe key</b>, so a retry never creates a second notification', 'The key is built from the business event (<code>orderId:type</code>, <code>eventId</code>), never a random UUID per attempt'],
+    code: `// Order Service: ask for a notification, retry safely
+@Retryable(retryFor = ResourceAccessException.class, maxAttempts = 3,
+           backoff = @Backoff(delay = 200, multiplier = 2))
+public void orderShipped(Order o) {
+  var req = new NotifyRequest(o.userId(), "order-shipped", "email", "normal",
+      Map.of("orderId", o.id()),
+      o.id() + ":shipped");                       // stable dedupe key
+  notifyClient.post()
+      .uri("/notifications").body(req)
+      .retrieve().toBodilessEntity();             // 202, duplicate or not
+}`,
+  },
+  authSvc: {
+    tag: 'OTP producer · high priority',
+    desc: 'Sends login OTPs and security alerts: <b>high priority</b>, short time-to-live (60 s). It shows why priority must be <b>isolated</b>: an OTP that arrives late is useless.',
+    points: ['Same Notify API, <code>priority: "high"</code>, <code>ttl: 60</code>', 'Transactional: opt-outs and quiet hours do not apply', 'Low volume, strict latency: p99 &lt; ~5 s end to end', 'If the push is not delivered in time, fall back to <b>SMS</b>'],
+    code: `POST /notifications
+{ "userId": "B", "template": "login-otp", "channel": "push",
+  "priority": "high", "ttl": 60,
+  "data": { "otp": "482913" },
+  "dedupeKey": "otp-B-551" }
+# -> 202 { "id": "otp-B-551", "status": "QUEUED" }
+#    produced to push-high, read by its own consumer group`,
+  },
+  campaign: {
+    tag: 'Marketing fan-out job',
+    desc: 'Sends a campaign to a large audience, e.g. 1 M pushes. It reads the audience in pages, skips users without marketing consent, and hands the rest to the platform as <b>bulk</b> traffic.',
+    points: ['1 M in ~10 min ≈ 1,700/s: spiky, so Kafka buffers it and workers throttle to provider quotas', 'Produces to <code>push-bulk</code>, never to the OTP topic', 'Marketing respects consent and quiet hours; transactional messages do not', 'A campaign takes minutes, by design'],
+    code: `// page through the audience, skip opt-outs, produce to push-bulk
+Pageable page = PageRequest.of(0, 1_000);
+Slice<String> ids;
+do {
+  ids = audience.findUserIds(campaignId, page);
+  Map<String, Prefs> p = prefs.getAll(ids.getContent());   // Redis MGET
+  ids.forEach(u -> {
+    if (!p.get(u).marketing() || p.get(u).inQuietHours()) return;   // skip B
+    kafka.send("push-bulk", u, CampaignMsg.of(campaignId, u));
+  });
+  page = ids.nextPageable();
+} while (ids.hasNext());`,
+  },
+  napi: {
+    tag: 'Notify API · Spring Boot intake',
+    desc: 'Validates the request, checks <b>preferences</b>, inserts the notification with the <b>dedupe key as <code>_id</code></b>, produces it to the right <b>topic</b>, and returns <b>202</b>. One front door that makes intake <b>idempotent</b> and enforces opt-outs before anything is queued.',
+    points: ['Without it, producer retries create duplicates and opted-out users still get marketing', 'A retry hits <b>E11000</b> on the unique <code>_id</code> → 202 <code>{ id, duplicate: true }</code>, nothing produced', 'Topic per <b>channel and priority</b>, key = <code>userId</code>', 'Insert-then-produce gap: a sweeper re-queues old QUEUED rows, or a transactional outbox'],
+    code: `@PostMapping("/notifications")
+ResponseEntity<Accepted> notify(@Valid @RequestBody NotifyRequest r) {
+  if (!prefs.allows(r.userId(), r.channel(), r.type()))
+    return accepted(r.dedupeKey(), "SKIPPED");
+  try {
+    notifications.insert(Notification.queued(r.dedupeKey(), r));  // _id = dedupeKey
+  } catch (DuplicateKeyException e) {
+    return accepted(r.dedupeKey(), "DUPLICATE");                // E11000: no second message
+  }
+  kafka.send(topicFor(r), r.userId(), r.toMessage());            // key = userId
+  return accepted(r.dedupeKey(), "QUEUED");                        // 202
 }
-async function note(s, v, id, st, n) {
-  const r = v.rows[id];
-  if (!r) { v.rows[id] = await s.row(v.log, fmt(id, st, n), ST[st]); v.rows[id].meta = [id, st, n]; return; }
-  r.meta = [id, st, n ?? r.meta[2]];
-  r.label.textContent = fmt(...r.meta);
-  s.paintRow(r, ST[st]);
-  await s.pulse(r, 1, 1.05);
-}
-const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
-const offs = (s, v, t, color = AMBER) => s.setChip(v.off, t, { color });
-const retr = (s, v, t, color = PURPLE) => s.setChip(v.retry, t, { color, stroke: color === RED ? RED : '#d5d9dc' });
-const who = (s, v, u, txt, color = GREY) => s.setChip(u === 'B' ? v.ub : v.ua, txt, { color, stroke: color === GREY ? '#d5d9dc' : color });
-
-window.DESIGN = {
-  id: 'notify', n: 4, title: 'Notification System', tagline: 'accept once, queue per channel and priority, retry without blocking',
-  viewBox: [1100, 520],
-
-  // ---------------- architecture ----------------
-  layers: [
-    { id: 'entry', title: 'Producers & intake', x0: 0, x1: 300, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
-      why: 'Business services ask for a notification (who, template, channel, priority) with a **dedupe key**. The Notify API accepts it **once** and answers **202**; producers never wait for delivery.',
-      detail: 'One platform for every team: Order, Auth and Marketing do not each integrate SES and FCM.' },
-    { id: 'data', title: 'Rules, queue & log', x0: 300, x1: 540, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
-      why: '**Preferences** decide whether a message may be sent; the **Notify DB** records it (the dedupe key is the `_id`); **Kafka** holds the work, one topic per channel and priority.',
-      detail: 'The DB row is written before the message is queued, so a producer retry is caught by the unique `_id`.' },
-    { id: 'async', title: 'Channel workers', x0: 540, x1: 830, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
-      why: 'One consumer group per channel renders the template, calls the provider, records the status and commits. Failures go to **retry topics**, never a sleep inside the consumer.',
-      detail: 'Workers scale with partitions and are throttled to each provider\'s send quota.' },
-    { id: 'app', title: 'Providers & users', x0: 830, x1: 1100, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
-      why: 'External providers do the last mile: **SES** for email, **FCM / APNs** for push. They can throttle, fail or be slow, and they have no general "send once" guarantee.',
-      detail: 'That is why delivery is **at-least-once**: we minimise duplicates, we cannot rule them out.' },
-  ],
-  layersIntro: {
-    title: 'Accept once, queue, send, retry on the side',
-    text: 'Producers call the **Notify API**, which checks **preferences**, records the notification in the **Notify DB** and queues it on a **Kafka** topic per channel and priority. **Workers** send through **SES / FCM** and update the status; failures go to **retry / DLQ** topics. Hover a layer or a component to see why it exists.',
+String topicFor(NotifyRequest r) {
+  return r.channel().equals("email") ? "email"
+       : r.priority().equals("high") ? "push-high" : "push-bulk";
+}`,
   },
-  nodes: {
-    orderSvc: { x: 75, y: 110, w: 130, label: 'Order Svc', sub: 'producer', icon: '📦', layer: 'entry' },
-    authSvc: { x: 75, y: 300, w: 130, label: 'Auth Svc', sub: 'OTP producer', icon: '🔐', layer: 'entry' },
-    napi: { x: 225, y: 205, w: 142, label: 'Notify API', sub: 'validate · dedupe', icon: '🔔', layer: 'entry' },
-    prefs: { x: 420, y: 70, w: 160, label: 'Preferences', sub: 'opt-in · templates', icon: '⚙️', layer: 'data' },
-    kafka: { x: 420, y: 220, w: 160, label: 'Kafka', sub: 'topic per channel', icon: '📨', layer: 'data' },
-    ndb: { x: 420, y: 440, w: 160, label: 'Notify DB', sub: 'status log', icon: '🍃', layer: 'data' },
-    emailw: { x: 685, y: 110, w: 160, label: 'Email worker', sub: 'group email-svc', icon: '✉️', layer: 'async' },
-    retry: { x: 685, y: 250, w: 160, label: 'Retry / DLQ', sub: 'delay topics', icon: '⏳', layer: 'async' },
-    pushw: { x: 685, y: 400, w: 160, label: 'Push worker', sub: 'group push-svc', icon: '📲', layer: 'async' },
-    ses: { x: 965, y: 80, w: 170, label: 'Email (SES)', sub: 'external', icon: '📧', layer: 'app' },
-    userA: { x: 965, y: 190, w: 170, label: 'User A', sub: 'inbox', icon: '👤', layer: 'app' },
-    fcm: { x: 965, y: 330, w: 170, label: 'Push (FCM)', sub: 'external', icon: '📡', layer: 'app' },
-    userB: { x: 965, y: 440, w: 170, label: 'User B', sub: 'phone', icon: '👤', layer: 'app' },
-  },
-  wires: [['orderSvc', 'napi'], ['authSvc', 'napi'], ['napi', 'prefs'], ['napi', 'kafka'], ['napi', 'ndb'], ['kafka', 'emailw'], ['kafka', 'pushw'], ['emailw', 'retry'], ['emailw', 'ses'], ['pushw', 'fcm'], ['ses', 'userA'], ['fcm', 'userB'], ['emailw', 'ndb'], ['pushw', 'ndb']],
+  kafka: {
+    tag: 'Kafka · one topic per channel and priority',
+    desc: 'Topics <code>email</code>, <code>push-high</code> (OTP) and <code>push-bulk</code> (campaigns), each read by its own consumer group. Key = <code>userId</code>, so one user\'s messages stay in order. Producers get 202 immediately and spikes are buffered.',
+    points: ['Without it, producers wait on SES / FCM and a campaign delays OTPs', 'Partitions per topic; consumers scale up to one per partition', 'Offsets are committed <b>after</b> the send and the status update', 'Redelivery after a crash or rebalance → <b>at-least-once</b>, so workers check status before sending'],
+    code: `@Bean NewTopic email()    { return TopicBuilder.name("email").partitions(12).replicas(3).build(); }
+@Bean NewTopic pushHigh() { return TopicBuilder.name("push-high").partitions(6).replicas(3).build(); }
+@Bean NewTopic pushBulk() { return TopicBuilder.name("push-bulk").partitions(24).replicas(3).build(); }
 
-  components: {
-    orderSvc: {
-      name: 'Producers (Order, Marketing …)',
-      what: 'Business services that ask for a notification: `{ userId, template, channel, priority, dedupeKey }`, e.g. "order 9 shipped".',
-      why: 'They own the business event; the notification platform owns how it reaches the user.',
-      without: 'Every team integrates SES / FCM itself, with its own retries, templates and (missing) opt-out checks.',
-      tech: 'REST call to the Notify API (or an event on Kafka)', scale: 'Many producers, one platform.', fails: 'They retry with the **same dedupe key**, so a retry never creates a second notification.',
-    },
-    authSvc: {
-      name: 'Auth Svc (OTP producer)',
-      what: 'Sends login OTPs and security alerts: **high priority**, short time-to-live (60 s).',
-      why: 'Shows why priority must be isolated: an OTP that arrives late is useless.',
-      without: 'OTPs would queue behind marketing campaigns and expire before they arrive.',
-      tech: 'Same Notify API, `priority: "high"`, `ttl: 60`', scale: 'Low volume, strict latency.', fails: 'If push is not delivered in time, fall back to SMS.',
-    },
-    napi: {
-      name: 'Notify API (intake)',
-      what: 'Validates the request, checks **preferences**, inserts the notification with the **dedupe key as `_id`**, produces it to the right **topic**, and returns **202**.',
-      why: 'One front door that makes intake **idempotent** and enforces opt-outs before anything is queued.',
-      without: 'Producer retries create duplicate notifications, and opted-out users still get marketing.',
-      tech: 'Spring Boot; insert then `KafkaTemplate.send` (or a transactional outbox)', scale: 'Stateless pods behind a load balancer.', fails: 'If the send to Kafka fails after the insert, a sweeper re-queues old QUEUED rows (or use the outbox pattern).',
-    },
-    prefs: {
-      name: 'Preferences & templates',
-      what: 'Per-user channel opt-ins, marketing consent, quiet hours, language, device tokens; templates per channel and locale.',
-      why: 'Legal and user-trust rules: no marketing without consent, no pushes at 3 am. Transactional messages (OTP, receipts) skip marketing rules.',
-      without: 'Opted-out users get campaigns (complaints, spam reports, legal risk).',
-      tech: 'MongoDB + Redis cache', scale: 'Read-heavy → cached with a short TTL.', fails: 'Serve the last cached prefs; re-check at send time for marketing.',
-      core: ['cache', 'Cache · Redis'],
-    },
-    kafka: {
-      name: 'Kafka topics (per channel & priority)',
-      what: 'Topics `email`, `push-high` (OTP), `push-bulk` (campaigns), each read by its own consumer group. Key = `userId`, so one user\'s messages stay in order.',
-      why: 'Producers get 202 immediately; spikes (a 1 M campaign) are buffered; channels and priorities never block each other.',
-      without: 'Producers wait on SES / FCM, a slow provider slows every producer, and a campaign delays OTPs.',
-      tech: 'Kafka; `KafkaTemplate` + `@KafkaListener`', scale: 'Partitions per topic; consumers up to one per partition.', fails: 'Redelivery after a crash or rebalance → **at-least-once**, so workers check status before sending.',
-      core: ['kafka', 'Queue · Kafka'],
-    },
-    ndb: {
-      name: 'Notify DB (status log)',
-      what: 'One document per notification: `{ _id: dedupeKey, userId, channel, template, status, attempts, messageId }`. Status QUEUED → SENT → DELIVERED / BOUNCED / FAILED.',
-      why: 'The unique `_id` **is** the dedupe; the status lets a worker skip a message already sent, and support can answer "did the user get it?".',
-      without: 'No dedupe, no history, and no way to stop a redelivered message from being sent again.',
-      tech: 'MongoDB; TTL index on `createdAt` (e.g. 90 days)', scale: 'High write rate → shard by `userId`.', fails: 'Down → new notifications get 503 (producers retry); queued ones keep sending, status updates retry.',
-    },
-    emailw: {
-      name: 'Email worker',
-      what: 'Consumes `email`, checks the status (**SENT? skip**), renders the template, calls SES, marks SENT, then commits the offset.',
-      why: 'Keeps the slow, failure-prone provider call off the producer\'s path.',
-      without: 'Producers call SES directly and fail whenever SES throttles.',
-      tech: 'Spring Kafka `@KafkaListener` + `@RetryableTopic`', scale: 'Up to one consumer per partition; throttled to the SES send rate.', fails: 'Transient errors → retry topic; permanent ones (bad address) → FAILED, no retry.',
-    },
-    retry: {
-      name: 'Retry & dead-letter topics',
-      what: '`email-retry-1m`, `email-retry-10m`, `email-dlq`: delayed retries with growing backoff, then the DLQ after the last attempt.',
-      why: 'A failed message is parked **on the side**, so the main partition keeps flowing.',
-      without: 'Sleeping and retrying inside the consumer blocks every message behind it in the partition.',
-      tech: 'Spring Kafka `@RetryableTopic` (creates the retry topics and the DLT)', scale: 'Small compared to main traffic.', fails: 'The DLQ needs an alert (size, age) and a replay tool; stale messages (yesterday\'s OTP) are dropped.',
-      core: ['kafka', 'Queue · Kafka'],
-    },
-    pushw: {
-      name: 'Push worker',
-      what: 'Sends mobile pushes through FCM / APNs. A **separate consumer group** reads `push-high`, so OTPs never wait behind `push-bulk`.',
-      why: 'Priority isolation needs its own topic **and** its own consumers.',
-      without: 'One shared push queue: a campaign of 1 M pushes delays an OTP by minutes.',
-      tech: 'FCM HTTP v1 API, `priority: high`, short TTL', scale: 'Separate groups for high and bulk; bulk throttled.', fails: 'Invalid device tokens → remove them; offline devices get the push until its TTL.',
-    },
-    ses: {
-      name: 'Email provider (SES)',
-      what: 'Accepts the email and returns a `MessageId`; delivery, bounce and complaint events come back later via SNS.',
-      why: 'Deliverability (IP reputation, DKIM, SPF) is a specialist job.',
-      without: 'Running your own mail servers and fighting spam filters.',
-      tech: 'Amazon SES `SendEmail` + SNS event notifications', scale: 'Account send-rate quota; exceeding it returns throttling errors.', fails: 'No general send-idempotency key: a repeated call sends a second email.',
-    },
-    userA: {
-      name: 'Recipient (email)',
-      what: 'Receives the email "Your order shipped".',
-      why: 'The whole point: the right message, once, in time.',
-      without: '—',
-      tech: 'Any inbox', scale: 'Millions of recipients.', fails: 'Duplicates annoy; bounced addresses must stop receiving mail.',
-    },
-    fcm: {
-      name: 'Push provider (FCM / APNs)',
-      what: 'Delivers pushes to devices; stores them for offline devices until the TTL.',
-      why: 'The only way to reach a phone that is not running the app.',
-      without: '—',
-      tech: 'FCM HTTP v1, APNs', scale: 'High throughput; per-device limits.', fails: 'Expired TTL → dropped; for OTPs fall back to SMS.',
-    },
-    userB: {
-      name: 'Recipient (push)',
-      what: 'Waits for a login OTP on the phone.',
-      why: 'Tight deadline: the OTP expires in 60 seconds.',
-      without: '—',
-      tech: 'Mobile app with a device token', scale: '—', fails: 'Late OTP = failed login.',
-    },
+# producer (Notify API)
+spring.kafka.producer.acks=all
+spring.kafka.producer.properties.enable.idempotence=true
+# consumers (workers): commit after the listener returns
+spring.kafka.listener.ack-mode=record`,
   },
+  retry: {
+    tag: 'Retry and dead-letter topics',
+    desc: '<code>email-retry-1m</code>, <code>email-retry-10m</code>, <code>email-dlq</code>: delayed retries with growing backoff, then the DLQ after the last attempt. A failed message is parked <b>on the side</b>, so the main partition keeps flowing.',
+    points: ['Sleeping and retrying inside the consumer blocks every message behind it in the partition', 'Spring Kafka <code>@RetryableTopic</code> creates the retry topics and the DLT', 'Permanent errors (bad address) are excluded: FAILED at once, no retry', 'The DLQ needs an alert (size, age) and a replay tool; stale messages (yesterday\'s OTP) are dropped'],
+    code: `@RetryableTopic(attempts = "3",
+    backoff = @Backoff(delay = 60_000, multiplier = 10),   // 1 min, then 10 min
+    exclude = PermanentEmailException.class,                // bad address → no retry
+    dltTopicSuffix = "-dlq")
+@KafkaListener(topics = "email", groupId = "email-svc")
+void onEmail(NotificationMsg m) { ... }
 
-  // ---------------- 1 · overview loop ----------------
-  intro: {
-    headline: 'Accept once, queue per channel, send, retry on the side.',
-    points: [
-      { t: 'Accept once', color: BLUE, d: 'Notify API checks preferences and inserts with the **dedupe key as `_id`**, then answers **202**.' },
-      { t: 'Queue', color: AMBER, d: 'It produces to the **email** topic (key = user). Producers never wait for SES.' },
-      { t: 'Send', color: PURPLE, d: 'The email worker calls **SES**, marks **SENT**, then **commits** the offset.' },
-      { t: 'Priority', color: RED, d: 'An OTP goes to **push-high** with its own consumers, so campaigns cannot delay it.' },
+@DltHandler
+void dead(NotificationMsg m) {
+  notifications.markFailed(m.id());
+  alerts.dlq("email", m.id());                              // size + age alert
+}`,
+  },
+  prefs: {
+    tag: 'Preferences & templates · MongoDB + Redis',
+    desc: 'Per-user channel opt-ins, marketing consent, quiet hours, language and device tokens; templates per channel and locale. Legal and user-trust rules: no marketing without consent, no pushes at 3 am. Transactional messages (OTP, receipts) skip marketing rules.',
+    points: ['Read on every notification → cached in Redis with a short TTL', 'Without it, opted-out users get campaigns: complaints, spam reports, legal risk', 'Invalidate on change; re-check at send time for marketing', 'Redis down → serve the last cached prefs from MongoDB'],
+    code: `// preferences (MongoDB, cached in Redis)
+{ _id: "A", email: true, push: true, marketing: true,
+  quietHours: "23:00-07:00", locale: "en-IN" }
+
+@Cacheable(cacheNames = "prefs", key = "#userId")      // GET prefs:A, TTL 60 s
+public Prefs get(String userId) { return repo.findById(userId).orElse(Prefs.DEFAULT); }
+
+@CacheEvict(cacheNames = "prefs", key = "#p.id")       // PUT /users/{id}/preferences
+public void save(Prefs p) { repo.save(p); }`,
+  },
+  ndb: {
+    tag: 'Notify DB · MongoDB status log',
+    desc: 'One document per notification: <code>{ _id: dedupeKey, userId, channel, template, status, attempts, messageId }</code>. Status QUEUED → SENT → DELIVERED / BOUNCED / FAILED. The unique <code>_id</code> <b>is</b> the dedupe; the status lets a worker skip a message already sent.',
+    points: ['Support can answer "did the user get it?"', 'High write rate → shard by <code>userId</code>; TTL index on <code>createdAt</code> (90 days)', '~500 B × 10 M ≈ 5 GB/day', 'Down → new notifications get 503 (producers retry with the same key); queued ones keep sending, status updates retry'],
+    code: `// notifications (_id = dedupe key)
+{ _id: "order-9:shipped", userId: "A", channel: "email",
+  template: "order-shipped", status: "SENT",
+  attempts: 1, messageId: "0102-x", createdAt: ISODate(…) }
+
+db.notifications.createIndex({ createdAt: 1 }, { expireAfterSeconds: 7776000 })
+
+// worker: mark SENT right after the provider call
+mongo.updateFirst(query(where("_id").is(id)),
+    new Update().set("status", "SENT").set("messageId", mid).inc("attempts", 1),
+    Notification.class);`,
+  },
+  emailw: {
+    tag: 'Spring Kafka consumer · group email-svc',
+    desc: 'Consumes <code>email</code>, checks the status (<b>SENT? skip</b>), renders the template, calls SES, marks SENT, then commits the offset. Keeps the slow, failure-prone provider call off the producer\'s path.',
+    points: ['Up to one consumer per partition; throttled to the SES send rate', 'Transient errors → retry topic; permanent ones (bad address) → FAILED, no retry', 'Order matters: send → mark SENT → commit', 'A crash between the SES call and the update can still send twice: at-least-once'],
+    code: `@KafkaListener(topics = "email", groupId = "email-svc")
+void onEmail(NotificationMsg m) {
+  if (notifications.isSent(m.id())) return;                 // redelivery → skip
+  String messageId = ses.send(render(m));                    // may throw Throttling
+  notifications.markSent(m.id(), messageId);                 // right after the call
+}                                                            // offset committed after return
+
+String send(Email e) {
+  return sesClient.sendEmail(b -> b
+      .fromEmailAddress("no-reply@shop.ex")
+      .destination(d -> d.toAddresses(e.to()))
+      .content(c -> c.simple(s -> s.subject(t -> t.data(e.subject()))
+                                   .body(x -> x.html(h -> h.data(e.html()))))))
+    .messageId();
+}`,
+  },
+  pushw: {
+    tag: 'Push consumers · push-high and push-bulk',
+    desc: 'Sends mobile pushes through FCM / APNs. A <b>separate consumer group</b> reads <code>push-high</code>, so OTPs never wait behind <code>push-bulk</code>. Priority isolation needs its own topic <b>and</b> its own consumers.',
+    points: ['One shared push queue would delay an OTP by minutes behind a campaign', 'Separate groups for high and bulk; bulk throttled', 'Invalid device tokens → remove them', 'Offline devices get the push until its TTL; OTP not delivered in time → SMS'],
+    code: `@KafkaListener(topics = "push-high", groupId = "push-high", concurrency = "6")
+void onOtp(PushMsg m) {
+  if (notifications.isSent(m.id())) return;
+  Message msg = Message.builder()
+      .setToken(m.deviceToken())
+      .putData("otp", m.otp())
+      .setAndroidConfig(AndroidConfig.builder()
+          .setPriority(AndroidConfig.Priority.HIGH)
+          .setTtl(60_000)                                    // useless after 60 s
+          .build())
+      .build();
+  notifications.markSent(m.id(), FirebaseMessaging.getInstance().send(msg));
+}`,
+  },
+  ses: {
+    tag: 'Amazon SES · external email provider',
+    desc: 'Accepts the email and returns a <code>MessageId</code>; delivery, bounce and complaint events come back later via SNS. Deliverability (IP reputation, DKIM, SPF) is a specialist job.',
+    points: ['Account send-rate quota; exceeding it returns throttling errors', '<b>No general send-idempotency key</b>: a repeated call sends a second email', '"Accepted" is not "delivered": subscribe to SNS events', 'Stop sending to addresses that bounce'],
+    code: `// SNS → POST /webhooks/ses : update the status later
+@PostMapping("/webhooks/ses")
+void sesEvent(@RequestBody SnsEnvelope env) {
+  SesEvent e = SesEvent.parse(env.message());          // Delivery | Bounce | Complaint
+  String status = switch (e.type()) {
+    case "Delivery" -> "DELIVERED";
+    case "Bounce"   -> "BOUNCED";
+    default          -> "COMPLAINED";
+  };
+  notifications.updateByMessageId(e.messageId(), status);
+  if (!status.equals("DELIVERED")) suppression.add(e.recipient());
+}`,
+  },
+  fcm: {
+    tag: 'FCM / APNs · external push provider',
+    desc: 'Delivers pushes to devices and stores them for offline devices until the TTL. The only way to reach a phone that is not running the app.',
+    points: ['High throughput; per-device limits', '<code>priority: high</code> wakes the device for an OTP', 'Expired TTL → dropped; for OTPs fall back to SMS', 'Collapse keys reduce visible duplicates'],
+    code: `POST https://fcm.googleapis.com/v1/projects/shop/messages:send
+Authorization: Bearer ya29.…
+{ "message": {
+    "token": "dX1…device-token",
+    "data": { "otp": "482913" },
+    "android": { "priority": "HIGH", "ttl": "60s" },
+    "apns": { "headers": { "apns-priority": "10",
+                           "apns-expiration": "1732111260" } } } }
+# -> 200 { "name": "projects/shop/messages/0:1732…" }`,
+  },
+  userA: {
+    tag: 'Recipient · email',
+    desc: 'Receives the email "Your order shipped". The whole point: the right message, once, in time.',
+    points: ['Millions of recipients', 'Duplicates annoy: at-least-once means rare duplicates remain', 'Bounced addresses must stop receiving mail', 'Every marketing email carries an unsubscribe link that updates preferences'],
+    code: `From: Shop <no-reply@shop.ex>
+To: a@example.com
+Subject: Your order shipped
+List-Unsubscribe: <https://shop.ex/u/A?t=…>
+DKIM-Signature: v=1; a=rsa-sha256; d=shop.ex; …
+
+Hi A, order 9 is on its way.`,
+  },
+  userB: {
+    tag: 'Recipient · push on the phone',
+    desc: 'Waits for a login OTP on the phone. Tight deadline: the OTP expires in 60 seconds, so a late OTP is a failed login.',
+    points: ['Mobile app with a device token stored in preferences', 'Opted out of marketing, so campaigns skip B', 'OTPs are transactional and always allowed', 'No push within the TTL → SMS fallback'],
+    code: `// app: register the device token with preferences
+FirebaseMessaging.getInstance().getToken()
+    .addOnSuccessListener(token ->
+        api.put("/users/B/preferences/devices", Map.of("token", token)));`,
+  },
+};
+
+// building blocks taught once in 00_Core_Components.html (same "#id/what" links as the engine pages)
+const CORE = {
+  prefs: ['cache', 'Cache · Redis'], kafka: ['kafka', 'Queue · Kafka'], retry: ['kafka', 'Queue · Kafka'],
+};
+
+// ---------------- scenarios ----------------
+// hop: `from`/`to` may be an array (fan-out / fan-in: one packet per pair, all at once); `count` sends several packets 0.25 s apart.
+// node: `id` may be an array (several nodes work in parallel); `tags` gives one tag per node.
+const hop = (from, to, kind, tag, title, proto, text, extra) => Object.assign({ type: 'hop', from, to, kind, tag, title, proto, text }, extra || {});
+const node = (id, tag, title, proto, text, extra) => Object.assign({ type: 'node', id, tag, title, proto, text }, extra || {});
+const GREEN = '#16a34a', RED = '#dc2626', AMBER = '#d97706', BLUE = '#0b5cff';
+
+const SCEN = {
+  // Ported from the old page's "Order shipped: email A" flow: prefs, insert with the dedupe key, produce, 202, send, SENT, commit.
+  happy: {
+    name: 'Order shipped: email A',
+    steps: [
+      hop('orderSvc', 'napi', 'request', 'POST /notifications', 'Order Service asks for "order shipped"', 'HTTP/1.1 · :8080 · POST /notifications', `{ userId: "A", template: "order-shipped", channel: "email", dedupeKey: "order-9:shipped" }: the dedupe key is stable, built from the business event, not a random UUID per call.`),
+      node('napi', 'validate ✓', 'The Notify API validates the request', '@Valid · template + channel exist', `Bean Validation rejects a missing userId or dedupeKey with 400, and "order-shipped" must exist for channel email; nothing is stored or queued yet.`),
+      hop('napi', 'prefs', 'request', 'GET prefs:A', 'Check A\'s preferences first', 'RESP · TCP 6379 · GET prefs:A', `Opt-ins, marketing consent, quiet hours, locale and device tokens live in MongoDB and are cached in Redis with a short TTL, because every notification reads them.`),
+      node('prefs', 'HIT · email ✓', 'Decision: email allowed, it is transactional', 'cache HIT · ~1 ms', `"Order shipped" is transactional, so marketing consent and quiet hours do not apply; a campaign message would be skipped or delayed right here.`, { tagColor: GREEN, stat: 'hit' }),
+      hop('prefs', 'napi', 'response', 'allowed · en-IN', 'Allowed, with A\'s locale', 'RESP bulk string · ~1 ms', `The cached document says email: true and locale en-IN; the API keeps the locale on the message for rendering.`),
+      hop('napi', 'ndb', 'request', 'insert _id = order-9:shipped', 'Record it: the dedupe key is the _id', 'Mongo wire · TCP 27017 · w:majority', `insertOne({ _id: "order-9:shipped", userId: "A", channel: "email", status: "QUEUED", attempts: 0 }) before anything is queued.`),
+      node('ndb', 'QUEUED ×0', 'A QUEUED row appears', 'unique _id · majority ack', `Because _id is unique, a retried request with the same key cannot insert a second row: the insert itself is the dedupe check.`, { tagColor: AMBER }),
+      hop('napi', 'kafka', 'event', 'email · key A', 'Produce to the email topic, key = userId', 'Kafka · TCP 9092 · acks=all', `KafkaTemplate.send("email", "A", msg): the key decides the partition, so one user's messages stay in order; the message lands at offset 12.`),
+      { type: 'fork', title: 'Meanwhile: 202 Accepted to the Order Service', proto: 'HTTP 202 · { id, status: "QUEUED" }', text: `In parallel: the API answers 202 Accepted at once; the producer never waits for SES, and a slow provider never slows the Order Service down.`, steps: [
+        hop('napi', 'orderSvc', 'response', '202 Accepted', '', '', ''),
+      ] },
+      hop('kafka', 'emailw', 'event', 'offset 12', 'The email worker polls offset 12', 'Kafka fetch · group email-svc', `@KafkaListener(topics = "email", groupId = "email-svc") receives the record; one consumer per partition, throttled to the SES send rate.`),
+      hop('emailw', 'ndb', 'request', 'status?', 'Check the status before sending', 'findById · projection { status }', `A redelivered message would find SENT here and be skipped; this check is what makes redeliveries harmless.`),
+      node('ndb', 'QUEUED → send', 'Decision: still QUEUED, so send', 'status = QUEUED', `Nobody sent it yet, so the worker goes ahead; a SENT row would mean a redelivery after a crash or a rebalance.`, { tagColor: BLUE }),
+      hop('ndb', 'emailw', 'response', 'QUEUED', 'The status comes back', 'BSON · { status: "QUEUED" }', `One read by _id, a millisecond or two.`),
+      node('emailw', 'render en-IN', 'Render the template in A\'s language', 'template + locale en-IN', `The worker fills "order-shipped" with the order data in en-IN: subject, HTML and text parts, plus the List-Unsubscribe header inbox providers expect.`),
+      hop('emailw', 'ses', 'request', 'SendEmail', 'Call SES', 'HTTPS · SES SendEmail', `sesClient.sendEmail(…) from a verified domain signed with DKIM: the slow, failure-prone call, kept off the producer's path.`),
+      hop('ses', 'emailw', 'response', 'MessageId 0102-x', 'SES accepts it and returns a MessageId', 'HTTP 200 · MessageId', `"Accepted" is not "delivered" yet: SES has the email in its queue.`),
+      hop('emailw', 'ndb', 'request', 'SENT · 0102-x', 'Mark SENT right after the provider call', 'updateOne $set { status: SENT, messageId }', `The status update follows the SES call immediately, so the window in which a crash could cause a resend is a few milliseconds.`),
+      node('kafka', 'committed 13', 'Commit the offset, last', 'commit after the listener returns', `Only now is offset 13 committed: if the worker crashed after SENT but before the commit, the redelivered message would find SENT and be skipped.`, { tagColor: GREEN }),
+      hop('ses', 'userA', 'response', 'Your order shipped', 'A gets "Your order shipped"', 'SMTP · TLS · DKIM / SPF', `SES hands the email to A's mailbox provider, seconds after the order shipped.`),
+      node('ses', 'SNS: Delivery ✓', 'Delivered, not just sent', 'SES → SNS → POST /webhooks/ses', `Delivery, bounce and complaint events arrive later via SNS and update the status (DELIVERED / BOUNCED); addresses that bounce stop receiving mail.`, { tagColor: GREEN }),
     ],
-    stats: [['10 M', 'notifications / day'], ['1 M', 'campaign in minutes'], ['< 5 s', 'OTP end to end'], ['≥ 1', 'delivery (at-least-once)']],
   },
-  async overview(s, v, ui) {
-    if (!v.ready) { setup(s, v); v.ready = true; }
-    for (const r of [...v.log.rows]) await s.unrow(v.log, r);
-    v.rows = {}; tick(s, v, '14:00:00'); offs(s, v, 'email p0 · next 12 · committed 12'); who(s, v, 'A', 'waiting for an update'); who(s, v, 'B', 'idle');
-
-    ui.say(0); ui.cap('**Accept** · Order Svc asks for "order shipped"; the API checks prefs and records it once');
-    await s.send(['orderSvc', 'napi'], 'POST /notifications', BLUE, { ms: 440 });
-    await s.send(['napi', 'prefs'], 'A: email ok?', BLUE, { ms: 400 });
-    await s.send(['napi', 'ndb'], `insert ${NK}`, BLUE, { ms: 440 });
-    await note(s, v, NK, 'QUEUED', 0);
-    ui.say(1); ui.cap('**Queue** · produce to the `email` topic and answer 202: the producer does not wait');
-    await s.send(['napi', 'kafka'], 'email @12', AMBER, { ms: 420 });
-    offs(s, v, 'email p0 · next 13 · committed 12');
-    await s.send(['napi', 'orderSvc'], '202', GREEN, { ms: 380 });
-    ui.say(2); ui.cap('**Send** · the worker calls SES, marks **SENT**, then commits the offset');
-    await s.send(['kafka', 'emailw'], 'offset 12', PURPLE, { ms: 420 });
-    await s.send(['emailw', 'ses'], 'SendEmail', PURPLE, { ms: 440 });
-    await s.send(['emailw', 'ndb'], 'SENT', GREEN, { ms: 460 });
-    await note(s, v, NK, 'SENT', 1);
-    offs(s, v, 'email p0 · next 13 · committed 13');
-    await s.send(['ses', 'userA'], 'Your order shipped', GREEN, { ms: 400 });
-    who(s, v, 'A', 'got the email ✓', GREEN);
-    ui.say(3); ui.cap('**Priority** · an OTP goes to `push-high` with its own consumer group');
-    await s.send(['authSvc', 'napi'], 'OTP · high', RED, { ms: 420 });
-    await s.send(['napi', 'kafka'], 'push-high', RED, { ms: 400 });
-    await s.send(['kafka', 'pushw', 'fcm', 'userB'], 'OTP 482913', RED, { ms: 380 });
-    who(s, v, 'B', 'OTP in ~1 s ✓', GREEN);
-    await s.wait(1800);
-    ui.say(-1); ui.cap('');
-    await s.wait(400);
+  // Ported from the old page's "Producer retries" flow: lost 202, retry with the same key, E11000, 202 duplicate, nothing re-queued.
+  dedupe: {
+    name: 'Producer retries',
+    steps: [
+      hop('orderSvc', 'napi', 'request', 'POST #1', 'The first request is sent', 'HTTP/1.1 · POST /notifications', `Order Service asks for "order-9:shipped" with a 2-second read timeout.`),
+      hop('napi', 'prefs', 'request', 'GET prefs:A', 'Preferences check', 'RESP · GET prefs:A', `Same intake as always: A allows email, and the message is transactional.`),
+      node('prefs', 'HIT ✓', 'Allowed', 'cache HIT · ~1 ms', `The cached preferences answer in about a millisecond.`, { tagColor: GREEN, stat: 'hit' }),
+      hop('prefs', 'napi', 'response', 'allowed', 'Allowed', 'RESP bulk string', `The API moves on and records the notification.`),
+      hop('napi', 'ndb', 'request', 'insert order-9:shipped', 'Insert with the dedupe key as _id', 'insertOne · w:majority', `insertOne({ _id: "order-9:shipped", status: "QUEUED" }) succeeds.`),
+      node('ndb', 'QUEUED ×0', 'One row', 'unique _id', `The notifications collection holds exactly one document for this business event.`, { tagColor: AMBER }),
+      hop('napi', 'kafka', 'event', 'email @12', 'One message on the topic', 'Kafka · acks=all · offset 12', `The API produces the message once, keyed by user A.`),
+      hop('napi', 'orderSvc', 'error', '202 lost ✕', 'The response is lost', 'TCP reset · no reply', `The 202 never reaches the Order Service: a network blip, or its timeout was too short.`),
+      node('orderSvc', 'timeout ✕', 'From its point of view the call failed', 'read timeout 2 s', `A timeout hides whether the first call succeeded, so the only safe move is to retry.`, { tagColor: RED }),
+      hop('orderSvc', 'napi', 'request', 'POST #2 (same key)', 'Retry with the same dedupe key', 'Spring Retry · backoff 200 ms', `The retry carries the same dedupeKey "order-9:shipped"; a random UUID per attempt would defeat the whole mechanism.`),
+      hop('napi', 'ndb', 'request', 'insert (same _id)', 'The insert hits the unique _id', 'insertOne · same _id', `Preferences pass again, and the API tries the same insert.`),
+      node('ndb', 'E11000 duplicate key', 'Decision: E11000 duplicate key', 'unique index on _id', `MongoDB rejects the second document because _id "order-9:shipped" already exists: no read-then-write race, the index decides.`, { tagColor: AMBER }),
+      hop('ndb', 'napi', 'error', 'E11000', 'DuplicateKeyException', 'MongoWriteException · code 11000', `Spring Data turns it into a DuplicateKeyException, which the API treats as "already accepted".`),
+      node('napi', 'no produce', 'Nothing new is queued', 'skip KafkaTemplate.send', `The API does not produce again: one row, one Kafka message, one email.`, { tagColor: GREEN }),
+      hop('napi', 'orderSvc', 'response', '202 duplicate', 'Same answer: 202 { id, duplicate: true }', 'HTTP 202 Accepted', `The producer gets the same id as for the first call and stops retrying.`),
+      node('kafka', 'next offset still 13', 'The topic offset did not move', 'email p0 · next 13', `Only the first request produced; the retry left no trace in Kafka.`, { tagColor: GREEN }),
+      hop('kafka', 'emailw', 'event', 'offset 12', 'The single message is consumed', 'Kafka fetch · group email-svc', `The worker polls offset 12, the only message for this event.`),
+      hop('emailw', 'ses', 'request', 'SendEmail', 'Sent once', 'HTTPS · SES SendEmail', `Status QUEUED, render, send.`),
+      hop('emailw', 'ndb', 'request', 'SENT', 'Marked SENT, then committed', 'updateOne $set { status: SENT }', `Status first, offset commit last.`),
+      hop('ses', 'userA', 'response', '1 email ✓', 'A gets exactly one email', 'SMTP · TLS', `Producers must build stable keys (eventId, orderId:type), never a random UUID per attempt.`),
+    ],
   },
+  // Ported from the old page's "Provider throttles" flow: transient error → retry-1m → retry-10m → DLQ + FAILED → fix → replay.
+  retry: {
+    name: 'Provider throttles',
+    steps: [
+      hop('kafka', 'emailw', 'event', 'offset 12', 'The worker polls offset 12', 'Kafka fetch · group email-svc', `order-9:shipped is QUEUED; the worker checks the status and renders the email.`),
+      hop('emailw', 'ses', 'request', 'attempt 1', 'Attempt 1: SendEmail', 'HTTPS · SES SendEmail', `The account is already sending at its quota during a busy hour.`),
+      node('ses', 'Throttling ✕', 'Decision: a transient error, worth retrying', 'Throttling · Maximum sending rate exceeded', `Throttling is transient: worth retrying later. An invalid address is permanent: mark FAILED and never retry.`, { tagColor: RED }),
+      hop('ses', 'emailw', 'error', 'Throttling', 'Attempt 1 is throttled', 'SES error · Throttling', `The SDK throws, and the listener lets the exception reach Spring Kafka's retry handling.`),
+      hop('emailw', 'retry', 'event', 'email-retry-1m', 'Park it on a delay topic', '@RetryableTopic · due at +60 s', `The message is published to email-retry-1m with a header saying when it is due; the worker does not sleep.`),
+      node('kafka', 'committed 13', 'Commit and move on', 'commit offset 13', `The main partition keeps flowing: sleeping and retrying inside the consumer would block every message behind it in the partition.`, { tagColor: GREEN }),
+      { type: 'fork', title: 'Meanwhile: record the attempt', proto: 'updateOne $inc { attempts: 1 }', text: `In parallel: the row stays QUEUED with attempts: 1, so support can see the message is retrying.`, steps: [
+        hop('emailw', 'ndb', 'request', 'attempts 1', '', '', ''),
+      ] },
+      node('retry', '⏳ due 14:01', 'Wait a minute on retry-1m', 'retry consumer · partition paused until due', `The retry consumer pauses its partition until the message is due, then resumes: no thread sleeps and nothing else waits.`, { tagColor: AMBER }),
+      hop('retry', 'emailw', 'event', 'attempt 2', 'Attempt 2 at 14:01', 'retry-1m consumer', `After the delay the email listener processes the message again.`),
+      hop('emailw', 'ses', 'request', 'SendEmail', 'Re-send', 'HTTPS · SES SendEmail', `Same message, same template, second attempt.`),
+      hop('ses', 'emailw', 'error', 'Throttling', 'SES is still throttling', 'SES error · Throttling', `The quota is still exhausted.`),
+      hop('emailw', 'retry', 'event', 'email-retry-10m', 'Backoff grows: retry-10m', '@Backoff(delay = 60 s, multiplier = 10)', `The message moves to email-retry-10m: the next attempt is ten minutes away.`),
+      hop('retry', 'emailw', 'event', 'attempt 3', 'Attempt 3 at 14:11', 'retry-10m consumer', `attempts = "3" makes this the last try.`),
+      hop('emailw', 'ses', 'request', 'SendEmail', 'The last try', 'HTTPS · SES SendEmail', `Third call to SES for this message.`),
+      hop('ses', 'emailw', 'error', 'Throttling', 'Attempt 3 fails too', 'SES error · Throttling', `No retries left.`),
+      hop('emailw', 'retry', 'error', '→ email-dlq', 'Dead-letter topic after the last attempt', 'dltTopicSuffix = "-dlq" · @DltHandler', `After the maximum attempts the message goes to email-dlq and the @DltHandler runs.`),
+      hop('emailw', 'ndb', 'error', 'FAILED ×3', 'Mark FAILED and alert', 'updateOne { status: FAILED, attempts: 3 }', `The row turns red and an alert fires on the DLQ size and age; A has no email yet.`),
+      node('ses', 'quota raised ✓', 'Fix the cause first', 'SES sending quota increase', `Someone raises the SES quota (or fixes the bug); replaying before that would only fail again.`, { tagColor: GREEN }),
+      hop('retry', 'emailw', 'event', 'replay', 'Replay deliberately, at 14:40', 'DLQ replay tool', `A replay tool republishes it, not an automatic loop forever; stale messages are dropped, because yesterday's OTP is useless. In Spring Kafka, @RetryableTopic creates the retry topics and the DLT for you.`),
+      hop('emailw', 'ses', 'request', 'SendEmail', 'Sent, and marked SENT', 'SES SendEmail → updateOne SENT ×4', `This time SES accepts it; the row turns SENT with attempts 4.`),
+      hop('ses', 'userA', 'response', '40 min late', 'A gets the email, 40 minutes late', 'SMTP · TLS', `Transient failures are parked on delay topics while the main partition keeps flowing; permanent errors are never retried.`),
+    ],
+  },
+  // Ported from the old page's "Worker crash: duplicate?" flow: crash before SENT → two emails; crash after SENT → skipped.
+  dup: {
+    name: 'Worker crash: duplicate?',
+    steps: [
+      hop('kafka', 'emailw', 'event', 'offset 12', 'The worker polls offset 12', 'Kafka fetch · group email-svc', `order-9:shipped is waiting; the committed offset is 12.`),
+      hop('emailw', 'ndb', 'request', 'status?', 'Check the status', 'findById · { status }', `The worker always checks before sending.`),
+      hop('ndb', 'emailw', 'response', 'QUEUED', 'Still QUEUED, so send', 'BSON · { status: "QUEUED" }', `Nothing was sent yet for this key.`),
+      hop('emailw', 'ses', 'request', 'SendEmail', 'The worker sends the email', 'HTTPS · SES SendEmail', `SES accepts it and returns a MessageId.`),
+      hop('ses', 'userA', 'response', 'email #1', 'A has one email', 'SMTP · TLS', `So far, so good.`),
+      node('emailw', '✕ crashed', '❌ It crashes before marking SENT', 'pod killed · no update, no commit', `The pod dies after SES accepted the email but before the status update and the commit: the row still says QUEUED, the committed offset is still 12.`, { tagColor: RED }),
+      node('kafka', 'rebalance', 'The consumer group rebalances', 'session timeout · partition reassigned', `The group coordinator notices the dead member and gives its partition to another consumer, which starts from the last committed offset: 12.`, { tagColor: AMBER }),
+      hop('kafka', 'emailw', 'event', 'offset 12 again', '❌ Offset 12 is redelivered', 'at-least-once delivery', `Another worker instance receives the same message.`),
+      hop('emailw', 'ndb', 'request', 'status?', 'It checks the status too', 'findById · { status }', `The check is there, but the first worker never wrote SENT.`),
+      node('ndb', 'QUEUED ✕', 'Decision: still QUEUED → send again', 'status = QUEUED', `From the database's point of view, nothing was sent.`, { tagColor: RED }),
+      hop('emailw', 'ses', 'request', 'SendEmail', 'Sent a second time', 'HTTPS · SES SendEmail', `SES has no general send-idempotency key, so it accepts the same email again.`),
+      hop('ses', 'userA', 'error', 'email #2', '❌ A receives two identical emails', 'SMTP · TLS', `This gap always exists: delivery is at-least-once.`),
+      hop('emailw', 'ndb', 'request', 'SENT ×2', 'Now it is marked SENT', 'updateOne $set { status: SENT }', `attempts: 2, but the duplicate already happened.`),
+      hop('kafka', 'emailw', 'event', 'offset 12', '✅ Rewind: the crash comes after SENT', 'Kafka fetch · group email-svc', `Same story, but the crash happens after the status update: the much more common case, because the update follows the provider call immediately.`),
+      hop('emailw', 'ses', 'request', 'SendEmail', 'Sent once', 'HTTPS · SES SendEmail', `SES returns a MessageId.`),
+      hop('emailw', 'ndb', 'request', 'SENT', 'Marked SENT right after the call', 'updateOne $set { status: SENT }', `A few milliseconds after the SES call.`),
+      node('emailw', '✕ crashed', 'The pod crashes before the commit', 'no commit', `The committed offset is still 12.`, { tagColor: RED }),
+      hop('kafka', 'emailw', 'event', 'offset 12 again', 'Redelivered after the rebalance', 'at-least-once delivery', `Another consumer receives offset 12 again.`),
+      hop('emailw', 'ndb', 'request', 'status?', 'Check the status', 'findById · { status }', `Same check as always.`),
+      node('ndb', 'SENT → skip ✓', 'Decision: SENT → skip', 'status = SENT', `The redelivered message finds SENT and is skipped: no second email.`, { tagColor: GREEN }),
+      node('kafka', 'committed 13 ✓', 'Just commit', 'commit offset 13', `Checking SENT before sending suppresses almost every duplicate after a crash; the tiny window before the update cannot be removed, because SES has no send-once key.`, { tagColor: GREEN }),
+    ],
+  },
+  // Ported from the old page's "Campaign vs OTP" flow: 1 M campaign, OTP behind it on a shared topic vs its own push-high topic.
+  priority: {
+    name: 'Campaign vs OTP',
+    steps: [
+      hop('campaign', 'napi', 'request', 'campaign · 1 M', 'Marketing launches a campaign of 1 M pushes', 'HTTP/1.1 · bulk · audience 1 M', `The fan-out job reads the audience in pages of 1,000 and hands them to the platform.`),
+      hop('napi', 'prefs', 'request', 'MGET prefs · 1,000', 'Check marketing consent, page by page', 'RESP · MGET prefs:…', `Marketing messages need consent and respect quiet hours, unlike transactional ones.`),
+      node('prefs', 'skip B (opt-out)', 'Decision: B opted out of marketing', 'marketing: false', `The fan-out already skips B; everyone else in the page is queued.`, { tagColor: AMBER, stat: 'hit' }),
+      hop('napi', 'kafka', 'event', null, 'One million pushes queued', 'Kafka · push topic · key userId', `At ~2,000 pushes/s the workers need about 8 minutes to drain them.`, { count: 3, tags: ['push #1', '…', '#1,000,000'] }),
+      hop('authSvc', 'napi', 'request', 'OTP for B · ttl 60', 'B asks for a login OTP', 'HTTP · priority: "high" · ttl: 60', `Auth Service requests a push OTP for B; it is transactional, so opt-out and quiet hours do not apply.`),
+      hop('napi', 'ndb', 'request', 'insert otp-B-551', 'Record it', 'insertOne · QUEUED', `otp-B-551 is QUEUED like any other notification.`),
+      hop('napi', 'kafka', 'event', 'push · #1,000,001', '❌ One shared push topic', 'same topic as the campaign', `If all pushes share one topic, the OTP is message 1,000,001.`),
+      node('kafka', 'lag 1,000,000', '❌ The OTP waits behind the campaign', 'consumer lag ≈ 8 min', `A partition is one line: the workers reach the OTP after about 8 minutes.`, { tagColor: RED, dur: 2.8 }),
+      hop('kafka', 'pushw', 'event', 'OTP · 14:08:20', 'Consumed at last, at 14:08:20', 'group push-svc', `Long after its 60-second lifetime.`),
+      hop('pushw', 'fcm', 'request', 'OTP · ttl 60', 'Sent anyway', 'FCM HTTP v1', `The worker sends it, but the code is already useless.`),
+      hop('fcm', 'userB', 'error', 'OTP expired ✕', '❌ B cannot log in', 'push · expired', `The OTP arrived after it expired: priority must be isolated, not just a field.`),
+      hop('napi', 'kafka', 'event', 'push-high @7', '✅ Rewind: a separate push-high topic', 'Kafka · topic push-high', `OTPs go to push-high; the campaign stays on push-bulk.`),
+      node('kafka', 'push-high lag 0', 'push-high has its own consumer group', 'group push-high · reserved capacity', `Its own topic and its own consumers with reserved capacity: bulk traffic can never get in front of an OTP.`, { tagColor: GREEN }),
+      { type: 'fork', title: 'Meanwhile: the campaign keeps draining push-bulk', proto: 'group push-bulk · throttled ~2,000/s', text: `In parallel: the bulk consumer group keeps sending the campaign at a provider-friendly rate.`, steps: [
+        hop('kafka', 'pushw', 'event', 'push-bulk', '', '', ''),
+        hop('pushw', 'fcm', 'request', 'bulk', '', '', ''),
+      ] },
+      hop('kafka', 'pushw', 'event', 'group push-high', 'The OTP consumer picks it up at once', '@KafkaListener(topics = "push-high")', `At 14:00:01, not 8 minutes later.`),
+      hop('pushw', 'fcm', 'request', 'priority high · ttl 60s', 'Send with high priority and a 60 s TTL', 'FCM HTTP v1 · android.priority HIGH', `FCM wakes the device for a high-priority message and drops it after 60 s.`),
+      hop('fcm', 'userB', 'response', 'OTP 482913', 'B gets the OTP in about a second', 'FCM / APNs push', `API → Kafka → worker → FCM → device: about a second for an online device.`),
+      hop('pushw', 'ndb', 'request', 'SENT', 'Mark SENT, then commit', 'updateOne $set { status: SENT }', `Same at-least-once rules as for email.`),
+      node('fcm', 'no push in 60 s → SMS', 'Fallback: SMS if not delivered in time', 'TTL expired · SMS provider', `If the device is offline past the TTL, fall back to SMS; it costs money per message, so only OTPs get it.`, { tagColor: AMBER }),
+    ],
+  },
+  // Live-only (no button): the common transactional email.
+  lemail: {
+    name: 'Transactional email',
+    steps: [
+      hop('orderSvc', 'napi', 'request', 'POST', '', '', ''),
+      hop('napi', 'prefs', 'request', 'prefs', '', '', ''),
+      node('prefs', 'HIT ✓', '', '', '', { tagColor: GREEN, stat: 'hit' }),
+      hop('napi', 'ndb', 'request', 'insert', '', '', ''),
+      hop('napi', 'kafka', 'event', 'email', '', '', ''),
+      { type: 'fork', steps: [hop('napi', 'orderSvc', 'response', '202', '', '', '')] },
+      hop('kafka', 'emailw', 'event', 'poll', '', '', ''),
+      hop('emailw', 'ses', 'request', 'SendEmail', '', '', ''),
+      { type: 'fork', steps: [hop('emailw', 'ndb', 'request', 'SENT', '', '', '')] },
+      hop('ses', 'userA', 'response', 'email', '', '', ''),
+    ],
+  },
+  // Live-only: campaign traffic on push-bulk.
+  lbulk: {
+    name: 'Campaign push',
+    steps: [
+      hop('campaign', 'napi', 'request', 'bulk', '', '', ''),
+      hop('napi', 'prefs', 'request', 'MGET', '', '', ''),
+      node('prefs', 'HIT ✓', '', '', '', { tagColor: GREEN, stat: 'hit' }),
+      hop('napi', 'kafka', 'event', 'push-bulk', '', '', ''),
+      hop('kafka', 'pushw', 'event', 'push-bulk', '', '', ''),
+      hop('pushw', 'fcm', 'request', 'bulk', '', '', ''),
+    ],
+  },
+  // Live-only: an OTP on push-high.
+  lotp: {
+    name: 'OTP push',
+    steps: [
+      hop('authSvc', 'napi', 'request', 'OTP', '', '', ''),
+      hop('napi', 'ndb', 'request', 'insert', '', '', ''),
+      hop('napi', 'kafka', 'event', 'push-high', '', '', ''),
+      { type: 'fork', steps: [hop('napi', 'authSvc', 'response', '202', '', '', '')] },
+      hop('kafka', 'pushw', 'event', 'push-high', '', '', ''),
+      hop('pushw', 'fcm', 'request', 'high', '', '', ''),
+      hop('fcm', 'userB', 'response', 'OTP', '', '', ''),
+    ],
+  },
+};
+const LIVE_MIX = [['lemail', 0.5], ['lbulk', 0.3], ['lotp', 0.2]];
 
-  // ---------------- 3 · flows ----------------
-  flows: [
-    {
-      id: 'happy', title: 'Order shipped: email A', sub: 'prefs · log · Kafka · SES', color: BLUE,
-      build: (s, v) => setup(s, v),
-      takeaway: 'The API **accepts once** (dedupe key = `_id`) and returns **202**; the worker sends, records **SENT** and only then **commits** the offset. Delivery events from SES update the status later.',
-      steps: [
-        {
-          title: 'A producer asks for a notification',
-          text: 'Order Svc calls `POST /notifications { userId: "A", template: "order-shipped", channel: "email", dedupeKey: "order-9:shipped" }`. The dedupe key is **stable**: built from the business event, not random per call.',
-          observe: 'The request reaches the Notify API.',
-          focus: v => [v.n.napi],
-          async run(s) { await s.send(['orderSvc', 'napi'], 'POST /notifications', BLUE); },
-        },
-        {
-          title: 'Check preferences',
-          text: 'The API reads A\'s preferences (cached): email allowed? quiet hours? "Order shipped" is **transactional**, so marketing consent and quiet hours do not apply; a campaign would be skipped or delayed here.',
-          observe: 'Preferences allow the email.',
-          say: 'Preferences are checked before anything is queued; transactional messages skip marketing rules.',
-          focus: v => [v.n.prefs],
-          async run(s) {
-            await s.send(['napi', 'prefs'], 'A: email? quiet hours?', BLUE);
-            await s.send(['prefs', 'napi'], 'allowed', GREEN);
-          },
-        },
-        {
-          title: 'Record it: the dedupe key is the _id',
-          text: '`insertOne({ _id: "order-9:shipped", userId: "A", channel: "email", status: "QUEUED", attempts: 0 })`. Because `_id` is unique, a retried request with the same key cannot insert a second row.',
-          observe: 'A QUEUED row appears in the Notify DB.',
-          say: 'The dedupe key is the document id, so producer retries are idempotent.',
-          focus: v => [v.log],
-          async run(s, v) {
-            await s.send(['napi', 'ndb'], 'insert QUEUED', BLUE);
-            await note(s, v, NK, 'QUEUED', 0);
-          },
-        },
-        {
-          title: 'Queue it and answer 202',
-          text: 'The API produces to the `email` topic with **key = userId** (one user\'s messages stay in order) and returns **202 Accepted**. The producer does not wait for SES.',
-          observe: 'The message lands at offset 12; Order Svc gets 202.',
-          focus: v => [v.off],
-          async run(s, v) {
-            await s.send(['napi', 'kafka'], 'email · key A', AMBER);
-            offs(s, v, 'email p0 · next 13 · committed 12'); await s.pulse(v.off);
-            await s.send(['napi', 'orderSvc'], '202 Accepted', GREEN);
-          },
-        },
-        {
-          title: 'The worker sends through SES',
-          text: 'The email worker polls offset 12, checks the row (still **QUEUED**, so send), renders the template in A\'s language and calls `SendEmail`. SES answers with a `MessageId`.',
-          observe: 'The worker calls SES and gets a MessageId.',
-          focus: v => [v.n.emailw, v.n.ses],
-          async run(s) {
-            await s.send(['kafka', 'emailw'], 'offset 12', PURPLE);
-            await s.send(['emailw', 'ses'], 'SendEmail', PURPLE);
-            await s.send(['ses', 'emailw'], 'MessageId 0102-x', GREEN);
-          },
-        },
-        {
-          title: 'Mark SENT, then commit',
-          text: 'Right after the provider call the worker sets `status: "SENT"` with the `MessageId`, then **commits offset 13**. The order matters: if it crashes after SENT but before the commit, the redelivered message is **skipped**.',
-          observe: 'The row turns green and the committed offset moves to 13.',
-          say: 'The worker marks SENT right after the provider call and commits the offset last.',
-          focus: v => [v.rows[NK], v.off],
-          async run(s, v) {
-            await s.send(['emailw', 'ndb'], 'SENT', GREEN);
-            await note(s, v, NK, 'SENT', 1);
-            offs(s, v, 'email p0 · next 13 · committed 13'); await s.pulse(v.off);
-          },
-        },
-        {
-          title: 'Delivered',
-          text: 'A gets "Your order shipped". SES "accepted" is not "delivered": delivery, bounce and complaint events arrive later via SNS and update the status (and stop mail to addresses that bounce).',
-          observe: 'The email reaches A.',
-          focus: v => [v.n.userA],
-          async run(s, v) {
-            await s.send(['ses', 'userA'], 'Your order shipped', GREEN);
-            who(s, v, 'A', 'got the email ✓', GREEN);
-          },
-        },
-      ],
-    },
-    {
-      id: 'dedupe', title: 'Producer retries', sub: 'timeout · same dedupe key · E11000', color: TEAL,
-      build: (s, v) => setup(s, v),
-      takeaway: 'A producer cannot know whether a timed-out call succeeded, so it **retries with the same dedupe key**. The unique `_id` turns the retry into a no-op that returns the same 202.',
-      steps: [
-        {
-          title: 'The first request is accepted',
-          text: 'Order Svc sends the request; the API inserts `order-9:shipped` as QUEUED and produces it to Kafka.',
-          observe: 'One row, one message.',
-          focus: v => [v.log, v.off],
-          async run(s, v) {
-            await s.send(['orderSvc', 'napi'], 'POST #1', BLUE);
-            await s.send(['napi', 'ndb'], 'insert', BLUE);
-            await note(s, v, NK, 'QUEUED', 0);
-            await s.send(['napi', 'kafka'], 'email @12', AMBER);
-            offs(s, v, 'email p0 · next 13 · committed 12');
-          },
-        },
-        {
-          title: 'The response is lost',
-          text: 'The 202 never reaches Order Svc (network blip, its timeout was too short). From its point of view the call **failed**.',
-          observe: 'The reply bounces; the producer times out.',
-          focus: v => [v.n.orderSvc],
-          async run(s) {
-            await s.bounce('napi', 'orderSvc', '202', RED);
-            await s.flash(75, 60, 'timeout ✕', { color: RED, stroke: RED, fill: '#fff4f4' }, 600);
-          },
-        },
-        {
-          title: 'Retry with the same key',
-          text: 'Order Svc retries with the **same** `dedupeKey`. The insert hits the unique `_id` → **E11000 duplicate key**. The API treats that as "already accepted".',
-          observe: 'The second insert is rejected by the unique index.',
-          say: 'A retried request hits the unique id, so nothing is queued twice.',
-          focus: v => [v.rows[NK]],
-          async run(s, v) {
-            await s.send(['orderSvc', 'napi'], 'POST #2 (same key)', BLUE);
-            await s.send(['napi', 'ndb'], 'insert', BLUE);
-            await s.flash(420, 390, 'E11000 duplicate key', { mono: true, color: TEAL, stroke: TEAL }, 700);
-            await s.pulse(v.rows[NK], 1, 1.05);
-          },
-        },
-        {
-          title: 'Same answer, nothing new queued',
-          text: 'The API returns **202 { id, duplicate: true }** and does **not** produce again. One row, one Kafka message, one email. Producers must build stable keys (`eventId`, `orderId:type`), never a random UUID per attempt.',
-          observe: 'Order Svc gets 202; the topic offset does not move.',
-          focus: v => [v.off, v.n.orderSvc],
-          async run(s, v) {
-            await s.send(['napi', 'orderSvc'], '202 duplicate', GREEN);
-            await s.pulse(v.off);
-          },
-        },
-      ],
-    },
-    {
-      id: 'retry', title: 'Provider throttles', sub: 'retry topics · backoff · DLQ', color: PURPLE,
-      build: (s, v) => setup(s, v, { rows: [[NK, 'QUEUED', 0]], off: 'email p0 · next 13 · committed 12' }),
-      takeaway: 'Transient failures are **parked on delay topics** with growing backoff while the main partition keeps flowing; after the last attempt the message goes to the **DLQ** with an alert. Permanent errors are never retried.',
-      steps: [
-        {
-          title: 'Attempt 1 is throttled',
-          text: 'The worker sends; SES answers **Throttling: Maximum sending rate exceeded**. That is a **transient** error: worth retrying later. (An invalid address is permanent: mark FAILED, no retry.)',
-          observe: 'SES rejects the first attempt.',
-          focus: v => [v.n.ses],
-          async run(s, v) {
-            await s.send(['kafka', 'emailw'], 'offset 12', PURPLE);
-            await s.send(['emailw', 'ses'], 'attempt 1', PURPLE);
-            await s.send(['ses', 'emailw'], 'Throttling', RED);
-            await note(s, v, NK, 'QUEUED', 1);
-          },
-        },
-        {
-          title: 'Park it on a delay topic, commit, move on',
-          text: 'The worker publishes the message to `email-retry-1m` and **commits offset 13**. Sleeping and retrying inside the consumer would block every message behind it in the partition.',
-          observe: 'The message moves to retry-1m; the main topic continues.',
-          say: 'Failures go to a delay topic so the main partition is never blocked.',
-          focus: v => [v.n.retry, v.retry],
-          async run(s, v) {
-            await s.send(['emailw', 'retry'], 'retry-1m', PURPLE);
-            retr(s, v, 'retry-1m ● · retry-10m — · dlq 0'); await s.pulse(v.retry);
-            offs(s, v, 'email p0 · next 13 · committed 13');
-          },
-        },
-        {
-          title: 'Attempt 2 after a minute, still failing',
-          text: 'After the delay a retry consumer re-sends; SES is still throttling. Backoff grows: the message goes to `email-retry-10m`.',
-          observe: 'Second attempt fails; the delay grows to 10 minutes.',
-          focus: v => [v.retry],
-          async run(s, v) {
-            tick(s, v, '14:01:00');
-            await s.send(['retry', 'emailw'], 'attempt 2', PURPLE);
-            await s.send(['emailw', 'ses'], 'SendEmail', PURPLE);
-            await s.send(['ses', 'emailw'], 'Throttling', RED);
-            await note(s, v, NK, 'QUEUED', 2);
-            await s.send(['emailw', 'retry'], 'retry-10m', PURPLE);
-            retr(s, v, 'retry-1m — · retry-10m ● · dlq 0'); await s.pulse(v.retry);
-          },
-        },
-        {
-          title: 'Attempt 3 fails → dead-letter topic',
-          text: 'The third attempt fails too. After the maximum attempts the message goes to `email-dlq` and the row is marked **FAILED**. An alert fires on the DLQ size and age.',
-          observe: 'The message lands in the DLQ; the row turns red.',
-          say: 'After the last retry the message goes to a dead-letter topic with an alert.',
-          focus: v => [v.retry, v.rows[NK]],
-          async run(s, v) {
-            tick(s, v, '14:11:00');
-            await s.send(['retry', 'emailw'], 'attempt 3', PURPLE);
-            await s.send(['emailw', 'ses'], 'SendEmail', PURPLE);
-            await s.send(['ses', 'emailw'], 'Throttling', RED);
-            await s.send(['emailw', 'retry'], '→ email-dlq', RED);
-            retr(s, v, 'retry-1m — · retry-10m — · dlq 1', RED); await s.pulse(v.retry);
-            await s.send(['emailw', 'ndb'], 'FAILED', RED);
-            await note(s, v, NK, 'FAILED', 3);
-            who(s, v, 'A', 'no email (in DLQ)', RED);
-          },
-        },
-        {
-          title: 'Fix, then replay deliberately',
-          text: 'Someone raises the SES quota (or fixes the bug) and **replays** the DLQ with a tool, not automatically forever. Stale messages are dropped: yesterday\'s OTP is useless. In Spring Kafka, `@RetryableTopic` creates the retry topics and the DLT for you.',
-          observe: 'The replayed message is sent and the row turns SENT.',
-          focus: v => [v.rows[NK], v.n.userA],
-          async run(s, v) {
-            tick(s, v, '14:40:00');
-            await s.send(['retry', 'emailw'], 'replay', TEAL);
-            await s.send(['emailw', 'ses'], 'SendEmail', PURPLE);
-            await s.send(['emailw', 'ndb'], 'SENT', GREEN);
-            await note(s, v, NK, 'SENT', 4);
-            retr(s, v, 'retry-1m — · retry-10m — · dlq 0');
-            await s.send(['ses', 'userA'], 'Your order shipped', GREEN);
-            who(s, v, 'A', 'got it (40 min late)', AMBER);
-          },
-        },
-      ],
-    },
-    {
-      id: 'dup', title: 'Worker crash: duplicate?', sub: 'at-least-once · status check', color: AMBER,
-      build: (s, v) => setup(s, v, { rows: [[NK, 'QUEUED', 0]], off: 'email p0 · next 13 · committed 12' }),
-      takeaway: 'Kafka redelivers after a crash, so delivery is **at-least-once**. Checking the status before sending and marking **SENT right after** the provider call shrinks the duplicate window to a few milliseconds; it cannot remove it, because SES has no send-once key.',
-      steps: [
-        {
-          title: 'The worker sends the email',
-          text: 'The worker polls offset 12, sees **QUEUED**, calls SES and gets a MessageId. A has one email.',
-          observe: 'One email is sent.',
-          focus: v => [v.n.emailw],
-          async run(s, v) {
-            await s.send(['kafka', 'emailw'], 'offset 12', PURPLE);
-            await s.send(['emailw', 'ses'], 'SendEmail', PURPLE);
-            await s.send(['ses', 'userA'], 'email #1', GREEN);
-            who(s, v, 'A', '1 email', GREEN);
-          },
-        },
-        {
-          title: '❌ It crashes before marking SENT',
-          text: 'The pod dies **after** SES accepted the email but **before** the status update and the commit. The row still says QUEUED; the committed offset is still 12.',
-          observe: 'The worker turns red; nothing was recorded.',
-          focus: v => [v.n.emailw, v.rows[NK]],
-          async run(s, v) {
-            s.tone(v.n.emailw, 'fail'); s.setSub(v.n.emailw, '✕ crashed', RED);
-            await s.shake(v.n.emailw);
-          },
-        },
-        {
-          title: '❌ Redelivered and sent again',
-          text: 'After the rebalance another consumer gets offset 12 again, checks the row (**QUEUED**), and sends. A receives **two identical emails**. This gap always exists: SES has no general send-idempotency key.',
-          observe: 'A second email reaches A.',
-          say: 'Delivery is at-least-once: a crash between the provider call and the status update can send twice.',
-          focus: v => [v.n.userA],
-          async run(s, v) {
-            s.tone(v.n.emailw, null); s.setSub(v.n.emailw, 'group email-svc');
-            await s.send(['kafka', 'emailw'], 'offset 12 again', AMBER);
-            await s.send(['emailw', 'ses'], 'SendEmail', PURPLE);
-            await s.send(['ses', 'userA'], 'email #2', RED);
-            who(s, v, 'A', '2 identical emails', RED);
-            await note(s, v, NK, 'SENT', 2);
-          },
-        },
-        {
-          title: '✅ Crash after SENT: the duplicate is skipped',
-          text: 'Same story, but the crash happens **after** the status update and before the commit (the much more common case, because the update follows the provider call immediately). The redelivered message finds **SENT** and is skipped; the worker just commits.',
-          observe: 'The redelivered message is skipped and the offset is committed.',
-          say: 'Checking SENT before sending suppresses almost every duplicate after a crash.',
-          focus: v => [v.rows[NK], v.off],
-          async run(s, v) {
-            who(s, v, 'A', '1 email', GREEN);
-            await s.send(['kafka', 'emailw'], 'offset 12 again', AMBER);
-            await s.send(['emailw', 'ndb'], 'status?', PURPLE);
-            await s.flash(420, 390, 'SENT → skip', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 700);
-            offs(s, v, 'email p0 · next 13 · committed 13'); await s.pulse(v.off);
-          },
-        },
-      ],
-    },
-    {
-      id: 'priority', title: 'Campaign vs OTP', sub: 'shared topic vs push-high', color: RED,
-      build: (s, v) => setup(s, v, { off: 'push-bulk · 1,000,000 queued', b: 'waiting for OTP' }),
-      takeaway: 'Priority must be **isolated**, not just a field: OTPs get their own **topic and consumer group** (and a short TTL), so a million marketing pushes can never delay them.',
-      steps: [
-        {
-          title: 'A campaign of 1 million pushes',
-          text: 'Marketing queued a campaign: 1 M pushes. The fan-out job already **skipped B** (marketing opt-out). At ~2,000 pushes/s the workers need about **8 minutes** to drain it.',
-          observe: 'One million messages wait in the push topic.',
-          focus: v => [v.off],
-          async run(s, v) { await s.pulse(v.off); await s.flash(420, 170, 'B opted out of marketing', { color: GREY, stroke: '#c3c9ce' }, 700); },
-        },
-        {
-          title: 'B asks for a login OTP',
-          text: 'Auth Svc requests a push OTP for B: `priority: "high"`, `ttl: 60`. It is transactional, so opt-out and quiet hours do not apply.',
-          observe: 'The OTP request is accepted.',
-          focus: v => [v.n.authSvc, v.n.napi],
-          async run(s, v) {
-            await s.send(['authSvc', 'napi'], 'OTP for B · ttl 60', RED);
-            await s.send(['napi', 'ndb'], 'insert', BLUE);
-            await note(s, v, 'otp-B-551', 'QUEUED', 0);
-          },
-        },
-        {
-          title: '❌ One shared push topic',
-          text: 'If all pushes share one topic, the OTP is message **1,000,001**. The workers reach it after ~8 minutes, long after it expired. B cannot log in.',
-          observe: 'The OTP arrives after it expired.',
-          focus: v => [v.n.userB],
-          async run(s, v) {
-            await s.send(['napi', 'kafka'], 'push · #1,000,001', RED);
-            tick(s, v, '14:08:20');
-            await s.send(['kafka', 'pushw', 'fcm', 'userB'], 'OTP (late)', RED);
-            who(s, v, 'B', 'OTP expired ✕', RED);
-          },
-        },
-        {
-          title: '✅ A separate push-high topic',
-          text: 'Rewind. OTPs go to `push-high`, read by its **own consumer group** with reserved capacity. The campaign keeps draining `push-bulk` (throttled) in parallel.',
-          observe: 'The OTP skips the campaign entirely.',
-          say: 'OTPs have their own topic and consumer group, so bulk traffic cannot delay them.',
-          focus: v => [v.n.kafka, v.n.pushw],
-          async run(s, v) {
-            tick(s, v, '14:00:01'); who(s, v, 'B', 'waiting for OTP', AMBER);
-            offs(s, v, 'push-high @7 · push-bulk 1 M', RED);
-            await s.send(['napi', 'kafka'], 'push-high @7', RED);
-            await s.send(['kafka', 'pushw'], 'group push-high', RED);
-          },
-        },
-        {
-          title: 'Delivered in about a second',
-          text: 'The push worker sends with FCM `priority: high` and `ttl: 60s`, marks SENT and commits. If the device is offline past the TTL, fall back to **SMS**.',
-          observe: 'B gets the OTP in about a second.',
-          focus: v => [v.n.userB, v.rows['otp-B-551']],
-          async run(s, v) {
-            await s.send(['pushw', 'fcm'], 'priority high · ttl 60s', RED);
-            await s.send(['fcm', 'userB'], 'OTP 482913', GREEN);
-            who(s, v, 'B', 'OTP in ~1 s ✓', GREEN);
-            await s.send(['pushw', 'ndb'], 'SENT', GREEN);
-            await note(s, v, 'otp-B-551', 'SENT', 1);
-          },
-        },
-      ],
-    },
-  ],
+// =====================================================================
+// rendering
+// =====================================================================
+const svg = document.getElementById('dia');
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const box = id => { const n = NODES[id]; return { l: n.x - 75, r: n.x + 75, t: n.y - 56, b: n.y + 56 }; };
 
+function edgePath(a, b) {
+  const A = NODES[a], B = NODES[b], dx = B.x - A.x, dy = B.y - A.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const s = Math.sign(dx) || 1, x1 = A.x + 75 * s, x2 = B.x - 75 * s, mx = (x1 + x2) / 2;
+    return { d: `M${x1} ${A.y} C${mx} ${A.y} ${mx} ${B.y} ${x2} ${B.y}`, horiz: true };
+  }
+  const s = Math.sign(dy) || 1, y1 = A.y + 56 * s, y2 = B.y - 56 * s, my = (y1 + y2) / 2;
+  return { d: `M${A.x} ${y1} C${A.x} ${my} ${B.x} ${my} ${B.x} ${y2}`, horiz: false };
+}
+
+function buildSvg() {
+  let s = `<defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#eef1f5"/></pattern>
+    <filter id="glow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect id="bg" x="-2000" y="-1200" width="5600" height="3000" fill="url(#grid)"/>`;
+  // zones: grouped by developer role (solid = outside our code, dashed = our backend)
+  for (const z of ZONES) {
+    const [f, st, lc] = ZT[z.t];
+    s += `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="18" fill="${f}" stroke="${st}" stroke-width="1.6"${z.dash ? ' stroke-dasharray="7 5"' : ''}/>`;
+    s += `<text class="zl" x="${z.x + 16}" y="${z.y + 24}" style="fill:${lc}">${esc(z.label)}</text>`;
+    if (z.cap) s += `<text class="nl" x="${z.x + 16}" y="${z.y + 41}" style="fill:${lc};opacity:.75">${esc(z.cap)}</text>`;
+  }
+  // edges + labels
+  s += '<g id="edges">';
+  EDGE_DEFS.forEach(([a, b], i) => { s += `<path class="edge" id="e${i}" d="${edgePath(a, b).d}"/>`; });
+  s += '</g><g id="elabels"></g><g id="ripples"></g><g id="nodes">';
+  // nodes
+  for (const [id, n] of Object.entries(NODES)) {
+    const [bg, st] = PAL[id];
+    let dots = '';
+    const r = n.replicas || 0;
+    for (let k = 0; k < r; k++) dots += `<circle cx="${75 + (k - (r - 1) / 2) * 10}" cy="104" r="3.2" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>`;
+    s += `<g class="node" data-id="${id}" transform="translate(${n.x - 75},${n.y - 56})">
+      <rect class="sel" x="-6" y="-6" width="162" height="124" rx="18" fill="none" stroke="#0b5cff" stroke-width="2" stroke-dasharray="6 5" opacity="0"/>
+      <rect class="card" width="150" height="112" rx="14" fill="${bg}" stroke="${st}" stroke-width="1.6"/>
+      <rect x="49" y="8" width="52" height="52" rx="12" fill="#fff" opacity=".85"/>
+      <g transform="translate(52.9,11.9) scale(.92)">${LOGO[id]}</g>
+      <text class="nlab" x="75" y="78">${esc(n.label)}</text>
+      <text class="nsub" x="75" y="95">${esc(n.sub)}</text>${dots}
+      <g class="tag" style="display:none"><rect y="-11" height="20" rx="10"/><text y="3.5"></text></g>
+    </g>`;
+  }
+  s += '</g><g id="packets"></g>';
+  svg.innerHTML = s;
+}
+buildSvg();
+
+const EDGES = EDGE_DEFS.map(([a, b, label], i) => {
+  const el = document.getElementById('e' + i);
+  return { a, b, label, el, len: el.getTotalLength(), hot: 0, horiz: edgePath(a, b).horiz };
+});
+// protocol labels at the path midpoint: above horizontal edges, right of vertical ones
+(function labels() {
+  const g = document.getElementById('elabels');
+  for (const e of EDGES) {
+    const p = e.el.getPointAtLength(e.len / 2);
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('class', 'elbl');
+    if (e.horiz) { t.setAttribute('x', p.x); t.setAttribute('y', p.y - 8); t.setAttribute('text-anchor', 'middle'); }
+    else { t.setAttribute('x', p.x + 8); t.setAttribute('y', p.y + 4); }
+    t.textContent = e.label;
+    g.appendChild(t);
+  }
+})();
+const NODE_EL = {};
+document.querySelectorAll('.node').forEach(g => { NODE_EL[g.dataset.id] = { g, act: 0, tagTok: 0 }; });
+
+// =====================================================================
+// engine: one rAF loop, own timer queue, everything scaled by speed
+// =====================================================================
+let speed = 1, paused = false, GEN = 0, current = 'happy', view = 'flow';
+let timers = [], packets = [], ripples = [], dashOffset = 0, flows = 0;
+const stats = { req: 0, hit: 0, evt: 0, res: 0 };
+const STAT_EL = { req: document.getElementById('stReq'), hit: document.getElementById('stHit'), evt: document.getElementById('stEvt'), res: document.getElementById('stRes') };
+
+function wait(sec, cb) { timers.push({ t: sec, cb, gen: GEN }); }
+const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function bump(k, n = 1) { stats[k] += n; STAT_EL[k].textContent = stats[k]; }
+
+function findEdge(from, to) {
+  for (const e of EDGES) {
+    if (e.a === from && e.b === to) return { e, rev: false };
+    if (e.a === to && e.b === from) return { e, rev: true };
+  }
+  throw new Error('no edge ' + from + ' -> ' + to);
+}
+function heat(e, color) { e.hot++; e.el.classList.add('hot'); e.el.style.stroke = color; }
+function cool(e) { e.hot = Math.max(0, e.hot - 1); if (!e.hot) { e.el.classList.remove('hot'); e.el.style.stroke = ''; } }
+
+function activate(id, sec) {
+  const n = NODE_EL[id]; n.act++; n.g.classList.add('active');
+  wait(sec, () => { n.act = Math.max(0, n.act - 1); if (!n.act) n.g.classList.remove('active'); });
+}
+function ripple(id) {
+  const b = box(id), el = document.createElementNS(NS, 'rect');
+  el.setAttribute('rx', 16); el.setAttribute('fill', 'none'); el.setAttribute('stroke', PAL[id][1]); el.setAttribute('stroke-width', 2.5);
+  document.getElementById('ripples').appendChild(el);
+  ripples.push({ el, b, age: 0 });
+}
+function showTag(id, text, color, sec) {
+  const n = NODE_EL[id], tag = n.g.querySelector('.tag'), r = tag.querySelector('rect'), t = tag.querySelector('text');
+  const w = Math.max(34, text.length * 6.3 + 16);
+  t.textContent = text; r.setAttribute('width', w); r.setAttribute('x', 152 - w); r.setAttribute('fill', color);
+  t.setAttribute('x', 152 - w / 2); tag.setAttribute('transform', 'translate(0,0)');
+  tag.style.display = '';
+  const tok = ++n.tagTok;
+  wait(sec, () => { if (n.tagTok === tok) tag.style.display = 'none'; });
+}
+
+function spawn(from, to, kind, tag, onArrive) {
+  const { e, rev } = findEdge(from, to), color = KIND[kind];
+  const g = document.createElementNS(NS, 'g');
+  const trail = [];
+  for (let i = 0; i < 6; i++) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('r', 6 - i * 0.8); c.setAttribute('fill', color); c.setAttribute('opacity', (0.35 - i * 0.05).toFixed(2));
+    c.style.display = 'none'; g.appendChild(c); trail.push(c);
+  }
+  const head = document.createElementNS(NS, 'circle');
+  head.setAttribute('r', 7.5); head.setAttribute('fill', color); head.setAttribute('stroke', '#fff'); head.setAttribute('stroke-width', 2); head.setAttribute('filter', 'url(#glow)');
+  g.appendChild(head);
+  let txt = null;
+  if (tag) { txt = document.createElementNS(NS, 'text'); txt.setAttribute('class', 'ptag'); txt.setAttribute('fill', color); txt.textContent = tag; g.appendChild(txt); }
+  document.getElementById('packets').appendChild(g);
+  heat(e, color);
+  if (CLIENTS.has(from) && kind === 'request') bump('req');
+  const p = { e, rev, kind, to, dist: 0, hist: [], g, head, trail, txt, onArrive };
+  packets.push(p);
+  place(p, 0);
+}
+function place(p, t) {
+  const { e } = p, len = e.len;
+  let s = ease(t) * len; if (p.rev) s = len - s;
+  const a = e.el.getPointAtLength(s);
+  const b = s + 1 <= len ? e.el.getPointAtLength(s + 1) : e.el.getPointAtLength(s - 1);
+  let tx = b.x - a.x, ty = b.y - a.y; if (s + 1 > len) { tx = -tx; ty = -ty; }
+  const m = Math.hypot(tx, ty) || 1, off = p.rev ? -6 : 6;
+  const x = a.x + (-ty / m) * off, y = a.y + (tx / m) * off;
+  p.hist.unshift([x, y]); if (p.hist.length > 24) p.hist.pop();
+  p.head.setAttribute('cx', x); p.head.setAttribute('cy', y);
+  p.trail.forEach((c, i) => {
+    const h = p.hist[(i + 1) * 3];
+    if (h) { c.style.display = ''; c.setAttribute('cx', h[0]); c.setAttribute('cy', h[1]); } else c.style.display = 'none';
+  });
+  if (p.txt) { p.txt.setAttribute('x', x); p.txt.setAttribute('y', y - 13); }
+}
+function arrive(p) {
+  p.g.remove(); cool(p.e);
+  activate(p.to, 0.45); ripple(p.to);
+  if (p.to === 'kafka' && p.kind === 'event') bump('evt');
+  if (CLIENTS.has(p.to) && (p.kind === 'response' || p.kind === 'error')) bump('res');
+  p.onArrive && p.onArrive();
+}
+
+function update(k) {
+  dashOffset -= 40 * k;
+  for (const e of EDGES) if (!e.hot) e.el.style.strokeDashoffset = dashOffset;
+  // timers
+  for (const tm of timers) tm.t -= k;
+  const due = timers.filter(tm => tm.t <= 0);
+  if (due.length) { timers = timers.filter(tm => tm.t > 0); due.forEach(tm => { if (tm.gen === GEN) tm.cb(); }); }
+  // packets
+  const done = [];
+  for (const p of packets) {
+    p.dist += 260 * k;
+    const t = Math.min(1, p.dist / p.e.len);
+    place(p, t);
+    if (t >= 1) done.push(p);
+  }
+  if (done.length) { packets = packets.filter(p => !done.includes(p)); done.forEach(arrive); }
+  // ripples: grow ~14px and fade over 0.5s
+  ripples = ripples.filter(r => {
+    r.age += k;
+    const q = r.age / 0.5;
+    if (q >= 1) { r.el.remove(); return false; }
+    const g = 14 * q;
+    r.el.setAttribute('x', r.b.l - g); r.el.setAttribute('y', r.b.t - g);
+    r.el.setAttribute('width', 150 + 2 * g); r.el.setAttribute('height', 112 + 2 * g);
+    r.el.setAttribute('opacity', (1 - q).toFixed(3));
+    return true;
+  });
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused && view === 'flow') update(dt * speed);
+  requestAnimationFrame(frame);
+}
+
+// ---------------- step runner ----------------
+// o.footer: top-level scenario (updates footer, reading pauses); o.fast: live mode (short pauses, no packet tags)
+function runFlow(steps, o) {
+  let i = 0;
+  const next = () => {
+    if (i >= steps.length) { o.done && o.done(); return; }
+    const st = steps[i];
+    if (o.footer) showStep(i, steps.length, st);
+    i++;
+    exec(st, o, next);
+  };
+  next();
+}
+function exec(st, o, next) {
+  if (st.type === 'hop') {
+    // fan-out / fan-in: an array on one side = one packet per pair, all at once; otherwise `count` packets 0.25 s apart
+    const fan = Array.isArray(st.to) ? st.to.map(t => [st.from, t]) : Array.isArray(st.from) ? st.from.map(f => [f, st.to]) : null;
+    const pairs = fan || Array.from({ length: st.count || 1 }, () => [st.from, st.to]);
+    const n = pairs.length; let got = 0;
+    pairs.forEach(([from, to], k) => {
+      const kind = st.kinds ? st.kinds[k] : st.kind;
+      const tag = o.fast ? null : (st.tags ? st.tags[k] : st.tag);
+      const fire = () => spawn(from, to, kind, tag, () => { if (++got === n) wait(o.footer ? 1.1 : 0.08, next); });
+      if (k && !fan) wait(k * 0.25, fire); else fire();
+    });
+  } else if (st.type === 'node') {
+    const d = o.fast ? Math.max(0.25, (st.dur || 2.2) * 0.3) : (o.footer ? (st.dur || 2.4) : (st.dur || 1));
+    [].concat(st.id).forEach((id, k) => {
+      activate(id, d); ripple(id);
+      const tag = st.tags ? st.tags[k] : st.tag;
+      if (tag) showTag(id, tag, st.tagColor || '#0b5cff', d + (o.fast ? 0.15 : 0.6));
+    });
+    if (st.stat === 'hit') bump('hit');
+    wait(d, next);
+  } else if (st.type === 'fork') {
+    runFlow(st.steps, { fast: o.fast });
+    wait(o.footer ? 2.0 : 0.05, next);
+  }
+}
+
+// ---------------- footer ----------------
+const badge = document.getElementById('badge'), fTitle = document.getElementById('ftitle'), fProto = document.getElementById('fproto'), fText = document.getElementById('ftext'), dotsEl = document.getElementById('dots');
+function buildDots(n) { dotsEl.innerHTML = '<i></i>'.repeat(n); }
+function showStep(i, total, st) {
+  badge.className = ''; badge.textContent = `${i + 1}/${total}`;
+  fTitle.textContent = st.title; fProto.textContent = st.proto || '';
+  fText.textContent = st.text || ''; fText.title = st.text || '';
+  [...dotsEl.children].forEach((d, k) => d.classList.toggle('on', k <= i));
+}
+
+// ---------------- scenarios / live ----------------
+function reset() {
+  GEN++;
+  timers = [];
+  packets.forEach(p => p.g.remove()); packets = [];
+  ripples.forEach(r => r.el.remove()); ripples = [];
+  EDGES.forEach(e => { e.hot = 0; e.el.classList.remove('hot'); e.el.style.stroke = ''; });
+  Object.values(NODE_EL).forEach(n => { n.act = 0; n.g.classList.remove('active'); n.g.querySelector('.tag').style.display = 'none'; });
+  flows = 0;
+  for (const k in stats) { stats[k] = 0; STAT_EL[k].textContent = 0; }
+}
+function start(id) {
+  current = id;
+  document.querySelectorAll('#scSeg button').forEach(b => b.classList.toggle('on', b.dataset.sc === id));
+  reset();
+  if (id === 'live') startLive(); else runMain(id);
+}
+function runMain(id) {
+  const steps = SCEN[id].steps;
+  buildDots(steps.length);
+  runFlow(steps, {
+    footer: true,
+    done: () => {
+      badge.className = ''; badge.textContent = '✓';
+      fTitle.textContent = '✓ Journey complete'; fProto.textContent = SCEN[id].name;
+      fText.textContent = 'Looping in 2.5 s · press R to replay now, or pick another scenario.'; fText.title = '';
+      wait(2.5, () => runMain(id));
+    },
+  });
+}
+function pickMix() {
+  let r = Math.random();
+  for (const [id, w] of LIVE_MIX) { if ((r -= w) <= 0) return id; }
+  return 'lemail';
+}
+function startLive() {
+  dotsEl.innerHTML = '';
+  badge.className = 'live'; badge.textContent = 'LIVE';
+  fTitle.textContent = 'Live mixed traffic'; fProto.textContent = '50% transactional email · 30% campaign push · 20% OTP push';
+  const tick = () => {
+    if (flows < 14) {
+      const id = pickMix(); flows++;
+      runFlow(SCEN[id].steps, { fast: true, done: () => { flows--; } });
+    }
+    wait(0.55 + Math.random() * 0.6, tick);
+  };
+  const info = () => {
+    const hr = Math.round(100 * stats.hit / Math.max(1, stats.req));
+    fText.textContent = `${flows} flows and ${packets.length} packets in flight · producers get 202 at once while workers drain email, push-high and push-bulk separately · prefs cache hits/requests ≈ ${hr}%`;
+    fText.title = '';
+    wait(0.5, info);
+  };
+  tick(); info();
+}
+
+// ---------------- drawer ----------------
+const drawer = document.getElementById('drawer');
+let selected = null;
+function openDrawer(id) {
+  const n = NODES[id], inf = INFO[id], [bg, st] = PAL[id];
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = id; NODE_EL[id].g.querySelector('.sel').setAttribute('opacity', 1);
+  document.getElementById('dHead').style.background = bg;
+  document.getElementById('dHead').style.borderBottomColor = st;
+  document.getElementById('dLogo').innerHTML = `<svg width="44" height="44" viewBox="0 0 48 48">${LOGO[id]}</svg>`;
+  document.getElementById('dTitle').textContent = n.label;
+  document.getElementById('dTag').textContent = inf.tag;
+  const body = document.getElementById('dBody');
+  const core = CORE[id];
+  body.innerHTML = `<div>${inf.desc}</div><h4>Key points</h4><ul>${inf.points.map(p => `<li>${p}</li>`).join('')}</ul><h4>Example</h4><pre></pre>`
+    + (core ? `<a class="core-link" href="00_Core_Components.html#${core[0]}/what">🧩 Basics: ${esc(core[1])} in Core Components →</a>` : '');
+  body.querySelector('pre').textContent = inf.code;
+  body.scrollTop = 0;
+  drawer.classList.add('open'); drawer.setAttribute('aria-hidden', 'false');
+}
+function closeDrawer() {
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = null; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true');
+}
+svg.addEventListener('click', ev => {
+  const g = ev.target.closest('.node');
+  if (g) openDrawer(g.dataset.id); else closeDrawer();
+});
+document.getElementById('dClose').onclick = closeDrawer;
+
+// ---------------- legend popover ----------------
+const legendPop = document.getElementById('legendPop'), legendBtn = document.getElementById('legendBtn');
+document.getElementById('lgKinds').innerHTML = Object.entries(KIND).map(([k, c]) => `<span><i style="--c:${c}"></i>${k}</span>`).join('');
+const legendOpen = () => legendPop.classList.contains('open');
+function setLegend(open) {
+  if (open) {   // point the little arrow at the button
+    const r = legendBtn.getBoundingClientRect();
+    legendPop.style.setProperty('--arrow', Math.max(12, window.innerWidth - 16 - (r.left + r.width / 2) - 6) + 'px');
+  }
+  legendPop.classList.toggle('open', open);
+  legendBtn.classList.toggle('on', open);
+  legendBtn.setAttribute('aria-expanded', open);
+}
+legendBtn.addEventListener('click', () => setLegend(!legendOpen()));
+document.addEventListener('mousedown', ev => {
+  if (legendOpen() && !legendPop.contains(ev.target) && !legendBtn.contains(ev.target)) setLegend(false);
+});
+
+// ---------------- controls ----------------
+function setSpeed(v) { speed = v; document.querySelectorAll('#spSeg button').forEach(b => b.classList.toggle('on', +b.dataset.sp === v)); }
+function togglePause() { paused = !paused; document.getElementById('pauseBtn').textContent = paused ? '▶ Play' : '⏸ Pause'; }
+document.querySelectorAll('header button').forEach(b => b.addEventListener('click', () => b.blur()));
+document.querySelectorAll('#scSeg button').forEach(b => b.onclick = () => start(b.dataset.sc));
+document.querySelectorAll('#spSeg button').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp));
+document.getElementById('pauseBtn').onclick = togglePause;
+document.getElementById('replayBtn').onclick = () => start(current);
+document.addEventListener('keydown', ev => {
+  if (ev.target.closest && ev.target.closest('input,textarea')) return;
+  if (view !== 'flow' || ev.ctrlKey || ev.metaKey || ev.altKey) return;   // shortcuts drive the Data flow tab only
+  if (ev.code === 'Space') { ev.preventDefault(); togglePause(); }
+  else if (ev.key === '1') setSpeed(0.5);
+  else if (ev.key === '2') setSpeed(1);
+  else if (ev.key === '3') setSpeed(2);
+  else if (ev.key === 'r' || ev.key === 'R') start(current);
+  else if (ev.key === 'l' || ev.key === 'L') setLegend(!legendOpen());
+  else if (ev.key === 'Escape') { if (legendOpen()) setLegend(false); else closeDrawer(); }
+});
+
+
+
+// ====================================================================
+// interview content: copied verbatim from 04_Notification_System.html (v2.0)
+// ====================================================================
+const CONTENT = {
   // ---------------- 4 · how to explain ----------------
   explain: [
     {
@@ -722,7 +1278,101 @@ window.DESIGN = {
     { g: 'rr', q: 'How fast can an OTP arrive, and what if push fails?', what: 'API → Kafka → worker → FCM → device: about a second for online devices.', why: 'Each hop is milliseconds; FCM is fast when the device is online.', how: '`push-high` topic, FCM `priority: high` with a 60 s TTL, **SMS fallback** if not delivered in time.', trade: 'SMS costs money per message.', flow: 'priority' },
   ],
 };
+
+
+// =====================================================================
+// reading tabs: How to explain · Interview answer · Follow-ups (self-contained renderers)
+// =====================================================================
+const reader = document.getElementById('reader');
+// **bold** and `code` in plain-text content (same rules as engine/app.js)
+const rich = s => esc(s).replace(/"/g, '&quot;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+// old flow ids -> scenarios on the Data flow tab
+const FLOW_TO_SC = { happy: 'happy', dedupe: 'dedupe', retry: 'retry', dup: 'dup', priority: 'priority' };
+const STAGE_C = ['#fb923c', '#8b5cf6', '#3b82f6', '#0d9488', '#db2777', '#16a34a'];
+
+function renderExplain() {
+  const E = CONTENT.explain, total = E.reduce((a, s) => a + s.min, 0);
+  const who = { I: ['Interviewer', 'iv'], C: ['You', 'you'], P: ['Tip', 'tip'] };
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">How to explain it</span><h2>Drive the ${total}-minute interview, stage by stage</h2>
+    <p>Interviewers grade the <b>structure</b> as much as the design. Follow the stages in order and say out loud which stage you are in.</p></div></div>
+    <div class="timebar">${E.map((s, k) => `<button data-to="ex${k}" style="flex:${s.min};--c:${STAGE_C[k % STAGE_C.length]}"><b>${k + 1}. ${esc(s.t)}</b><span>${s.min} min</span></button>`).join('')}</div>
+    ${E.map((s, k) => `<section class="rcard stage" id="ex${k}" style="--c:${STAGE_C[k % STAGE_C.length]}">
+      <div class="stage-h"><span class="sn">${k + 1}</span><h3>${esc(s.t)}</h3><span class="mn">~${s.min} min</span></div>
+      <p class="goal"><b>Goal:</b> ${rich(s.goal)}</p>
+      ${s.lines.map(([w, t]) => `<div class="msg ${who[w][1]}"><span class="who">${who[w][0]}</span><p>${rich(t)}</p></div>`).join('')}
+      ${s.avoid ? `<p class="avoid"><b>⚠ Avoid</b> ${rich(s.avoid)}</p>` : ''}
+    </section>`).join('')}
+  </div>`;
+}
+
+function renderAnswer() {
+  const A = CONTENT.answer;
+  const jumps = [['a-pitch', '⏱ 60-second answer'], ...A.sections.map((s, k) => [`a-sec${k}`, s.h]), ['a-dec', '⚖ Trade-offs'], ['a-code', '{ } Code']];
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Interview-ready answer</span><h2>What to actually say</h2>
+    <p>Start with the 60-second version, then expand any section the interviewer picks.</p></div></div>
+    <nav class="jump">${jumps.map(([id, t]) => `<button data-to="${id}">${esc(t)}</button>`).join('')}</nav>
+    <section class="rcard pitch" id="a-pitch"><h3>⏱ The 60-second answer</h3>${[].concat(A.summary).map(p => `<p>${rich(p)}</p>`).join('')}</section>
+    <div class="ans-grid">${A.sections.map((s, k) => `<section class="rcard ans" id="a-sec${k}" style="--c:${s.color || '#0b5cff'}"><h3>${esc(s.h)}</h3>${s.html}</section>`).join('')}</div>
+    <section class="rcard ans" id="a-dec" style="--c:#7c3aed"><h3>⚖ Key decisions &amp; trade-offs</h3>
+      <table><thead><tr><th>Decision</th><th>Why</th><th>Trade-off</th></tr></thead><tbody>${A.decisions.map(r => `<tr>${r.map(c => `<td>${rich(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>
+    <div class="code-grid" id="a-code">${A.code.map(c => `<section class="rcard codeblk"><h3>${esc(c.t)}</h3><pre>${esc(c.code)}</pre></section>`).join('')}</div>
+  </div>`;
+}
+
+let fuGroup = 'all';
+function renderFollowups() {
+  const G = CONTENT.followGroups, F = CONTENT.followups, list = F.filter(f => fuGroup === 'all' || f.g === fuGroup);
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Follow-up questions</span><h2>What they ask next, and what to answer</h2>
+    <p>Each answer has the same shape: <b>what happens</b> → <b>why</b> → <b>how you handle it</b> → <b>the trade-off</b>. Saying the trade-off unprompted is what separates senior answers.</p></div></div>
+    <div class="chips"><button data-g="all" class="${fuGroup === 'all' ? 'on' : ''}">All <small>${F.length}</small></button>${Object.entries(G).map(([k, g]) => `<button data-g="${k}" class="${fuGroup === k ? 'on' : ''}" style="--c:${g.color}">${esc(g.name)} <small>${F.filter(f => f.g === k).length}</small></button>`).join('')}</div>
+    ${list.map((f, k) => `<details class="rcard fu" style="--c:${G[f.g].color}"${k === 0 ? ' open' : ''}>
+      <summary><span class="fu-g">${esc(G[f.g].name)}</span><span class="fu-q">${esc(f.q)}</span></summary>
+      <div class="fu-body">
+        <div><b>What happens</b><p>${rich(f.what)}</p></div>
+        <div><b>Why</b><p>${rich(f.why)}</p></div>
+        <div class="say"><b>🎤 Say this</b><p>${rich(f.how)}</p></div>
+        <div style="grid-column:1/-1"><b>Trade-off</b><p>${rich(f.trade)}</p></div>
+        ${f.flow ? `<button class="watch" data-sc="${FLOW_TO_SC[f.flow]}">▶ Watch flow: ${esc(SCEN[FLOW_TO_SC[f.flow]].name)}</button>` : ''}
+      </div></details>`).join('')}
+  </div>`;
+  reader.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { fuGroup = b.dataset.g; renderFollowups(); });
+  reader.querySelectorAll('.watch').forEach(b => b.onclick = () => { setView('flow'); start(b.dataset.sc); });
+}
+// sticky jump bars scroll inside the reading panel
+reader.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-to]');
+  if (!b) return;
+  const el = document.getElementById(b.dataset.to), bar = b.parentElement;
+  reader.scrollTo({ top: el.offsetTop - bar.offsetHeight - 8 });
+});
+
+function setView(v) {
+  view = v;
+  document.body.className = 'v-' + v;
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  if (v !== 'flow') {
+    closeDrawer(); setLegend(false);
+    if (v === 'explain') renderExplain(); else if (v === 'answer') renderAnswer(); else renderFollowups();
+    reader.scrollTop = 0;
+  }
+  last = performance.now();
+}
+document.querySelectorAll('#viewSeg button').forEach(b => b.onclick = () => { b.blur(); setView(b.dataset.view); });
+
+// ---------------- header: previous / next design + hub (engine/catalog.js) ----------------
+(function designNav() {
+  const cat = (window.SD_CATALOG || []).filter(c => c.file), at = cat.findIndex(c => c.id === 'notify');
+  const link = (d, txt, dir) => d ? `<a href="${d.file}" title="${dir}: ${d.n} · ${esc(d.title)}">${txt}</a>` : `<span class="off" title="No ${dir.toLowerCase()} design">${txt}</span>`;
+  document.getElementById('dNav').innerHTML = link(cat[at - 1], '←', 'Previous') + link(cat[at + 1], '→', 'Next')
+    + `<a class="hub" href="../02_SD_Interview_Simulator.html" title="All designs">All designs</a>`;
+})();
+
+
+start('happy');
+requestAnimationFrame(frame);
 </script>
-<script src="engine/app.js"></script>
 </body>
 </html>

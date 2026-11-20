@@ -39,7 +39,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `sd-simulator` | SD Interview Simulator (home) | v3.10 | `03_System_Design/02_SD_Interview_Simulator.html` |
 | System Design | `sd-url-shortener` | URL Shortener (TinyURL) | v6.0 | `03_System_Design/02_SD_Simulator/01_URL_Shortener.html` |
 | System Design | `sd-rate-limiter` | Rate Limiter | v2.0 | `03_System_Design/02_SD_Simulator/02_Rate_Limiter.html` |
-| System Design | `sd-notification` | Notification System | v2.0 | `03_System_Design/02_SD_Simulator/04_Notification_System.html` |
+| System Design | `sd-notification` | Notification System | v3.0 | `03_System_Design/02_SD_Simulator/04_Notification_System.html` |
 | System Design | `sd-ecommerce` | E-commerce Order System | v2.0 | `03_System_Design/02_SD_Simulator/05_Ecommerce_Order.html` |
 | System Design | `sd-chat` | Chat System | v2.0 | `03_System_Design/02_SD_Simulator/07_Chat_System.html` |
 | System Design | `sd-ticket-booking` | Ticket Booking | v2.3 | `03_System_Design/02_SD_Simulator/03_Ticket_Booking.html` |
@@ -294,7 +294,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v2.0 | 2026-11-12 | Own page, 6 tabs: overview loop, 13 components (links to Core Components for Kafka, Redis), 5 flows (happy path, producer retry + dedupe, throttling → retry topics → DLQ, worker crash duplicate, campaign vs OTP priority), how to explain, spoken interview answer, @RetryableTopic code, 14 follow-ups. | current file · tag `sd-notification/v2.0` |
+| v3.0 | 2026-11-20 | CURRENT: self-contained animated data-flow page in the URL Shortener v6.0 style (zones by role: Producers · Intake · Async queue · Data · Workers · Providers & recipients; 14 logo cards incl. Retry / DLQ topics, Preferences with Redis cache and FCM / APNs, details drawers with Core Components links) + Explain, Answer and Follow-ups tabs ported verbatim (9 ▶ Watch flow buttons). 6 scenarios: Order shipped: email A, Producer retries, Provider throttles, Worker crash: duplicate?, Campaign vs OTP, Live mix. No longer uses the shared engine. | current file · tag `sd-notification/v3.0` |
+| v2.0 | 2026-11-12 | Own page, 6 tabs: overview loop, 13 components (links to Core Components for Kafka, Redis), 5 flows (happy path, producer retry + dedupe, throttling → retry topics → DLQ, worker crash duplicate, campaign vs OTP priority), how to explain, spoken interview answer, @RetryableTopic code, 14 follow-ups. | git tag `sd-notification/v2.0` |
 | v1 | 2026-10-23 | Section of the all-in-one simulator. | `_archive/03_System_Design/02_SD_Interview_Simulator_v1.html#notify/1` · tag `sd-notification/v1` |
 
 **E-commerce Order System** · `sd-ecommerce`
