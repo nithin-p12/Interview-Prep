@@ -49,7 +49,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `sd-search` | Search System | v3.0 | `03_System_Design/02_SD_Simulator/10_Search_System.html` |
 | System Design | `sd-video` | Video Streaming | v2.0 | `03_System_Design/02_SD_Simulator/11_Video_Streaming.html` |
 | System Design | `sd-distributed-cache` | Distributed Cache | v2.0 | `03_System_Design/02_SD_Simulator/12_Distributed_Cache.html` |
-| System Design | `sd-support` | Customer Support Ticketing | v1.0 | `03_System_Design/02_SD_Simulator/13_Support_Ticketing.html` |
+| System Design | `sd-support` | Customer Support Ticketing | v2.0 | `03_System_Design/02_SD_Simulator/13_Support_Ticketing.html` |
 | System Design | `sd-git` | Git | v1.0 | `03_System_Design/02_SD_Simulator/14_Git.html` |
 | System Design | `sd-parking` | Parking Lot | v1.0 | `03_System_Design/02_SD_Simulator/15_Parking_Lot.html` |
 | Interview Extras | `code-hub` | Coding Practice hub (22 problems) | v1.1 | `07_Interview/01_Coding/00_Coding_Practice.html` |
@@ -371,7 +371,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v1.0 | 2026-11-19 | New page, 6 tabs: overview loop, 12 components (links to Core Components for gateway, Redis, DB, Kafka, S3; to 4 Notification, 7 Chat, 8 Job Scheduler, 10 Search in the answer), 6 flows (email webhook → idempotent intake + transactional outbox + threading, two agents claim: read-then-write vs CAS on version, lifecycle state machine NEW → OPEN → PENDING → RESOLVED → CLOSED with reopen + follow-up, SLA timer: warn, breach → escalate, PENDING pause, check on fire, live updates: outbox → Kafka → WebSocket, versions, resync, offline email, multi-tenancy: tenant from JWT, search leak vs filtered alias, noisy tenant rate limits), how to explain, 4-paragraph spoken answer, Spring/Mongo/Kafka code, 18 follow-ups. | current file · tag `sd-support/v1.0` |
+| v2.0 | 2026-11-20 | CURRENT: self-contained animated data-flow page in the URL Shortener v6.0 style (zones by role: Client · Entry · App services · Data · Async events & timers; 13 logo cards incl. API Gateway with WebSocket routing and Kafka → Push Gateway via a channel below the cards, details drawers with Core Components links) + Explain, Answer and Follow-ups tabs ported verbatim (15 ▶ Watch flow buttons). 7 scenarios: Email becomes a ticket, Two agents one ticket, Ticket lifecycle, SLA breach, Live updates, Many tenants, Live mix. No longer uses the shared engine. | current file · tag `sd-support/v2.0` |
+| v1.0 | 2026-11-19 | New page, 6 tabs: overview loop, 12 components (links to Core Components for gateway, Redis, DB, Kafka, S3; to 4 Notification, 7 Chat, 8 Job Scheduler, 10 Search in the answer), 6 flows (email webhook → idempotent intake + transactional outbox + threading, two agents claim: read-then-write vs CAS on version, lifecycle state machine NEW → OPEN → PENDING → RESOLVED → CLOSED with reopen + follow-up, SLA timer: warn, breach → escalate, PENDING pause, check on fire, live updates: outbox → Kafka → WebSocket, versions, resync, offline email, multi-tenancy: tenant from JWT, search leak vs filtered alias, noisy tenant rate limits), how to explain, 4-paragraph spoken answer, Spring/Mongo/Kafka code, 18 follow-ups. | git tag `sd-support/v1.0` |
 
 **Git** · `sd-git`
 
