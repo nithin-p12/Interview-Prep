@@ -38,7 +38,7 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 | System Design | `fireflink-platform` | FireFlink Platform Architecture | archived v1 | `_archive/03_System_Design/01_FireFlink_Platform_Architecture_v1.html` |
 | System Design | `sd-simulator` | SD Interview Simulator (home) | v3.10 | `03_System_Design/02_SD_Interview_Simulator.html` |
 | System Design | `sd-url-shortener` | URL Shortener (TinyURL) | v6.0 | `03_System_Design/02_SD_Simulator/01_URL_Shortener.html` |
-| System Design | `sd-rate-limiter` | Rate Limiter | v2.0 | `03_System_Design/02_SD_Simulator/02_Rate_Limiter.html` |
+| System Design | `sd-rate-limiter` | Rate Limiter | v3.0 | `03_System_Design/02_SD_Simulator/02_Rate_Limiter.html` |
 | System Design | `sd-notification` | Notification System | v3.0 | `03_System_Design/02_SD_Simulator/04_Notification_System.html` |
 | System Design | `sd-ecommerce` | E-commerce Order System | v2.0 | `03_System_Design/02_SD_Simulator/05_Ecommerce_Order.html` |
 | System Design | `sd-chat` | Chat System | v3.0 | `03_System_Design/02_SD_Simulator/07_Chat_System.html` |
@@ -287,7 +287,8 @@ Every study page has an **id** and a **version**. Ask for one by id and version,
 
 | Version | Date | What it has | Where |
 |---|---|---|---|
-| v2.0 | 2026-11-12 | Own page, 6 tabs: overview loop, 9 components (links to Core Components for LB, gateway, Redis), 5 flows (shared bucket, burst → 429, last-token race, fixed vs sliding window, Redis down: fail open/closed + failover), how to explain, interview answer (Lua, Spring Cloud Gateway config), 16 follow-ups. | current file · tag `sd-rate-limiter/v2.0` |
+| v3.0 | 2026-11-20 | CURRENT: self-contained animated data-flow page in the URL Shortener v6.0 style (zones by role: Client · Entry · Data · Async replication · App services; 9 logo cards incl. 2 gateway pods with fan-out/fan-in race hops, Redis primary + replica, Limit Rules, details drawers with Core Components links) + Explain, Answer and Follow-ups tabs ported verbatim (8 ▶ Watch flow buttons). 6 scenarios: Allowed (one bucket, any pod), Burst (429 + Retry-After), Race on the last token, Fixed vs sliding window, Redis failover (fail open / closed), Live mix. No longer uses the shared engine. | current file · tag `sd-rate-limiter/v3.0` |
+| v2.0 | 2026-11-12 | Own page, 6 tabs: overview loop, 9 components (links to Core Components for LB, gateway, Redis), 5 flows (shared bucket, burst → 429, last-token race, fixed vs sliding window, Redis down: fail open/closed + failover), how to explain, interview answer (Lua, Spring Cloud Gateway config), 16 follow-ups. | git tag `sd-rate-limiter/v2.0` |
 | v1 | 2026-10-23 | Section of the all-in-one simulator. | `_archive/03_System_Design/02_SD_Interview_Simulator_v1.html#rate/1` · tag `sd-rate-limiter/v1` |
 
 **Notification System** · `sd-notification`
