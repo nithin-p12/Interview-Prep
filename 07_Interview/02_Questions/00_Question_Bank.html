@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="question-bank">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Question Bank · Interview Prep · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="../../_shared/prep.css">
+<style>
+body{background:var(--subtle)}
+/* ---------- sticky toolbar ---------- */
+.head{position:sticky;top:0;z-index:20}
+.head .pnav{position:static}
+.bar{background:rgba(248,250,252,.97);backdrop-filter:blur(4px);border-bottom:1px solid var(--line)}
+.bin{max-width:1200px;margin:0 auto;padding:10px clamp(12px,3vw,28px) 8px}
+.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.top h1{margin:0;font-size:var(--fs-lg);color:var(--ink);display:flex;align-items:center;gap:8px}
+.top .cnt{font-size:var(--fs-xs);font-weight:700;color:var(--muted);background:#fff;border:1.5px solid var(--line);border-radius:var(--r-pill);padding:1px 9px}
+.kbd{font-size:11px;font-weight:800;color:var(--muted);border:1.5px solid var(--line-strong);border-bottom-width:3px;border-radius:6px;padding:0 6px;background:#fff;cursor:help}
+.tools{margin-left:auto;display:flex;align-items:center;gap:6px;position:relative}
+.srch{display:flex;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--line-strong);border-radius:var(--r-pill);padding:0 10px;height:32px}
+.srch input{border:0;outline:0;font:inherit;font-size:13px;width:170px;background:transparent;color:var(--ink)}
+.ib{height:32px;min-width:32px;padding:0 8px;border-radius:var(--r-md);border:1.5px solid var(--line-strong);background:#fff;cursor:pointer;font-size:15px;display:inline-flex;align-items:center;justify-content:center;gap:4px;color:var(--ink)}
+.ib:hover{border-color:var(--indigo)}
+.ib.on{background:var(--indigo-bg);border-color:var(--indigo);color:var(--indigo-dk)}
+.ib .n{font-size:11px;font-weight:800;background:var(--indigo);color:#fff;border-radius:var(--r-pill);padding:0 6px}
+.ib[hidden]{display:none}
+/* company dropdown */
+.cpop{position:absolute;z-index:40;right:0;top:38px;width:280px;background:#fff;border:1.5px solid var(--line-strong);border-radius:var(--r-lg);box-shadow:var(--shadow-md);padding:8px;display:none}
+.cpop.open{display:block}
+.cpop .hd{display:flex;align-items:center;justify-content:space-between;font-size:var(--fs-xs);font-weight:800;color:var(--muted);padding:0 2px 6px}
+.cpop .hd button{border:0;background:none;color:var(--indigo-dk);font-weight:800;cursor:pointer;font-size:var(--fs-xs)}
+.cpop .list{display:flex;flex-wrap:wrap;gap:5px}
+/* category pills */
+.pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pill{border:1.5px solid var(--line-strong);background:#fff;border-radius:var(--r-pill);padding:2px 10px 2px 8px;font:inherit;font-size:12.5px;font-weight:700;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.pill i{font-style:normal}
+.pill em{font-style:normal;font-size:10.5px;font-weight:800;color:var(--muted)}
+.pill:hover{border-color:var(--c)}
+.pill.zero{opacity:.4}
+.pill.on{background:var(--c);border-color:var(--c);color:#fff}
+.pill.on em{color:rgba(255,255,255,.85)}
+/* ---------- list ---------- */
+main{max-width:1200px;margin:0 auto;padding:12px clamp(12px,3vw,28px) 60px}
+.grp{margin:14px 0 6px;display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--dk)}
+.grp:first-child{margin-top:2px}
+.grp span{font-size:var(--fs-xs);color:var(--muted);font-weight:700}
+.grp::after{content:"";flex:1;height:2px;background:var(--lt);border-radius:2px}
+.card{background:#fff;border:1.5px solid var(--line);border-left:4px solid var(--c);border-radius:var(--r-md);margin-bottom:6px;transition:box-shadow .15s}
+.card:hover{box-shadow:var(--shadow-sm)}
+.qh{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;user-select:none}
+.qh .no{flex:none;min-width:30px;font-family:var(--font-mono);font-size:var(--fs-xs);font-weight:700;color:var(--dk);background:var(--bg);border-radius:var(--r-sm);text-align:center;padding:1px 4px}
+.qh .qt{flex:1;font-size:var(--fs-md);font-weight:600;color:var(--ink);line-height:1.35}
+.qh .tags{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;max-width:40%}
+.qh .chev{flex:none;color:var(--faint);font-size:13px;transition:transform .15s}
+.card.open .qh .chev{transform:rotate(90deg);color:var(--dk)}
+.card.open{border-color:var(--c);border-left-color:var(--c)}
+.tag{font-size:10.5px;font-weight:800;border-radius:var(--r-pill);padding:1px 8px;white-space:nowrap;border:1.5px solid transparent;background:var(--tb);color:var(--tc);cursor:pointer;font-family:inherit}
+.tag.sel{border-color:var(--tc)}
+.cpop .tag{font-size:11.5px;padding:2px 9px;border-color:var(--tb)}
+.cpop .tag:hover{border-color:var(--tc)}
+.cpop .tag.sel{background:var(--tc);border-color:var(--tc);color:#fff}
+.cpop .tag.sel::before{content:"✓ "}
+body.nocomp .qh .tags{display:none}
+.ans{display:none;padding:2px 14px 12px 52px;border-top:1px dashed var(--line)}
+.card.open .ans{display:block}
+.ans p{margin:9px 0 0;font-size:var(--fs-base);line-height:1.6;color:var(--text);max-width:900px}
+.ans p code,.qh code{background:var(--bg);color:var(--dk);border-radius:4px;padding:0 4px;font-family:var(--font-mono);font-size:.9em}
+.ans b{color:var(--ink)}
+pre.code{margin:10px 0 0;background:var(--code-bg);color:var(--code-text);border-radius:var(--r-md);padding:10px 14px;font-family:var(--font-mono);font-size:var(--fs-sm);line-height:var(--lh-code);overflow-x:auto;max-width:900px}
+pre.code .k{color:var(--code-kw)}pre.code .s{color:var(--code-str)}pre.code .c{color:var(--code-com)}pre.code .a{color:var(--code-ann)}pre.code .n{color:var(--code-num)}
+.empty{text-align:center;color:var(--muted);padding:40px 0;font-size:var(--fs-base)}
+@media (max-width:760px){.qh .tags{display:none}.ans{padding-left:14px}.srch input{width:110px}}
+</style>
+</head><body>
+<header class="head"><div id="nav"></div>
+<div class="bar"><div class="bin">
+ <div class="top">
+  <h1>❓ Question Bank</h1><span class="cnt" id="cnt"></span><span class="kbd" title="↓ open next question (collapses current) · ↑ previous">↑↓</span>
+  <div class="tools">
+   <label class="srch" title="Search questions and answers">🔍<input id="q" type="search" placeholder="search…"></label>
+   <button class="ib" id="tComp" title="Show company labels">🏢</button>
+   <button class="ib" id="tFilt" title="Filter by company" hidden>⏷<span class="n" id="fN" hidden></span></button>
+   <button class="ib" id="tAll" title="Expand all">⊕</button>
+   <div class="cpop" id="cpop"><div class="hd">Filter by company <button id="cClr">✕ clear</button></div><div class="list" id="cList"></div></div>
+  </div>
+ </div>
+ <div class="pills" id="pills"></div>
+</div></div></header>
+<main id="list"></main>
+
+<script src="../../_shared/prep.js"></script>
+<script>
+// ---------- data registry: each data/*.js calls QB.cat(meta, cards) ----------
+window.QB={cats:[],cat(meta,cards){this.cats.push({...meta,cards});}};
+</script>
+<script src="data/java.js"></script>
+<script src="data/collections.js"></script>
+<script src="data/modern.js"></script>
+<script src="data/concurrency.js"></script>
+<script src="data/jvm.js"></script>
+<script src="data/spring.js"></script>
+<script src="data/jpa.js"></script>
+<script src="data/api.js"></script>
+<script src="data/micro.js"></script>
+<script src="data/kafka.js"></script>
+<script src="data/db.js"></script>
+<script src="data/perf.js"></script>
+<script src="data/sd.js"></script>
+<script src="data/streams.js"></script>
+<script src="data/dsa.js"></script>
+<script src="data/hr.js"></script>
+<script>
+(function(){
+const P=window.PREP,k=P.CATS.find(c=>c.id==='extra');
+document.getElementById('nav').innerHTML=P.nav('../../',k);P.refreshProgress();
+
+// company colours (text / fill)
+const COMP={Deloitte:['#15803D','#DCFCE7'],Persistent:['#C2410C','#FFEDD5'],TCS:['#1D4ED8','#DBEAFE'],Cognizant:['#0F766E','#CCFBF1'],
+ Capgemini:['#0369A1','#E0F2FE'],Accenture:['#7E22CE','#F3E8FF'],Infosys:['#4338CA','#E0E7FF'],Wipro:['#B45309','#FEF3C7'],
+ KPMG:['#1E3A8A','#DBEAFE'],'ITC Infotech':['#BE185D','#FCE7F3'],'Tech Lead':['#334155','#E2E8F0']};
+const tagStyle=c=>{const v=COMP[c]||['#334155','#F1F5F9'];return `--tc:${v[0]};--tb:${v[1]}`;};
+
+// tiny inline markup: `code` and **bold**
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const md=s=>esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+const KW='public|private|protected|static|final|class|interface|record|enum|new|return|if|else|for|while|do|try|catch|finally|throw|throws|void|int|long|double|boolean|char|var|this|super|null|true|false|import|extends|implements|synchronized|volatile|switch|case|break|continue|default|SELECT|FROM|WHERE|JOIN|LEFT|INNER|ON|GROUP|BY|ORDER|HAVING|LIMIT|AS|AND|OR|NOT|IN|DISTINCT|DESC|ASC|OVER|PARTITION|WITH|DELETE|UPDATE|INSERT|INTO|VALUES|SET|COUNT|MAX|MIN|NULL|IS';
+const hl=src=>esc(src).replace(new RegExp(`(\\/\\/.*$|--.*$)|("(?:[^"\\\\\\n]|\\\\.)*"|'(?:[^'\\\\\\n]|\\\\.)*')|(@\\w+)|\\b(${KW})\\b|\\b(\\d+[LlDd]?)\\b`,'gm'),
+ (m,c,s,a,k,n)=>c?`<span class="c">${c}</span>`:s?`<span class="s">${s}</span>`:a?`<span class="a">${a}</span>`:k?`<span class="k">${k}</span>`:`<span class="n">${n}</span>`);
+
+// palette per category
+const PAL=c=>`--c:var(--${c});--bg:var(--${c}-bg);--dk:var(--${c}-dk);--lt:var(--${c}-lt)`;
+const cats=QB.cats;let uid=0;
+cats.forEach(c=>c.cards.forEach((q,i)=>{q.id=++uid;q.no=i+1;q.cat=c;q.c=q.c||[];
+ q.text=(q.q+' '+q.a.join(' ')+' '+(q.code||'')).toLowerCase();}));
+const allCards=cats.flatMap(c=>c.cards);
+const companies=[...new Set(allCards.flatMap(q=>q.c))].sort((a,b)=>allCards.filter(q=>q.c.includes(b)).length-allCards.filter(q=>q.c.includes(a)).length);
+
+// ---------- state (UI prefs only, remembered per browser) ----------
+const LS='qbank-ui';let st={cats:[],comp:false,coms:[]};
+try{Object.assign(st,JSON.parse(localStorage.getItem(LS)||'{}'));}catch(e){}
+const save=()=>{try{localStorage.setItem(LS,JSON.stringify(st));}catch(e){}};
+let query='',open=new Set(),cur=null;
+
+const $=id=>document.getElementById(id);
+function visible(){
+ return allCards.filter(q=>(!st.cats.length||st.cats.includes(q.cat.id))
+  &&(!st.comp||!st.coms.length||q.c.some(x=>st.coms.includes(x)))
+  &&(!query||q.text.includes(query)));
+}
+function renderPills(){
+ const base=allCards.filter(q=>(!st.comp||!st.coms.length||q.c.some(x=>st.coms.includes(x)))&&(!query||q.text.includes(query)));
+ const n=id=>base.filter(q=>q.cat.id===id).length;
+ $('pills').innerHTML=`<button class="pill${st.cats.length?'':' on'}" data-cat="" style="--c:var(--slate)"><i>✱</i>All<em>${base.length}</em></button>`+
+  cats.map(c=>`<button class="pill${st.cats.includes(c.id)?' on':''}${n(c.id)?'':' zero'}" data-cat="${c.id}" style="${PAL(c.col)}" title="${esc(c.name)}"><i>${c.icon}</i>${esc(c.short||c.name)}<em>${n(c.id)}</em></button>`).join('');
+}
+function renderComp(){
+ document.body.classList.toggle('nocomp',!st.comp);
+ $('tComp').classList.toggle('on',st.comp);$('tComp').title=st.comp?'Hide company labels':'Show company labels';
+ $('tFilt').hidden=!st.comp;$('tFilt').classList.toggle('on',st.coms.length>0);
+ $('fN').hidden=!st.coms.length;$('fN').textContent=st.coms.length;
+ if(!st.comp)$('cpop').classList.remove('open');
+ $('cList').innerHTML=companies.map(c=>`<button class="tag${st.coms.includes(c)?' sel':''}" data-comp="${esc(c)}" style="${tagStyle(c)}">${esc(c)} · ${allCards.filter(q=>q.c.includes(c)).length}</button>`).join('');
+}
+function cardHtml(q){
+ return `<div class="card${open.has(q.id)?' open':''}" data-id="${q.id}" style="${PAL(q.cat.col)}">
+  <div class="qh" tabindex="0" role="button" aria-expanded="${open.has(q.id)}"><span class="no">${q.no}</span><span class="qt">${md(q.q)}</span>
+   <span class="tags">${q.c.map(c=>`<button class="tag${st.coms.includes(c)?' sel':''}" data-comp="${esc(c)}" style="${tagStyle(c)}" title="Filter by ${esc(c)}">${esc(c)}</button>`).join('')}</span>
+   <span class="chev">▶</span></div>
+  <div class="ans">${q.a.map(p=>`<p>${md(p)}</p>`).join('')}${q.code?`<pre class="code">${hl(q.code.replace(/^\n|\s+$/g,''))}</pre>`:''}</div></div>`;
+}
+function renderList(){
+ const vis=visible();
+ $('cnt').textContent=`${vis.length} of ${allCards.length}`;
+ const showCats=cats.filter(c=>vis.some(q=>q.cat===c));
+ $('list').innerHTML=vis.length?showCats.map(c=>{const cs=vis.filter(q=>q.cat===c);
+  return `<div class="grp" style="${PAL(c.col)}">${c.icon} ${esc(c.name)} <span>${cs.length}</span></div>${cs.map(cardHtml).join('')}`;}).join('')
+  :`<div class="empty">🫥 No questions match. Clear a filter or the search.</div>`;
+ const allOpen=vis.length&&vis.every(q=>open.has(q.id));
+ $('tAll').textContent=allOpen?'⊖':'⊕';$('tAll').title=allOpen?'Collapse all':'Expand all';
+}
+const render=()=>{renderPills();renderComp();renderList();};
+
+// ---------- events ----------
+$('pills').addEventListener('click',e=>{const b=e.target.closest('.pill');if(!b)return;const id=b.dataset.cat;
+ if(!id)st.cats=[];else st.cats=st.cats.includes(id)?st.cats.filter(x=>x!==id):[...st.cats,id];
+ save();render();window.scrollTo({top:0});});
+$('tComp').addEventListener('click',()=>{st.comp=!st.comp;save();render();});
+$('tFilt').addEventListener('click',e=>{e.stopPropagation();$('cpop').classList.toggle('open');});
+$('cClr').addEventListener('click',()=>{st.coms=[];save();render();});
+document.addEventListener('click',e=>{if(!e.target.closest('#cpop,#tFilt'))$('cpop').classList.remove('open');});
+const toggleComp=c=>{st.coms=st.coms.includes(c)?st.coms.filter(x=>x!==c):[...st.coms,c];save();render();};
+$('cList').addEventListener('click',e=>{const t=e.target.closest('.tag');if(t){e.stopPropagation();toggleComp(t.dataset.comp);}});
+$('tAll').addEventListener('click',()=>{const vis=visible(),allOpen=vis.every(q=>open.has(q.id));
+ vis.forEach(q=>allOpen?open.delete(q.id):open.add(q.id));renderList();});
+$('q').addEventListener('input',e=>{query=e.target.value.trim().toLowerCase();renderPills();renderList();});
+function flip(card){const id=+card.dataset.id;open.has(id)?open.delete(id):(open.add(id),cur=id);
+ card.classList.toggle('open');card.querySelector('.qh').setAttribute('aria-expanded',open.has(id));
+ const vis=visible(),allOpen=vis.every(q=>open.has(q.id));$('tAll').textContent=allOpen?'⊖':'⊕';$('tAll').title=allOpen?'Collapse all':'Expand all';}
+$('list').addEventListener('click',e=>{const t=e.target.closest('.tag');if(t){toggleComp(t.dataset.comp);return;}
+ const h=e.target.closest('.qh');if(h)flip(h.parentElement);});
+$('list').addEventListener('keydown',e=>{const h=e.target.closest('.qh');if(h&&(e.key==='Enter'||e.key===' ')){e.preventDefault();flip(h.parentElement);}});
+// ↓ next / ↑ previous: collapse the current card, open the neighbour, scroll it under the sticky header
+document.addEventListener('keydown',e=>{
+ if(e.key!=='ArrowDown'&&e.key!=='ArrowUp')return;if(e.target.closest&&e.target.closest('input,textarea'))return;
+ const vis=visible();if(!vis.length)return;e.preventDefault();
+ const i=vis.findIndex(q=>q.id===cur),j=i<0?0:i+(e.key==='ArrowDown'?1:-1);if(j<0||j>=vis.length)return;
+ if(i>=0)open.delete(vis[i].id);open.add(vis[j].id);cur=vis[j].id;renderList();
+ const el=document.querySelector(`.card[data-id="${cur}"]`);el.querySelector('.qh').focus({preventScroll:true});
+ window.scrollTo({top:el.getBoundingClientRect().top+scrollY-document.querySelector('.head').offsetHeight-8,behavior:'smooth'});
+});
+render();
+})();
+</script>
+</body></html>

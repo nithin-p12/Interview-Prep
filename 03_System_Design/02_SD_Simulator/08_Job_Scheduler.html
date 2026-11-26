@@ -1,0 +1,1405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-job-scheduler">
+<meta name="doc-version" content="v3.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Distributed Job Scheduler · System Design · v3.0</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:#ffffff;color:#0f172a}
+
+/* ---------- header ---------- */
+header{height:64px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.brand .logo{flex-shrink:0}
+.brand .txt{min-width:0}
+.brand .t{font-size:16px;font-weight:800;white-space:nowrap;display:flex;align-items:baseline;gap:10px}
+.brand .t a{font-size:11.5px;font-weight:600;color:#0b5cff;text-decoration:none}
+.brand .t a:hover{text-decoration:underline}
+.brand .s{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrls{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.seg{display:flex;align-items:center;background:#f1f5f9;border-radius:10px;padding:3px;gap:2px}
+.seg .lbl{font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;padding:0 6px 0 7px}
+.seg button{border:0;background:transparent;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#475569;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.seg button:hover{color:#0f172a}
+.seg button.on{background:#fff;color:#0b5cff;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.btn{border:1px solid #e2e8f0;background:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#334155;padding:7px 12px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f8fafc}
+
+/* ---------- main / svg ---------- */
+main{position:relative;height:calc(100vh - 64px - 78px)}
+#dia{display:block;width:100%;height:100%;user-select:none}
+.hint{position:absolute;left:12px;bottom:8px;font-size:11px;color:#64748b;background:rgba(255,255,255,.85);padding:3px 8px;border-radius:6px;pointer-events:none}
+.zl{font-size:13px;font-weight:800;letter-spacing:1.2px;fill:#334155}
+.nl{font:11px ui-monospace,Consolas,monospace;fill:#64748b}
+.edge{fill:none;stroke:#94a3b8;stroke-width:2;stroke-dasharray:6 7}
+.edge.hot{stroke-dasharray:none;stroke-width:3}
+.elbl{font-size:11px;font-weight:600;fill:#64748b;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.node{cursor:pointer}
+.node .card{transition:filter .2s,stroke-width .2s;filter:drop-shadow(0 1px 3px rgba(15,23,42,.08))}
+.node:hover .card{filter:drop-shadow(0 4px 10px rgba(15,23,42,.18))}
+.node.active .card{stroke-width:3.5;filter:drop-shadow(0 0 14px rgba(11,92,255,.55))}
+.nlab{font-size:14px;font-weight:700;fill:#0f172a;text-anchor:middle}
+.nsub{font-size:11px;fill:#64748b;text-anchor:middle}
+.tag text{font-size:10.5px;font-weight:700;fill:#fff;text-anchor:middle}
+.ptag{font-size:10.5px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3.5px;stroke-linejoin:round;text-anchor:middle}
+
+/* ---------- legend popover ---------- */
+.ibtn{width:34px;padding:7px 0;text-align:center;font-size:14px;line-height:1}
+.ibtn.on{background:#eef4ff;border-color:#cfe0ff;color:#0b5cff}
+#legendPop{position:fixed;top:70px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 44px rgba(15,23,42,.2),0 3px 10px rgba(15,23,42,.08);padding:12px 14px;z-index:7;display:none}
+#legendPop.open{display:block}
+#legendPop:before{content:"";position:absolute;top:-6px;right:var(--arrow,20px);width:10px;height:10px;background:#fff;border-left:1px solid #e5e7eb;border-top:1px solid #e5e7eb;transform:rotate(45deg)}
+.lgh{font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8;margin:2px 0 8px}
+.lgk{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+.lgk span{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569}
+.lgk i{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.06),0 0 7px var(--c);background:var(--c)}
+.lgs{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:10px}
+.lgs b{display:block;font-size:16px;font-weight:800;color:#0f172a;line-height:1.15}
+.lgs span{font-size:11px;color:#475569}
+.lgn{font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:8px}
+
+/* ---------- footer ---------- */
+footer{height:78px;background:#fff;border-top:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+#badge{flex-shrink:0;min-width:52px;height:44px;padding:0 8px;border-radius:12px;background:#0b5cff;color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+#badge.live{background:#16a34a;letter-spacing:1px}
+.fmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.frow{display:flex;align-items:center;gap:8px;min-width:0}
+#ftitle{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{flex-shrink:0;font:600 11px ui-monospace,Consolas,monospace;color:#0b5cff;background:#eef4ff;border:1px solid #cfe0ff;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill:empty{display:none}
+.grow{flex:1}
+#dots{display:flex;gap:3px;flex-shrink:0}
+#dots i{display:block;width:18px;height:4px;border-radius:2px;background:#e2e8f0}
+#dots i.on{background:#0b5cff}
+#ftext{font-size:12.5px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{display:flex;gap:8px;flex-shrink:0}
+.stat{width:78px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:6px 8px}
+.stat b{display:block;font-size:18px;line-height:1.1}
+.stat span{font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#64748b;white-space:nowrap}
+
+/* ---------- drawer ---------- */
+#drawer{position:fixed;right:14px;top:76px;bottom:90px;width:380px;max-width:calc(100vw - 28px);background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.22),0 4px 14px rgba(15,23,42,.08);transform:translateX(420px);transition:transform .35s ease;display:flex;flex-direction:column;overflow:hidden;z-index:5}
+#drawer.open{transform:translateX(0)}
+.dh{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #e5e7eb}
+.dh .dl{width:52px;height:52px;border-radius:12px;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dh h3{margin:0;font-size:16px}
+.dh p{margin:2px 0 0;font-size:12px;color:#475569}
+.dh button{margin-left:auto;align-self:flex-start;border:0;background:rgba(255,255,255,.7);border-radius:8px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#334155}
+.db{padding:14px 16px 18px;overflow:auto;font-size:13px;line-height:1.5;color:#334155}
+.db h4{margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.db ul{margin:0;padding-left:18px}
+.db li{margin:3px 0}
+.db pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.db code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px}
+.core-link{display:inline-block;margin-top:14px;font-size:12.5px;font-weight:600;color:#0b5cff;text-decoration:none;background:#eef4ff;border:1px solid #cfe0ff;padding:6px 10px;border-radius:9px}
+.core-link:hover{text-decoration:underline}
+
+/* ---------- header nav + view tabs ---------- */
+.brand .s{display:flex;align-items:center;gap:6px}
+.brand .s .sub{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.brand .nav{display:flex;align-items:center;gap:1px;flex-shrink:0}
+.brand .nav a,.brand .nav span{font-size:11.5px;font-weight:700;color:#0b5cff;text-decoration:none;padding:0 4px;border-radius:5px;line-height:16px}
+.brand .nav a:hover{background:#eef4ff}
+.brand .nav span.off{color:#cbd5e1;cursor:default}
+.brand .nav a.hub{color:#64748b;font-weight:600}
+body:not(.v-flow) .flowonly{display:none}
+body:not(.v-flow) main,body:not(.v-flow) footer,body:not(.v-flow) #drawer,body:not(.v-flow) #legendPop{display:none}
+body.v-flow #reader{display:none}
+
+/* ---------- reading panel (tabs 2-4) ---------- */
+#reader{position:relative;height:calc(100vh - 64px);overflow:auto;background:#f8fafc;scroll-behavior:smooth}
+.rd{max-width:1120px;margin:0 auto;padding:18px 20px 40px}
+.rd-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:12px}
+.rd-head h2{margin:0;font-size:20px;font-weight:800}
+.rd-head p{margin:4px 0 0;font-size:13px;color:#64748b;max-width:760px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.rcard{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.05);padding:14px 16px;margin-bottom:12px;font-size:13.5px;line-height:1.55;color:#334155}
+.rcard code,.fu code,.rd td code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px;color:#0f172a}
+.rcard h3{margin:0 0 6px;font-size:15px;color:#0f172a}
+/* explain */
+.timebar{position:sticky;top:0;z-index:2;display:flex;gap:4px;background:#f8fafc;padding:6px 0 10px}
+.timebar button{min-width:126px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:6px 8px;text-align:left;cursor:pointer;font:inherit;border-top:3px solid var(--c)}
+.timebar button:hover{background:#f1f5f9}
+.timebar b{display:block;font-size:12px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timebar span{font-size:11px;color:#64748b}
+.stage{border-left:4px solid var(--c);scroll-margin-top:70px}
+.stage-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.stage-h .sn{width:24px;height:24px;border-radius:50%;background:var(--c);color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center}
+.stage-h .mn{font-size:11px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:999px;padding:1px 8px}
+.goal{margin:2px 0 10px;color:#64748b}
+.msg{display:flex;gap:10px;margin:6px 0;align-items:flex-start}
+.msg .who{flex-shrink:0;width:88px;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding-top:3px}
+.msg p{margin:0;flex:1;padding:6px 10px;border-radius:10px}
+.msg.iv .who{color:#7c3aed}.msg.iv p{background:#f5f3ff}
+.msg.you .who{color:#0b5cff}.msg.you p{background:#eef4ff}
+.msg.tip .who{color:#a16207}.msg.tip p{background:#fefce8;font-style:italic}
+.avoid{margin:10px 0 0;padding:8px 12px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+/* answer */
+.jump{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.jump button,.chips button{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:4px 11px;font:600 12px "Segoe UI",system-ui,sans-serif;color:#475569;cursor:pointer}
+.jump button:hover,.chips button:hover{border-color:#cbd5e1;color:#0f172a}
+.pitch{border-left:4px solid #0b5cff;scroll-margin-top:56px}
+.pitch p{margin:0 0 8px}.pitch p:last-child{margin:0}
+.ans-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.ans-grid .rcard{margin:0}
+.ans{border-top:4px solid var(--c);scroll-margin-top:56px}
+.ans ul,.ans ol{margin:0;padding-left:20px}.ans li{margin:3px 0}
+.ans table{border-collapse:collapse;width:100%;font-size:13px}
+.ans td,.ans th{border-bottom:1px solid #f1f5f9;padding:5px 8px;text-align:left;vertical-align:top}
+.ans th{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8}
+.ans .m{font:12px ui-monospace,Consolas,monospace;white-space:nowrap;color:#0f172a}
+.ans pre,.codeblk pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.code-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;scroll-margin-top:56px}
+.codeblk{margin:0}
+.codeblk h3{font-size:13px}
+/* follow-ups */
+.chips{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.chips button small{color:#94a3b8;font-weight:700;margin-left:2px}
+.chips button.on{background:var(--c,#0b5cff);border-color:var(--c,#0b5cff);color:#fff}
+.chips button.on small{color:rgba(255,255,255,.8)}
+.fu{padding:0;border-left:4px solid var(--c)}
+.fu summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px}
+.fu summary::-webkit-details-marker{display:none}
+.fu summary:after{content:"▸";margin-left:auto;color:#94a3b8;transition:transform .2s}
+.fu[open] summary:after{transform:rotate(90deg)}
+.fu-g{flex-shrink:0;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border-radius:999px;padding:2px 9px}
+.fu-q{font-size:14px;font-weight:700;color:#0f172a}
+.fu-body{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:0 16px 14px}
+.fu-body > div > b{display:block;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8;margin-bottom:2px}
+.fu-body p{margin:0}
+.fu-body .say{grid-column:1/-1;background:#eef4ff;border-radius:10px;padding:8px 12px}
+.fu-body .say > b{color:#0b5cff}
+.watch{grid-column:1/-1;justify-self:start;border:0;background:#0b5cff;color:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;padding:7px 14px;border-radius:9px;cursor:pointer}
+.watch:hover{background:#0a4fe0}
+</style>
+</head>
+<body class="v-flow">
+<header>
+  <div class="brand">
+    <svg class="logo" width="34" height="34" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#0b5cff"/><circle cx="24" cy="25" r="13" fill="none" stroke="#fff" stroke-width="3.4"/><path d="M24 17.5v8l5 3.5" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 9.5l-4 4M35 9.5l4 4" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/></svg>
+    <div class="txt">
+      <div class="t" title="Distributed Job Scheduler">Job Scheduler</div>
+      <div class="s"><span class="nav" id="dNav"></span><span class="sub">Jobs in MongoDB · atomic claim with lease + fencing token · race · crash re-claim · GC zombie · heartbeat, backoff → FAILED · misfire</span></div>
+    </div>
+  </div>
+  <div class="ctrls">
+    <div class="seg" id="viewSeg">
+      <button data-view="flow" class="on" title="Animated data flow">Data flow</button>
+      <button data-view="explain" title="How to explain it, stage by stage">Explain</button>
+      <button data-view="answer" title="Interview-ready answer">Answer</button>
+      <button data-view="followups" title="Follow-up questions">Follow-ups</button>
+    </div>
+    <div class="seg flowonly" id="scSeg"><span class="lbl">Scenario</span>
+      <button data-sc="happy" title="A scheduled run: create · atomic claim · fenced write · complete">Run</button>
+      <button data-sc="race" title="Two workers, one job: read-then-update vs atomic findOneAndUpdate">Race</button>
+      <button data-sc="crash" title="Worker crashes mid-job: lease expiry · re-claim · run key">Crash</button>
+      <button data-sc="zombie" title="GC pause: zombie worker vs fencing tokens">Zombie</button>
+      <button data-sc="retry" title="Long job, then failures: heartbeat · backoff · FAILED + alert">Retry</button>
+      <button data-sc="misfire" title="Cluster down for 3 hours: misfire policy, catch up vs fire once">Misfire</button>
+      <button data-sc="live" title="Live mixed traffic">Live</button>
+    </div>
+    <div class="seg flowonly" id="spSeg"><span class="lbl">Speed</span>
+      <button data-sp="0.5">0.5x</button><button data-sp="1" class="on">1x</button><button data-sp="2">2x</button>
+    </div>
+    <button class="btn flowonly" id="pauseBtn">⏸ Pause</button>
+    <button class="btn flowonly" id="replayBtn">↻ Replay</button>
+    <button class="btn ibtn flowonly" id="legendBtn" title="Legend &amp; scale (L)" aria-haspopup="dialog" aria-expanded="false">ⓘ</button>
+  </div>
+</header>
+
+<main>
+  <svg id="dia" viewBox="0 0 1600 600" preserveAspectRatio="xMidYMid meet"></svg>
+  <div class="hint">Click any component for details · Space pause · 1 2 3 speed · R replay · L legend</div>
+</main>
+
+<footer>
+  <div id="badge">1/1</div>
+  <div class="fmid">
+    <div class="frow"><span id="ftitle"></span><span id="fproto" class="pill"></span><span class="grow"></span><div id="dots"></div></div>
+    <div id="ftext"></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="stReq">0</b><span>DB calls</span></div>
+    <div class="stat"><b id="stHit">0</b><span>Claims won</span></div>
+    <div class="stat"><b id="stEvt">0</b><span>Side effects</span></div>
+    <div class="stat"><b id="stRes">0</b><span>Rejected</span></div>
+  </div>
+</footer>
+
+<section id="reader" aria-live="polite"></section>
+
+<div id="legendPop" role="dialog" aria-label="Legend and scale">
+  <div class="lgh">PACKETS</div>
+  <div class="lgk" id="lgKinds"></div>
+  <div class="lgh">SCALE (FROM THE FULL DESIGN)</div>
+  <div class="lgs">
+    <div><b>1 M</b><span>jobs · ~1 GB</span></div>
+    <div><b>1 s</b><span>poll interval</span></div>
+    <div><b>60 s</b><span>lease · heartbeat 20 s</span></div>
+    <div><b>0</b><span>double starts</span></div>
+  </div>
+  <div class="lgn">Dashed edges crawl in the request direction · solid = packet in transit</div>
+</div>
+
+<aside id="drawer" aria-hidden="true">
+  <div class="dh" id="dHead"><div class="dl" id="dLogo"></div><div><h3 id="dTitle"></h3><p id="dTag"></p></div><button id="dClose" title="Close (Esc)">×</button></div>
+  <div class="db" id="dBody"></div>
+</aside>
+
+<script src="engine/catalog.js"></script>
+<script>
+'use strict';
+// =====================================================================
+// Distributed Job Scheduler · Data Flow: nodes grouped by app role (client · entry · job API · job state · workers · side effects);
+// no infra containers, no CDN (nothing here is static content). Self-contained: no engine/ except catalog.js for prev/next.
+// Content comes from 08_Job_Scheduler.html (v2.0): jobs in MongoDB with a lease (lockedBy, leaseUntil, fence), stateless workers
+// claiming with one atomic findOneAndUpdate, heartbeats, fenced writes, run keys (jobId + scheduledAt), backoff → FAILED, misfire policy.
+// Leases, atomic claims and fencing tokens are taught HERE; leader election is only the alternative (drawers, follow-ups).
+// =====================================================================
+
+const NS = 'http://www.w3.org/2000/svg';
+const KIND = { request: '#2563eb', response: '#16a34a', event: '#f97316', error: '#dc2626' };
+const SIDE = new Set(['reports', 'ses', 'inbox', 'alerts']);
+const PAL = {
+  teamA: ['#eef0ff', '#818cf8'],
+  gw: ['#ffffff', '#7c3aed'],
+  api: ['#fff9db', '#e0b400'], w1: ['#e3f4f2', '#0d9488'], w2: ['#e3f4f2', '#0d9488'],
+  jobdb: ['#e6f6ea', '#34a853'],
+  reports: ['#e0f2fe', '#0284c7'], ses: ['#fff0e0', '#f59e0b'], inbox: ['#eef0ff', '#818cf8'], alerts: ['#ffffff', '#e11d48'],
+};
+// zone tints: [fill, stroke, label] (same palette as 01_URL_Shortener.html)
+const ZT = {
+  client: ['#fed7aa', '#fb923c', '#9a3412'], entry: ['#ddd6fe', '#8b5cf6', '#5b21b6'], app: ['#bfdbfe', '#3b82f6', '#1e3a8a'],
+  data: ['#e5e7eb', '#9ca3af', '#374151'], async: ['#ffe4e6', '#fb7185', '#9f1239'],
+};
+
+// ---------------- logos (48x48 inline SVG) ----------------
+const cube = (badge) => `<path d="M24 5l17 9.5v19L24 43 7 33.5v-19z" fill="#326ce5"/><path d="M24 24l17-9.5v19L24 43z" fill="#2557c4"/><path d="M24 5l17 9.5L24 24 7 14.5z" fill="#6f9cf0"/>${badge}`;
+const gear = n => `<circle cx="22" cy="22" r="14.5" fill="none" stroke="#0d9488" stroke-width="7" stroke-dasharray="5.7 5.7"/><circle cx="22" cy="22" r="11.5" fill="#14b8a6"/><circle cx="22" cy="22" r="4.6" fill="#fff"/><circle cx="37" cy="37" r="9" fill="#0f766e" stroke="#fff" stroke-width="2"/><text x="37" y="41.3" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Segoe UI,Arial,sans-serif">${n}</text>`;
+const LOGO = {
+  teamA: `<circle cx="16" cy="16" r="6.5" fill="#a5b4fc"/><path d="M3 37c0-8 5.6-12.5 13-12.5S29 29 29 37z" fill="#a5b4fc"/><circle cx="29" cy="15" r="8" fill="#6366f1"/><path d="M13 43c0-9.5 7-15 16-15s16 5.5 16 15z" fill="#6366f1"/>`,
+  gw: `<rect x="5" y="5" width="38" height="38" rx="10" fill="#7c3aed"/><path d="M15 38V23a9 9 0 0 1 18 0v15" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M11 38h26" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="28" cy="31" r="1.9" fill="#fff"/>`,
+  api: cube(`<rect x="28" y="28" width="18" height="17" rx="3" fill="#e0b400" stroke="#fff" stroke-width="2"/><path d="M28.5 33.5h17" stroke="#fff" stroke-width="2"/><path d="M32 26.5v4M42 26.5v4" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><path d="M32.5 38.5l2.5 2.5 4.5-4.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`),
+  w1: gear(1), w2: gear(2),
+  jobdb: `<path d="M24 3c8 9 12 17 12 24.5 0 8.5-5.2 13.5-10.6 15.5h-2.8C17.2 41 12 36 12 27.5 12 20 16 12 24 3z" fill="#13aa52"/><path d="M24 9v37" stroke="#0b6b33" stroke-width="2"/><circle cx="37" cy="37" r="9" fill="#0b6b33" stroke="#fff" stroke-width="2"/><path d="M37 32v5.2l3.4 2" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  reports: `<path d="M8 4h20l10 10v28a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" fill="#0284c7"/><path d="M28 4v10h10z" fill="#7dd3fc"/><g stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 20h14M12 26h18M12 32h10"/></g><path d="M37 26l9 3.5v6c0 5.2-3.8 8.5-9 10-5.2-1.5-9-4.8-9-10v-6z" fill="#0c4a6e" stroke="#fff" stroke-width="2"/><text x="37" y="40" text-anchor="middle" font-size="9.5" font-weight="800" fill="#fff" font-family="Segoe UI,Arial,sans-serif">f2</text>`,
+  ses: `<rect x="3" y="9" width="42" height="30" rx="6" fill="#f59e0b"/><path d="M6 13l18 14 18-14" fill="none" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><path d="M6 36l13-11M42 36L29 25" stroke="#fde68a" stroke-width="2"/><path d="M9 44c6 3 24 3 30 0" fill="none" stroke="#232f3e" stroke-width="2.6" stroke-linecap="round"/><path d="M36 42l3 2-2.6 2.6" fill="none" stroke="#232f3e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  inbox: `<path d="M4 27l7-17h26l7 17v13a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" fill="#6366f1"/><path d="M4 27h12l3 5h10l3-5h12" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/><rect x="15" y="4" width="18" height="14" rx="2" fill="#fff" stroke="#6366f1" stroke-width="2"/><path d="M15.5 5.5l8.5 6.5 8.5-6.5" fill="none" stroke="#6366f1" stroke-width="2"/>`,
+  alerts: `<path d="M24 5a3 3 0 0 1 3 3v1.3c6.3 1.4 10 6.6 10 13.2v8.5l4 5H7l4-5v-8.5c0-6.6 3.7-11.8 10-13.2V8a3 3 0 0 1 3-3z" fill="#e11d48"/><path d="M19 39.5a5 5 0 0 0 10 0z" fill="#e11d48"/><path d="M41 12a14 14 0 0 1 3 9M7 12a14 14 0 0 0-3 9" fill="none" stroke="#fb7185" stroke-width="2.6" stroke-linecap="round"/><rect x="21.6" y="15" width="4.8" height="11" rx="2.2" fill="#fff"/><circle cx="24" cy="30.5" r="2.4" fill="#fff"/>`,
+};
+
+// ---------------- topology ----------------
+const NODES = {
+  teamA: { x: 93, y: 300, label: 'Team A', sub: 'job owner · gets alerts' },
+  gw: { x: 285, y: 300, label: 'API Gateway', sub: 'JWT · routes /jobs', replicas: 2 },
+  api: { x: 500, y: 300, label: 'Job API', sub: 'create · pause · trigger', replicas: 2 },
+  jobdb: { x: 714, y: 300, label: 'Job DB', sub: 'Mongo · jobs + runs', replicas: 3 },
+  w1: { x: 946, y: 150, label: 'Worker 1', sub: 'polls every 1 s' },
+  w2: { x: 946, y: 450, label: 'Worker 2', sub: 'polls every 1 s' },
+  reports: { x: 1300, y: 120, label: 'Report Store', sub: 'checks the fence', replicas: 3 },
+  ses: { x: 1300, y: 300, label: 'Email (SES)', sub: 'external · not fenced' },
+  alerts: { x: 1300, y: 480, label: 'Alerts', sub: 'Slack · PagerDuty' },
+  inbox: { x: 1505, y: 300, label: 'B\'s Inbox', sub: 'report recipient' },
+};
+// grouped by developer role, not by infrastructure
+const ZONES = [
+  { x: 8, y: 8, w: 170, h: 584, t: 'client', label: 'CLIENT', cap: 'job owners' },
+  { x: 190, y: 8, w: 190, h: 584, t: 'entry', label: 'ENTRY', cap: 'control plane door' },
+  { x: 392, y: 8, w: 200, h: 584, t: 'app', label: 'JOB API', cap: 'Spring Boot · stateless', dash: true },
+  { x: 604, y: 8, w: 220, h: 584, t: 'data', label: 'JOB STATE', cap: 'schedule + lease + run log', dash: true },
+  { x: 836, y: 8, w: 220, h: 584, t: 'app', label: 'WORKERS', cap: 'no leader · claim atomically', dash: true },
+  { x: 1068, y: 8, w: 524, h: 584, t: 'async', label: 'SIDE EFFECTS', cap: 'fenced · idempotent · at-least-once', dash: true },
+];
+// [from, to, protocol label]; the path direction is the request direction (dashes crawl that way).
+const EDGE_DEFS = [
+  ['teamA', 'gw', 'HTTPS'], ['gw', 'api', 'POST /jobs'], ['api', 'jobdb', 'insertOne'],
+  ['w1', 'jobdb', 'claim · lease'], ['w2', 'jobdb', 'claim · lease'],
+  ['w1', 'reports', 'upsert · fence'], ['w2', 'reports', ''],
+  ['w1', 'ses', 'SendEmail'], ['w2', 'ses', ''], ['w2', 'alerts', 'alert'],
+  ['ses', 'inbox', 'SMTP'],
+];
+
+// ---------------- drawer content ----------------
+const INFO = {
+  teamA: {
+    tag: 'Job owners · create, pause, trigger',
+    desc: 'Teams register jobs such as <b>"daily-report at 02:00 Asia/Kolkata"</b> through the Job API and get an alert when a job ends up <b>FAILED</b>. They never talk to the workers.',
+    points: ['Jobs belong to teams: somebody has to hear about permanent failures', 'Always send a <b>time zone</b> with the cron, never only UTC offsets', 'Pick a <b>misfire policy</b> per job: <code>FIRE_ONCE</code>, <code>CATCH_UP</code> or <code>SKIP</code>', 'After fixing a FAILED job: <code>POST /jobs/{id}/trigger</code> (same claim path)'],
+    code: `curl -X POST https://jobs.internal/jobs \\
+  -H 'Authorization: Bearer <team-a token>' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"name":"daily-report","cron":"0 0 2 * * *",
+       "tz":"Asia/Kolkata","misfire":"FIRE_ONCE",
+       "payload":{"to":"b@corp.ex"}}'
+# -> 201 {"id":"job-7","nextRunAt":"2026-11-12T20:30:00Z"}
+
+curl -X POST https://jobs.internal/jobs/job-7/trigger   # run now
+curl https://jobs.internal/jobs/job-7/runs              # history`,
+  },
+  gw: {
+    tag: 'L7 gateway · auth, quotas, routes /jobs',
+    desc: 'Single entry point for the scheduler\'s <b>control plane</b>. It validates the team\'s JWT, rate-limits job changes per team and routes <code>/jobs/**</code> to the Job API. Workers are not behind it: they talk straight to the Job DB.',
+    points: ['Low traffic: jobs change rarely, runs never pass through here', 'Per-team quotas on job count and on "trigger now"', 'If it is down, existing jobs keep running on schedule', 'Only instances passing <code>/actuator/health/readiness</code> receive traffic'],
+    code: `# Spring Cloud Gateway: application.yml
+spring:
+  cloud:
+    gateway:
+      routes:
+      - id: jobs
+        uri: lb://job-api
+        predicates: [ Path=/jobs/** ]
+        filters:
+        - TokenRelay=                    # team JWT -> Job API
+        - name: RequestRateLimiter       # per-team cap on changes
+          args:
+            redis-rate-limiter.replenishRate: 2
+            redis-rate-limiter.burstCapacity: 10`,
+  },
+  api: {
+    tag: 'Spring Boot · validates cron + time zone',
+    desc: '<code>POST /jobs { name, cron, tz, payload, misfire }</code> validates the cron, computes the first <b>nextRunAt</b> and inserts the job. Also pause, resume, trigger now and run history. It only writes job documents; it never runs anything.',
+    points: ['Spring cron has <b>6 fields</b>, seconds first: <code>0 0 2 * * *</code>', '<code>CronExpression.parse</code> rejects broken crons before they reach any worker', '<code>nextRunAt</code> is stored as a UTC instant but computed in the job\'s <code>ZoneId</code>', 'Trigger now = <code>nextRunAt = now</code>: the normal claim path runs it', 'Stateless: if it is down, existing jobs keep running'],
+    code: `@PostMapping("/jobs")
+ResponseEntity<JobView> create(@Valid @RequestBody CreateJob req) {
+  CronExpression cron = CronExpression.parse(req.cron());     // 400 if invalid
+  ZoneId tz = ZoneId.of(req.tz());                            // "Asia/Kolkata"
+  Instant first = cron.next(ZonedDateTime.now(tz)).toInstant();
+  Job job = mongo.insert(new Job(req.name(), req.cron(), req.tz(), req.payload(),
+      "SCHEDULED", first, /* fence */ 0, /* attempts */ 0, req.misfire()));
+  return ResponseEntity.created(URI.create("/jobs/" + job.id()))
+                       .body(new JobView(job.id(), first));
+}
+
+@PostMapping("/jobs/{id}/trigger")                            // same claim path
+void trigger(@PathVariable String id) {
+  mongo.updateFirst(query(where("_id").is(id)),
+      new Update().set("status", "SCHEDULED").set("nextRunAt", Instant.now()), Job.class);
+}`,
+  },
+  jobdb: {
+    tag: 'MongoDB replica set · the schedule AND the lock',
+    desc: '<code>jobs { _id, cron, tz, status, nextRunAt, lockedBy, leaseUntil, fence, attempts, misfire }</code> and a run log <code>runs { _id: "job-7@02:00", emailSent }</code>. Job state and the lease live in <b>one document</b>, so a single atomic update both finds a due job and takes it.',
+    points: ['Index <code>{status, nextRunAt}</code>: "what is due now?" is a cheap range query', 'Index <code>{status, leaseUntil}</code>: finds jobs whose owner died', 'Updates to one document are atomic: the second claim\'s filter no longer matches', '~1 M jobs × 1 KB ≈ 1 GB: one replica set; shard by jobId beyond that', 'Primary failover pauses claims for seconds; leases are longer than an election'],
+    code: `// the claim, as the worker sends it
+db.jobs.findOneAndUpdate(
+  { $or: [ { status: "SCHEDULED", nextRunAt:  { $lte: now } },
+           { status: "RUNNING",   leaseUntil: { $lt:  now } } ] },   // dead owner
+  { $set: { status: "RUNNING", lockedBy: "w1", leaseUntil: now + 60s },
+    $inc: { fence: 1 } },                                            // fencing token
+  { sort: { nextRunAt: 1 }, returnDocument: "after" })
+
+db.jobs.createIndex({ status: 1, nextRunAt: 1 })
+db.jobs.createIndex({ status: 1, leaseUntil: 1 })
+db.runs.createIndex({ at: 1 }, { expireAfterSeconds: 2592000 })      // 30 days`,
+  },
+  w1: {
+    tag: 'Stateless worker · polls every 1 s · no leader',
+    desc: 'Every second: <b>claim</b> one due job with <code>findOneAndUpdate</code>, run it, <b>heartbeat</b> the lease every 20 s while it runs, then <b>complete</b> with a filter on <code>lockedBy</code> + <code>fence</code>. There is no leader to elect or fail over: every worker is equal and the database arbitrates.',
+    points: ['Claim = status + lease + <code>$inc fence</code> in <b>one</b> atomic update', 'Heartbeat or complete returns <b>matched 0</b> → it lost the job and must stop', 'Crash → lease expires → another worker re-runs the job (<b>at-least-once</b>)', 'Writes every result <b>with its fence</b>; side effects keyed by <code>jobId@scheduledAt</code>', 'Alternative: one leader via ShedLock or ZooKeeper, which still needs fencing'],
+    code: `@Scheduled(fixedDelay = 1000)
+void poll() {
+  Instant now = Instant.now();
+  Query due = query(new Criteria().orOperator(
+      where("status").is("SCHEDULED").and("nextRunAt").lte(now),
+      where("status").is("RUNNING").and("leaseUntil").lt(now)));   // crashed owner
+  Update claim = new Update()
+      .set("status", "RUNNING").set("lockedBy", workerId)
+      .set("leaseUntil", now.plusSeconds(60))
+      .inc("fence", 1);                                            // fencing token
+  Job job = mongo.findAndModify(due, claim, options().returnNew(true), Job.class);
+  if (job != null) executor.submit(() -> run(job));               // null = lost the race
+}`,
+  },
+  w2: {
+    tag: 'Same code as Worker 1',
+    desc: 'An identical worker. It races Worker 1 for every due job and takes over after crashes and GC pauses. Two workers are enough to show every concurrency problem this design solves.',
+    points: ['Loses a race → gets <b>null</b> and simply polls again next second', 'Picks up RUNNING jobs whose <code>leaseUntil</code> has passed', 'Its claim bumps the fence, which locks out a paused Worker 1', 'Add more workers to run more jobs in parallel; claim small batches at scale'],
+    code: `// heartbeat thread: extend the lease only while we still own it
+Query mine(Job j) {
+  return query(where("_id").is(j.id())
+      .and("lockedBy").is(workerId).and("fence").is(j.fence()));
+}
+
+@Scheduled(fixedRate = 20_000)
+void heartbeat() {
+  for (Job j : running.values()) {
+    long matched = mongo.updateFirst(mine(j),
+        new Update().set("leaseUntil", Instant.now().plusSeconds(60)), Job.class)
+        .getMatchedCount();
+    if (matched == 0) running.remove(j.id()).cancel(true);   // lost it: stop
+  }
+}`,
+  },
+  reports: {
+    tag: 'Fenced resource · MongoDB reports',
+    desc: 'Stores <code>reports { _id: "rpt-11-13", data, lastFence }</code> and accepts a write only if its <b>fence is newer</b> than <code>lastFence</code>. A lease cannot stop a worker that froze and woke up late; the <b>resource</b> must reject its stale write.',
+    points: ['Same <code>_id</code> per scheduled run: a re-run overwrites instead of adding a copy', 'Filter <code>lastFence: { $lt: fence }</code> + upsert → stale fence hits <b>E11000</b>', 'The fence is checked by the resource, not by the worker', 'Elsewhere: S3 conditional writes or a DB version column'],
+    code: `void writeReport(Job j, Report r) {
+  try {
+    mongo.upsert(query(where("_id").is(r.id()).and("lastFence").lt(j.fence())),
+                 new Update().set("data", r.data()).set("lastFence", j.fence()),
+                 "reports");
+  } catch (DuplicateKeyException e) {          // lastFence >= ours: newer owner exists
+    throw new StaleFenceException(j.id(), j.fence());
+  }
+}`,
+  },
+  ses: {
+    tag: 'Amazon SES · external, not transactional, not fenced',
+    desc: 'Sends the report to B. It is not ours, it cannot check fences and it cannot be rolled back: the typical side effect you cannot undo. Dedupe it with a <b>run key</b> (<code>jobId@scheduledAt</code>) in the run log.',
+    points: ['Can be down (<b>503</b>): retry with exponential backoff, transient errors only', 'Run key = scheduled time, <b>not</b> the attempt number', 'Remaining gap: crash between "sent" and "run log written" → pass the run key as an idempotency key if the provider supports one', 'External rate limits: jitter jobs that all fire at 00:00'],
+    code: `void emailOnce(Job j, Instant scheduledAt) {
+  String runKey = j.id() + "@" + scheduledAt;           // scheduled time, not attempt #
+  Run run = mongo.findById(runKey, Run.class);
+  if (run != null && run.emailSent()) return;           // a previous attempt sent it
+  ses.sendEmail(b -> b.destination(d -> d.toAddresses(j.payload().to()))
+                      .content(reportMail(j))
+                      .emailTags(t -> t.name("runKey").value(runKey)));
+  mongo.upsert(query(where("_id").is(runKey)),
+               new Update().set("emailSent", true), Run.class);
+}`,
+  },
+  inbox: {
+    tag: 'Recipient B · the side effect users see',
+    desc: 'B\'s mailbox is where every mistake becomes visible: a race, a crash re-run or a missing run key shows up as a <b>second email</b>. The design promises "never twice" here by making the run idempotent, not by promising exactly-once execution.',
+    points: ['Exactly-once execution is impossible with crashes', 'At-least-once execution + idempotent side effects = "never twice" for B', 'Run log entry per scheduled run, TTL-cleaned after 30 days'],
+    code: `// runs: one document per scheduled run
+{ _id: "job-7@2026-11-13T02:00", by: "w1", fence: 1,
+  status: "OK", emailSent: true }
+
+// a retry (w2, fence 2) of the SAME run reads this and skips the email`,
+  },
+  alerts: {
+    tag: 'Alerting · webhook to Slack / PagerDuty',
+    desc: 'When a job runs out of attempts it is parked as <b>FAILED</b>, the scheduler\'s dead-letter state, and the worker alerts the owning team. Nobody polls FAILED jobs, so a broken job stops consuming workers.',
+    points: ['Backoff: <code>min(2^attempts min, 1 h)</code> + jitter, max 5 attempts', 'Non-transient errors (bad payload) fail at once, no retries', 'Also alert on schedule lag and on jobs running far behind (misfires)', 'Owner fixes the cause, then <code>POST /jobs/{id}/trigger</code>'],
+    code: `void fail(Job j, Exception e) {
+  int attempts = j.attempts() + 1;
+  boolean park = attempts >= 5 || !isTransient(e);
+  Update u = park
+      ? new Update().set("status", "FAILED")
+      : new Update().set("status", "SCHEDULED").set("attempts", attempts)
+          .set("nextRunAt", Instant.now().plus(backoff(attempts)));
+  mongo.updateFirst(mine(j), u.unset("lockedBy").unset("leaseUntil"), Job.class);
+  if (park) alerts.post(j.owner(), "job " + j.id() + " FAILED after " + attempts + ": " + e);
+}`,
+  },
+};
+
+// building blocks taught once in 00_Core_Components.html (same "#id/what" links as the engine pages)
+const CORE = {
+  gw: ['gw', 'API Gateway'], jobdb: ['db', 'DB scaling'], reports: ['db', 'DB scaling'],
+};
+
+// ---------------- scenarios ----------------
+// hop: `from`/`to` may be an array (both workers at once: one packet per pair, all at the same time).
+// node: `id` may be an array (several nodes work in parallel); `tags` gives one tag per node.
+const hop = (from, to, kind, tag, title, proto, text, extra) => Object.assign({ type: 'hop', from, to, kind, tag, title, proto, text }, extra || {});
+const node = (id, tag, title, proto, text, extra) => Object.assign({ type: 'node', id, tag, title, proto, text }, extra || {});
+const GREEN = '#16a34a', RED = '#dc2626', AMBER = '#d97706', BLUE = '#0b5cff';
+const W = ['w1', 'w2'];
+const CLAIM_Q = 'findOneAndUpdate({status:"SCHEDULED", nextRunAt:{$lte:now}}, {$set:{status:"RUNNING", lockedBy, leaseUntil:now+60s}, $inc:{fence:1}})';
+
+// claim → applied → job returned (used by several scenarios)
+function claim(w, f, at, extra) {
+  const lease = extra && extra.lease || '02:01:00';
+  return [
+    hop(w, 'jobdb', 'request', at + ' claim', `${at}: ${w === 'w1' ? 'Worker 1' : 'Worker 2'} claims a due job`, 'Mongo wire · findOneAndUpdate', `The poll sends ${CLAIM_Q}: finding and taking the job is one operation.`),
+    node('jobdb', `RUNNING · ${w} · f${f}`, 'Claim applied atomically', `lease until ${lease} · fence ${f}`, `Status, lockedBy "${w}", a 60 s lease and fence ${f} are written in one single-document update, so no other worker can take this run now.`, { tagColor: GREEN, stat: 'claim' }),
+    hop('jobdb', w, 'response', `job-7 · fence ${f}`, `Job returned with fence ${f}`, 'returnDocument: "after"', `The worker gets the updated document back, including fence ${f}, which it will attach to every write it makes for this run.`),
+  ];
+}
+
+const SCEN = {
+  // Ported from the old page's "A scheduled run" flow: create · claim · run · complete.
+  happy: {
+    name: 'A scheduled run',
+    steps: [
+      hop('teamA', 'gw', 'request', 'POST /jobs', 'Team A creates "daily-report"', 'HTTPS · TCP 443 · TLS 1.3', 'Body {"name":"daily-report","cron":"0 0 2 * * *","tz":"Asia/Kolkata","misfire":"FIRE_ONCE"}: a Spring cron has 6 fields, seconds first.'),
+      node('gw', '/jobs → Job API', 'Gateway: authenticate and route', 'JWT · Path=/jobs/**', 'The gateway validates Team A\'s JWT, applies the per-team rate limit on job changes and routes /jobs/** to a healthy Job API instance.'),
+      hop('gw', 'api', 'request', 'POST /jobs', 'Request reaches the Job API', 'HTTP/1.1 · :8080', '@PostMapping("/jobs") binds a @Valid CreateJob request; the Job API only writes job documents, it never runs a job.'),
+      node('api', 'next 02:00 IST', 'Validate the cron, compute the first run', 'CronExpression.parse · ZoneId', 'CronExpression.parse("0 0 2 * * *").next(now in Asia/Kolkata) gives 02:00 IST tonight, stored as the UTC instant 20:30Z.'),
+      hop('api', 'jobdb', 'request', 'insertOne job-7', 'Insert the job document', 'Mongo wire · TCP 27017 · w:majority', 'insertOne({_id:"job-7", status:"SCHEDULED", nextRunAt:02:00 IST, fence:0, attempts:0, misfire:"FIRE_ONCE"}) with majority write concern.'),
+      node('jobdb', 'SCHEDULED · f0', 'The document is the schedule and the lock', 'index {status, nextRunAt}', 'job-7 now waits in the {status, nextRunAt} index; its future lease fields (lockedBy, leaseUntil, fence) live in the same document.'),
+      hop('jobdb', 'api', 'response', 'ack', 'Write acknowledged', '{ acknowledged: true }', 'The primary acknowledges once a majority of the replica set has the job, so a failover cannot lose it.'),
+      hop('api', 'gw', 'response', '201 job-7', '201 Created', 'HTTP 201 · Location', 'Response 201 Created, Location: /jobs/job-7, body {"id":"job-7","nextRunAt":"…T20:30:00Z"}.'),
+      hop('gw', 'teamA', 'response', '201 job-7', 'Team A has a job', 'HTTPS · 201', 'Team A sees job-7 scheduled for 02:00 IST; from now on only the database and the workers are involved.'),
+      node(W, null, '02:00:00: both workers poll', '@Scheduled(fixedDelay = 1000)', 'Each stateless worker runs its poll every second; at 02:00:00 job-7 becomes due for both of them.', { tags: ['poll', 'poll'] }),
+      ...claim('w1', 1, '02:00:00'),
+      { type: 'fork', title: 'Async: heartbeat thread', proto: 'every 20 s · filter lockedBy + fence', text: 'In parallel a heartbeat thread runs updateOne({_id:"job-7", lockedBy:"w1", fence:1}, {$set:{leaseUntil:now+60s}}) so a long run keeps its lease.', steps: [
+        hop('w1', 'jobdb', 'request', 'heartbeat · f1', 'Heartbeat', 'updateOne · lockedBy + fence', 'Extends the lease only while w1 still owns job-7.'),
+        node('jobdb', 'lease → 02:01:20', 'Lease extended', 'matched 1', 'The filter matched, so the lease moves forward.', { tagColor: GREEN, dur: 1.0 }),
+        hop('jobdb', 'w1', 'response', 'matched 1', 'Still the owner', 'matched 1', 'matched 0 would mean someone else owns the job now.'),
+      ] },
+      hop('w1', 'reports', 'event', 'upsert · fence 1', 'Write the report with the fence', 'updateOne · lastFence $lt 1 · upsert', 'updateOne({_id:"rpt-11-13", lastFence:{$lt:1}}, {$set:{data, lastFence:1}}, {upsert:true}): same _id for the same scheduled run.'),
+      node('reports', 'lastFence 1 ✓', 'Fence accepted', 'reports.rpt-11-13', 'No newer fence exists, so the report is stored with lastFence 1; a re-run of this run would overwrite it, never add a copy.', { tagColor: GREEN }),
+      hop('w1', 'ses', 'event', 'report → B', 'Email the report to B', 'SES SendEmail · HTTPS', 'The email carries the run key job-7@02:00 (scheduled time, not attempt number) as a tag and idempotency hint.'),
+      hop('ses', 'inbox', 'event', 'mail', 'Delivered to B', 'SMTP · 25/587', 'SES relays the message; B\'s inbox now holds exactly one report for the 02:00 run.'),
+      hop('w1', 'jobdb', 'request', 'runs job-7@02:00', 'Record the email in the run log', 'upsert runs · emailSent', 'upsert runs {_id:"job-7@02:00", emailSent:true}: any retry of this same run will see that the email already went out.'),
+      hop('w1', 'jobdb', 'request', 'complete if w1·f1', 'Complete only if we still own it', 'updateOne · lockedBy + fence', 'updateOne({_id:"job-7", lockedBy:"w1", fence:1}, {$set:{status:"SCHEDULED", nextRunAt:next}, $unset:{lockedBy:1, leaseUntil:1}}).'),
+      node('jobdb', 'SCHEDULED · +1d 02:00', 'matched 1 → next run from cron + time zone', 'CronExpression.next(ZonedDateTime)', 'matched 1, so the run counts; next = tomorrow 02:00 IST from cron + ZoneId, correct across DST, never "now + 24 h".', { tagColor: GREEN, dur: 3 }),
+    ],
+  },
+  // Ported from the old page's "Two workers, one job" flow: read-then-update vs one atomic findOneAndUpdate.
+  race: {
+    name: 'Two workers, one job',
+    steps: [
+      node('jobdb', 'job-7 due 02:00', 'job-7 is due at 02:00:00', 'SCHEDULED · nextRunAt 02:00', 'Workers poll every second, so both see job-7 as due at the same moment; with 20 workers this race hits every job.'),
+      hop(W, 'jobdb', 'request', null, '02:00:00: both workers poll at once', 'find({status, nextRunAt ≤ now})', 'Naive code first reads: job = find({status:"SCHEDULED", nextRunAt:{$lte:now}}), then updates it in a second call.', { tags: ['find due', 'find due'] }),
+      hop('jobdb', W, 'response', null, '❌ Read, then update: both reads return job-7', 'two separate operations', 'Neither update has happened yet, so both reads return job-7 as SCHEDULED.', { tags: ['job-7', 'job-7'] }),
+      node(W, null, '❌ Both think job-7 is theirs', 'check-then-act race', 'Each worker now holds a copy of job-7 that says SCHEDULED: the check and the act are separate, so nothing stops the second worker.', { tags: ['mine!', 'mine!'], tagColor: RED }),
+      hop(W, 'jobdb', 'error', null, '❌ Both updates succeed', 'updateOne({_id}) · $set RUNNING', 'updateOne({_id:"job-7"}, {$set:{status:"RUNNING", lockedBy:me}}) filters only on _id, so both updates match.', { tags: ['set RUNNING w1', 'set RUNNING w2'] }),
+      node('jobdb', 'RUNNING w2 (w1 too!)', 'Last writer wins lockedBy, both run', 'matched 1 · matched 1', 'lockedBy ends up "w2", but both workers already started the job: two reports and two emails are on their way.', { tagColor: RED }),
+      hop(W, 'ses', 'error', null, '❌ Both workers email B', 'SES SendEmail ×2', 'Each worker sends the report for the same 02:00 run.', { tags: ['report → B', 'report → B'] }),
+      hop('ses', 'inbox', 'error', null, 'B gets the report twice', 'SMTP ×2', 'Two identical emails land in B\'s inbox: read-then-update is a race, not a lock.', { count: 2, tags: ['mail #1', 'mail #2'] }),
+      node('jobdb', '↺ rewind', '✅ Rewind: put the condition inside the update', CLAIM_Q.slice(0, 40) + '…', `The claim becomes one ${CLAIM_Q}; MongoDB applies updates to a single document atomically.`, { tagColor: AMBER }),
+      hop(W, 'jobdb', 'request', null, 'Both send one atomic claim', 'findOneAndUpdate ×2', 'Same timing as before: both claims arrive within the same millisecond.', { tags: ['claim (atomic)', 'claim (atomic)'] }),
+      node('jobdb', 'w1 first → f1', 'Decision: the first update flips the status', 'single-document atomicity', 'w1\'s update is applied first: job-7 becomes RUNNING, lockedBy w1, fence 1; when w2\'s update is evaluated, status:"SCHEDULED" no longer matches.', { tagColor: GREEN, stat: 'claim' }),
+      hop('jobdb', W, 'response', null, 'One winner, one null', 'document · null', 'w1 gets job-7 with fence 1; w2 gets null and simply polls again next second.', { kinds: ['response', 'error'], tags: ['job-7 · f1', 'null'] }),
+      node(W, null, 'w1 runs it, w2 moves on', 'no lock service, no leader', 'The database arbitrated the race: no ZooKeeper, no distributed lock, just the status in the filter.', { tags: ['running · f1', 'poll again'], tagColor: GREEN }),
+      hop('w1', 'reports', 'event', 'upsert · fence 1', 'Only w1 writes the report', 'updateOne · lastFence $lt 1', 'One report, written once, with fence 1.'),
+      hop('w1', 'ses', 'event', 'report → B', 'Only w1 emails B', 'SES SendEmail', 'Exactly one send for the 02:00 run.'),
+      hop('ses', 'inbox', 'event', 'mail', 'Delivered once', 'SMTP', 'B\'s inbox holds one report.'),
+      node('inbox', 'B inbox: 1 ✓', 'One run, one email', 'at scale: batches + shards', 'Polling cost grows with the number of workers; at large scale workers claim small batches and poll only their own shard of jobs.', { tagColor: GREEN, dur: 3 }),
+    ],
+  },
+  // Ported from the old page's "Worker crashes mid-job" flow: lease expiry · re-claim · run key.
+  crash: {
+    name: 'Worker crashes mid-job',
+    steps: [
+      ...claim('w1', 1, '02:00:00'),
+      hop('w1', 'reports', 'event', 'upsert · fence 1', 'Report written with fence 1', 'updateOne · lastFence $lt 1', 'At 02:00:05 w1 stores rpt-11-13 with lastFence 1.'),
+      hop('w1', 'ses', 'event', 'report → B', 'Email B', 'SES SendEmail', 'The report goes out for the 02:00 run.'),
+      hop('ses', 'inbox', 'event', 'mail', 'B has the report', 'SMTP', 'B inbox: 1.'),
+      hop('w1', 'jobdb', 'request', 'runs job-7@02:00', 'Run log: emailSent', 'upsert runs · emailSent:true', 'upsert runs {_id:"job-7@02:00", emailSent:true}: the run key is jobId + scheduled time, not the attempt number.'),
+      node('w1', '✕ OOM-killed', 'w1 crashes before completing', 'pod killed at 02:00:06', 'The pod is OOM-killed just before its complete call: nobody will ever say "done" for this run.', { tagColor: RED }),
+      node('jobdb', 'RUNNING · w1 (dead?)', 'job-7 is stuck in RUNNING', 'leaseUntil 02:01:00', 'Nobody touches job-7 while the lease is valid, because from the database\'s view w1 might still be alive.', { tagColor: AMBER }),
+      hop('w2', 'jobdb', 'request', '02:01:05 claim', 'Lease expired → w2\'s normal poll', '$or: RUNNING + leaseUntil < now', 'The claim filter\'s second branch {status:"RUNNING", leaseUntil:{$lt:now}} matches job-7 at 02:01:05.'),
+      node('jobdb', 'RUNNING · w2 · f2', 'Re-claimed with fence 2', '$inc fence → 2', 'w2 now owns job-7 until 02:02:05 with fence 2: execution is at-least-once, not exactly-once.', { tagColor: GREEN, stat: 'claim' }),
+      hop('jobdb', 'w2', 'response', 'job-7 · fence 2', 'Job returned with fence 2', 'returnDocument: "after"', 'w2 starts the same scheduled run (02:00) from the top.'),
+      hop('w2', 'ses', 'error', 'report → B again', '❌ Without a run key: a second email', 'SES SendEmail', 'A retry cannot tell "not done" from "done but not recorded" unless the side effect is keyed by the scheduled run.'),
+      node('inbox', 'B inbox: 2 ✕', 'B gets a duplicate', 'at-least-once leaks out', 'Re-running is correct; repeating the side effect is the bug.', { tagColor: RED }),
+      hop('w2', 'jobdb', 'request', 'get job-7@02:00', '✅ Rewind: check the run key first', 'findById runs', 'w2 reads runs["job-7@02:00"] before doing anything with an external effect.'),
+      node('jobdb', 'emailSent ✓', 'Decision: email already sent → skip', 'runs.job-7@02:00', 'The run log says emailSent: true, so w2 skips the email; B keeps exactly one copy.', { tagColor: GREEN }),
+      hop('jobdb', 'w2', 'response', 'emailSent: true', 'Run log returned', 'BSON · { emailSent: true }', 'Remaining gap: a crash between "email sent" and "run log written" can still send twice, so pass the run key to the provider as an idempotency key if it supports one.'),
+      hop('w2', 'reports', 'event', 'upsert · fence 2', 'Report rewritten in place', 'same _id · lastFence $lt 2', 'Same _id rpt-11-13 with fence 2: the upsert replaces the report instead of adding a copy.'),
+      hop('w2', 'jobdb', 'request', 'complete if w2·f2', 'w2 completes', 'updateOne · lockedBy w2 + fence 2', 'Complete with {lockedBy:"w2", fence:2} → matched 1.'),
+      node('jobdb', 'SCHEDULED · +1d 02:00', 'Back on schedule', 'lease 60 s + heartbeat 20 s', 'A shorter lease detects crashes faster but risks expiring during a long GC or a DB failover: 60 s plus heartbeats is a common middle ground.', { tagColor: GREEN, dur: 3 }),
+    ],
+  },
+  // Ported from the old page's "GC pause: zombie worker" flow: fencing tokens.
+  zombie: {
+    name: 'GC pause: zombie worker',
+    steps: [
+      ...claim('w1', 1, '02:00:00'),
+      node('w1', '⏸ GC pause 75 s', 'w1 freezes in a 75 s GC pause', 'stop-the-world', 'A stop-the-world GC (or a VM migration, or a network stall) freezes the JVM, heartbeat thread included; the report is already computed in memory.', { tagColor: AMBER }),
+      hop('w2', 'jobdb', 'request', '02:01:05 claim', 'Lease expires → w2 claims', '$or: RUNNING + leaseUntil < now', 'From the database\'s view w1 looks dead, so w2\'s ordinary poll takes job-7.'),
+      node('jobdb', 'RUNNING · w2 · f2', 'New owner, fence 2', '$inc fence → 2', 'Every claim increments the fence, so this ownership period is fence 2.', { tagColor: GREEN, stat: 'claim' }),
+      hop('jobdb', 'w2', 'response', 'job-7 · fence 2', 'w2 gets fence 2', 'returnDocument: "after"', 'w2 runs the job with fence 2.'),
+      hop('w2', 'reports', 'event', 'upsert · fence 2', 'w2 writes fresh results', 'updateOne · lastFence $lt 2', 'At 02:01:15 the store records the fresh report with lastFence 2.'),
+      node('reports', 'lastFence 2 · fresh', 'Fresh report stored', 'reports.rpt-11-13', 'The store now remembers that fence 2 is the newest writer for rpt-11-13.', { tagColor: GREEN }),
+      node('w1', 'woke up · thinks f1', 'w1 wakes up at 02:01:25', 'it cannot see the time it lost', 'A frozen process cannot notice time passing: w1 still believes it owns job-7 with fence 1.', { tagColor: AMBER }),
+      hop('w1', 'reports', 'error', 'put (no fence)', '❌ Without fencing: stale write', 'updateOne({_id}) · $set data', 'A plain updateOne({_id:"rpt-11-13"}, {$set:{data}}) has no fence condition.'),
+      node('reports', 'stale ✕ overwrote', 'Stale data wins', 'last write wins', 'w1\'s stale report replaces w2\'s fresh one: the lease alone could not stop a paused process.', { tagColor: RED }),
+      hop('w1', 'jobdb', 'error', 'complete {_id}', '❌ Stale complete', 'updateOne({_id:"job-7"})', 'w1 "completes" with a filter on _id only.'),
+      node('jobdb', 'SCHEDULED?! w2 runs', 'Job marked done while w2 still runs', 'state corrupted', 'job-7 says SCHEDULED for tomorrow while w2 is still in the middle of running it.', { tagColor: RED }),
+      hop('w1', 'reports', 'request', 'upsert · fence 1', '✅ Rewind: the store checks the fence', 'updateOne · lastFence $lt 1 · upsert', 'The write is updateOne({_id:"rpt-11-13", lastFence:{$lt:1}}, {$set:{data, lastFence:1}}, {upsert:true}).'),
+      node('reports', 'lastFence 2 > 1 ✕', 'Decision: stale fence → E11000', 'filter misses · upsert collides', 'lastFence is 2, so the filter does not match; the upsert then tries to insert the same _id and fails with E11000 duplicate key.', { tagColor: RED }),
+      hop('reports', 'w1', 'error', 'E11000 · stale', 'w1\'s write is rejected', 'DuplicateKeyException', 'The fence must be checked by the resource, not by the worker: the fresh report stays.'),
+      hop('w1', 'jobdb', 'request', 'complete if w1·f1', 'w1 tries a fenced complete', 'updateOne · lockedBy w1 + fence 1', 'updateOne({_id:"job-7", lockedBy:"w1", fence:1}, …).'),
+      hop('jobdb', 'w1', 'error', 'matched 0 → abort', 'Decision: matched 0 → w1 aborts', 'lockedBy w2 · fence 2 · matchedCount 0', 'The filter no longer matches, which is w1\'s signal that it lost the job: it logs "lost its lease, result discarded" and goes back to polling.'),
+      hop('w2', 'jobdb', 'request', 'complete if w2·f2', 'w2 completes normally', 'updateOne · lockedBy w2 + fence 2', 'matched 1 → SCHEDULED, next run tomorrow 02:00; the fence only grows, so store it as 64-bit.'),
+      node('jobdb', 'SCHEDULED · +1d 02:00', 'Only the newest fence wins', 'fencing token', 'The resource and the complete step accept only the newest token, so the zombie\'s writes bounce.', { tagColor: GREEN, dur: 3 }),
+    ],
+  },
+  // Ported from the old page's "Long job, then failures" flow: heartbeat · backoff · FAILED.
+  retry: {
+    name: 'Long job, then failures',
+    steps: [
+      ...claim('w1', 1, '02:00:00'),
+      { type: 'fork', title: 'Async: heartbeat every 20 s', proto: 'updateOne · lockedBy + fence', text: 'Today the report takes 3 minutes, far longer than the 60 s lease, so a background thread keeps moving leaseUntil forward while w1 still owns the job.', steps: [
+        hop('w1', 'jobdb', 'request', '02:00:20 heartbeat', 'Heartbeat 1', 'updateOne · lockedBy + fence', 'Lease → 02:01:20.'),
+        node('jobdb', 'lease → 02:01:20', 'Lease extended', 'matched 1', 'Still the owner.', { tagColor: GREEN, dur: 0.8 }),
+        hop('w1', 'jobdb', 'request', '02:00:40 heartbeat', 'Heartbeat 2', 'updateOne · lockedBy + fence', 'Lease → 02:01:40.'),
+        node('jobdb', 'lease → 02:01:40', 'Lease extended', 'matched 1', 'matched 0 would mean: stop now.', { tagColor: GREEN, dur: 0.8 }),
+      ] },
+      node('w1', 'building · 3 min', 'The long job keeps running', 'heartbeat ≪ lease', 'Heartbeat every 20 s against a 60 s lease tolerates two missed heartbeats before anyone else may claim the job.'),
+      hop('w1', 'reports', 'event', '02:03 upsert · f1', 'Report written', 'updateOne · lastFence $lt 1', 'At 02:03 the report is ready and stored with fence 1.'),
+      hop('w1', 'ses', 'event', 'report → B', 'Email B', 'SES SendEmail', 'Next the worker sends the email for run job-7@02:00.'),
+      node('ses', '503 ✕', 'The email provider is down', 'HTTP 503 Service Unavailable', 'SES answers 503: the run failed this time, and the cause is transient.', { tagColor: RED }),
+      hop('ses', 'w1', 'error', '503', 'Failure returned', 'SdkServiceException 503', 'The worker catches the exception in its run wrapper.'),
+      node('w1', 'transient → retry', 'Decision: transient or permanent?', 'isTransient(e)', 'Retry only transient errors (503, timeouts); a bad payload goes straight to FAILED without wasting attempts.', { tagColor: AMBER }),
+      hop('w1', 'jobdb', 'request', 'fail · backoff', 'Reschedule with backoff', 'updateOne · lockedBy + fence', 'Fail is a conditional update too: {lockedBy:"w1", fence:1} → status SCHEDULED, $inc attempts, nextRunAt = now + min(2^attempts min, 1 h) + jitter.'),
+      node('jobdb', 'SCHEDULED · a1 · 02:05', 'Retry at 02:05 (attempt 1)', 'exponential backoff', 'Backoff gives the provider room to recover instead of hammering it.', { tagColor: AMBER }),
+      hop('w2', 'jobdb', 'request', '02:05 claim', 'w2 claims the retry', 'findOneAndUpdate · $inc fence', 'Any worker may take the retry: w2 claims job-7 with fence 2 and attempts 1.'),
+      hop('jobdb', 'w2', 'response', 'job-7 · f2 · a1', 'Job returned', 'returnDocument: "after"', 'The run log says the report exists, so only the email is retried.'),
+      hop('w2', 'ses', 'event', 'report → B', 'Email again', 'SES SendEmail', 'Same run key job-7@02:00.'),
+      hop('ses', 'w2', 'error', '503', 'Still down', 'HTTP 503', 'SES is still unavailable.'),
+      hop('w2', 'jobdb', 'request', 'fail · backoff', 'Backoff again', 'updateOne · lockedBy + fence', 'attempts 2 → next try at 02:09.'),
+      node('jobdb', 'a2 02:09 · a3 02:17 · a4 02:33', 'Still failing…', 'min(2^n min, 1 h) + jitter', 'Attempts at 02:09, 02:17, 02:33 and 03:05 all hit the same 503.', { tagColor: AMBER }),
+      node('jobdb', 'a5 → FAILED', 'Max attempts → FAILED', 'status: "FAILED"', 'Attempt 5 fails too: status FAILED; nobody polls FAILED jobs, so it stops consuming workers. FAILED is the dead-letter queue.', { tagColor: RED }),
+      hop('w2', 'alerts', 'event', 'job-7 FAILED', 'Alert the owner', 'HTTPS webhook', 'The worker that parked the job posts "job-7 FAILED after 5 attempts: SES 503" to the owning team\'s alert channel.'),
+      node('teamA', '🔔 job-7 FAILED', 'Team A is paged', 'POST /jobs/job-7/trigger', 'After fixing the cause, Team A calls POST /jobs/job-7/trigger, which goes through the same claim path.', { tagColor: RED, dur: 3 }),
+    ],
+  },
+  // Ported from the old page's "Cluster down for 3 hours" flow: misfire policy, fire once vs catch up.
+  misfire: {
+    name: 'Cluster down for 3 hours',
+    steps: [
+      node(W, null, 'All workers go down at 01:55', 'bad deploy', 'A bad deploy takes every worker down until 05:10; job-9 (hourly-sync, cron "0 0 * * * *") stays safe in the database.', { tags: ['✕ down', '✕ down'], tagColor: RED }),
+      node('jobdb', 'job-9 due 02:00 ⚠', 'Four slots missed', '02:00 · 03:00 · 04:00 · 05:00', 'Nobody claims job-9 while the workers are down, so it misses 02:00, 03:00, 04:00 and 05:00.', { tagColor: RED }),
+      node(W, null, '05:10: workers are back', 'readiness ✓', 'The fixed release rolls out and both workers start polling again.', { tags: ['back · polling', 'back · polling'], tagColor: GREEN }),
+      hop('w1', 'jobdb', 'request', '05:10 claim', 'job-9 is 3 h overdue', 'findOneAndUpdate · nextRunAt ≤ now', 'nextRunAt 02:00 ≤ now, so the normal claim picks it up.'),
+      node('jobdb', 'RUNNING · w1 · f1', 'Claimed', 'lease until 05:11:00', 'Same claim as always: status, lease and fence in one update.', { tagColor: GREEN, stat: 'claim' }),
+      hop('jobdb', 'w1', 'response', 'job-9 · misfire', 'Job returned with its policy', 'misfire field', 'The document carries misfire: "CATCH_UP" | "FIRE_ONCE" | "SKIP".'),
+      node('w1', 'late 3 h 10 min', 'Decision: read the misfire policy', 'scheduled 02:00 · now 05:10', 'The worker compares the scheduled time with now and lets the job\'s policy decide what "run" means.', { tagColor: AMBER }),
+      hop('w1', 'reports', 'event', null, 'Policy A: catch up every missed slot', 'run per window · own run key', 'Run 02:00, 03:00, 04:00 and 05:00 back to back, each for its own window (01:00–02:00, …) with its own run key.', { count: 4, tags: ['job-9@02:00', 'job-9@03:00', 'job-9@04:00', 'job-9@05:00'] }),
+      node('reports', '4 late runs', 'Four runs, one per window', 'right for billing · wrong for reminders', 'Right for per-window work like hourly billing or aggregates; wrong for "send a reminder": users would get four at once.', { tagColor: AMBER }),
+      node('w1', '↺ rewind', 'Rewind · Policy B: fire once', 'misfire: FIRE_ONCE', 'One run now covers the gap; 02:00–05:00 are not replayed.', { tagColor: AMBER }),
+      hop('w1', 'reports', 'event', 'job-9@05:10', 'Run once, now', 'run key job-9@05:10', 'One sync of the latest state: right for "sync latest state", daily reports and cleanups.'),
+      node('reports', 'job-9@05:10 ✓', 'One run at 05:10', 'Quartz: misfire instructions', 'Quartz calls these misfire instructions (fire now / do nothing); a third option is SKIP entirely.', { tagColor: GREEN }),
+      hop('w1', 'jobdb', 'request', 'complete · next 06:00', 'Complete: back on schedule', 'updateOne · lockedBy + fence', 'Complete with {lockedBy:"w1", fence:1} and nextRunAt = cron.next(now) = 06:00.'),
+      node('jobdb', 'SCHEDULED · next 06:00', 'job-9 next at 06:00', 'nextRunAt = cron.next(now)', 'Computing the next run from now (not from the missed slot) is what skips the backlog.', { tagColor: GREEN }),
+      node('jobdb', 'misfire per job', 'Store the policy on the job and watch the lag', 'FIRE_ONCE · CATCH_UP · SKIP', 'Keep misfire on every job document and alert when a job runs far behind its schedule.', { dur: 3 }),
+    ],
+  },
+  // live-mix only: a quiet scheduled run, a job creation, an idle poll
+  tick: {
+    name: 'Scheduled run (live)',
+    steps: [
+      ...claim('w1', 1, '02:00'),
+      hop('w1', 'reports', 'event', null, '', '', ''),
+      hop('w1', 'ses', 'event', null, '', '', ''),
+      hop('ses', 'inbox', 'event', null, '', '', ''),
+      hop('w1', 'jobdb', 'request', null, '', '', ''),
+    ],
+  },
+  tick2: {
+    name: 'Scheduled run on worker 2 (live)',
+    steps: [
+      ...claim('w2', 1, '03:00'),
+      hop('w2', 'reports', 'event', null, '', '', ''),
+      hop('w2', 'ses', 'event', null, '', '', ''),
+      hop('ses', 'inbox', 'event', null, '', '', ''),
+      hop('w2', 'jobdb', 'request', null, '', '', ''),
+    ],
+  },
+  create: {
+    name: 'Create a job (live)',
+    steps: [
+      hop('teamA', 'gw', 'request', null, '', '', ''),
+      hop('gw', 'api', 'request', null, '', '', ''),
+      hop('api', 'jobdb', 'request', null, '', '', ''),
+      hop('jobdb', 'api', 'response', null, '', '', ''),
+      hop('api', 'gw', 'response', null, '', '', ''),
+      hop('gw', 'teamA', 'response', null, '', '', ''),
+    ],
+  },
+  idle: {
+    name: 'Idle poll (live)',
+    steps: [
+      hop(W, 'jobdb', 'request', null, '', '', ''),
+      hop('jobdb', W, 'response', null, '', '', ''),
+    ],
+  },
+};
+const LIVE_MIX = [['tick', 0.3], ['tick2', 0.3], ['idle', 0.25], ['create', 0.15]];
+
+// =====================================================================
+// rendering
+// =====================================================================
+const svg = document.getElementById('dia');
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const box = id => { const n = NODES[id]; return { l: n.x - 75, r: n.x + 75, t: n.y - 56, b: n.y + 56 }; };
+
+function edgePath(a, b) {
+  const A = NODES[a], B = NODES[b], dx = B.x - A.x, dy = B.y - A.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const s = Math.sign(dx) || 1, x1 = A.x + 75 * s, x2 = B.x - 75 * s, mx = (x1 + x2) / 2;
+    return { d: `M${x1} ${A.y} C${mx} ${A.y} ${mx} ${B.y} ${x2} ${B.y}`, horiz: true };
+  }
+  const s = Math.sign(dy) || 1, y1 = A.y + 56 * s, y2 = B.y - 56 * s, my = (y1 + y2) / 2;
+  return { d: `M${A.x} ${y1} C${A.x} ${my} ${B.x} ${my} ${B.x} ${y2}`, horiz: false };
+}
+
+function buildSvg() {
+  let s = `<defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#eef1f5"/></pattern>
+    <filter id="glow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect id="bg" x="-2000" y="-1200" width="5600" height="3000" fill="url(#grid)"/>`;
+  // zones: grouped by developer role (solid = outside our code, dashed = our backend)
+  for (const z of ZONES) {
+    const [f, st, lc] = ZT[z.t];
+    s += `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="18" fill="${f}" stroke="${st}" stroke-width="1.6"${z.dash ? ' stroke-dasharray="7 5"' : ''}/>`;
+    s += `<text class="zl" x="${z.x + 16}" y="${z.y + 24}" style="fill:${lc}">${esc(z.label)}</text>`;
+    if (z.cap) s += `<text class="nl" x="${z.x + 16}" y="${z.y + 41}" style="fill:${lc};opacity:.75">${esc(z.cap)}</text>`;
+  }
+  // edges + labels
+  s += '<g id="edges">';
+  EDGE_DEFS.forEach(([a, b], i) => { s += `<path class="edge" id="e${i}" d="${edgePath(a, b).d}"/>`; });
+  s += '</g><g id="elabels"></g><g id="ripples"></g><g id="nodes">';
+  // nodes
+  for (const [id, n] of Object.entries(NODES)) {
+    const [bg, st] = PAL[id];
+    let dots = '';
+    const r = n.replicas || 0;
+    for (let k = 0; k < r; k++) dots += `<circle cx="${75 + (k - (r - 1) / 2) * 10}" cy="104" r="3.2" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>`;
+    s += `<g class="node" data-id="${id}" transform="translate(${n.x - 75},${n.y - 56})">
+      <rect class="sel" x="-6" y="-6" width="162" height="124" rx="18" fill="none" stroke="#0b5cff" stroke-width="2" stroke-dasharray="6 5" opacity="0"/>
+      <rect class="card" width="150" height="112" rx="14" fill="${bg}" stroke="${st}" stroke-width="1.6"/>
+      <rect x="49" y="8" width="52" height="52" rx="12" fill="#fff" opacity=".85"/>
+      <g transform="translate(52.9,11.9) scale(.92)">${LOGO[id]}</g>
+      <text class="nlab" x="75" y="78">${esc(n.label)}</text>
+      <text class="nsub" x="75" y="95">${esc(n.sub)}</text>${dots}
+      <g class="tag" style="display:none"><rect y="-11" height="20" rx="10"/><text y="3.5"></text></g>
+    </g>`;
+  }
+  s += '</g><g id="packets"></g>';
+  svg.innerHTML = s;
+}
+buildSvg();
+
+const EDGES = EDGE_DEFS.map(([a, b, label], i) => {
+  const el = document.getElementById('e' + i);
+  return { a, b, label, el, len: el.getTotalLength(), hot: 0, horiz: edgePath(a, b).horiz };
+});
+// protocol labels at the path midpoint: above horizontal edges, right of vertical ones
+(function labels() {
+  const g = document.getElementById('elabels');
+  for (const e of EDGES) {
+    const p = e.el.getPointAtLength(e.len / 2);
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('class', 'elbl');
+    if (e.horiz) { t.setAttribute('x', p.x); t.setAttribute('y', p.y - 8); t.setAttribute('text-anchor', 'middle'); }
+    else { t.setAttribute('x', p.x + 8); t.setAttribute('y', p.y + 4); }
+    t.textContent = e.label;
+    g.appendChild(t);
+  }
+})();
+const NODE_EL = {};
+document.querySelectorAll('.node').forEach(g => { NODE_EL[g.dataset.id] = { g, act: 0, tagTok: 0 }; });
+
+// =====================================================================
+// engine: one rAF loop, own timer queue, everything scaled by speed
+// =====================================================================
+let speed = 1, paused = false, GEN = 0, current = 'happy', view = 'flow';
+let timers = [], packets = [], ripples = [], dashOffset = 0, flows = 0;
+const stats = { req: 0, hit: 0, evt: 0, res: 0 };
+const STAT_EL = { req: document.getElementById('stReq'), hit: document.getElementById('stHit'), evt: document.getElementById('stEvt'), res: document.getElementById('stRes') };
+
+function wait(sec, cb) { timers.push({ t: sec, cb, gen: GEN }); }
+const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function bump(k, n = 1) { stats[k] += n; STAT_EL[k].textContent = stats[k]; }
+
+function findEdge(from, to) {
+  for (const e of EDGES) {
+    if (e.a === from && e.b === to) return { e, rev: false };
+    if (e.a === to && e.b === from) return { e, rev: true };
+  }
+  throw new Error('no edge ' + from + ' -> ' + to);
+}
+function heat(e, color) { e.hot++; e.el.classList.add('hot'); e.el.style.stroke = color; }
+function cool(e) { e.hot = Math.max(0, e.hot - 1); if (!e.hot) { e.el.classList.remove('hot'); e.el.style.stroke = ''; } }
+
+function activate(id, sec) {
+  const n = NODE_EL[id]; n.act++; n.g.classList.add('active');
+  wait(sec, () => { n.act = Math.max(0, n.act - 1); if (!n.act) n.g.classList.remove('active'); });
+}
+function ripple(id) {
+  const b = box(id), el = document.createElementNS(NS, 'rect');
+  el.setAttribute('rx', 16); el.setAttribute('fill', 'none'); el.setAttribute('stroke', PAL[id][1]); el.setAttribute('stroke-width', 2.5);
+  document.getElementById('ripples').appendChild(el);
+  ripples.push({ el, b, age: 0 });
+}
+function showTag(id, text, color, sec) {
+  const n = NODE_EL[id], tag = n.g.querySelector('.tag'), r = tag.querySelector('rect'), t = tag.querySelector('text');
+  const w = Math.max(34, text.length * 6.3 + 16);
+  t.textContent = text; r.setAttribute('width', w); r.setAttribute('x', 152 - w); r.setAttribute('fill', color);
+  t.setAttribute('x', 152 - w / 2); tag.setAttribute('transform', 'translate(0,0)');
+  tag.style.display = '';
+  const tok = ++n.tagTok;
+  wait(sec, () => { if (n.tagTok === tok) tag.style.display = 'none'; });
+}
+
+function spawn(from, to, kind, tag, onArrive) {
+  const { e, rev } = findEdge(from, to), color = KIND[kind];
+  const g = document.createElementNS(NS, 'g');
+  const trail = [];
+  for (let i = 0; i < 6; i++) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('r', 6 - i * 0.8); c.setAttribute('fill', color); c.setAttribute('opacity', (0.35 - i * 0.05).toFixed(2));
+    c.style.display = 'none'; g.appendChild(c); trail.push(c);
+  }
+  const head = document.createElementNS(NS, 'circle');
+  head.setAttribute('r', 7.5); head.setAttribute('fill', color); head.setAttribute('stroke', '#fff'); head.setAttribute('stroke-width', 2); head.setAttribute('filter', 'url(#glow)');
+  g.appendChild(head);
+  let txt = null;
+  if (tag) { txt = document.createElementNS(NS, 'text'); txt.setAttribute('class', 'ptag'); txt.setAttribute('fill', color); txt.textContent = tag; g.appendChild(txt); }
+  document.getElementById('packets').appendChild(g);
+  heat(e, color);
+  if (to === 'jobdb' && kind === 'request') bump('req');
+  const p = { e, rev, kind, to, dist: 0, hist: [], g, head, trail, txt, onArrive };
+  packets.push(p);
+  place(p, 0);
+}
+function place(p, t) {
+  const { e } = p, len = e.len;
+  let s = ease(t) * len; if (p.rev) s = len - s;
+  const a = e.el.getPointAtLength(s);
+  const b = s + 1 <= len ? e.el.getPointAtLength(s + 1) : e.el.getPointAtLength(s - 1);
+  let tx = b.x - a.x, ty = b.y - a.y; if (s + 1 > len) { tx = -tx; ty = -ty; }
+  const m = Math.hypot(tx, ty) || 1, off = p.rev ? -6 : 6;
+  const x = a.x + (-ty / m) * off, y = a.y + (tx / m) * off;
+  p.hist.unshift([x, y]); if (p.hist.length > 24) p.hist.pop();
+  p.head.setAttribute('cx', x); p.head.setAttribute('cy', y);
+  p.trail.forEach((c, i) => {
+    const h = p.hist[(i + 1) * 3];
+    if (h) { c.style.display = ''; c.setAttribute('cx', h[0]); c.setAttribute('cy', h[1]); } else c.style.display = 'none';
+  });
+  if (p.txt) { p.txt.setAttribute('x', x); p.txt.setAttribute('y', y - 13); }
+}
+function arrive(p) {
+  p.g.remove(); cool(p.e);
+  activate(p.to, 0.45); ripple(p.to);
+  if (SIDE.has(p.to) && p.kind === 'event') bump('evt');
+  if (p.kind === 'error') bump('res');
+  p.onArrive && p.onArrive();
+}
+
+function update(k) {
+  dashOffset -= 40 * k;
+  for (const e of EDGES) if (!e.hot) e.el.style.strokeDashoffset = dashOffset;
+  // timers
+  for (const tm of timers) tm.t -= k;
+  const due = timers.filter(tm => tm.t <= 0);
+  if (due.length) { timers = timers.filter(tm => tm.t > 0); due.forEach(tm => { if (tm.gen === GEN) tm.cb(); }); }
+  // packets
+  const done = [];
+  for (const p of packets) {
+    p.dist += 260 * k;
+    const t = Math.min(1, p.dist / p.e.len);
+    place(p, t);
+    if (t >= 1) done.push(p);
+  }
+  if (done.length) { packets = packets.filter(p => !done.includes(p)); done.forEach(arrive); }
+  // ripples: grow ~14px and fade over 0.5s
+  ripples = ripples.filter(r => {
+    r.age += k;
+    const q = r.age / 0.5;
+    if (q >= 1) { r.el.remove(); return false; }
+    const g = 14 * q;
+    r.el.setAttribute('x', r.b.l - g); r.el.setAttribute('y', r.b.t - g);
+    r.el.setAttribute('width', 150 + 2 * g); r.el.setAttribute('height', 112 + 2 * g);
+    r.el.setAttribute('opacity', (1 - q).toFixed(3));
+    return true;
+  });
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused && view === 'flow') update(dt * speed);
+  requestAnimationFrame(frame);
+}
+
+// ---------------- step runner ----------------
+// o.footer: top-level scenario (updates footer, reading pauses); o.fast: live mode (short pauses, no packet tags)
+function runFlow(steps, o) {
+  let i = 0;
+  const next = () => {
+    if (i >= steps.length) { o.done && o.done(); return; }
+    const st = steps[i];
+    if (o.footer) showStep(i, steps.length, st);
+    i++;
+    exec(st, o, next);
+  };
+  next();
+}
+function exec(st, o, next) {
+  if (st.type === 'hop') {
+    // fan-out / fan-in: an array on one side = one packet per pair, all at once; otherwise `count` packets 0.25 s apart
+    const fan = Array.isArray(st.to) ? st.to.map(t => [st.from, t]) : Array.isArray(st.from) ? st.from.map(f => [f, st.to]) : null;
+    const pairs = fan || Array.from({ length: st.count || 1 }, () => [st.from, st.to]);
+    const n = pairs.length; let got = 0;
+    pairs.forEach(([from, to], k) => {
+      const kind = st.kinds ? st.kinds[k] : st.kind;
+      const tag = o.fast ? null : (st.tags ? st.tags[k] : st.tag);
+      const fire = () => spawn(from, to, kind, tag, () => { if (++got === n) wait(o.footer ? 1.1 : 0.08, next); });
+      if (k && !fan) wait(k * 0.25, fire); else fire();
+    });
+  } else if (st.type === 'node') {
+    const d = o.fast ? Math.max(0.25, (st.dur || 2.2) * 0.3) : (o.footer ? (st.dur || 2.4) : (st.dur || 1));
+    [].concat(st.id).forEach((id, k) => {
+      activate(id, d); ripple(id);
+      const tag = st.tags ? st.tags[k] : st.tag;
+      if (tag) showTag(id, tag, st.tagColor || '#0b5cff', d + (o.fast ? 0.15 : 0.6));
+    });
+    if (st.stat === 'claim') bump('hit');
+    wait(d, next);
+  } else if (st.type === 'fork') {
+    runFlow(st.steps, { fast: o.fast });
+    wait(o.footer ? 2.0 : 0.05, next);
+  }
+}
+
+// ---------------- footer ----------------
+const badge = document.getElementById('badge'), fTitle = document.getElementById('ftitle'), fProto = document.getElementById('fproto'), fText = document.getElementById('ftext'), dotsEl = document.getElementById('dots');
+function buildDots(n) { dotsEl.innerHTML = '<i></i>'.repeat(n); }
+function showStep(i, total, st) {
+  badge.className = ''; badge.textContent = `${i + 1}/${total}`;
+  fTitle.textContent = st.title; fProto.textContent = st.proto || '';
+  fText.textContent = st.text || ''; fText.title = st.text || '';
+  [...dotsEl.children].forEach((d, k) => d.classList.toggle('on', k <= i));
+}
+
+// ---------------- scenarios / live ----------------
+function reset() {
+  GEN++;
+  timers = [];
+  packets.forEach(p => p.g.remove()); packets = [];
+  ripples.forEach(r => r.el.remove()); ripples = [];
+  EDGES.forEach(e => { e.hot = 0; e.el.classList.remove('hot'); e.el.style.stroke = ''; });
+  Object.values(NODE_EL).forEach(n => { n.act = 0; n.g.classList.remove('active'); n.g.querySelector('.tag').style.display = 'none'; });
+  flows = 0;
+  for (const k in stats) { stats[k] = 0; STAT_EL[k].textContent = 0; }
+}
+function start(id) {
+  current = id;
+  document.querySelectorAll('#scSeg button').forEach(b => b.classList.toggle('on', b.dataset.sc === id));
+  reset();
+  if (id === 'live') startLive(); else runMain(id);
+}
+function runMain(id) {
+  const steps = SCEN[id].steps;
+  buildDots(steps.length);
+  runFlow(steps, {
+    footer: true,
+    done: () => {
+      badge.className = ''; badge.textContent = '✓';
+      fTitle.textContent = '✓ Journey complete'; fProto.textContent = SCEN[id].name;
+      fText.textContent = 'Looping in 2.5 s · press R to replay now, or pick another scenario.'; fText.title = '';
+      wait(2.5, () => runMain(id));
+    },
+  });
+}
+function pickMix() {
+  let r = Math.random();
+  for (const [id, w] of LIVE_MIX) { if ((r -= w) <= 0) return id; }
+  return 'tick';
+}
+function startLive() {
+  dotsEl.innerHTML = '';
+  badge.className = 'live'; badge.textContent = 'LIVE';
+  fTitle.textContent = 'Live mixed traffic'; fProto.textContent = '60% scheduled runs · 25% idle polls · 15% new jobs';
+  const tick = () => {
+    if (flows < 14) {
+      const id = pickMix(); flows++;
+      runFlow(SCEN[id].steps, { fast: true, done: () => { flows--; } });
+    }
+    wait(0.55 + Math.random() * 0.6, tick);
+  };
+  const info = () => {
+    const cr = Math.round(100 * stats.hit / Math.max(1, stats.req));
+    fText.textContent = `${flows} flows and ${packets.length} packets in flight · both workers poll the same Job DB every second; one atomic findOneAndUpdate per claim decides who runs what · claims/DB calls ≈ ${cr}%`;
+    fText.title = '';
+    wait(0.5, info);
+  };
+  tick(); info();
+}
+
+// ---------------- drawer ----------------
+const drawer = document.getElementById('drawer');
+let selected = null;
+function openDrawer(id) {
+  const n = NODES[id], inf = INFO[id], [bg, st] = PAL[id];
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = id; NODE_EL[id].g.querySelector('.sel').setAttribute('opacity', 1);
+  document.getElementById('dHead').style.background = bg;
+  document.getElementById('dHead').style.borderBottomColor = st;
+  document.getElementById('dLogo').innerHTML = `<svg width="44" height="44" viewBox="0 0 48 48">${LOGO[id]}</svg>`;
+  document.getElementById('dTitle').textContent = n.label;
+  document.getElementById('dTag').textContent = inf.tag;
+  const body = document.getElementById('dBody');
+  const core = CORE[id];
+  body.innerHTML = `<div>${inf.desc}</div><h4>Key points</h4><ul>${inf.points.map(p => `<li>${p}</li>`).join('')}</ul><h4>Example</h4><pre></pre>`
+    + (core ? `<a class="core-link" href="00_Core_Components.html#${core[0]}/what">🧩 Basics: ${esc(core[1])} in Core Components →</a>` : '');
+  body.querySelector('pre').textContent = inf.code;
+  body.scrollTop = 0;
+  drawer.classList.add('open'); drawer.setAttribute('aria-hidden', 'false');
+}
+function closeDrawer() {
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = null; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true');
+}
+svg.addEventListener('click', ev => {
+  const g = ev.target.closest('.node');
+  if (g) openDrawer(g.dataset.id); else closeDrawer();
+});
+document.getElementById('dClose').onclick = closeDrawer;
+
+// ---------------- legend popover ----------------
+const legendPop = document.getElementById('legendPop'), legendBtn = document.getElementById('legendBtn');
+document.getElementById('lgKinds').innerHTML = Object.entries(KIND).map(([k, c]) => `<span><i style="--c:${c}"></i>${k}</span>`).join('');
+const legendOpen = () => legendPop.classList.contains('open');
+function setLegend(open) {
+  if (open) {   // point the little arrow at the button
+    const r = legendBtn.getBoundingClientRect();
+    legendPop.style.setProperty('--arrow', Math.max(12, window.innerWidth - 16 - (r.left + r.width / 2) - 6) + 'px');
+  }
+  legendPop.classList.toggle('open', open);
+  legendBtn.classList.toggle('on', open);
+  legendBtn.setAttribute('aria-expanded', open);
+}
+legendBtn.addEventListener('click', () => setLegend(!legendOpen()));
+document.addEventListener('mousedown', ev => {
+  if (legendOpen() && !legendPop.contains(ev.target) && !legendBtn.contains(ev.target)) setLegend(false);
+});
+
+// ---------------- controls ----------------
+function setSpeed(v) { speed = v; document.querySelectorAll('#spSeg button').forEach(b => b.classList.toggle('on', +b.dataset.sp === v)); }
+function togglePause() { paused = !paused; document.getElementById('pauseBtn').textContent = paused ? '▶ Play' : '⏸ Pause'; }
+document.querySelectorAll('header button').forEach(b => b.addEventListener('click', () => b.blur()));
+document.querySelectorAll('#scSeg button').forEach(b => b.onclick = () => start(b.dataset.sc));
+document.querySelectorAll('#spSeg button').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp));
+document.getElementById('pauseBtn').onclick = togglePause;
+document.getElementById('replayBtn').onclick = () => start(current);
+document.addEventListener('keydown', ev => {
+  if (ev.target.closest && ev.target.closest('input,textarea')) return;
+  if (view !== 'flow' || ev.ctrlKey || ev.metaKey || ev.altKey) return;   // shortcuts drive the Data flow tab only
+  if (ev.code === 'Space') { ev.preventDefault(); togglePause(); }
+  else if (ev.key === '1') setSpeed(0.5);
+  else if (ev.key === '2') setSpeed(1);
+  else if (ev.key === '3') setSpeed(2);
+  else if (ev.key === 'r' || ev.key === 'R') start(current);
+  else if (ev.key === 'l' || ev.key === 'L') setLegend(!legendOpen());
+  else if (ev.key === 'Escape') { if (legendOpen()) setLegend(false); else closeDrawer(); }
+});
+
+
+
+// ====================================================================
+// interview content: copied verbatim from 08_Job_Scheduler.html (v2.0)
+// ====================================================================
+const CONTENT = {
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Job types, precision, scale, "run twice?".',
+      lines: [
+        ['I', 'Design a distributed job scheduler: cron jobs for our services.'],
+        ['C', 'Recurring cron jobs only, or one-off delayed jobs too?'],
+        ['I', 'Both.'],
+        ['C', 'How many jobs, and how precise must start times be?'],
+        ['I', 'About a million jobs; starting within a few seconds is fine.'],
+        ['C', 'Can a job ever run twice, or must it be exactly once?'],
+        ['I', 'Business says "never twice".'],
+        ['C', 'I\'ll be honest about that: I\'ll guarantee it never starts on two workers at once, and make side effects idempotent, because exactly-once execution isn\'t possible with crashes.'],
+        ['P', 'Write: cron + one-off · 1 M jobs · seconds precision · time zones · never twice → idempotency.'],
+      ],
+      avoid: 'Promising exactly-once execution.',
+    },
+    {
+      t: 'Estimate the scale', min: 3, goal: 'Claims per second, not storage.',
+      lines: [
+        ['C', '1 M jobs, mostly daily or hourly → peak maybe **a few thousand claims/s**, with spikes at round times like 00:00.'],
+        ['C', 'Job documents ~1 KB → **1 GB**: fits on one replica set.'],
+        ['C', '20 workers polling every second is only 20 queries/s plus the claims.'],
+        ['P', 'The hard part is correctness under races and crashes, not volume.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 5, goal: 'Job document with a lease.',
+      lines: [
+        ['C', '`POST /jobs { name, cron, tz, payload, misfire }`, pause, resume, `POST /jobs/{id}/trigger`, `GET /jobs/{id}/runs`.'],
+        ['C', '`jobs { _id, cron, tz, status, nextRunAt, lockedBy, leaseUntil, fence, attempts, misfire }`.'],
+        ['C', '`runs { _id: "job-7@2026-11-13T02:00", emailSent, status }`: one per scheduled run.'],
+        ['C', 'Indexes `{status, nextRunAt}` and `{status, leaseUntil}`.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'API, Job DB, stateless workers.',
+      lines: [
+        ['P', 'Draw: Owner → Job API → Job DB ← Workers → Report Store / Email.'],
+        ['C', 'Workers poll every second and claim one due job with an atomic findOneAndUpdate: RUNNING, lockedBy, lease 60 s, fence + 1.'],
+        ['C', 'Run, write with the fence, record side effects in the run log, then complete only if lockedBy and fence still match.'],
+        ['C', 'Next run from CronExpression plus the job\'s ZoneId.'],
+        ['I', 'Why not a single leader that dispatches?'],
+        ['C', 'Possible, with ZooKeeper or ShedLock, but then I need leader failover and fencing anyway. Here the DB arbitrates and any worker can die.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Race, crash, zombie, retries, misfire.',
+      lines: [
+        ['I', 'Two workers poll at the same moment.'],
+        ['C', 'Status is in the claim filter; the update is atomic on one document, so the second gets null.'],
+        ['I', 'A worker crashes mid-job.'],
+        ['C', 'The claim also matches RUNNING with an expired lease; another worker re-runs it. At-least-once, so a run key jobId + scheduledAt dedupes the email.'],
+        ['I', 'A worker freezes in a GC pause past its lease.'],
+        ['C', 'Fencing token: the new owner has fence 2, the store rejects fence 1, and the zombie\'s complete matches 0.'],
+        ['I', 'The job keeps failing.'],
+        ['C', 'Backoff with attempts, then FAILED and an alert.'],
+        ['I', 'The cluster was down for three hours.'],
+        ['C', 'Per-job misfire policy: fire once, or catch up each window.'],
+      ],
+      avoid: 'Saying "the lock prevents double runs": without fencing a paused worker still writes.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: jobs in MongoDB with leases, atomic claims, heartbeats, fencing tokens, idempotent runs by scheduled time, backoff to FAILED, misfire policy.'],
+        ['C', 'Next: shard the poll for millions of jobs, priority lanes, per-tenant quotas, a Kafka dispatch for heavy jobs, and a "schedule lag" dashboard.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): 1–2 minutes, pause between paragraphs
+    summary: [
+      "I'd store every job as a **document in MongoDB**: the cron expression, the time zone, `nextRunAt`, a status, and a **lease**, meaning `lockedBy`, `leaseUntil` and a `fence` counter. There's no leader. A pool of stateless Spring Boot **workers** polls every second, and the claim is a single `findOneAndUpdate`: find a job that's SCHEDULED and due, or RUNNING with an expired lease, set it to RUNNING with my worker id and a 60-second lease, and increment the fence. Because that's **one atomic update** on one document, two workers can never start the same run; the loser just gets null.",
+      "While the job runs, the worker **heartbeats** the lease every 20 seconds, but only with a filter on its own id and fence, so if the update matches nothing it knows it lost the job and stops. When it's done, it **completes** the same way, conditional on still owning the lease, and computes the next run with Spring's `CronExpression` in the job's `ZoneId`, so daylight saving is handled.",
+      "If a worker crashes, its lease expires and another worker picks the job up, so execution is **at-least-once**, not exactly-once. That's why side effects are idempotent: I keep a run log keyed by **job id plus scheduled time**, and the report is an upsert with the same id. The nastier case is a worker that freezes in a long GC pause and wakes up thinking it still owns the job. That's what the **fencing token** is for: the new owner has fence 2, and the store only accepts writes with a newer fence, so the zombie's write is rejected.",
+      "Failures retry with **exponential backoff** and an attempts counter, and after five tries the job parks as FAILED and the owner gets an alert. After an outage, each job has a **misfire policy**: fire once and jump to the next slot for things like reports, or catch up every window for hourly billing. If someone asks why not ZooKeeper or ShedLock with a single leader: that works, but you still need fencing for a paused leader, and here the database already does the arbitration.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> create / pause / trigger / delete jobs; cron with time zone and one-off delayed jobs; retries with backoff; run history; misfire policy.</li>
+        <li><b>Non-functional:</b> no single point of failure; a run never starts on two workers at once; survive worker crashes and pauses; start within seconds; ~1 M jobs.</li>
+        <li><b>Honest guarantee:</b> at-least-once execution + idempotent side effects (exactly-once is not possible with crashes).</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Jobs</td><td class="m">1 M × ~1 KB</td><td>≈ 1 GB: one replica set</td></tr>
+        <tr><td>Claims</td><td class="m">peaks at 00:00</td><td>a few k/s → jitter, batches</td></tr>
+        <tr><td>Polling</td><td class="m">20 workers × 1/s</td><td>20 queries/s + claims</td></tr>
+        <tr><td>Precision</td><td class="m">poll + claim</td><td>≈ 1–2 s late at most</td></tr></table>` },
+      { h: '3 · API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">POST /jobs</td><td>{ name, cron, tz, payload, misfire } → 201 { id, nextRunAt }</td></tr>
+        <tr><td class="m">POST /jobs/{id}/pause · /resume</td><td>stop / restart scheduling</td></tr>
+        <tr><td class="m">POST /jobs/{id}/trigger</td><td>run now, through the same claim path</td></tr>
+        <tr><td class="m">GET /jobs/{id}/runs</td><td>history, durations, failures</td></tr></table>` },
+      { h: '4 · Data', color: '#8f4fc4', html: `<pre>// jobs
+{ _id: "job-7", name: "daily-report",
+  cron: "0 0 2 * * *", tz: "Asia/Kolkata",
+  status: "RUNNING", nextRunAt: ISODate(…),
+  lockedBy: "w1", leaseUntil: ISODate(…),
+  fence: 3, attempts: 0, misfire: "FIRE_ONCE" }
+// indexes { status: 1, nextRunAt: 1 }, { status: 1, leaseUntil: 1 }
+
+// runs: one per scheduled time (TTL index on old ones)
+{ _id: "job-7@2026-11-13T02:00", by: "w1", fence: 3,
+  status: "OK", emailSent: true }
+
+// reports: fenced resource
+{ _id: "rpt-11-13", data: …, lastFence: 3 }</pre>` },
+      { h: '5 · Job lifecycle', color: '#2f6fe0', html: `<ol>
+        <li>Claim: <code>findOneAndUpdate</code> (SCHEDULED &amp; due, or RUNNING &amp; lease expired) → RUNNING, lease 60 s, <code>$inc fence</code>.</li>
+        <li>Run: heartbeat every 20 s (filter lockedBy + fence); write with the fence; check / write the run log.</li>
+        <li>Complete (same filter) → SCHEDULED, <code>nextRunAt</code> from cron + ZoneId.</li>
+        <li>Fail → backoff, <code>attempts + 1</code>; over max → FAILED + alert.</li></ol>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>No leader: any worker can die; the DB arbitrates every claim.</li>
+        <li>Crash → lease expiry → re-run (at-least-once) → idempotent run keys.</li>
+        <li>GC pause / zombie → fencing tokens checked by the resource and by complete.</li>
+        <li>Lease ≫ heartbeat interval and longer than a DB failover; misfire policy after outages.</li></ul>` },
+    ],
+    decisions: [
+      ['DB leases, no leader', 'Any worker can claim; nothing to elect or fail over.', 'Every worker polls the DB.'],
+      ['Atomic findOneAndUpdate claim', 'Two workers never start the same run.', 'One DB round trip per claim.'],
+      ['Lease + heartbeat', 'Crashed workers\' jobs come back automatically.', 'Short lease = false expiries; long lease = slow recovery.'],
+      ['Fencing tokens', 'A paused zombie cannot overwrite fresh results.', 'Every resource must support conditional writes.'],
+      ['At-least-once + run keys', 'Honest guarantee that survives crashes.', 'Jobs must be written idempotently.'],
+      ['Backoff → FAILED', 'Broken jobs stop consuming workers and alert a human.', 'Late runs; misfire handling needed.'],
+      ['vs leader + ZooKeeper / ShedLock', 'Simpler mental model, one dispatcher.', 'Leader is a bottleneck and needs fencing too.'],
+    ],
+    code: [
+      { t: 'Worker: poll and claim atomically', code: `@Scheduled(fixedDelay = 1000)
+void poll() {
+  Instant now = Instant.now();
+  Query due = query(new Criteria().orOperator(
+      where("status").is("SCHEDULED").and("nextRunAt").lte(now),
+      where("status").is("RUNNING").and("leaseUntil").lt(now)));   // crashed owner
+  Update claim = new Update()
+      .set("status", "RUNNING").set("lockedBy", workerId)
+      .set("leaseUntil", now.plusSeconds(60))
+      .inc("fence", 1);                                            // fencing token
+  Job job = mongo.findAndModify(due, claim, options().returnNew(true), Job.class);
+  if (job != null) executor.submit(() -> run(job));               // null = nothing due / lost the race
+}` },
+      { t: 'Heartbeat and complete: only while we own it', code: `Query mine(Job j) {
+  return query(where("_id").is(j.id()).and("lockedBy").is(workerId).and("fence").is(j.fence()));
+}
+
+boolean heartbeat(Job j) {                                       // every 20 s while running
+  return mongo.updateFirst(mine(j), new Update().set("leaseUntil", Instant.now().plusSeconds(60)), Job.class)
+              .getMatchedCount() == 1;                            // false → we lost the job: stop
+}
+
+void complete(Job j) {
+  Update done = new Update().set("status", "SCHEDULED").set("attempts", 0)
+      .set("nextRunAt", nextRun(j.cron(), j.tz()))
+      .unset("lockedBy").unset("leaseUntil");
+  if (mongo.updateFirst(mine(j), done, Job.class).getMatchedCount() == 0)
+    log.warn("job {} fence {} lost its lease, result discarded", j.id(), j.fence());
+}` },
+      { t: 'Fenced write and idempotent run key', code: `void writeReport(Job j, Report r) {
+  try {
+    mongo.upsert(query(where("_id").is(r.id()).and("lastFence").lt(j.fence())),
+                 new Update().set("data", r.data()).set("lastFence", j.fence()),
+                 "reports");
+  } catch (DuplicateKeyException e) {                            // lastFence ≥ ours: newer owner exists
+    throw new StaleFenceException(j.id(), j.fence());
+  }
+}
+
+void emailOnce(Job j, Instant scheduledAt) {
+  String runKey = j.id() + "@" + scheduledAt;                    // scheduled time, not attempt #
+  Run run = mongo.findById(runKey, Run.class);
+  if (run != null && run.emailSent()) return;                   // a previous attempt already sent it
+  ses.send(reportMail(j), runKey);                               // provider idempotency key if supported
+  mongo.upsert(query(where("_id").is(runKey)), new Update().set("emailSent", true), Run.class);
+}` },
+      { t: 'Next run from cron + time zone, backoff on failure', code: `Instant nextRun(String cron, String tz) {
+  ZonedDateTime now = ZonedDateTime.now(ZoneId.of(tz));        // "Asia/Kolkata"
+  return CronExpression.parse(cron)                            // "0 0 2 * * *": 6 fields, seconds first
+                       .next(now).toInstant();                 // DST-aware: local 02:00, not now + 24 h
+}
+
+void fail(Job j, Exception e) {
+  int attempts = j.attempts() + 1;
+  Update u = attempts >= 5 || !isTransient(e)
+      ? new Update().set("status", "FAILED")                   // parked: alert the owner
+      : new Update().set("status", "SCHEDULED").set("attempts", attempts)
+          .set("nextRunAt", Instant.now().plus(backoff(attempts)));   // min(2^n min, 1 h) + jitter
+  mongo.updateFirst(mine(j), u.unset("lockedBy").unset("leaseUntil"), Job.class);
+}` },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    cc: { name: 'Concurrency', color: '#8f4fc4' },
+    rr: { name: 'Failures', color: '#ce3434' },
+    db: { name: 'Data & time', color: '#13968a' },
+    sc: { name: 'Scale', color: '#2f6fe0' },
+    tt: { name: 'Alternatives', color: '#c47d1e' },
+  },
+  followups: [
+    { g: 'cc', q: 'Two workers claim the same job at the same time.', what: 'With find-then-update, both run it.', why: 'The read and the write are separate operations.', how: 'One atomic `findOneAndUpdate` with `status: "SCHEDULED"` and due in the filter; the second gets null.', trade: 'Polling load on the DB grows with workers.', flow: 'race' },
+    { g: 'cc', q: 'A worker pauses (GC) past its lease and wakes up.', what: 'It believes it still owns the job.', why: 'A frozen process cannot notice time passing; its heartbeat was frozen too.', how: 'Fencing token incremented on every claim; the resource and the complete step reject older tokens.', trade: 'Every resource the job writes must support conditional writes.', flow: 'zombie' },
+    { g: 'cc', q: 'Can you guarantee a job runs exactly once?', what: 'Not for external side effects.', why: 'A worker can crash after the side effect but before recording it.', how: 'At-least-once execution + idempotent side effects: run log keyed by jobId + scheduled time, same-`_id` upserts, provider idempotency keys.', trade: 'A tiny duplicate window remains for non-idempotent externals like email.', flow: 'crash' },
+    { g: 'cc', q: 'Why increment the fence on claim and not on heartbeat?', what: 'The fence identifies one ownership period.', why: 'Heartbeats extend the same ownership; a new claim starts a new one.', how: '`$inc fence` only in the claim; heartbeat and complete filter on the current fence.', trade: 'Fences only grow: store them as 64-bit.' },
+    { g: 'rr', q: 'A worker crashes mid-job.', what: 'The job stays RUNNING with a dead owner.', why: 'Nobody calls complete.', how: 'The claim also matches `RUNNING` with `leaseUntil < now`; another worker re-claims with a new fence and re-runs.', trade: 'The job starts up to one lease late.', flow: 'crash' },
+    { g: 'rr', q: 'How long should the lease be?', what: 'Too short: healthy workers lose jobs. Too long: crashes recover slowly.', why: 'GC pauses and DB failovers can last seconds.', how: '~60 s lease, heartbeat every 20 s, so two missed heartbeats are tolerated; longer than a replica-set election.', trade: 'Crash recovery takes up to a minute.', flow: 'retry' },
+    { g: 'rr', q: 'A job keeps failing.', what: 'It retries forever and hides the problem.', why: 'A bug or a broken dependency.', how: 'Exponential backoff with jitter and a cap, max attempts → FAILED + alert; non-transient errors fail at once.', trade: 'Late runs may need a misfire decision.', flow: 'retry' },
+    { g: 'rr', q: 'The cluster was down for three hours.', what: 'Several runs were missed.', why: 'Nobody claimed them.', how: 'Per-job misfire policy: fire once, catch up each window, or skip.', trade: 'Wrong choice = four reminders at once, or missing billing windows.', flow: 'misfire' },
+    { g: 'db', q: 'The Job DB primary fails.', what: 'Claims, heartbeats and completions pause.', why: 'Replica-set election takes seconds.', how: 'Retry with backoff; leases longer than an election; jobs start a few seconds late.', trade: 'Short leases detect crashes faster but break during DB blips.' },
+    { g: 'db', q: 'Daylight saving time: what happens to "02:30 daily"?', what: 'Some days 02:30 does not exist; on others it happens twice.', why: 'Local time jumps.', how: 'Store the time zone, compute every next run with `CronExpression.next(ZonedDateTime)`, test DST days; never "+ 24 h".', trade: 'Owners must know the chosen rule; UTC jobs avoid it.' },
+    { g: 'db', q: 'How do you support one-off delayed jobs ("send in 30 minutes")?', what: 'No cron, just a time.', why: 'Same claim machinery.', how: 'Same document with `nextRunAt` and no cron; on complete set status DONE instead of rescheduling; TTL index to clean up.', trade: 'Millions of tiny jobs → shard and batch the claims.' },
+    { g: 'sc', q: 'How do you poll a million jobs efficiently?', what: 'Every worker scans for due jobs every second.', why: 'Cost grows with workers.', how: 'Index `{status, nextRunAt}`; claim small batches; shard jobs and give each worker group its own shard range.', trade: 'Shard assignment is another moving part.' },
+    { g: 'sc', q: 'Thousands of jobs are scheduled at exactly 00:00.', what: 'A burst of claims and downstream load.', why: 'Humans love round numbers.', how: 'Jitter for jobs that allow it, per-tenant quotas, rate limits per downstream, more workers at peak.', trade: 'Jobs start a few seconds later than written.' },
+    { g: 'sc', q: 'How precise are start times?', what: 'Within the poll interval plus claim latency.', why: 'Workers poll every second.', how: 'Shorter polling for urgent jobs, or an in-memory timer wheel for jobs due in the next minute, still claimed through the DB.', trade: 'More polling = more DB load.' },
+    { g: 'tt', q: 'Why not a single leader with ZooKeeper or ShedLock?', what: 'One elected leader (ZooKeeper / etcd / Kubernetes Lease) or ShedLock\'s "only one instance runs this @Scheduled" lock.', why: 'Simple for a handful of in-app jobs.', how: 'Fine for small systems; at scale the leader is a bottleneck and must fail over, and a paused leader still needs **fencing**. Per-job DB claims spread the work and survive any worker dying.', trade: 'DB polling instead of one dispatcher.', flow: 'zombie' },
+    { g: 'tt', q: 'Should due jobs go through Kafka instead of workers polling?', what: 'A dispatcher claims due jobs and publishes them; a consumer group runs them.', why: 'Separates "when" from "how many workers" and absorbs bursts.', how: 'Good for heavy jobs; keep leases and fencing, because Kafka redelivery also repeats jobs. Key by jobId for ordering.', trade: 'Two places where duplicates can happen.' },
+    { g: 'tt', q: 'Build this or use Quartz / a cloud scheduler?', what: 'Quartz (JDBC store), db-scheduler, Temporal, EventBridge Scheduler and Kubernetes CronJobs exist.', why: 'They solve claims, misfires and retries.', how: 'Use one unless you need multi-tenant, product-level scheduling; still make jobs idempotent.', trade: 'Each has its own limits (cluster setup, precision, cost).' },
+  ],
+};
+
+// =====================================================================
+// reading tabs: How to explain · Interview answer · Follow-ups (self-contained renderers)
+// =====================================================================
+const reader = document.getElementById('reader');
+// **bold** and `code` in plain-text content (same rules as engine/app.js)
+const rich = s => esc(s).replace(/"/g, '&quot;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+// old flow ids -> scenarios on the Data flow tab
+const FLOW_TO_SC = { happy: 'happy', race: 'race', crash: 'crash', zombie: 'zombie', retry: 'retry', misfire: 'misfire' };
+const STAGE_C = ['#fb923c', '#8b5cf6', '#3b82f6', '#0d9488', '#db2777', '#16a34a'];
+
+function renderExplain() {
+  const E = CONTENT.explain, total = E.reduce((a, s) => a + s.min, 0);
+  const who = { I: ['Interviewer', 'iv'], C: ['You', 'you'], P: ['Tip', 'tip'] };
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">How to explain it</span><h2>Drive the ${total}-minute interview, stage by stage</h2>
+    <p>Interviewers grade the <b>structure</b> as much as the design. Follow the stages in order and say out loud which stage you are in.</p></div></div>
+    <div class="timebar">${E.map((s, k) => `<button data-to="ex${k}" style="flex:${s.min};--c:${STAGE_C[k % STAGE_C.length]}"><b>${k + 1}. ${esc(s.t)}</b><span>${s.min} min</span></button>`).join('')}</div>
+    ${E.map((s, k) => `<section class="rcard stage" id="ex${k}" style="--c:${STAGE_C[k % STAGE_C.length]}">
+      <div class="stage-h"><span class="sn">${k + 1}</span><h3>${esc(s.t)}</h3><span class="mn">~${s.min} min</span></div>
+      <p class="goal"><b>Goal:</b> ${rich(s.goal)}</p>
+      ${s.lines.map(([w, t]) => `<div class="msg ${who[w][1]}"><span class="who">${who[w][0]}</span><p>${rich(t)}</p></div>`).join('')}
+      ${s.avoid ? `<p class="avoid"><b>⚠ Avoid</b> ${rich(s.avoid)}</p>` : ''}
+    </section>`).join('')}
+  </div>`;
+}
+
+function renderAnswer() {
+  const A = CONTENT.answer;
+  const jumps = [['a-pitch', '⏱ 60-second answer'], ...A.sections.map((s, k) => [`a-sec${k}`, s.h]), ['a-dec', '⚖ Trade-offs'], ['a-code', '{ } Code']];
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Interview-ready answer</span><h2>What to actually say</h2>
+    <p>Start with the 60-second version, then expand any section the interviewer picks.</p></div></div>
+    <nav class="jump">${jumps.map(([id, t]) => `<button data-to="${id}">${esc(t)}</button>`).join('')}</nav>
+    <section class="rcard pitch" id="a-pitch"><h3>⏱ The 60-second answer</h3>${[].concat(A.summary).map(p => `<p>${rich(p)}</p>`).join('')}</section>
+    <div class="ans-grid">${A.sections.map((s, k) => `<section class="rcard ans" id="a-sec${k}" style="--c:${s.color || '#0b5cff'}"><h3>${esc(s.h)}</h3>${s.html}</section>`).join('')}</div>
+    <section class="rcard ans" id="a-dec" style="--c:#7c3aed"><h3>⚖ Key decisions &amp; trade-offs</h3>
+      <table><thead><tr><th>Decision</th><th>Why</th><th>Trade-off</th></tr></thead><tbody>${A.decisions.map(r => `<tr>${r.map(c => `<td>${rich(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>
+    <div class="code-grid" id="a-code">${A.code.map(c => `<section class="rcard codeblk"><h3>${esc(c.t)}</h3><pre>${esc(c.code)}</pre></section>`).join('')}</div>
+  </div>`;
+}
+
+let fuGroup = 'all';
+function renderFollowups() {
+  const G = CONTENT.followGroups, F = CONTENT.followups, list = F.filter(f => fuGroup === 'all' || f.g === fuGroup);
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Follow-up questions</span><h2>What they ask next, and what to answer</h2>
+    <p>Each answer has the same shape: <b>what happens</b> → <b>why</b> → <b>how you handle it</b> → <b>the trade-off</b>. Saying the trade-off unprompted is what separates senior answers.</p></div></div>
+    <div class="chips"><button data-g="all" class="${fuGroup === 'all' ? 'on' : ''}">All <small>${F.length}</small></button>${Object.entries(G).map(([k, g]) => `<button data-g="${k}" class="${fuGroup === k ? 'on' : ''}" style="--c:${g.color}">${esc(g.name)} <small>${F.filter(f => f.g === k).length}</small></button>`).join('')}</div>
+    ${list.map((f, k) => `<details class="rcard fu" style="--c:${G[f.g].color}"${k === 0 ? ' open' : ''}>
+      <summary><span class="fu-g">${esc(G[f.g].name)}</span><span class="fu-q">${esc(f.q)}</span></summary>
+      <div class="fu-body">
+        <div><b>What happens</b><p>${rich(f.what)}</p></div>
+        <div><b>Why</b><p>${rich(f.why)}</p></div>
+        <div class="say"><b>🎤 Say this</b><p>${rich(f.how)}</p></div>
+        <div style="grid-column:1/-1"><b>Trade-off</b><p>${rich(f.trade)}</p></div>
+        ${f.flow ? `<button class="watch" data-sc="${FLOW_TO_SC[f.flow]}">▶ Watch flow: ${esc(SCEN[FLOW_TO_SC[f.flow]].name)}</button>` : ''}
+      </div></details>`).join('')}
+  </div>`;
+  reader.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { fuGroup = b.dataset.g; renderFollowups(); });
+  reader.querySelectorAll('.watch').forEach(b => b.onclick = () => { setView('flow'); start(b.dataset.sc); });
+}
+// sticky jump bars scroll inside the reading panel
+reader.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-to]');
+  if (!b) return;
+  const el = document.getElementById(b.dataset.to), bar = b.parentElement;
+  reader.scrollTo({ top: el.offsetTop - bar.offsetHeight - 8 });
+});
+
+function setView(v) {
+  view = v;
+  document.body.className = 'v-' + v;
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  if (v !== 'flow') {
+    closeDrawer(); setLegend(false);
+    if (v === 'explain') renderExplain(); else if (v === 'answer') renderAnswer(); else renderFollowups();
+    reader.scrollTop = 0;
+  }
+  last = performance.now();
+}
+document.querySelectorAll('#viewSeg button').forEach(b => b.onclick = () => { b.blur(); setView(b.dataset.view); });
+
+// ---------------- header: previous / next design + hub (engine/catalog.js) ----------------
+(function designNav() {
+  const cat = (window.SD_CATALOG || []).filter(c => c.file), at = cat.findIndex(c => c.id === 'jobs');
+  const link = (d, txt, dir) => d ? `<a href="${d.file}" title="${dir}: ${d.n} · ${esc(d.title)}">${txt}</a>` : `<span class="off" title="No ${dir.toLowerCase()} design">${txt}</span>`;
+  document.getElementById('dNav').innerHTML = link(cat[at - 1], '←', 'Previous') + link(cat[at + 1], '→', 'Next')
+    + `<a class="hub" href="../02_SD_Interview_Simulator.html" title="All designs">All designs</a>`;
+})();
+
+
+start('happy');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

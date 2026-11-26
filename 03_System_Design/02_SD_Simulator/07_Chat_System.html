@@ -1,0 +1,1451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-chat">
+<meta name="doc-version" content="v3.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat System · System Design · v3.0</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:#ffffff;color:#0f172a}
+
+/* ---------- header ---------- */
+header{height:64px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.brand .logo{flex-shrink:0}
+.brand .txt{min-width:0}
+.brand .t{font-size:16px;font-weight:800;white-space:nowrap;display:flex;align-items:baseline;gap:10px}
+.brand .t a{font-size:11.5px;font-weight:600;color:#0b5cff;text-decoration:none}
+.brand .t a:hover{text-decoration:underline}
+.brand .s{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrls{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.seg{display:flex;align-items:center;background:#f1f5f9;border-radius:10px;padding:3px;gap:2px}
+.seg .lbl{font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;padding:0 6px 0 7px}
+.seg button{border:0;background:transparent;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#475569;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.seg button:hover{color:#0f172a}
+.seg button.on{background:#fff;color:#0b5cff;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.btn{border:1px solid #e2e8f0;background:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#334155;padding:7px 12px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f8fafc}
+
+/* ---------- main / svg ---------- */
+main{position:relative;height:calc(100vh - 64px - 78px)}
+#dia{display:block;width:100%;height:100%;user-select:none}
+.hint{position:absolute;left:12px;bottom:8px;font-size:11px;color:#64748b;background:rgba(255,255,255,.85);padding:3px 8px;border-radius:6px;pointer-events:none}
+.zl{font-size:13px;font-weight:800;letter-spacing:1.2px;fill:#334155}
+.nl{font:11px ui-monospace,Consolas,monospace;fill:#64748b}
+.edge{fill:none;stroke:#94a3b8;stroke-width:2;stroke-dasharray:6 7}
+.edge.hot{stroke-dasharray:none;stroke-width:3}
+.elbl{font-size:11px;font-weight:600;fill:#64748b;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.node{cursor:pointer}
+.node .card{transition:filter .2s,stroke-width .2s;filter:drop-shadow(0 1px 3px rgba(15,23,42,.08))}
+.node:hover .card{filter:drop-shadow(0 4px 10px rgba(15,23,42,.18))}
+.node.active .card{stroke-width:3.5;filter:drop-shadow(0 0 14px rgba(11,92,255,.55))}
+.nlab{font-size:14px;font-weight:700;fill:#0f172a;text-anchor:middle}
+.nsub{font-size:11px;fill:#64748b;text-anchor:middle}
+.tag text{font-size:10.5px;font-weight:700;fill:#fff;text-anchor:middle}
+.ptag{font-size:10.5px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3.5px;stroke-linejoin:round;text-anchor:middle}
+
+/* ---------- legend popover ---------- */
+.ibtn{width:34px;padding:7px 0;text-align:center;font-size:14px;line-height:1}
+.ibtn.on{background:#eef4ff;border-color:#cfe0ff;color:#0b5cff}
+#legendPop{position:fixed;top:70px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 44px rgba(15,23,42,.2),0 3px 10px rgba(15,23,42,.08);padding:12px 14px;z-index:7;display:none}
+#legendPop.open{display:block}
+#legendPop:before{content:"";position:absolute;top:-6px;right:var(--arrow,20px);width:10px;height:10px;background:#fff;border-left:1px solid #e5e7eb;border-top:1px solid #e5e7eb;transform:rotate(45deg)}
+.lgh{font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8;margin:2px 0 8px}
+.lgk{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+.lgk span{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569}
+.lgk i{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.06),0 0 7px var(--c);background:var(--c)}
+.lgs{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:10px}
+.lgs b{display:block;font-size:16px;font-weight:800;color:#0f172a;line-height:1.15}
+.lgs span{font-size:11px;color:#475569}
+.lgn{font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:8px}
+
+/* ---------- footer ---------- */
+footer{height:78px;background:#fff;border-top:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+#badge{flex-shrink:0;min-width:52px;height:44px;padding:0 8px;border-radius:12px;background:#0b5cff;color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+#badge.live{background:#16a34a;letter-spacing:1px}
+.fmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.frow{display:flex;align-items:center;gap:8px;min-width:0}
+#ftitle{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{flex-shrink:0;font:600 11px ui-monospace,Consolas,monospace;color:#0b5cff;background:#eef4ff;border:1px solid #cfe0ff;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill:empty{display:none}
+.grow{flex:1}
+#dots{display:flex;gap:3px;flex-shrink:0}
+#dots i{display:block;width:18px;height:4px;border-radius:2px;background:#e2e8f0}
+#dots i.on{background:#0b5cff}
+#ftext{font-size:12.5px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{display:flex;gap:8px;flex-shrink:0}
+.stat{width:78px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:6px 8px}
+.stat b{display:block;font-size:18px;line-height:1.1}
+.stat span{font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#64748b;white-space:nowrap}
+
+/* ---------- drawer ---------- */
+#drawer{position:fixed;right:14px;top:76px;bottom:90px;width:380px;max-width:calc(100vw - 28px);background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.22),0 4px 14px rgba(15,23,42,.08);transform:translateX(420px);transition:transform .35s ease;display:flex;flex-direction:column;overflow:hidden;z-index:5}
+#drawer.open{transform:translateX(0)}
+.dh{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #e5e7eb}
+.dh .dl{width:52px;height:52px;border-radius:12px;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dh h3{margin:0;font-size:16px}
+.dh p{margin:2px 0 0;font-size:12px;color:#475569}
+.dh button{margin-left:auto;align-self:flex-start;border:0;background:rgba(255,255,255,.7);border-radius:8px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#334155}
+.db{padding:14px 16px 18px;overflow:auto;font-size:13px;line-height:1.5;color:#334155}
+.db h4{margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.db ul{margin:0;padding-left:18px}
+.db li{margin:3px 0}
+.db pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.db code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px}
+.core-link{display:inline-block;margin-top:14px;font-size:12.5px;font-weight:600;color:#0b5cff;text-decoration:none;background:#eef4ff;border:1px solid #cfe0ff;padding:6px 10px;border-radius:9px}
+.core-link:hover{text-decoration:underline}
+
+/* ---------- header nav + view tabs ---------- */
+.brand .s{display:flex;align-items:center;gap:6px}
+.brand .s .sub{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.brand .nav{display:flex;align-items:center;gap:1px;flex-shrink:0}
+.brand .nav a,.brand .nav span{font-size:11.5px;font-weight:700;color:#0b5cff;text-decoration:none;padding:0 4px;border-radius:5px;line-height:16px}
+.brand .nav a:hover{background:#eef4ff}
+.brand .nav span.off{color:#cbd5e1;cursor:default}
+.brand .nav a.hub{color:#64748b;font-weight:600}
+body:not(.v-flow) .flowonly{display:none}
+body:not(.v-flow) main,body:not(.v-flow) footer,body:not(.v-flow) #drawer,body:not(.v-flow) #legendPop{display:none}
+body.v-flow #reader{display:none}
+
+/* ---------- reading panel (tabs 2-4) ---------- */
+#reader{position:relative;height:calc(100vh - 64px);overflow:auto;background:#f8fafc;scroll-behavior:smooth}
+.rd{max-width:1120px;margin:0 auto;padding:18px 20px 40px}
+.rd-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:12px}
+.rd-head h2{margin:0;font-size:20px;font-weight:800}
+.rd-head p{margin:4px 0 0;font-size:13px;color:#64748b;max-width:760px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.rcard{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.05);padding:14px 16px;margin-bottom:12px;font-size:13.5px;line-height:1.55;color:#334155}
+.rcard code,.fu code,.rd td code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px;color:#0f172a}
+.rcard h3{margin:0 0 6px;font-size:15px;color:#0f172a}
+/* explain */
+.timebar{position:sticky;top:0;z-index:2;display:flex;gap:4px;background:#f8fafc;padding:6px 0 10px}
+.timebar button{min-width:126px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:6px 8px;text-align:left;cursor:pointer;font:inherit;border-top:3px solid var(--c)}
+.timebar button:hover{background:#f1f5f9}
+.timebar b{display:block;font-size:12px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timebar span{font-size:11px;color:#64748b}
+.stage{border-left:4px solid var(--c);scroll-margin-top:70px}
+.stage-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.stage-h .sn{width:24px;height:24px;border-radius:50%;background:var(--c);color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center}
+.stage-h .mn{font-size:11px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:999px;padding:1px 8px}
+.goal{margin:2px 0 10px;color:#64748b}
+.msg{display:flex;gap:10px;margin:6px 0;align-items:flex-start}
+.msg .who{flex-shrink:0;width:88px;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding-top:3px}
+.msg p{margin:0;flex:1;padding:6px 10px;border-radius:10px}
+.msg.iv .who{color:#7c3aed}.msg.iv p{background:#f5f3ff}
+.msg.you .who{color:#0b5cff}.msg.you p{background:#eef4ff}
+.msg.tip .who{color:#a16207}.msg.tip p{background:#fefce8;font-style:italic}
+.avoid{margin:10px 0 0;padding:8px 12px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+/* answer */
+.jump{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.jump button,.chips button{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:4px 11px;font:600 12px "Segoe UI",system-ui,sans-serif;color:#475569;cursor:pointer}
+.jump button:hover,.chips button:hover{border-color:#cbd5e1;color:#0f172a}
+.pitch{border-left:4px solid #0b5cff;scroll-margin-top:56px}
+.pitch p{margin:0 0 8px}.pitch p:last-child{margin:0}
+.ans-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.ans-grid .rcard{margin:0}
+.ans{border-top:4px solid var(--c);scroll-margin-top:56px}
+.ans ul,.ans ol{margin:0;padding-left:20px}.ans li{margin:3px 0}
+.ans table{border-collapse:collapse;width:100%;font-size:13px}
+.ans td,.ans th{border-bottom:1px solid #f1f5f9;padding:5px 8px;text-align:left;vertical-align:top}
+.ans th{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8}
+.ans .m{font:12px ui-monospace,Consolas,monospace;white-space:nowrap;color:#0f172a}
+.ans pre,.codeblk pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.code-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;scroll-margin-top:56px}
+.codeblk{margin:0}
+.codeblk h3{font-size:13px}
+/* follow-ups */
+.chips{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.chips button small{color:#94a3b8;font-weight:700;margin-left:2px}
+.chips button.on{background:var(--c,#0b5cff);border-color:var(--c,#0b5cff);color:#fff}
+.chips button.on small{color:rgba(255,255,255,.8)}
+.fu{padding:0;border-left:4px solid var(--c)}
+.fu summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px}
+.fu summary::-webkit-details-marker{display:none}
+.fu summary:after{content:"▸";margin-left:auto;color:#94a3b8;transition:transform .2s}
+.fu[open] summary:after{transform:rotate(90deg)}
+.fu-g{flex-shrink:0;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border-radius:999px;padding:2px 9px}
+.fu-q{font-size:14px;font-weight:700;color:#0f172a}
+.fu-body{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:0 16px 14px}
+.fu-body > div > b{display:block;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8;margin-bottom:2px}
+.fu-body p{margin:0}
+.fu-body .say{grid-column:1/-1;background:#eef4ff;border-radius:10px;padding:8px 12px}
+.fu-body .say > b{color:#0b5cff}
+.watch{grid-column:1/-1;justify-self:start;border:0;background:#0b5cff;color:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;padding:7px 14px;border-radius:9px;cursor:pointer}
+.watch:hover{background:#0a4fe0}
+</style>
+</head>
+<body class="v-flow">
+<header>
+  <div class="brand">
+    <svg class="logo" width="34" height="34" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#0b5cff"/><path d="M24 11c8 0 14.5 5.4 14.5 12.2S32 35.4 24 35.4c-1.7 0-3.3-.2-4.8-.7L12 38l2-6C11.2 29.8 9.5 26.7 9.5 23.2 9.5 16.4 16 11 24 11z" fill="#fff"/><g fill="#0b5cff"><circle cx="18" cy="23.2" r="2"/><circle cx="24" cy="23.2" r="2"/><circle cx="30" cy="23.2" r="2"/></g></svg>
+    <div class="txt">
+      <div class="t">Chat System</div>
+      <div class="s"><span class="nav" id="dNav"></span><span class="sub">WhatsApp-style chat · one WebSocket per device · Redis presence · per-conversation seq · clientMsgId dedupe · push hint + sync</span></div>
+    </div>
+  </div>
+  <div class="ctrls">
+    <div class="seg" id="viewSeg">
+      <button data-view="flow" class="on" title="Animated data flow">Data flow</button>
+      <button data-view="explain" title="How to explain it, stage by stage">Explain</button>
+      <button data-view="answer" title="Interview-ready answer">Answer</button>
+      <button data-view="followups" title="Follow-up questions">Follow-ups</button>
+    </div>
+    <div class="seg flowonly" id="scSeg"><span class="lbl">Scenario</span>
+      <button data-sc="ws" title="Why WebSockets? Polling vs one upgraded socket · server push · heartbeats">Why WS</button>
+      <button data-sc="happy" title="A → B: &quot;Hi&quot; · clientMsgId · seq · store · ack · presence · ✓✓">A → B</button>
+      <button data-sc="order" title="Group: who spoke first? Phone clocks vs server seq">Order</button>
+      <button data-sc="dup" title="Lost ack → resend · clientMsgId dedupe + unique index">Dedupe</button>
+      <button data-sc="offline" title="B is offline: push is a hint, sync is delivery">Offline</button>
+      <button data-sc="crash" title="Gateway 2 crashes: stale presence · push fallback · jittered reconnect · sync">Crash</button>
+      <button data-sc="live" title="Live mixed traffic">Live</button>
+    </div>
+    <div class="seg flowonly" id="spSeg"><span class="lbl">Speed</span>
+      <button data-sp="0.5">0.5x</button><button data-sp="1" class="on">1x</button><button data-sp="2">2x</button>
+    </div>
+    <button class="btn flowonly" id="pauseBtn">⏸ Pause</button>
+    <button class="btn flowonly" id="replayBtn">↻ Replay</button>
+    <button class="btn ibtn flowonly" id="legendBtn" title="Legend &amp; scale (L)" aria-haspopup="dialog" aria-expanded="false">ⓘ</button>
+  </div>
+</header>
+
+<main>
+  <svg id="dia" viewBox="0 0 1600 600" preserveAspectRatio="xMidYMid meet"></svg>
+  <div class="hint">Click any component for details · Space pause · 1 2 3 speed · R replay · L legend</div>
+</main>
+
+<footer>
+  <div id="badge">1/1</div>
+  <div class="fmid">
+    <div class="frow"><span id="ftitle"></span><span id="fproto" class="pill"></span><span class="grow"></span><div id="dots"></div></div>
+    <div id="ftext"></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="stReq">0</b><span>Requests</span></div>
+    <div class="stat"><b id="stHit">0</b><span>Online hits</span></div>
+    <div class="stat"><b id="stEvt">0</b><span>Events</span></div>
+    <div class="stat"><b id="stRes">0</b><span>Responses</span></div>
+  </div>
+</footer>
+
+<section id="reader" aria-live="polite"></section>
+
+<div id="legendPop" role="dialog" aria-label="Legend and scale">
+  <div class="lgh">PACKETS</div>
+  <div class="lgk" id="lgKinds"></div>
+  <div class="lgh">SCALE (FROM THE FULL DESIGN)</div>
+  <div class="lgs">
+    <div><b>10 M</b><span>open sockets at peak</span></div>
+    <div><b>100 k+</b><span>sockets per gateway</span></div>
+    <div><b>&lt; 300 ms</b><span>online delivery</span></div>
+    <div><b>2 B/day</b><span>messages · ~23 k/s</span></div>
+  </div>
+  <div class="lgn">Dashed edges crawl in the request direction · solid = packet in transit</div>
+</div>
+
+<aside id="drawer" aria-hidden="true">
+  <div class="dh" id="dHead"><div class="dl" id="dLogo"></div><div><h3 id="dTitle"></h3><p id="dTag"></p></div><button id="dClose" title="Close (Esc)">×</button></div>
+  <div class="db" id="dBody"></div>
+</aside>
+
+<script src="engine/catalog.js"></script>
+<script>
+'use strict';
+// =====================================================================
+// Chat System · Data Flow: nodes grouped by app role (client · realtime entry · app services · data · async delivery);
+// no infra containers, no CDN (chat frames are per user and live). Self-contained: no engine/ except catalog.js for prev/next.
+// Content comes from 07_Chat_System.html (v2.0): one WebSocket per device on thin gateways, Redis presence (user → gateway, TTL),
+// Chat Service dedupes by clientMsgId and assigns a per-conversation seq in MongoDB, receipts with $max, Kafka → push as a hint, sync by seq.
+// WebSockets (upgrade, 101, frames, heartbeats, reconnect with jitter) are taught HERE, not in Core Components.
+// =====================================================================
+
+const NS = 'http://www.w3.org/2000/svg';
+const KIND = { request: '#2563eb', response: '#16a34a', event: '#f97316', error: '#dc2626' };
+const CLIENTS = new Set(['userA', 'userB', 'userC']);
+const PAL = {
+  userA: ['#eef0ff', '#818cf8'], userC: ['#eef0ff', '#818cf8'], userB: ['#eef0ff', '#818cf8'],
+  lb: ['#ffffff', '#7c3aed'], ws1: ['#fff7e6', '#d97706'], ws2: ['#fff7e6', '#d97706'],
+  chat: ['#e6faf8', '#0d9488'],
+  presence: ['#fff1f2', '#dc2626'], msgdb: ['#e6f6ea', '#34a853'],
+  kafka: ['#fff0e0', '#f59e0b'], pushw: ['#ffffff', '#db2777'], fcm: ['#fff9db', '#e0b400'],
+};
+// zone tints: [fill, stroke, label] (same palette as 01_URL_Shortener.html)
+const ZT = {
+  client: ['#fed7aa', '#fb923c', '#9a3412'], entry: ['#ddd6fe', '#8b5cf6', '#5b21b6'], app: ['#bfdbfe', '#3b82f6', '#1e3a8a'],
+  data: ['#e5e7eb', '#9ca3af', '#374151'], async: ['#ffe4e6', '#fb7185', '#9f1239'],
+};
+
+// ---------------- logos (48x48 inline SVG) ----------------
+const person = c => `<circle cx="24" cy="15" r="8.5" fill="${c}"/><path d="M7 43c0-10 7.6-16 17-16s17 6 17 16z" fill="${c}"/>`;
+const gear = (c, d) => `<circle cx="19" cy="21" r="13.5" fill="none" stroke="${c}" stroke-width="6.5" stroke-dasharray="5.3 5.3"/><circle cx="19" cy="21" r="10.8" fill="${d}"/><circle cx="19" cy="21" r="4.2" fill="#fff"/>`;
+const logoBadge = (txt, c) => `<circle cx="37" cy="37" r="9" fill="${c}" stroke="#fff" stroke-width="2"/><text x="37" y="41.3" text-anchor="middle" font-size="11" font-weight="800" fill="#fff" font-family="Segoe UI,Arial,sans-serif">${txt}</text>`;
+// WebSocket-style mark: two interlocking hooks (bidirectional frames) on an amber tile
+const wsMark = n => `<rect x="4" y="5" width="36" height="34" rx="9" fill="#d97706"/><path d="M11 15h13a6 6 0 0 1 0 12h-4" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/><path d="M33 29H20a6 6 0 0 1 0-12h4" fill="none" stroke="#fde68a" stroke-width="3.2" stroke-linecap="round"/><path d="M14 12l-3 3 3 3M30 26l3 3-3 3" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>${logoBadge(n, '#92400e')}`;
+const LOGO = {
+  userA: person('#6366f1') + `<path d="M27 29h16a2.5 2.5 0 0 1 2.5 2.5v7a2.5 2.5 0 0 1-2.5 2.5h-9l-5 4v-4a2.5 2.5 0 0 1-2.5-2.5v-7A2.5 2.5 0 0 1 27 29z" fill="#fff" stroke="#4338ca" stroke-width="1.8"/><path d="M30 35h11" stroke="#4338ca" stroke-width="1.8" stroke-linecap="round"/>`,
+  userC: person('#6366f1') + `<circle cx="37" cy="36" r="8.5" fill="#fff" stroke="#d97706" stroke-width="2.2"/><path d="M37 31.5V36l3 2" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round"/>`,
+  userB: person('#6366f1') + `<path d="M28.5 33.5l4 4 7.5-8M34 33.5l4 4 7.5-8" fill="none" stroke="#0ea5e9" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`,
+  lb: `<path d="M24 3l21 21-21 21L3 24z" fill="#8b5cf6"/><path d="M12 24h9l8-7h5M21 24l8 7h5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M32 14l3 3-3 3M32 28l3 3-3 3" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  ws1: wsMark(1),
+  ws2: wsMark(2),
+  chat: `<path d="M24 5c10.5 0 19 7.2 19 16.2S34.5 37.4 24 37.4c-2.2 0-4.3-.3-6.3-.9L8 41l2.6-8.2C7.2 29.9 5 25.8 5 21.2 5 12.2 13.5 5 24 5z" fill="#0d9488"/><g fill="#fff"><circle cx="15.5" cy="21.2" r="2.8"/><circle cx="24" cy="21.2" r="2.8"/><circle cx="32.5" cy="21.2" r="2.8"/></g><text x="38" y="45" text-anchor="middle" font-size="9.5" font-weight="800" fill="#0f766e" font-family="Consolas,monospace">#42</text>`,
+  presence: `<path d="M5 31l19 8 19-8-19-8z" fill="#a41e11"/><path d="M5 24l19 8 19-8-19-8z" fill="#d82c20"/><path d="M5 17l19 8 19-8-19-8z" fill="#ff4438"/><path d="M24 12.5l1.6 3.1 3.4.4-2.5 2.2.7 3.3-3.2-1.7-3 1.7.6-3.3-2.5-2.2 3.4-.4z" fill="#fff"/><circle cx="39" cy="9" r="6" fill="#22c55e" stroke="#fff" stroke-width="2"/>`,
+  msgdb: `<path d="M24 3c8 9 12 17 12 24.5 0 8.5-5.2 13.5-10.6 15.5h-2.8C17.2 41 12 36 12 27.5 12 20 16 12 24 3z" fill="#13aa52"/><path d="M24 9v37" stroke="#0b6b33" stroke-width="2"/>`,
+  kafka: `<g stroke="#231f20" stroke-width="2.4" fill="none"><path d="M24 11v26M24 24l12-7M24 24l12 7"/></g><g fill="#fff" stroke="#231f20" stroke-width="2.8"><circle cx="24" cy="8" r="4.5"/><circle cx="24" cy="40" r="4.5"/><circle cx="24" cy="24" r="5.5"/><circle cx="37" cy="16" r="4"/><circle cx="37" cy="32" r="4"/></g>`,
+  pushw: gear('#c026d3', '#d946ef') + `<rect x="29" y="20" width="14.5" height="24" rx="3" fill="#fff" stroke="#c026d3" stroke-width="2.2"/><circle cx="36.2" cy="39.6" r="1.4" fill="#c026d3"/><circle cx="42.5" cy="21" r="3.8" fill="#ef4444" stroke="#fff" stroke-width="1.4"/>`,
+  fcm: `<path d="M9 37L14.5 5.5l7.5 14z" fill="#ffa000"/><path d="M9 37l13.5-24.5 5.5 10z" fill="#f57c00"/><path d="M9 37L33 9.5l6 27.5-15 8z" fill="#ffca28"/><path d="M9 37l15 8 15-8z" fill="#ffa000"/>`,
+};
+
+// ---------------- topology ----------------
+const NODES = {
+  userA: { x: 93, y: 125, label: 'User A', sub: 'phone · sender' },
+  userC: { x: 93, y: 300, label: 'User C', sub: 'group · clock 5 s slow' },
+  userB: { x: 93, y: 475, label: 'User B', sub: 'phone · recipient' },
+  lb: { x: 300, y: 300, label: 'Load Balancer', sub: 'L4 · per connection', replicas: 2 },
+  ws1: { x: 520, y: 170, label: 'WS Gateway 1', sub: 'sockets of A, C' },
+  ws2: { x: 520, y: 470, label: 'WS Gateway 2', sub: 'socket of B' },
+  presence: { x: 800, y: 120, label: 'Presence', sub: 'Redis · user → gw · 60 s', replicas: 2 },
+  msgdb: { x: 1040, y: 120, label: 'Message DB', sub: 'MongoDB · by conv', replicas: 3 },
+  chat: { x: 960, y: 470, label: 'Chat Service', sub: 'dedupe · seq · route', replicas: 3 },
+  kafka: { x: 1260, y: 470, label: 'Kafka', sub: 'topic notify · key = user', replicas: 3 },
+  pushw: { x: 1480, y: 470, label: 'Push Worker', sub: '@KafkaListener → FCM', replicas: 2 },
+  fcm: { x: 1480, y: 170, label: 'FCM / APNs', sub: 'push provider · external' },
+};
+// grouped by developer role, not by infrastructure
+const ZONES = [
+  { x: 8, y: 8, w: 170, h: 584, t: 'client', label: 'CLIENT', cap: 'phones · 1 socket each' },
+  { x: 190, y: 8, w: 510, h: 584, t: 'entry', label: 'REALTIME ENTRY', cap: 'LB · WebSocket gateways hold sockets' },
+  { x: 712, y: 8, w: 420, h: 300, t: 'data', label: 'DATA', cap: 'presence · messages · receipts', dash: true },
+  { x: 780, y: 320, w: 352, h: 272, t: 'app', label: 'APP SERVICES', cap: 'Spring · stateless', dash: true },
+  { x: 1144, y: 8, w: 448, h: 584, t: 'async', label: 'ASYNC DELIVERY', cap: 'offline users: Kafka → push hint', dash: true },
+];
+// [from, to, protocol label]; the path direction is the request direction (dashes crawl that way).
+const EDGE_DEFS = [
+  ['userA', 'lb', 'WSS'], ['userC', 'lb', ''], ['userB', 'lb', 'WSS'],
+  ['lb', 'ws1', 'Upgrade'], ['lb', 'ws2', 'pinned TCP'],
+  ['ws1', 'presence', 'SET · EXPIRE'], ['ws2', 'presence', ''],
+  ['ws1', 'chat', ''], ['ws2', 'chat', 'frames · gRPC'],
+  ['chat', 'presence', 'GET user:B'], ['chat', 'msgdb', '$inc seq · insert'],
+  ['chat', 'kafka', 'notify (offline)'], ['kafka', 'pushw', 'poll'], ['pushw', 'fcm', 'HTTP v1'],
+];
+
+// ---------------- drawer content ----------------
+const INFO = {
+  userA: {
+    tag: 'Sender · mobile app with one open WebSocket',
+    desc: 'The app keeps <b>one WebSocket</b> open to a gateway, sends each message with a <b>clientMsgId</b> generated on the phone, keeps it in a local <b>outbox</b> until the server acks it, and remembers the <b>last seq</b> it has per conversation.',
+    points: ['clientMsgId makes resends recognisable; lastSeq makes catching up a single query', 'No client id → every resend is a new message; no lastSeq → the app cannot tell what it missed', 'One tick ✓ = stored on the server, two ticks ✓✓ = the recipient\'s device acked it', 'Reconnect with exponential backoff <b>+ jitter</b>, resend the outbox, then sync from lastSeq'],
+    code: `// mobile / web client: one socket, outbox until ack
+const ws = new WebSocket("wss://chat.example.com/ws?ticket=" + ticket);
+function send(conv, text) {
+  const m = { type: "send", conv, clientMsgId: crypto.randomUUID(), text };
+  outbox.put(m.clientMsgId, m);              // 🕓 until the server acks
+  ws.send(JSON.stringify(m));
+}
+ws.onmessage = e => {
+  const f = JSON.parse(e.data);
+  if (f.type === "ack") outbox.delete(f.clientMsgId);      // ✓ seq 42
+  if (f.type === "msg") { store(f); lastSeq[f.conv] = f.seq;
+    ws.send(JSON.stringify({ type: "delivered", conv: f.conv, upToSeq: f.seq })); }
+};`,
+  },
+  userC: {
+    tag: 'Group member whose phone clock is 5 s slow',
+    desc: 'In the group flow C\'s phone clock is 5 seconds behind, so its replies carry a <b>clientTs earlier</b> than the question they answer. It shows why ordering must never use device timestamps.',
+    points: ['Its timestamps are wrong; its messages still get the right <b>seq</b>, assigned by the server on arrival', 'clientTs is kept only as a display label', 'Shares gateway 1 with A: the order problem is the same on one gateway or many', 'Every device sorts by seq, so A, B and C all see the same order'],
+    code: `// what C's phone sends (clock 5 s slow)
+{ "type": "send", "conv": "c-G", "clientMsgId": "c-311",
+  "text": "Yes!", "clientTs": "11:59:57" }     // real time 12:00:02
+
+// what every device receives (server order)
+{ "type": "msg", "conv": "c-G", "seq": 42, "from": "A", "text": "Lunch at 1?" }
+{ "type": "msg", "conv": "c-G", "seq": 43, "from": "C", "text": "Yes!" }`,
+  },
+  userB: {
+    tag: 'Recipient · receives live, acks, or syncs later',
+    desc: 'Receives messages live over its socket and acks <b>delivered</b> (✓✓ for the sender), or, after being offline or on a dead gateway, gets a <b>push hint</b> and catches up by <b>sync</b> after its lastSeq.',
+    points: ['The delivered ack is what turns one tick into two', 'One ack <code>upToSeq: 42</code> covers a whole burst of messages', 'Offline or on a dead gateway → push hint + sync on reconnect', 'Polling instead of a socket would cost ~3.3 M mostly empty requests/s at 10 M users'],
+    code: `// on every (re)connect: one sync frame per conversation
+ws.onopen = () => {
+  for (const [conv, seq] of Object.entries(lastSeq))
+    ws.send(JSON.stringify({ type: "sync", conv, afterSeq: seq }));
+};
+// heartbeat every ~20 s keeps the socket and presence alive
+setInterval(() => ws.send(JSON.stringify({ type: "ping" })), 20_000);`,
+  },
+  lb: {
+    tag: 'WebSocket-aware load balancer · balances connections',
+    desc: 'Spreads <b>new</b> WebSocket connections across gateways. After the <code>101 Switching Protocols</code> handshake the TCP connection stays on that gateway for hours, so balancing happens per connection, not per message.',
+    points: ['L4 (e.g. NLB) or an L7 proxy that supports <code>Upgrade: websocket</code>', 'Idle timeout above the heartbeat interval, or idle sockets get cut', 'Balance by connection count (least connections), not request rate', 'Draining a gateway closes its sockets; clients reconnect elsewhere', 'Without it: clients must know gateway addresses and one hot gateway gets all new users'],
+    code: `# nginx in front of the gateways (L7 option)
+map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+upstream ws_gateways { least_conn; server ws1:8080; server ws2:8080; }
+server {
+  listen 443 ssl;
+  location /ws {
+    proxy_pass http://ws_gateways;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;          # pass the handshake
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 3600s;                        # > heartbeat interval
+  }
+}`,
+  },
+  ws1: {
+    tag: 'WebSocket gateway · holds sockets, nothing else',
+    desc: 'Accepts the upgrade (JWT checked <b>once</b>), keeps sockets in memory, writes <b>presence</b>, forwards frames to the Chat Service, pushes frames down to devices and answers heartbeats. Thin on purpose: chat logic deploys without dropping millions of sockets.',
+    points: ['Netty / Spring WebFlux / Spring <code>WebSocketHandler</code>: ~100 k+ sockets per node, add nodes', 'The limit is open connections (memory, file descriptors), not requests per second', 'A crash drops all its sockets; presence entries expire by TTL; clients reconnect', 'Without it: chat logic inside the socket servers, and every deploy of business code drops sockets'],
+    code: `@Configuration @EnableWebSocket
+class WsConfig implements WebSocketConfigurer {
+  public void registerWebSocketHandlers(WebSocketHandlerRegistry r) {
+    r.addHandler(chatSocketHandler, "/ws")
+     .addInterceptors(new HandshakeInterceptor() {
+       public boolean beforeHandshake(ServerHttpRequest req, ServerHttpResponse res,
+                                      WebSocketHandler h, Map<String, Object> attrs) {
+         String user = tickets.redeem(param(req, "ticket"));   // JWT checked ONCE
+         if (user == null) return false;                       // 401, no 101
+         attrs.put("user", user); return true;                 // -> 101 Switching Protocols
+       }
+       public void afterHandshake(ServerHttpRequest q, ServerHttpResponse s, WebSocketHandler h, Exception e) {}
+     })
+     .setAllowedOrigins("https://chat.example.com");
+  }
+}`,
+  },
+  ws2: {
+    tag: 'Same gateway code · holds B\'s socket',
+    desc: 'Same as gateway 1; B is connected here in most scenarios. Two gateways show why <b>presence</b> is needed: A and B are on different machines. In the Crash scenario this gateway dies.',
+    points: ['Any gateway can accept any reconnect; presence says where the user is now', 'Sticky sessions per message are unnecessary: the socket itself is the stickiness', 'Deploys <b>drain slowly</b>, so clients do not all reconnect at once', 'Crashed → delivery to it fails → the Chat Service treats its users as offline'],
+    code: `// graceful drain on deploy: close sockets in small batches
+@PreDestroy
+void drain() throws InterruptedException {
+  List<WebSocketSession> all = new ArrayList<>(sessions.values());
+  for (List<WebSocketSession> batch : Lists.partition(all, 2_000)) {
+    for (WebSocketSession s : batch)
+      s.close(new CloseStatus(1012, "service restart"));  // client reconnects with jitter
+    Thread.sleep(1_000);                                   // ~2 k reconnects per second
+  }
+}`,
+  },
+  presence: {
+    tag: 'Redis · user → gateway, with a TTL',
+    desc: '<code>user:B → "ws2"</code> with a <b>60 s TTL</b> refreshed by heartbeats every ~20 s. The Chat Service reads it to know <b>which gateway</b> holds the recipient\'s socket; a missing key means offline.',
+    points: ['Tiny values, very high read rate: one GET per delivery', 'Without it: broadcast every message to every gateway, or no way to tell online from offline', 'Stale after a crash until the TTL runs out → delivery fails → treat as offline (push + sync)', 'A clean disconnect deletes the key only if it still points at this gateway'],
+    code: `SET user:B "ws2" EX 60          # on connect (gateway)
+EXPIRE user:B 60                # on every ping (~20 s)
+GET user:B                      # on delivery (Chat Service) -> "ws2" | (nil)
+MGET user:A user:B user:C       # group fan-out: one call
+
+-- on clean disconnect: delete only if it is still ours
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1]) end
+return 0`,
+  },
+  chat: {
+    tag: 'Spring Boot · dedupe, seq, store, ack, route',
+    desc: 'Dedupes by <code>(conv, clientMsgId)</code>, increments the conversation\'s <b>lastSeq</b>, stores the message, acks the sender, looks up <b>presence</b> and routes to the recipient\'s gateway, or queues a push; records receipts with <code>$max</code>.',
+    points: ['One place decides the order and identity of messages', 'Stateless; partition work by conversation id', 'Groups: members are grouped by gateway (presence), one Deliver call per gateway', 'Crash after storing → the client resends → deduped, original seq acked', 'Without it: gateways would number messages differently and duplicates would slip through'],
+    code: `void route(String conv, Message m) {
+  List<String> members = conversations.members(conv);
+  List<String> gws = redis.opsForValue().multiGet(keys(members));   // MGET user:…
+  Map<String, List<String>> byGw = new HashMap<>();
+  for (int i = 0; i < members.size(); i++) {
+    String gw = gws.get(i), u = members.get(i);
+    if (gw == null) kafka.send("notify", u, Preview.of(m));        // offline: hint
+    else byGw.computeIfAbsent(gw, k -> new ArrayList<>()).add(u);
+  }
+  byGw.forEach((gw, users) -> {
+    if (!gateways.deliver(gw, users, m))                            // stale presence
+      users.forEach(u -> kafka.send("notify", u, Preview.of(m)));
+  });
+}`,
+  },
+  msgdb: {
+    tag: 'MongoDB · source of truth for history',
+    desc: '<code>conversations { _id, members, lastSeq }</code> and <code>messages { _id: "c-AB:42", conv, seq, from, clientMsgId, text }</code>. "Everything in c-AB after seq 41" is one indexed range read: that is the <b>sync</b>.',
+    points: ['Indexes <code>{conv, seq}</code> for sync and unique <code>{conv, clientMsgId}</code> for dedupe', 'Shard by conversation id; Cassandra / ScyllaDB at WhatsApp scale', 'Receipts: <code>{ _id: "c-AB:B", deliveredSeq, readSeq }</code> moved forward with <code>$max</code>', 'Primary failover pauses sends for seconds; clients keep them in their outbox'],
+    code: `db.messages.createIndex({ conv: 1, seq: 1 })
+db.messages.createIndex({ conv: 1, clientMsgId: 1 }, { unique: true })
+sh.shardCollection("chat.messages", { conv: "hashed" })
+
+// next seq: atomic on one document
+db.conversations.findOneAndUpdate({ _id: "c-AB" }, { $inc: { lastSeq: 1 } },
+                                  { returnDocument: "after" })      // -> 42
+// sync: everything after the client's lastSeq
+db.messages.find({ conv: "c-AB", seq: { $gt: 41 } }).sort({ seq: 1 }).limit(200)
+// receipt: never moves backwards
+db.receipts.updateOne({ _id: "c-AB:B" }, { $max: { deliveredSeq: 42 } }, { upsert: true })`,
+  },
+  kafka: {
+    tag: 'Kafka · offline notifications only',
+    desc: 'Topic <code>notify</code>: "user B has a new message from A", keyed by <b>recipient id</b>. Keeps the slow push call off the hot path; online delivery goes direct, never through Kafka.',
+    points: ['Partitions by recipient, so one user\'s pushes stay in order', 'Redelivery → maybe two pushes; harmless, a push is only a hint', 'Also feeds side work: search indexing, analytics', 'Without it: the Chat Service waits on FCM for every offline recipient'],
+    code: `@Bean NewTopic notify() {
+  return TopicBuilder.name("notify").partitions(48).replicas(3).build();
+}
+// Chat Service: fire and forget, keyed by recipient
+kafka.send("notify", "B", new Preview("c-AB", 42, "A", "Call me"));
+
+# producer config
+acks=all
+enable.idempotence=true`,
+  },
+  pushw: {
+    tag: 'Spring Kafka consumer · calls FCM / APNs',
+    desc: 'Consumes <code>notify</code>, looks up the user\'s device tokens and sends a high-priority push with a <b>collapse key</b> per conversation, so a burst of messages shows as one notification.',
+    points: ['Best effort by design: the data itself always comes from sync', 'Invalid token (404 UNREGISTERED) → delete it; 429 / 5xx → retry with backoff', 'Scale consumers up to the partition count', 'Commit the offset after the send; a duplicate push is harmless'],
+    code: `@KafkaListener(topics = "notify", groupId = "push-svc")
+void onNotify(Preview p) {
+  for (String token : devices.tokensOf(p.to())) {
+    Message msg = Message.builder().setToken(token)
+        .setNotification(Notification.builder()
+            .setTitle(p.from()).setBody(p.text()).build())
+        .setAndroidConfig(AndroidConfig.builder()
+            .setPriority(AndroidConfig.Priority.HIGH)
+            .setCollapseKey(p.conv()).build())          // one notification per chat
+        .putData("conv", p.conv()).build();
+    firebase.send(msg);                                 // only a wake-up hint
+  }
+}`,
+  },
+  fcm: {
+    tag: 'Push provider · external, best effort',
+    desc: 'Wakes the phone with "A: Call me". The only way to reach an app that is not running, but it can be <b>late, doubled or dropped</b> (battery saver, stale token), so it never carries the delivery guarantee.',
+    points: ['FCM HTTP v1 for Android, APNs for iOS', 'Collapse keys hide duplicates on the device', 'A lost push only delays the message until the app opens and syncs', 'Without it: offline users only see messages when they happen to open the app'],
+    code: `POST https://fcm.googleapis.com/v1/projects/chat-app/messages:send
+Authorization: Bearer ya29.…
+{ "message": {
+    "token": "dXk…B-phone",
+    "notification": { "title": "A", "body": "Call me" },
+    "android": { "priority": "HIGH", "collapse_key": "c-AB" },
+    "data": { "conv": "c-AB", "seq": "42" } } }
+# -> 200 { "name": "projects/chat-app/messages/0:1700…" }`,
+  },
+};
+
+// building blocks taught once in 00_Core_Components.html (same "#id/what" links as the engine pages)
+const CORE = {
+  lb: ['lb', 'Load balancer'], presence: ['cache', 'Cache · Redis'], msgdb: ['db', 'DB scaling'], kafka: ['kafka', 'Queue · Kafka'],
+};
+
+// ---------------- scenarios ----------------
+// hop: `from`/`to` may be an array (fan-out / fan-in: one packet per pair, all at once).
+// node: `id` may be an array (several nodes work in parallel); `tags` gives one tag per node.
+const hop = (from, to, kind, tag, title, proto, text, extra) => Object.assign({ type: 'hop', from, to, kind, tag, title, proto, text }, extra || {});
+const node = (id, tag, title, proto, text, extra) => Object.assign({ type: 'node', id, tag, title, proto, text }, extra || {});
+const GREEN = '#16a34a', RED = '#dc2626', AMBER = '#d97706', BLUE = '#0b5cff';
+const ACK_A = (txt) => ({ type: 'fork', title: 'Meanwhile: ack to A, one tick ✓', proto: '{type:"ack", clientMsgId, seq:42}', text: txt, steps: [
+  hop('chat', 'ws1', 'response', 'ack 42', '', '', ''),
+  hop('ws1', 'lb', 'response', 'ack 42', '', '', ''),
+  hop('lb', 'userA', 'response', '✓ sent', '', '', ''),
+] });
+
+const SCEN = {
+  // Ported from the old page's "Why WebSockets?" flow: polling (empty answers, late delivery) vs one upgrade, server push, heartbeats.
+  ws: {
+    name: 'Why WebSockets?',
+    steps: [
+      hop('userB', 'lb', 'request', null, '❌ Polling: B asks "anything new?" every 3 s', 'HTTPS · GET /conversations/c-AB/messages?afterSeq=41', `Without a socket, B's app sends a full HTTPS request every 3 s, each with headers, a TLS session and a JWT the server must check again.`, { count: 3, tags: ['poll 1', 'poll 2', 'poll 3'] }),
+      hop('lb', 'ws2', 'request', null, 'Every poll is a brand-new request', 'HTTP/1.1 · balanced per request', `The load balancer spreads the polls like any other short request; nothing stays open between them.`, { count: 3, tags: ['GET', 'GET', 'GET'] }),
+      hop('ws2', 'chat', 'request', null, '…all the way to the Chat Service', 'gRPC · :9090 · History(c-AB, afterSeq 41)', `Each poll costs a gateway hop, a service call and an indexed range read on {conv, seq}.`, { count: 3, tags: ['afterSeq=41', 'afterSeq=41', 'afterSeq=41'] }),
+      node('chat', '[] [] []', '❌ Decision: nothing new → empty answer', '10 M users ÷ 3 s ≈ 3.3 M req/s', `With 10 M online users polling every 3 s that is about 3.3 M requests per second, and almost every answer is an empty list.`, { tagColor: RED, dur: 2.8 }),
+      { type: 'fork', title: 'Meanwhile: three empty answers travel back', proto: 'HTTP 200 · []', text: `In parallel: every poll returns 200 [] through the same hops, paying the full request cost for nothing.`, steps: [
+        hop('chat', 'ws2', 'error', '[]', '', '', ''),
+        hop('ws2', 'lb', 'error', '[]', '', '', ''),
+        hop('lb', 'userB', 'error', '[] ×3', '', '', ''),
+      ] },
+      node('userB', '"Hi" +2.5 s ✕', '❌ …and messages still arrive late', 'stored 12:00:00.5 · next poll 12:00:03', `A's "Hi" is stored at 12:00:00.5 but B only sees it on its next poll 2.5 s later; faster polls add load, slower ones feel broken, and long polling still costs a new request per answer.`, { tagColor: RED, dur: 3 }),
+      hop('userB', 'lb', 'request', 'GET /ws · Upgrade', '✅ Upgrade to a WebSocket, once', 'HTTP/1.1 · Upgrade: websocket · Sec-WebSocket-Key', `B sends GET /ws with Connection: Upgrade, Upgrade: websocket, a random Sec-WebSocket-Key and a short-lived auth ticket.`),
+      hop('lb', 'ws2', 'request', 'Upgrade', 'The load balancer passes the upgrade through', 'L4 · least connections · idle timeout > heartbeat', `An L4 balancer (or an L7 one that supports Upgrade) picks a gateway by connection count; from now on this TCP connection is pinned to ws2 for hours.`),
+      node('ws2', 'JWT ✓ → 101', 'The gateway checks the token once and accepts', 'Sec-WebSocket-Accept = base64(SHA-1(key + GUID))', `ws2 validates the ticket a single time, keeps B's session in memory and accepts: there is no per-message authentication from now on.`, { tagColor: GREEN }),
+      hop('ws2', 'lb', 'response', '101 Switching Protocols', '101 Switching Protocols', 'HTTP 101 · Upgrade: websocket', `The same TCP connection now speaks the WebSocket protocol: small frames in both directions with a 2–14 byte header each.`),
+      hop('lb', 'userB', 'response', 'socket open ✓', 'B has one open, two-way socket', 'WSS · TCP 443 · stays open', `No more requests: either side can write a frame at any moment, for as long as the connection lives.`),
+      hop('ws2', 'presence', 'request', 'SET user:B ws2 EX 60', 'Presence: record where B is connected', 'RESP · TCP 6379 · SET user:B "ws2" EX 60', `The gateway writes user:B → ws2 with a 60 s TTL, so the Chat Service knows which machine holds B's socket.`),
+      hop('userA', 'lb', 'request', '"Hi again"', 'A sends "Hi again" over its own socket', 'WSS · text frame {type:"send"}', `A's frame rides A's already-open connection: no handshake, no headers, no auth per message.`),
+      hop('lb', 'ws1', 'request', 'frame', 'Same pinned connection to ws1', 'L4 pass-through · no re-balance', `Every frame of one connection reaches the same gateway: the socket itself is the stickiness.`),
+      hop('ws1', 'chat', 'request', 'send "Hi again"', 'Forwarded to the Chat Service', 'gRPC · :9090 · Send(from = A)', `ws1 attaches the user id it authenticated at upgrade time and forwards the frame.`),
+      hop('chat', 'msgdb', 'request', 'seq 43', 'Stored as seq 43', 'Mongo wire · TCP 27017 · $inc lastSeq → 43 · insert', `The conversation counter moves 42 → 43 and c-AB:43 is stored before any delivery is attempted.`),
+      hop('chat', 'presence', 'request', 'GET user:B → ws2', 'Where is B? On ws2', 'RESP · GET user:B', `Redis answers "ws2" in about a millisecond: B is online and its socket lives on gateway 2.`),
+      hop('chat', 'ws2', 'event', 'frame seq 43', 'The server pushes the frame', 'gRPC · Deliver(B, c-AB:43)', `The Chat Service calls ws2, which writes {type:"msg", seq:43} onto B's open socket: B asked for nothing.`),
+      hop('ws2', 'lb', 'event', 'seq 43', 'Down the open connection', 'WSS · server → client frame', `No request from B and no empty answers: the frame leaves the moment the message exists.`),
+      hop('lb', 'userB', 'event', '~100 ms ✓', 'B gets it in ~100 ms', 'WSS · text frame', `End to end about 100 ms instead of up to 3 s, with zero idle requests.`),
+      { type: 'fork', title: 'Keep it alive: ping / pong every ~20 s', proto: 'ping → pong · EXPIRE user:B 60', text: `Every ~20 s the app pings and the gateway pongs and refreshes presence; heartbeats spot dead connections and stop the LB from closing an idle socket, so the cost moves from requests to open connections.`, steps: [
+        hop('userB', 'lb', 'request', 'ping', '', '', ''),
+        hop('lb', 'ws2', 'request', 'ping', '', '', ''),
+        hop('ws2', 'presence', 'request', 'EXPIRE user:B 60', '', '', ''),
+      ] },
+    ],
+  },
+  // Ported from the old page's "A → B: Hi" flow: clientMsgId, next seq + store, ack (✓), presence, deliver, delivered receipt with $max (✓✓).
+  happy: {
+    name: 'A → B: "Hi"',
+    steps: [
+      hop('userA', 'lb', 'request', 'send "Hi" · a-901', 'A sends a frame over its socket', 'WSS · {type:"send", conv:"c-AB", clientMsgId:"a-901"}', `The clientMsgId is generated on the phone and the message waits in the app's local outbox (🕓) until the server acks it.`),
+      hop('lb', 'ws1', 'request', 'frame', 'Through the pinned connection', 'L4 · same TCP connection since the upgrade', `The load balancer does not re-balance per message: every frame of A's connection lands on ws1.`),
+      hop('ws1', 'chat', 'request', 'send a-901', 'The gateway forwards to the Chat Service', 'gRPC · :9090 · Send(from = A)', `ws1 attaches the user id it authenticated at upgrade time, so a client can never claim to be someone else.`),
+      hop('chat', 'msgdb', 'request', 'find (c-AB, a-901)', 'Dedupe check first', 'find({conv:"c-AB", clientMsgId:"a-901"})', `The unique index {conv, clientMsgId} makes this lookup cheap; nothing is found, so this is a new message.`),
+      hop('chat', 'msgdb', 'request', '$inc lastSeq', 'Take the next seq of the conversation', 'findOneAndUpdate({_id:"c-AB"}, {$inc:{lastSeq:1}})', `An $inc on one conversation document is atomic, so two senders can never get the same number: 41 → 42.`),
+      node('msgdb', 'c-AB:42 stored', 'Store the message as seq 42', 'insert {_id:"c-AB:42", seq:42, from:"A", text:"Hi"}', `The server, not the phone, decides the order; the {conv, seq} index makes this the next row of every future sync.`, { tagColor: GREEN }),
+      ACK_A(`In parallel: A's app removes a-901 from its outbox and shows ✓ (stored on the server), without waiting for B.`),
+      hop('chat', 'presence', 'request', 'GET user:B', 'Where is B connected?', 'RESP · TCP 6379 · GET user:B', `Presence maps each online user to the gateway that holds the socket; A and B on different gateways is the normal case with millions of users.`),
+      node('presence', '"ws2" ✓', 'Decision: B is online on ws2', 'hit → deliver · nil → push + sync', `A hit means deliver over the socket now; a nil would send the message down the offline path instead.`, { tagColor: GREEN, stat: 'hit' }),
+      hop('presence', 'chat', 'response', '"ws2"', 'Presence answers ws2', 'RESP bulk string · ~1 ms', `A single in-memory GET, cheap enough to do for every message.`),
+      hop('chat', 'ws2', 'event', 'msg seq 42', 'Deliver to gateway 2', 'gRPC · Deliver(B, c-AB:42)', `The Chat Service calls the gateway that owns B's socket; gateways keep no state that cannot be rebuilt.`),
+      hop('ws2', 'lb', 'event', 'seq 42 "Hi"', 'Written to B\'s socket', 'WSS · {type:"msg", conv:"c-AB", seq:42, from:"A"}', `ws2 writes the frame onto B's open connection; B did not have to ask.`),
+      hop('lb', 'userB', 'event', 'seq 42 "Hi"', 'B receives seq 42', 'WSS · server → client frame', `B's app stores the message locally and moves its lastSeq for c-AB to 42.`),
+      hop('userB', 'lb', 'request', 'delivered ≤ 42', 'B acks delivery', 'WSS · {type:"delivered", upToSeq:42}', `One ack covers everything up to 42, so a burst of messages needs one receipt, not one per message.`),
+      hop('lb', 'ws2', 'request', 'delivered', 'Same socket, other direction', 'WSS · client → server frame', `The connection is full duplex: B's ack travels back on the socket the message came down.`),
+      hop('ws2', 'chat', 'request', 'delivered 42', 'Forwarded to the Chat Service', 'gRPC · Receipt(B, c-AB, 42)', `The gateway forwards the receipt like any other frame.`),
+      hop('chat', 'msgdb', 'request', '$max deliveredSeq', 'Store the receipt, monotonic', 'updateOne({_id:"c-AB:B"}, {$max:{deliveredSeq:42}}, upsert)', `$max only moves forward, so a late or repeated ack can never turn ✓✓ back into ✓; read receipts (blue ticks) use readSeq the same way.`),
+      hop('chat', 'ws1', 'response', 'receipt ✓✓', 'Tell the sender', 'gRPC · Deliver(A, receipt)', `A's gateway gets the receipt for c-AB up to seq 42.`),
+      hop('ws1', 'lb', 'response', '✓✓ ≤ 42', 'Receipt down A\'s socket', 'WSS · {type:"receipt", upToSeq:42}', `Written onto A's open connection like any server push.`),
+      hop('lb', 'userA', 'response', '"Hi" ✓✓', 'A sees two ticks', 'WSS · server → client frame', `One tick = stored on the server, two ticks = B's device acked it; everyone sees the order the server seq gave.`),
+    ],
+  },
+  // Ported from the old page's "Group: who spoke first?" flow: client timestamps vs server seq assigned on arrival.
+  order: {
+    name: 'Group: who spoke first?',
+    steps: [
+      hop('userA', 'lb', 'request', '"Lunch at 1?" 12:00:00', 'A asks the group a question', 'WSS · send · clientTs 12:00:00', `In group c-G (A, B, C) A sends "Lunch at 1?" stamped with its phone time 12:00:00.`),
+      hop('lb', 'ws1', 'request', 'frame', 'A\'s frame reaches ws1', 'L4 · pinned connection', `It is on its way to the Chat Service first.`),
+      hop('userC', 'lb', 'request', '"Yes!" 11:59:57', 'C answers two seconds later', 'WSS · send · clientTs 11:59:57', `C replies at real time 12:00:02, but C's phone clock is 5 s slow, so the frame says 11:59:57: earlier than the question.`),
+      hop('lb', 'ws1', 'request', 'frame', 'C is on ws1 too', 'L4 · pinned connection', `Both happen to share a gateway; the problem is the same across gateways.`),
+      hop('ws1', 'chat', 'request', null, 'Both reach the Chat Service, A first', 'gRPC · Send ×2', `Arrival order at the server is the real order: the question arrived before the answer.`, { count: 2, tags: ['A 12:00:00', 'C 11:59:57'] }),
+      node('chat', 'sort by clientTs ✕', '❌ First idea: order by the phones\' timestamps', 'ORDER BY clientTs', `Phone clocks, and even server clocks, drift: wall-clock times from different machines cannot order events.`, { tagColor: RED, dur: 2.8 }),
+      hop('chat', 'msgdb', 'error', 'sort by clientTs', '❌ Stored and listed by clientTs', 'find({conv:"c-G"}).sort({clientTs:1})', `Sorted by clientTs, "Yes!" (11:59:57) now comes before "Lunch at 1?" (12:00:00).`),
+      hop('chat', 'ws2', 'error', '"Yes!" first', 'Delivered in timestamp order', 'gRPC · Deliver(B, …)', `B's gateway gets the two messages in the wrong order.`),
+      hop('ws2', 'lb', 'error', 'answer, question', 'Down B\'s socket', 'WSS · msg frames', `The frames carry the same wrong order.`),
+      hop('lb', 'userB', 'error', 'answer first ✕', '❌ B sees the answer before the question', 'WSS · server → client frames', `B reads "Yes!" before "Lunch at 1?", and devices with different data could even disagree.`),
+      node('chat', 'seq on arrival', '✅ Rewind: the server assigns the order', 'one counter per conversation', `Order is decided once, by the server, when each message arrives: the next seq of the conversation.`, { tagColor: GREEN }),
+      hop('chat', 'msgdb', 'request', null, 'One atomic counter per conversation', 'findOneAndUpdate({_id:"c-G"}, {$inc:{lastSeq:1}})', `A's message arrived first and gets 42, C's reply gets 43; an $inc on one document is atomic, so seqs never repeat.`, { count: 2, tags: ['$inc → 42 (A)', '$inc → 43 (C)'] }),
+      node('msgdb', 'c-G:42 · c-G:43', 'Stored in seq order', 'index {conv:1, seq:1}', `clientTs is kept only as a display label; every query and every device sorts by seq.`, { tagColor: GREEN }),
+      hop('chat', 'presence', 'request', 'MGET user:A, B, C', 'Find every member\'s gateway', 'RESP · MGET user:A user:B user:C', `One MGET returns ws1, ws2, ws1, so the delivery can be grouped by gateway.`),
+      hop('chat', ['ws1', 'ws2'], 'event', null, 'Fan out: one call per gateway', 'gRPC · Deliver(batch) ×2', `ws1 gets 42 and 43 for A and C in one call, ws2 gets them for B: one call per gateway, not per member.`, { tags: ['42, 43 → A, C', '42, 43 → B'] }),
+      hop(['ws1', 'ws2'], 'lb', 'event', null, 'Written to every member\'s socket', 'WSS · msg frames', `Each gateway writes both frames, in seq order, to the sockets it holds.`, { tags: ['42, 43', '42, 43'] }),
+      hop('lb', ['userA', 'userC', 'userB'], 'event', null, 'Every device receives 42, then 43', 'WSS · server → client frames', `A, C and B get the same two frames with the same two numbers.`, { tags: ['42, 43', '42, 43', '42, 43'] }),
+      node(['userA', 'userC', 'userB'], null, 'Every device shows the same order', 'sort by seq, never by clientTs', `Every app sorts by seq, so A, B and C all see the question first, whatever their clocks say; the phone time is only a label.`, { tags: ['question first ✓', 'question first ✓', 'question first ✓'], tagColor: GREEN, dur: 3 }),
+      node('chat', 'hot counter', 'The price: one counter per conversation', 'one sequencer per conv', `One counter document per busy group is a small hotspot, fine for chats up to 500 members; giant channels need other tricks.`, { tagColor: AMBER }),
+    ],
+  },
+  // Ported from the old page's "Lost ack → resend" flow: stored + delivered, ack lost, resend, duplicate vs clientMsgId dedupe + unique index.
+  dup: {
+    name: 'Lost ack → resend',
+    steps: [
+      hop('userA', 'lb', 'request', '"On my way" · a-903', 'A sends "On my way"', 'WSS · {type:"send", clientMsgId:"a-903"}', `The message sits in A's local outbox with a clock icon until the server acks it.`),
+      hop('lb', 'ws1', 'request', 'frame', 'Through A\'s pinned connection', 'L4 · same TCP connection', `The frame reaches ws1 as usual.`),
+      hop('ws1', 'chat', 'request', 'send a-903', 'Forwarded to the Chat Service', 'gRPC · :9090 · Send(from = A)', `Nothing unusual so far.`),
+      hop('chat', 'msgdb', 'request', '$inc → 42 · insert', 'Stored as seq 42', 'findOneAndUpdate $inc · insert c-AB:42', `The conversation counter moves to 42 and c-AB:42 is inserted with clientMsgId a-903.`),
+      { type: 'fork', title: 'Meanwhile: B receives seq 42', proto: 'presence → ws2 → B', text: `In parallel: presence says ws2 and B receives "On my way" normally.`, steps: [
+        hop('chat', 'ws2', 'event', 'seq 42', '', '', ''),
+        hop('ws2', 'lb', 'event', 'seq 42', '', '', ''),
+        hop('lb', 'userB', 'event', '"On my way" ✓', '', '', ''),
+      ] },
+      hop('chat', 'ws1', 'response', 'ack seq 42', 'The ack starts back to A', 'gRPC · {type:"ack", clientMsgId:"a-903", seq:42}', `The Chat Service answers A through A's gateway.`),
+      hop('ws1', 'lb', 'response', 'ack 42', 'ws1 writes it to A\'s socket', 'WSS · server → client frame', `The frame heads for a connection that is about to die.`),
+      node('lb', 'socket closed ✕', '❌ A walks into a lift: the socket drops', 'TCP reset · ack lost', `The connection dies before ack 42 reaches the phone, and the ack is lost with it.`, { tagColor: RED }),
+      node('userA', '🕓 unconfirmed', 'For A the message is still unconfirmed', 'outbox: a-903 pending', `A cannot tell "not stored" from "stored but the ack was lost", so resending is the correct thing to do.`, { tagColor: AMBER }),
+      hop('userA', 'lb', 'request', 'resend a-903', 'A reconnects and resends', 'WSS · new socket · same clientMsgId', `Eight seconds later A has a new socket and resends everything in its outbox with the same clientMsgId a-903.`),
+      hop('lb', 'ws1', 'request', 'frame', 'The resend reaches a gateway', 'L4 · new connection', `Any gateway would do; here it is ws1 again.`),
+      hop('ws1', 'chat', 'request', 'resend a-903', 'The same message arrives a second time', 'gRPC · Send(from = A)', `The Chat Service now sees a-903 for the second time.`),
+      hop('chat', 'msgdb', 'error', 'insert → seq 43', '❌ Without dedupe: a second copy', '$inc → 43 · insert c-AB:43', `If the server just stores every send, the resend becomes seq 43.`),
+      node('msgdb', 'c-AB:43 dup ✕', '❌ B sees "On my way" twice', 'two rows, one message', `A duplicate row means a duplicate delivery and a duplicate unread badge on B's phone.`, { tagColor: RED }),
+      hop('chat', 'msgdb', 'request', 'find (c-AB, a-903)', '✅ Rewind: look up the client id first', 'find({conv:"c-AB", clientMsgId:"a-903"})', `The resend carries the same clientMsgId, so the Chat Service checks for it before taking a new seq.`),
+      node('msgdb', 'found seq 42 ✓', 'Decision: already stored → no insert', 'unique {conv:1, clientMsgId:1}', `Found seq 42: nothing is stored or delivered again.`, { tagColor: GREEN }),
+      hop('msgdb', 'chat', 'response', 'seq 42', 'The original seq comes back', 'BSON · {seq: 42}', `The service will ack the original instead of creating a new message.`),
+      node('chat', 'E11000 → seq 42', 'Racing resends? The unique index decides', 'DuplicateKeyException → return the stored seq', `If two resends race past the lookup, the unique index rejects the second insert (E11000) and the service returns the stored seq instead.`, { tagColor: AMBER, dur: 2.8 }),
+      hop('chat', 'ws1', 'response', 'ack seq 42', 'Ack the original seq', 'gRPC · {type:"ack", seq:42}', `Same answer the first send should have produced.`),
+      hop('ws1', 'lb', 'response', 'ack 42', 'Down A\'s new socket', 'WSS · server → client frame', `This time the connection is alive.`),
+      hop('lb', 'userA', 'response', '"On my way" ✓', 'A finally sees ✓; B saw it once', 'WSS · ack frame', `One message, one seq: A clears its outbox and shows one tick, and B never saw a duplicate.`),
+    ],
+  },
+  // Ported from the old page's "B is offline" flow: store + ack, presence nil, Kafka → push hint, connect + sync after lastSeq.
+  offline: {
+    name: 'B is offline',
+    steps: [
+      hop('userA', 'lb', 'request', '"Call me"', 'A sends "Call me"', 'WSS · send · clientMsgId a-905', `A has no idea whether B is online, and does not need to.`),
+      hop('lb', 'ws1', 'request', 'frame', 'Through A\'s pinned connection', 'L4 · same TCP connection', `The frame reaches ws1.`),
+      hop('ws1', 'chat', 'request', 'send a-905', 'Forwarded to the Chat Service', 'gRPC · :9090 · Send(from = A)', `Same path as every message.`),
+      hop('chat', 'msgdb', 'request', '$inc → 42 · insert', 'Store first, always', 'findOneAndUpdate $inc · insert c-AB:42', `Storing does not depend on B being online: c-AB:42 is written before any delivery attempt.`),
+      ACK_A(`In parallel: A gets ack seq 42 and shows ✓, stored on the server.`),
+      hop('chat', 'presence', 'request', 'GET user:B', 'Where is B connected?', 'RESP · GET user:B', `The usual presence lookup before delivery.`),
+      node('presence', '(nil)', 'Decision: no socket for B → offline', 'GET user:B → (nil)', `No gateway holds a socket for B (phone in a pocket, app closed), so the message takes the offline path.`, { tagColor: RED }),
+      hop('presence', 'chat', 'response', '(nil)', 'Presence answers nil', 'RESP null bulk', `Nothing to deliver to right now.`),
+      hop('chat', 'kafka', 'event', 'notify B', 'Queue a push notification', 'Kafka · TCP 9092 · topic notify · key "B"', `{to:"B", preview:"A: Call me"} goes to Kafka keyed by recipient, keeping the slow push call off the hot path.`),
+      hop('kafka', 'pushw', 'event', 'poll', 'The push worker consumes it', '@KafkaListener · group push-svc', `The worker polls the notify partition that holds B's key.`),
+      hop('pushw', 'fcm', 'event', 'messages:send', 'Call FCM / APNs', 'HTTPS · POST /v1/projects/…/messages:send', `The worker looks up B's device tokens and sends a high-priority push with collapse_key c-AB.`),
+      node('userB', '📲 A: Call me', 'B\'s phone shows the notification', 'best effort · late, doubled or dropped', `The push is only a wake-up hint: battery saver or a stale token can delay or drop it, so it never carries the guarantee.`, { tagColor: AMBER, dur: 2.8 }),
+      hop('userB', 'lb', 'request', 'GET /ws · Upgrade', 'B opens the app and connects', 'WSS · Upgrade + auth ticket', `B connects to any gateway; the load balancer picks one by connection count.`),
+      hop('lb', 'ws1', 'request', 'Upgrade', 'This time B lands on ws1', 'L4 · least connections · 101', `Any gateway can hold any user; presence will say where B is now.`),
+      hop('ws1', 'presence', 'request', 'SET user:B ws1 EX 60', 'Presence now says ws1', 'RESP · SET user:B "ws1" EX 60', `From now on deliveries for B go to ws1.`),
+      hop('ws1', 'chat', 'request', 'sync c-AB > 41', 'The first frame after 101: sync', 'WSS · {type:"sync", conv:"c-AB", afterSeq:41}', `The app sends its lastSeq per conversation; the gateway forwards it to the Chat Service.`),
+      hop('chat', 'msgdb', 'request', 'find seq > 41', 'One indexed range read', 'find({conv:"c-AB", seq:{$gt:41}}).sort({seq:1}).limit(200)', `The {conv, seq} index returns exactly what B missed, already in order.`),
+      hop('msgdb', 'chat', 'response', '[42]', 'Everything B missed', 'cursor · 1 document', `Here just seq 42; after a long trip it would be paged 200 at a time.`),
+      hop('chat', 'ws1', 'event', '[42 "Call me"]', 'Back to B\'s new gateway', 'gRPC · Deliver(B, [42])', `ws1 writes the sync result to B's socket.`),
+      hop('ws1', 'lb', 'event', '[42]', 'Down B\'s socket', 'WSS · msg frames', `In seq order.`),
+      hop('lb', 'userB', 'event', 'synced · has 42 ✓', 'B is up to date, in order', 'WSS · server → client frames', `Even if the push had been lost, the same sync runs whenever B opens the app: later, but nothing is lost; B's delivered ack then gives A ✓✓.`),
+    ],
+  },
+  // Ported from the old page's "Gateway 2 crashes" flow: stale presence, failed delivery → push, TTL expiry, jittered reconnect, sync.
+  crash: {
+    name: 'Gateway 2 crashes',
+    steps: [
+      node('ws2', '✕ crashed', 'Gateway 2 dies', 'OOM kill · every socket on it is gone', `ws2 crashes (out of memory, bad deploy): every socket it held, including B's, disappears at once.`, { tagColor: RED, dur: 2.8 }),
+      hop('userA', 'lb', 'request', '"Still there?"', 'A sends "Still there?"', 'WSS · send · clientMsgId a-907', `A's gateway is healthy, so sending works as usual.`),
+      hop('lb', 'ws1', 'request', 'frame', 'Through A\'s pinned connection', 'L4 · same TCP connection', `The frame reaches ws1.`),
+      hop('ws1', 'chat', 'request', 'send a-907', 'Forwarded to the Chat Service', 'gRPC · :9090 · Send(from = A)', `Same path as every message.`),
+      hop('chat', 'msgdb', 'request', '$inc → 42 · insert', 'The message is safe', 'findOneAndUpdate $inc · insert c-AB:42', `Stored as seq 42 before any delivery: whatever happens to gateways, the message is in the DB.`),
+      ACK_A(`In parallel: A gets ack seq 42 and shows ✓.`),
+      hop('chat', 'presence', 'request', 'GET user:B', 'Where is B connected?', 'RESP · GET user:B', `The usual lookup before delivery.`),
+      hop('presence', 'chat', 'error', '"ws2" (stale)', 'Presence is stale', 'TTL not expired yet', `Redis still says ws2: nothing deleted the entry, and its 60 s TTL has not run out.`),
+      hop('chat', 'ws2', 'error', 'seq 42 · refused ✕', 'Delivery fails → treat B as offline', 'gRPC UNAVAILABLE · connection refused', `The call to ws2 fails, so the Chat Service treats B as offline; nothing is lost because the message is already stored.`),
+      hop('chat', 'kafka', 'event', 'notify B', 'Fall back to the push path', 'Kafka · topic notify · key "B"', `Exactly the offline path: a push hint now, sync later.`),
+      { type: 'fork', title: 'Meanwhile: the push hint goes out', proto: 'Kafka → Push Worker → FCM', text: `In parallel: the push worker sends "A: Still there?" through FCM; best effort, as always.`, steps: [
+        hop('kafka', 'pushw', 'event', 'poll', '', '', ''),
+        hop('pushw', 'fcm', 'event', 'push B', '', '', ''),
+      ] },
+      node('presence', 'user:B expired', 'Presence expires', 'TTL 60 s · no heartbeat', `No heartbeat refreshed user:B, so after 60 s the key expires; a clean disconnect would delete it at once, only if it still says "ws2".`, { tagColor: GREEN }),
+      node('userB', 'retry: rand(0, 2ⁿ s)', 'B reconnects with backoff + jitter', 'random(0, min(30 s, 1 s × 2^attempt))', `Jitter matters: ws2 held ~100 k sockets, and without it they would all reconnect in the same second and knock over the next gateway.`, { tagColor: AMBER, dur: 3 }),
+      hop('userB', 'lb', 'request', 'reconnect · Upgrade', 'B reconnects', 'WSS · Upgrade + auth ticket', `B's random delay came up after about a second.`),
+      hop('lb', 'ws1', 'request', 'Upgrade', 'The LB sends B to a healthy gateway', 'health check failed → ws2 out of rotation', `ws2 failed its health checks, so new connections only go to live gateways.`),
+      hop('ws1', 'presence', 'request', 'SET user:B ws1 EX 60', 'Presence now says ws1', 'RESP · SET user:B "ws1" EX 60', `Routing is correct again.`),
+      hop('ws1', 'chat', 'request', 'sync c-AB > 41', 'Sync after lastSeq 41', 'WSS · {type:"sync", conv:"c-AB", afterSeq:41}', `B asks for everything after the last seq it has.`),
+      hop('chat', 'msgdb', 'request', 'find seq > 41', 'One indexed range read', 'find({conv:"c-AB", seq:{$gt:41}}).sort({seq:1})', `Returns [42 "Still there?"].`),
+      hop('chat', 'ws1', 'event', '[42]', 'Back to B\'s new gateway', 'gRPC · Deliver(B, [42])', `ws1 writes the result to B's new socket.`),
+      hop('ws1', 'lb', 'event', '[42]', 'Down B\'s socket', 'WSS · msg frames', `In seq order.`),
+      hop('lb', 'userB', 'event', 'back · has 42 ✓', 'B catches up, in order', 'WSS · server → client frames', `Messages safe in the DB, push as fallback, presence TTL, jittered reconnect and sync: as if nothing happened.`),
+    ],
+  },
+  // Live-only (no button): a normal online message, a heartbeat, a reconnect sync and an offline push.
+  lmsg: {
+    name: 'Message',
+    steps: [
+      hop('userA', 'lb', 'request', 'send', '', '', ''),
+      hop('lb', 'ws1', 'request', 'frame', '', '', ''),
+      hop('ws1', 'chat', 'request', 'send', '', '', ''),
+      hop('chat', 'msgdb', 'request', 'seq', '', '', ''),
+      ACK_A(''),
+      hop('chat', 'presence', 'request', 'GET', '', '', ''),
+      node('presence', 'ws2 ✓', '', '', '', { tagColor: GREEN, stat: 'hit' }),
+      hop('chat', 'ws2', 'event', 'msg', '', '', ''),
+      hop('ws2', 'lb', 'event', 'msg', '', '', ''),
+      hop('lb', 'userB', 'event', 'msg', '', '', ''),
+    ],
+  },
+  lhb: {
+    name: 'Heartbeat',
+    steps: [
+      hop('userC', 'lb', 'request', 'ping', '', '', ''),
+      hop('lb', 'ws1', 'request', 'ping', '', '', ''),
+      hop('ws1', 'presence', 'request', 'EXPIRE', '', '', ''),
+      hop('ws1', 'lb', 'response', 'pong', '', '', ''),
+      hop('lb', 'userC', 'response', 'pong', '', '', ''),
+    ],
+  },
+  lsync: {
+    name: 'Sync',
+    steps: [
+      hop('userB', 'lb', 'request', 'sync', '', '', ''),
+      hop('lb', 'ws2', 'request', 'sync', '', '', ''),
+      hop('ws2', 'chat', 'request', 'sync', '', '', ''),
+      hop('chat', 'msgdb', 'request', 'seq >', '', '', ''),
+      hop('chat', 'ws2', 'event', '[…]', '', '', ''),
+      hop('ws2', 'lb', 'event', '[…]', '', '', ''),
+      hop('lb', 'userB', 'event', '[…]', '', '', ''),
+    ],
+  },
+  lpush: {
+    name: 'Offline push',
+    steps: [
+      hop('chat', 'presence', 'request', 'GET', '', '', ''),
+      node('presence', '(nil)', '', '', '', { tagColor: RED }),
+      hop('chat', 'kafka', 'event', 'notify', '', '', ''),
+      hop('kafka', 'pushw', 'event', 'poll', '', '', ''),
+      hop('pushw', 'fcm', 'event', 'push', '', '', ''),
+    ],
+  },
+};
+const LIVE_MIX = [['lmsg', 0.5], ['lhb', 0.25], ['lsync', 0.15], ['lpush', 0.1]];
+
+// =====================================================================
+// rendering
+// =====================================================================
+const svg = document.getElementById('dia');
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const box = id => { const n = NODES[id]; return { l: n.x - 75, r: n.x + 75, t: n.y - 56, b: n.y + 56 }; };
+
+function edgePath(a, b) {
+  const A = NODES[a], B = NODES[b], dx = B.x - A.x, dy = B.y - A.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const s = Math.sign(dx) || 1, x1 = A.x + 75 * s, x2 = B.x - 75 * s, mx = (x1 + x2) / 2;
+    return { d: `M${x1} ${A.y} C${mx} ${A.y} ${mx} ${B.y} ${x2} ${B.y}`, horiz: true };
+  }
+  const s = Math.sign(dy) || 1, y1 = A.y + 56 * s, y2 = B.y - 56 * s, my = (y1 + y2) / 2;
+  return { d: `M${A.x} ${y1} C${A.x} ${my} ${B.x} ${my} ${B.x} ${y2}`, horiz: false };
+}
+
+function buildSvg() {
+  let s = `<defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#eef1f5"/></pattern>
+    <filter id="glow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect id="bg" x="-2000" y="-1200" width="5600" height="3000" fill="url(#grid)"/>`;
+  // zones: grouped by developer role (solid = outside our code, dashed = our backend)
+  for (const z of ZONES) {
+    const [f, st, lc] = ZT[z.t];
+    s += `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="18" fill="${f}" stroke="${st}" stroke-width="1.6"${z.dash ? ' stroke-dasharray="7 5"' : ''}/>`;
+    s += `<text class="zl" x="${z.x + 16}" y="${z.y + 24}" style="fill:${lc}">${esc(z.label)}</text>`;
+    if (z.cap) s += `<text class="nl" x="${z.x + 16}" y="${z.y + 41}" style="fill:${lc};opacity:.75">${esc(z.cap)}</text>`;
+  }
+  // edges + labels
+  s += '<g id="edges">';
+  EDGE_DEFS.forEach(([a, b], i) => { s += `<path class="edge" id="e${i}" d="${edgePath(a, b).d}"/>`; });
+  s += '</g><g id="elabels"></g><g id="ripples"></g><g id="nodes">';
+  // nodes
+  for (const [id, n] of Object.entries(NODES)) {
+    const [bg, st] = PAL[id];
+    let dots = '';
+    const r = n.replicas || 0;
+    for (let k = 0; k < r; k++) dots += `<circle cx="${75 + (k - (r - 1) / 2) * 10}" cy="104" r="3.2" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>`;
+    s += `<g class="node" data-id="${id}" transform="translate(${n.x - 75},${n.y - 56})">
+      <rect class="sel" x="-6" y="-6" width="162" height="124" rx="18" fill="none" stroke="#0b5cff" stroke-width="2" stroke-dasharray="6 5" opacity="0"/>
+      <rect class="card" width="150" height="112" rx="14" fill="${bg}" stroke="${st}" stroke-width="1.6"/>
+      <rect x="49" y="8" width="52" height="52" rx="12" fill="#fff" opacity=".85"/>
+      <g transform="translate(52.9,11.9) scale(.92)">${LOGO[id]}</g>
+      <text class="nlab" x="75" y="78">${esc(n.label)}</text>
+      <text class="nsub" x="75" y="95">${esc(n.sub)}</text>${dots}
+      <g class="tag" style="display:none"><rect y="-11" height="20" rx="10"/><text y="3.5"></text></g>
+    </g>`;
+  }
+  s += '</g><g id="packets"></g>';
+  svg.innerHTML = s;
+}
+buildSvg();
+
+const EDGES = EDGE_DEFS.map(([a, b, label], i) => {
+  const el = document.getElementById('e' + i);
+  return { a, b, label, el, len: el.getTotalLength(), hot: 0, horiz: edgePath(a, b).horiz };
+});
+// protocol labels at the path midpoint: above horizontal edges, right of vertical ones
+(function labels() {
+  const g = document.getElementById('elabels');
+  for (const e of EDGES) {
+    const p = e.el.getPointAtLength(e.len / 2);
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('class', 'elbl');
+    if (e.horiz) { t.setAttribute('x', p.x); t.setAttribute('y', p.y - 8); t.setAttribute('text-anchor', 'middle'); }
+    else { t.setAttribute('x', p.x + 8); t.setAttribute('y', p.y + 4); }
+    t.textContent = e.label;
+    g.appendChild(t);
+  }
+})();
+const NODE_EL = {};
+document.querySelectorAll('.node').forEach(g => { NODE_EL[g.dataset.id] = { g, act: 0, tagTok: 0 }; });
+
+// =====================================================================
+// engine: one rAF loop, own timer queue, everything scaled by speed
+// =====================================================================
+let speed = 1, paused = false, GEN = 0, current = 'happy', view = 'flow';
+let timers = [], packets = [], ripples = [], dashOffset = 0, flows = 0;
+const stats = { req: 0, hit: 0, evt: 0, res: 0 };
+const STAT_EL = { req: document.getElementById('stReq'), hit: document.getElementById('stHit'), evt: document.getElementById('stEvt'), res: document.getElementById('stRes') };
+
+function wait(sec, cb) { timers.push({ t: sec, cb, gen: GEN }); }
+const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function bump(k, n = 1) { stats[k] += n; STAT_EL[k].textContent = stats[k]; }
+
+function findEdge(from, to) {
+  for (const e of EDGES) {
+    if (e.a === from && e.b === to) return { e, rev: false };
+    if (e.a === to && e.b === from) return { e, rev: true };
+  }
+  throw new Error('no edge ' + from + ' -> ' + to);
+}
+function heat(e, color) { e.hot++; e.el.classList.add('hot'); e.el.style.stroke = color; }
+function cool(e) { e.hot = Math.max(0, e.hot - 1); if (!e.hot) { e.el.classList.remove('hot'); e.el.style.stroke = ''; } }
+
+function activate(id, sec) {
+  const n = NODE_EL[id]; n.act++; n.g.classList.add('active');
+  wait(sec, () => { n.act = Math.max(0, n.act - 1); if (!n.act) n.g.classList.remove('active'); });
+}
+function ripple(id) {
+  const b = box(id), el = document.createElementNS(NS, 'rect');
+  el.setAttribute('rx', 16); el.setAttribute('fill', 'none'); el.setAttribute('stroke', PAL[id][1]); el.setAttribute('stroke-width', 2.5);
+  document.getElementById('ripples').appendChild(el);
+  ripples.push({ el, b, age: 0 });
+}
+function showTag(id, text, color, sec) {
+  const n = NODE_EL[id], tag = n.g.querySelector('.tag'), r = tag.querySelector('rect'), t = tag.querySelector('text');
+  const w = Math.max(34, text.length * 6.3 + 16);
+  t.textContent = text; r.setAttribute('width', w); r.setAttribute('x', 152 - w); r.setAttribute('fill', color);
+  t.setAttribute('x', 152 - w / 2); tag.setAttribute('transform', 'translate(0,0)');
+  tag.style.display = '';
+  const tok = ++n.tagTok;
+  wait(sec, () => { if (n.tagTok === tok) tag.style.display = 'none'; });
+}
+
+function spawn(from, to, kind, tag, onArrive) {
+  const { e, rev } = findEdge(from, to), color = KIND[kind];
+  const g = document.createElementNS(NS, 'g');
+  const trail = [];
+  for (let i = 0; i < 6; i++) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('r', 6 - i * 0.8); c.setAttribute('fill', color); c.setAttribute('opacity', (0.35 - i * 0.05).toFixed(2));
+    c.style.display = 'none'; g.appendChild(c); trail.push(c);
+  }
+  const head = document.createElementNS(NS, 'circle');
+  head.setAttribute('r', 7.5); head.setAttribute('fill', color); head.setAttribute('stroke', '#fff'); head.setAttribute('stroke-width', 2); head.setAttribute('filter', 'url(#glow)');
+  g.appendChild(head);
+  let txt = null;
+  if (tag) { txt = document.createElementNS(NS, 'text'); txt.setAttribute('class', 'ptag'); txt.setAttribute('fill', color); txt.textContent = tag; g.appendChild(txt); }
+  document.getElementById('packets').appendChild(g);
+  heat(e, color);
+  if (CLIENTS.has(from) && kind === 'request') bump('req');
+  const p = { e, rev, kind, to, dist: 0, hist: [], g, head, trail, txt, onArrive };
+  packets.push(p);
+  place(p, 0);
+}
+function place(p, t) {
+  const { e } = p, len = e.len;
+  let s = ease(t) * len; if (p.rev) s = len - s;
+  const a = e.el.getPointAtLength(s);
+  const b = s + 1 <= len ? e.el.getPointAtLength(s + 1) : e.el.getPointAtLength(s - 1);
+  let tx = b.x - a.x, ty = b.y - a.y; if (s + 1 > len) { tx = -tx; ty = -ty; }
+  const m = Math.hypot(tx, ty) || 1, off = p.rev ? -6 : 6;
+  const x = a.x + (-ty / m) * off, y = a.y + (tx / m) * off;
+  p.hist.unshift([x, y]); if (p.hist.length > 24) p.hist.pop();
+  p.head.setAttribute('cx', x); p.head.setAttribute('cy', y);
+  p.trail.forEach((c, i) => {
+    const h = p.hist[(i + 1) * 3];
+    if (h) { c.style.display = ''; c.setAttribute('cx', h[0]); c.setAttribute('cy', h[1]); } else c.style.display = 'none';
+  });
+  if (p.txt) { p.txt.setAttribute('x', x); p.txt.setAttribute('y', y - 13); }
+}
+function arrive(p) {
+  p.g.remove(); cool(p.e);
+  activate(p.to, 0.45); ripple(p.to);
+  if (p.to === 'kafka' && p.kind === 'event') bump('evt');
+  if (CLIENTS.has(p.to) && (p.kind === 'response' || p.kind === 'error')) bump('res');
+  p.onArrive && p.onArrive();
+}
+
+function update(k) {
+  dashOffset -= 40 * k;
+  for (const e of EDGES) if (!e.hot) e.el.style.strokeDashoffset = dashOffset;
+  // timers
+  for (const tm of timers) tm.t -= k;
+  const due = timers.filter(tm => tm.t <= 0);
+  if (due.length) { timers = timers.filter(tm => tm.t > 0); due.forEach(tm => { if (tm.gen === GEN) tm.cb(); }); }
+  // packets
+  const done = [];
+  for (const p of packets) {
+    p.dist += 260 * k;
+    const t = Math.min(1, p.dist / p.e.len);
+    place(p, t);
+    if (t >= 1) done.push(p);
+  }
+  if (done.length) { packets = packets.filter(p => !done.includes(p)); done.forEach(arrive); }
+  // ripples: grow ~14px and fade over 0.5s
+  ripples = ripples.filter(r => {
+    r.age += k;
+    const q = r.age / 0.5;
+    if (q >= 1) { r.el.remove(); return false; }
+    const g = 14 * q;
+    r.el.setAttribute('x', r.b.l - g); r.el.setAttribute('y', r.b.t - g);
+    r.el.setAttribute('width', 150 + 2 * g); r.el.setAttribute('height', 112 + 2 * g);
+    r.el.setAttribute('opacity', (1 - q).toFixed(3));
+    return true;
+  });
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused && view === 'flow') update(dt * speed);
+  requestAnimationFrame(frame);
+}
+
+// ---------------- step runner ----------------
+// o.footer: top-level scenario (updates footer, reading pauses); o.fast: live mode (short pauses, no packet tags)
+function runFlow(steps, o) {
+  let i = 0;
+  const next = () => {
+    if (i >= steps.length) { o.done && o.done(); return; }
+    const st = steps[i];
+    if (o.footer) showStep(i, steps.length, st);
+    i++;
+    exec(st, o, next);
+  };
+  next();
+}
+function exec(st, o, next) {
+  if (st.type === 'hop') {
+    // fan-out / fan-in: an array on one side = one packet per pair, all at once; otherwise `count` packets 0.25 s apart
+    const fan = Array.isArray(st.to) ? st.to.map(t => [st.from, t]) : Array.isArray(st.from) ? st.from.map(f => [f, st.to]) : null;
+    const pairs = fan || Array.from({ length: st.count || 1 }, () => [st.from, st.to]);
+    const n = pairs.length; let got = 0;
+    pairs.forEach(([from, to], k) => {
+      const kind = st.kinds ? st.kinds[k] : st.kind;
+      const tag = o.fast ? null : (st.tags ? st.tags[k] : st.tag);
+      const fire = () => spawn(from, to, kind, tag, () => { if (++got === n) wait(o.footer ? 1.1 : 0.08, next); });
+      if (k && !fan) wait(k * 0.25, fire); else fire();
+    });
+  } else if (st.type === 'node') {
+    const d = o.fast ? Math.max(0.25, (st.dur || 2.2) * 0.3) : (o.footer ? (st.dur || 2.4) : (st.dur || 1));
+    [].concat(st.id).forEach((id, k) => {
+      activate(id, d); ripple(id);
+      const tag = st.tags ? st.tags[k] : st.tag;
+      if (tag) showTag(id, tag, st.tagColor || '#0b5cff', d + (o.fast ? 0.15 : 0.6));
+    });
+    if (st.stat === 'hit') bump('hit');
+    wait(d, next);
+  } else if (st.type === 'fork') {
+    runFlow(st.steps, { fast: o.fast });
+    wait(o.footer ? 2.0 : 0.05, next);
+  }
+}
+
+// ---------------- footer ----------------
+const badge = document.getElementById('badge'), fTitle = document.getElementById('ftitle'), fProto = document.getElementById('fproto'), fText = document.getElementById('ftext'), dotsEl = document.getElementById('dots');
+function buildDots(n) { dotsEl.innerHTML = '<i></i>'.repeat(n); }
+function showStep(i, total, st) {
+  badge.className = ''; badge.textContent = `${i + 1}/${total}`;
+  fTitle.textContent = st.title; fProto.textContent = st.proto || '';
+  fText.textContent = st.text || ''; fText.title = st.text || '';
+  [...dotsEl.children].forEach((d, k) => d.classList.toggle('on', k <= i));
+}
+
+// ---------------- scenarios / live ----------------
+function reset() {
+  GEN++;
+  timers = [];
+  packets.forEach(p => p.g.remove()); packets = [];
+  ripples.forEach(r => r.el.remove()); ripples = [];
+  EDGES.forEach(e => { e.hot = 0; e.el.classList.remove('hot'); e.el.style.stroke = ''; });
+  Object.values(NODE_EL).forEach(n => { n.act = 0; n.g.classList.remove('active'); n.g.querySelector('.tag').style.display = 'none'; });
+  flows = 0;
+  for (const k in stats) { stats[k] = 0; STAT_EL[k].textContent = 0; }
+}
+function start(id) {
+  current = id;
+  document.querySelectorAll('#scSeg button').forEach(b => b.classList.toggle('on', b.dataset.sc === id));
+  reset();
+  if (id === 'live') startLive(); else runMain(id);
+}
+function runMain(id) {
+  const steps = SCEN[id].steps;
+  buildDots(steps.length);
+  runFlow(steps, {
+    footer: true,
+    done: () => {
+      badge.className = ''; badge.textContent = '✓';
+      fTitle.textContent = '✓ Journey complete'; fProto.textContent = SCEN[id].name;
+      fText.textContent = 'Looping in 2.5 s · press R to replay now, or pick another scenario.'; fText.title = '';
+      wait(2.5, () => runMain(id));
+    },
+  });
+}
+function pickMix() {
+  let r = Math.random();
+  for (const [id, w] of LIVE_MIX) { if ((r -= w) <= 0) return id; }
+  return 'lmsg';
+}
+function startLive() {
+  dotsEl.innerHTML = '';
+  badge.className = 'live'; badge.textContent = 'LIVE';
+  fTitle.textContent = 'Live mixed traffic'; fProto.textContent = '50% message · 25% heartbeat · 15% sync · 10% offline push';
+  const tick = () => {
+    if (flows < 14) {
+      const id = pickMix(); flows++;
+      runFlow(SCEN[id].steps, { fast: true, done: () => { flows--; } });
+    }
+    wait(0.55 + Math.random() * 0.6, tick);
+  };
+  const info = () => {
+    const hr = Math.round(100 * stats.hit / Math.max(1, stats.req));
+    fText.textContent = `${flows} flows and ${packets.length} packets in flight · frames ride open sockets, presence routes them to the recipient's gateway, offline users get a push and sync later · online hits/requests ≈ ${hr}%`;
+    fText.title = '';
+    wait(0.5, info);
+  };
+  tick(); info();
+}
+
+// ---------------- drawer ----------------
+const drawer = document.getElementById('drawer');
+let selected = null;
+function openDrawer(id) {
+  const n = NODES[id], inf = INFO[id], [bg, st] = PAL[id];
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = id; NODE_EL[id].g.querySelector('.sel').setAttribute('opacity', 1);
+  document.getElementById('dHead').style.background = bg;
+  document.getElementById('dHead').style.borderBottomColor = st;
+  document.getElementById('dLogo').innerHTML = `<svg width="44" height="44" viewBox="0 0 48 48">${LOGO[id]}</svg>`;
+  document.getElementById('dTitle').textContent = n.label;
+  document.getElementById('dTag').textContent = inf.tag;
+  const body = document.getElementById('dBody');
+  const core = CORE[id];
+  body.innerHTML = `<div>${inf.desc}</div><h4>Key points</h4><ul>${inf.points.map(p => `<li>${p}</li>`).join('')}</ul><h4>Example</h4><pre></pre>`
+    + (core ? `<a class="core-link" href="00_Core_Components.html#${core[0]}/what">🧩 Basics: ${esc(core[1])} in Core Components →</a>` : '');
+  body.querySelector('pre').textContent = inf.code;
+  body.scrollTop = 0;
+  drawer.classList.add('open'); drawer.setAttribute('aria-hidden', 'false');
+}
+function closeDrawer() {
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = null; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true');
+}
+svg.addEventListener('click', ev => {
+  const g = ev.target.closest('.node');
+  if (g) openDrawer(g.dataset.id); else closeDrawer();
+});
+document.getElementById('dClose').onclick = closeDrawer;
+
+// ---------------- legend popover ----------------
+const legendPop = document.getElementById('legendPop'), legendBtn = document.getElementById('legendBtn');
+document.getElementById('lgKinds').innerHTML = Object.entries(KIND).map(([k, c]) => `<span><i style="--c:${c}"></i>${k}</span>`).join('');
+const legendOpen = () => legendPop.classList.contains('open');
+function setLegend(open) {
+  if (open) {   // point the little arrow at the button
+    const r = legendBtn.getBoundingClientRect();
+    legendPop.style.setProperty('--arrow', Math.max(12, window.innerWidth - 16 - (r.left + r.width / 2) - 6) + 'px');
+  }
+  legendPop.classList.toggle('open', open);
+  legendBtn.classList.toggle('on', open);
+  legendBtn.setAttribute('aria-expanded', open);
+}
+legendBtn.addEventListener('click', () => setLegend(!legendOpen()));
+document.addEventListener('mousedown', ev => {
+  if (legendOpen() && !legendPop.contains(ev.target) && !legendBtn.contains(ev.target)) setLegend(false);
+});
+
+// ---------------- controls ----------------
+function setSpeed(v) { speed = v; document.querySelectorAll('#spSeg button').forEach(b => b.classList.toggle('on', +b.dataset.sp === v)); }
+function togglePause() { paused = !paused; document.getElementById('pauseBtn').textContent = paused ? '▶ Play' : '⏸ Pause'; }
+document.querySelectorAll('header button').forEach(b => b.addEventListener('click', () => b.blur()));
+document.querySelectorAll('#scSeg button').forEach(b => b.onclick = () => start(b.dataset.sc));
+document.querySelectorAll('#spSeg button').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp));
+document.getElementById('pauseBtn').onclick = togglePause;
+document.getElementById('replayBtn').onclick = () => start(current);
+document.addEventListener('keydown', ev => {
+  if (ev.target.closest && ev.target.closest('input,textarea')) return;
+  if (view !== 'flow' || ev.ctrlKey || ev.metaKey || ev.altKey) return;   // shortcuts drive the Data flow tab only
+  if (ev.code === 'Space') { ev.preventDefault(); togglePause(); }
+  else if (ev.key === '1') setSpeed(0.5);
+  else if (ev.key === '2') setSpeed(1);
+  else if (ev.key === '3') setSpeed(2);
+  else if (ev.key === 'r' || ev.key === 'R') start(current);
+  else if (ev.key === 'l' || ev.key === 'L') setLegend(!legendOpen());
+  else if (ev.key === 'Escape') { if (legendOpen()) setLegend(false); else closeDrawer(); }
+});
+
+
+
+// ====================================================================
+// interview content: copied verbatim from 07_Chat_System.html (v2.0)
+// ====================================================================
+const CONTENT = {
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Chat types, receipts, offline, scale.',
+      lines: [
+        ['I', 'Design a chat app like WhatsApp.'],
+        ['C', '1:1 only, or groups too? How big can groups get?'],
+        ['I', 'Both; groups up to 500 people.'],
+        ['C', 'Delivery and read receipts, presence, offline delivery, history on a new device?'],
+        ['I', 'Receipts and offline delivery yes, simple online/offline presence.'],
+        ['C', 'Scale?'],
+        ['I', '50 million daily users, about 10 million connected at peak.'],
+        ['P', 'Write: 1:1 + groups ≤ 500 · receipts · offline · 10 M open sockets.'],
+      ],
+      avoid: 'Diving into end-to-end encryption before the message path is clear.',
+    },
+    {
+      t: 'Estimate the scale', min: 3, goal: 'Connections are the unusual number.',
+      lines: [
+        ['C', '10 M concurrent sockets ÷ ~100 k per gateway ≈ **100 gateways**.'],
+        ['C', '50 M users × 40 messages/day ≈ **2 B messages/day** ≈ 23 k/s average, ~3× at peak.'],
+        ['C', 'Storage: ~200 B × 2 B ≈ **400 GB/day** → shard messages by conversation.'],
+        ['P', 'Polling 10 M users every 3 s would be 3.3 M requests/s: that is why WebSockets.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 5, goal: 'Frames, seq, client id.',
+      lines: [
+        ['C', 'WebSocket frames: `send`, `ack`, `msg`, `delivered`, `read`, `sync`, `ping`. HTTP for history and creating conversations.'],
+        ['C', '`conversations { _id, members, lastSeq }`, `messages { _id: conv:seq, conv, seq, from, clientMsgId, text }`.'],
+        ['C', 'Indexes: `{conv, seq}` for sync, unique `{conv, clientMsgId}` for dedupe.'],
+        ['I', 'Why a seq and not a timestamp?'],
+        ['C', 'Clocks drift; a per-conversation counter gives one order everyone agrees on and a cursor for sync.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Gateways, chat service, presence, offline path.',
+      lines: [
+        ['P', 'Draw: devices → LB → WS gateways → Chat Svc → Message DB; Presence (Redis); Kafka → Push for offline.'],
+        ['C', 'Gateways only hold sockets; the Chat Service dedupes, assigns seq, stores, acks and routes.'],
+        ['C', 'Presence maps user → gateway with a TTL refreshed by heartbeats.'],
+        ['C', 'Offline users get a push hint; every device syncs after its lastSeq on connect.'],
+        ['P', 'Walk "Hi": a-901 → seq 42 → ✓ → GET user:B → ws2 → B → ✓✓.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Order, duplicates, offline, crashes.',
+      lines: [
+        ['I', 'How do you keep order in a group when phones have different clocks?'],
+        ['C', 'The server seq per conversation, assigned on arrival; never client timestamps.'],
+        ['I', 'The sender\'s ack is lost and the app resends.'],
+        ['C', 'Same clientMsgId → find the stored message, ack seq 42 again; a unique index covers races.'],
+        ['I', 'The recipient\'s gateway crashes.'],
+        ['C', 'Delivery fails → push; presence expires; the client reconnects with jittered backoff and syncs after lastSeq.'],
+        ['I', 'B is offline for a day.'],
+        ['C', 'Push is only a hint; on the next open, sync by seq returns everything in order.'],
+      ],
+      avoid: 'Saying "Kafka guarantees delivery to the phone": the guarantee is store-first plus sync.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: WebSocket gateways with Redis presence, per-conversation seq, idempotent sends by clientMsgId, receipts with $max, push as a hint and sync as the guarantee.'],
+        ['C', 'Next: end-to-end encryption, media through presigned uploads, fan-out by gateway for big groups, a wide-column store at very large scale.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): 1–2 minutes, pause between paragraphs
+    summary: [
+      "For chat I'd keep **one WebSocket** per device, because polling would mean millions of empty requests a second and still deliver late. The socket is upgraded from HTTP once and stays open, so the server can push a message the moment it arrives. The sockets live on thin **gateway** servers, around a hundred thousand each, behind a load balancer, and each gateway records in **Redis presence** which user is connected to it, with a TTL refreshed by heartbeats.",
+      "When A sends a message, the phone attaches a **clientMsgId**. The Chat Service first checks that id, so a resend after a lost ack just gets the original sequence back. Then it increments the conversation's **lastSeq** in MongoDB, stores the message as, say, seq 42, and acks A, which is one tick. Every device orders by this **server sequence**, never by phone clocks, because clocks drift.",
+      "Then the service looks up B in presence, finds gateway 2, and pushes the message down B's socket. B acks delivered up to 42, we store that with `$max` so receipts only move forward, and A sees two ticks.",
+      "If B is offline, or B's gateway just crashed, delivery fails and we send a **push notification** through Kafka and FCM, but that's only a hint. The real guarantee is **sync**: whenever the app connects, it asks for everything after its last seq, which is one indexed range query. And clients reconnect with **backoff and jitter**, so a crashed gateway doesn't cause a reconnect storm.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> 1:1 and group chat, real-time delivery, offline delivery, history sync on any device, sent / delivered / read receipts, presence.</li>
+        <li><b>Non-functional:</b> &lt; ~300 ms when both are online, no lost messages, the same order on every device, ~10 M open connections.</li>
+        <li><b>Out of scope (say so):</b> calls, end-to-end encryption details, media storage (presigned uploads, a link in the message).</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Open sockets</td><td class="m">10 M ÷ 100 k</td><td>≈ 100 gateways</td></tr>
+        <tr><td>Messages</td><td class="m">50 M × 40/day</td><td>≈ 2 B/day ≈ 23 k/s</td></tr>
+        <tr><td>Storage</td><td class="m">~200 B × 2 B</td><td>≈ 400 GB/day → shard by conv</td></tr>
+        <tr><td>Polling instead</td><td class="m">10 M ÷ 3 s</td><td>≈ 3.3 M req/s, mostly empty</td></tr></table>` },
+      { h: '3 · Protocol & API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">WS /ws</td><td>Upgrade once (JWT), then frames: send · ack · msg · delivered · read · sync · ping / pong</td></tr>
+        <tr><td class="m">GET /conversations/{id}/messages?afterSeq=</td><td>history / sync over HTTP</td></tr>
+        <tr><td class="m">POST /conversations</td><td>create 1:1 or group</td></tr>
+        <tr><td class="m">POST /devices</td><td>register a push token</td></tr></table>` },
+      { h: '4 · Data', color: '#8f4fc4', html: `<pre>// conversations
+{ _id: "c-AB", members: ["A", "B"], lastSeq: 42 }
+
+// messages: _id = conv:seq
+{ _id: "c-AB:42", conv: "c-AB", seq: 42, from: "A",
+  clientMsgId: "a-901", text: "Hi", ts: … }
+// indexes { conv: 1, seq: 1 }, unique { conv: 1, clientMsgId: 1 }
+
+// receipts
+{ _id: "c-AB:B", deliveredSeq: 42, readSeq: 40 }
+
+// presence (Redis)
+SET user:B "ws2" EX 60   // refreshed by heartbeats</pre>` },
+      { h: '5 · Message path', color: '#2f6fe0', html: `<ol>
+        <li>Device → gateway → Chat Svc: dedupe by clientMsgId.</li>
+        <li><code>$inc lastSeq</code> → insert → ack (✓).</li>
+        <li>Presence → recipient gateway → frame → delivered ack → <code>$max</code> receipt (✓✓).</li>
+        <li>No socket / delivery fails → Kafka → push hint; on connect: sync <code>seq &gt; lastSeq</code>.</li></ol>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>Store first; sync by seq is the delivery guarantee; push is best effort.</li>
+        <li>Idempotent sends (clientMsgId + unique index); monotonic receipts (<code>$max</code>).</li>
+        <li>Gateway crash: presence TTL, push fallback, reconnect with exponential backoff + jitter.</li>
+        <li>Deploys drain gateways gradually so clients do not all reconnect at once.</li></ul>` },
+    ],
+    decisions: [
+      ['WebSockets', 'Server push in ~100 ms, no empty polls.', 'Long-lived connections to scale, drain and balance.'],
+      ['Thin gateways + Chat Service', 'Deploy chat logic without dropping sockets.', 'An extra hop on the hot path.'],
+      ['Per-conversation seq', 'One order for every device and a cursor for sync.', 'One counter document per conversation (hot for giant groups).'],
+      ['clientMsgId dedupe', 'Resends never create duplicates.', 'A unique index per message.'],
+      ['Presence in Redis with TTL', 'Fast routing; dead entries clean themselves.', 'Can be stale for up to the TTL.'],
+      ['Push as hint, sync as guarantee', 'Nothing lost even if pushes are dropped.', 'A late message if the push is lost and the app stays closed.'],
+    ],
+    code: [
+      { t: 'Gateway: Spring WebSocket handler with presence', code: `@Component
+class ChatSocketHandler extends TextWebSocketHandler {
+  @Override public void afterConnectionEstablished(WebSocketSession s) {
+    String user = userId(s);                                   // JWT checked once, on the upgrade
+    sessions.put(user, s);
+    redis.opsForValue().set("user:" + user, gatewayId, Duration.ofSeconds(60));   // presence
+  }
+  @Override protected void handleTextMessage(WebSocketSession s, TextMessage m) throws IOException {
+    Frame f = json.readValue(m.getPayload(), Frame.class);
+    switch (f.type()) {
+      case "send" -> chat.send(userId(s), f);                 // → Chat Service
+      case "sync" -> chat.after(f.conv(), f.afterSeq()).forEach(msg -> write(s, msg));
+      case "ping" -> { redis.expire("user:" + userId(s), Duration.ofSeconds(60)); write(s, PONG); }
+    }
+  }
+  @Override public void afterConnectionClosed(WebSocketSession s, CloseStatus st) {
+    sessions.remove(userId(s));                               // presence: delete if still ours, else TTL
+  }
+}` },
+      { t: 'Chat Service: dedupe, next seq, store', code: `public Ack send(String from, SendFrame f) {
+  Message old = mongo.findOne(query(where("conv").is(f.conv()).and("clientMsgId").is(f.clientMsgId())), Message.class);
+  if (old != null) return Ack.of(f.clientMsgId(), old.seq());   // resend after a lost ack
+
+  long seq = mongo.findAndModify(query(where("_id").is(f.conv())),
+      new Update().inc("lastSeq", 1), options().returnNew(true), Conversation.class).lastSeq();
+  mongo.insert(new Message(f.conv() + ":" + seq, f.conv(), seq, from, f.clientMsgId(), f.text()));
+  // unique { conv, clientMsgId }: a racing resend fails here → return the stored seq
+  route(f.conv(), seq);
+  return Ack.of(f.clientMsgId(), seq);                           // one tick
+}` },
+      { t: 'Routing, push fallback and receipts', code: `void deliver(String user, Message m) {
+  String gw = redis.opsForValue().get("user:" + user);
+  if (gw == null || !gateways.push(gw, user, m))              // offline, or stale presence
+    kafka.send("notify", user, Preview.of(m));                // push is only a wake-up hint
+}
+
+void delivered(String conv, String user, long upToSeq) {      // ✓✓, never moves backwards
+  mongo.upsert(query(where("_id").is(conv + ":" + user)),
+               new Update().max("deliveredSeq", upToSeq), Receipt.class);
+}` },
+      { t: 'Client: reconnect with backoff + jitter, then sync', code: `let attempt = 0;
+function connect() {
+  const ws = new WebSocket("wss://chat.example.com/ws?token=" + jwt);
+  ws.onopen = () => {
+    attempt = 0;
+    ws.send(JSON.stringify({ type: "sync", conv: "c-AB", afterSeq: lastSeq }));
+    outbox.forEach(m => ws.send(JSON.stringify(m)));        // resend unacked, same clientMsgId
+  };
+  ws.onclose = () => {
+    const cap = Math.min(30000, 1000 * 2 ** attempt++);
+    setTimeout(connect, Math.random() * cap);                // full jitter: no reconnect stampede
+  };
+}` },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    ws: { name: 'WebSockets', color: '#c47d1e' },
+    cc: { name: 'Ordering & duplicates', color: '#8f4fc4' },
+    db: { name: 'Data', color: '#13968a' },
+    sc: { name: 'Scale', color: '#2f6fe0' },
+    rr: { name: 'Failures', color: '#ce3434' },
+  },
+  followups: [
+    { g: 'ws', q: 'WebSockets, long polling or Server-Sent Events?', what: 'All can push server → client.', why: 'Chat needs both directions with tiny per-message overhead.', how: 'WebSockets; long polling as a fallback for restrictive networks. SSE is one-way (server → client) and fits feeds / notifications.', trade: 'Long-lived connections need careful scaling and draining.', flow: 'ws' },
+    { g: 'ws', q: 'How does the load balancer handle WebSockets?', what: 'It must pass the `Upgrade` handshake and keep the connection open for hours.', why: 'After `101`, the connection is pinned to one gateway.', how: 'L4 (NLB) or an L7 that supports upgrade; idle timeout above the heartbeat interval; balance by connection count.', trade: 'Rebalancing only happens when clients reconnect.', flow: 'ws' },
+    { g: 'ws', q: 'How do you authenticate a WebSocket?', what: 'Browsers cannot set custom headers on the upgrade.', why: 'The socket lives for hours; tokens expire.', how: 'Validate a JWT on the upgrade (query param or cookie, or a short-lived ticket from a REST call); re-auth or close when it expires.', trade: 'Tokens in URLs can leak into logs → use short-lived tickets.' },
+    { g: 'ws', q: 'Do you need sticky sessions?', what: 'Not per message: the socket itself is the stickiness.', why: 'All frames of a connection go to the same gateway.', how: 'Any gateway can accept a reconnect; presence says where the user is now.', trade: 'Gateways must keep no state that cannot be rebuilt.' },
+    { g: 'cc', q: 'Why not order by timestamps?', what: 'Messages can appear in the wrong order.', why: 'Phone and server clocks drift.', how: 'Server-assigned seq per conversation; timestamps only for display.', trade: 'A single sequencer per conversation.', flow: 'order' },
+    { g: 'cc', q: 'Two members post in a group at the same instant. Who is first?', what: 'Whoever reaches the counter first.', why: '`$inc` on one document is atomic, so seqs never repeat.', how: 'Per-conversation seq; all devices sort by it.', trade: 'One hot counter for very busy groups.', flow: 'order' },
+    { g: 'cc', q: 'Sender resends after a lost ack. Duplicate?', what: 'Without dedupe, the recipient sees it twice.', why: 'The client cannot know whether the first send was stored.', how: 'clientMsgId lookup + unique index `{conv, clientMsgId}` → ack the original seq.', trade: 'An extra index per message.', flow: 'dup' },
+    { g: 'db', q: 'Which database for messages at WhatsApp scale?', what: 'Billions of small writes, read by (conversation, seq) range.', why: 'Append-heavy, range reads per conversation.', how: 'Wide-column (Cassandra / ScyllaDB) partitioned by conversation, clustered by seq; MongoDB sharded by conv at smaller scale.', trade: 'Other queries (search) need a separate index.' },
+    { g: 'db', q: 'The service crashes after $inc but before the insert.', what: 'That seq is never used: a gap.', why: 'Two separate writes.', how: 'Clients tolerate gaps (sync returns what exists), or allocate seq and insert in one transaction.', trade: 'Gaps confuse naive "missing message" detection.' },
+    { g: 'db', q: 'How does a new device get history?', what: 'It has no local messages.', why: 'History lives on the server.', how: 'Paged sync from the latest N backwards, newest conversations first.', trade: 'With end-to-end encryption, history must come from another device.' },
+    { g: 'sc', q: 'How do you hold 10 million connections?', what: 'Each socket costs memory and a file descriptor.', why: 'Connections are long-lived.', how: 'About 100 gateways with non-blocking IO (Netty), tuned OS limits, thin gateways, drain slowly on deploy.', trade: 'Deploys take longer.', flow: 'ws' },
+    { g: 'sc', q: 'A 500-member group: how is a message fanned out?', what: 'One message → up to 499 deliveries.', why: 'Fan-out on write to each member\'s gateway.', how: 'Group members by gateway (presence) and send one batch per gateway; offline members get pushes asynchronously.', trade: 'Huge channels switch to fan-out on read.' },
+    { g: 'rr', q: 'Presence says B is on ws2, but ws2 is dead.', what: 'Delivery fails.', why: 'Presence is a cache with a TTL.', how: 'Treat failure as offline → push; TTL removes the entry; client reconnects and syncs.', trade: 'A few seconds of delay.', flow: 'crash' },
+    { g: 'rr', q: 'A gateway crashes with 100 k users on it.', what: 'All their sockets drop at once.', why: 'Sockets live in the gateway\'s memory.', how: 'Reconnect with exponential backoff **and jitter**, any gateway, then sync from lastSeq.', trade: 'Without jitter: a reconnect storm that can take down the next gateway.', flow: 'crash' },
+    { g: 'rr', q: 'Push is delivered twice or not at all.', what: 'Duplicate or missing notifications.', why: 'Push providers are best effort.', how: 'Push is only a hint; the data comes from sync by seq; collapse keys hide duplicates.', trade: 'Notification UX can be imperfect.', flow: 'offline' },
+    { g: 'rr', q: 'Why Kafka only for offline notifications?', what: 'Kafka could carry every message.', why: 'The online hot path should be as short as possible.', how: 'Direct routing for online users; Kafka for side work (push, search indexing, analytics).', trade: 'Two delivery paths to maintain.', flow: 'offline' },
+  ],
+};
+
+// =====================================================================
+// reading tabs: How to explain · Interview answer · Follow-ups (self-contained renderers)
+// =====================================================================
+const reader = document.getElementById('reader');
+// **bold** and `code` in plain-text content (same rules as engine/app.js)
+const rich = s => esc(s).replace(/"/g, '&quot;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+// old flow ids -> scenarios on the Data flow tab
+const FLOW_TO_SC = { ws: 'ws', happy: 'happy', order: 'order', dup: 'dup', offline: 'offline', crash: 'crash' };
+const STAGE_C = ['#fb923c', '#8b5cf6', '#3b82f6', '#0d9488', '#db2777', '#16a34a'];
+
+function renderExplain() {
+  const E = CONTENT.explain, total = E.reduce((a, s) => a + s.min, 0);
+  const who = { I: ['Interviewer', 'iv'], C: ['You', 'you'], P: ['Tip', 'tip'] };
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">How to explain it</span><h2>Drive the ${total}-minute interview, stage by stage</h2>
+    <p>Interviewers grade the <b>structure</b> as much as the design. Follow the stages in order and say out loud which stage you are in.</p></div></div>
+    <div class="timebar">${E.map((s, k) => `<button data-to="ex${k}" style="flex:${s.min};--c:${STAGE_C[k % STAGE_C.length]}"><b>${k + 1}. ${esc(s.t)}</b><span>${s.min} min</span></button>`).join('')}</div>
+    ${E.map((s, k) => `<section class="rcard stage" id="ex${k}" style="--c:${STAGE_C[k % STAGE_C.length]}">
+      <div class="stage-h"><span class="sn">${k + 1}</span><h3>${esc(s.t)}</h3><span class="mn">~${s.min} min</span></div>
+      <p class="goal"><b>Goal:</b> ${rich(s.goal)}</p>
+      ${s.lines.map(([w, t]) => `<div class="msg ${who[w][1]}"><span class="who">${who[w][0]}</span><p>${rich(t)}</p></div>`).join('')}
+      ${s.avoid ? `<p class="avoid"><b>⚠ Avoid</b> ${rich(s.avoid)}</p>` : ''}
+    </section>`).join('')}
+  </div>`;
+}
+
+function renderAnswer() {
+  const A = CONTENT.answer;
+  const jumps = [['a-pitch', '⏱ 60-second answer'], ...A.sections.map((s, k) => [`a-sec${k}`, s.h]), ['a-dec', '⚖ Trade-offs'], ['a-code', '{ } Code']];
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Interview-ready answer</span><h2>What to actually say</h2>
+    <p>Start with the 60-second version, then expand any section the interviewer picks.</p></div></div>
+    <nav class="jump">${jumps.map(([id, t]) => `<button data-to="${id}">${esc(t)}</button>`).join('')}</nav>
+    <section class="rcard pitch" id="a-pitch"><h3>⏱ The 60-second answer</h3>${[].concat(A.summary).map(p => `<p>${rich(p)}</p>`).join('')}</section>
+    <div class="ans-grid">${A.sections.map((s, k) => `<section class="rcard ans" id="a-sec${k}" style="--c:${s.color || '#0b5cff'}"><h3>${esc(s.h)}</h3>${s.html}</section>`).join('')}</div>
+    <section class="rcard ans" id="a-dec" style="--c:#7c3aed"><h3>⚖ Key decisions &amp; trade-offs</h3>
+      <table><thead><tr><th>Decision</th><th>Why</th><th>Trade-off</th></tr></thead><tbody>${A.decisions.map(r => `<tr>${r.map(c => `<td>${rich(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>
+    <div class="code-grid" id="a-code">${A.code.map(c => `<section class="rcard codeblk"><h3>${esc(c.t)}</h3><pre>${esc(c.code)}</pre></section>`).join('')}</div>
+  </div>`;
+}
+
+let fuGroup = 'all';
+function renderFollowups() {
+  const G = CONTENT.followGroups, F = CONTENT.followups, list = F.filter(f => fuGroup === 'all' || f.g === fuGroup);
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Follow-up questions</span><h2>What they ask next, and what to answer</h2>
+    <p>Each answer has the same shape: <b>what happens</b> → <b>why</b> → <b>how you handle it</b> → <b>the trade-off</b>. Saying the trade-off unprompted is what separates senior answers.</p></div></div>
+    <div class="chips"><button data-g="all" class="${fuGroup === 'all' ? 'on' : ''}">All <small>${F.length}</small></button>${Object.entries(G).map(([k, g]) => `<button data-g="${k}" class="${fuGroup === k ? 'on' : ''}" style="--c:${g.color}">${esc(g.name)} <small>${F.filter(f => f.g === k).length}</small></button>`).join('')}</div>
+    ${list.map((f, k) => `<details class="rcard fu" style="--c:${G[f.g].color}"${k === 0 ? ' open' : ''}>
+      <summary><span class="fu-g">${esc(G[f.g].name)}</span><span class="fu-q">${esc(f.q)}</span></summary>
+      <div class="fu-body">
+        <div><b>What happens</b><p>${rich(f.what)}</p></div>
+        <div><b>Why</b><p>${rich(f.why)}</p></div>
+        <div class="say"><b>🎤 Say this</b><p>${rich(f.how)}</p></div>
+        <div style="grid-column:1/-1"><b>Trade-off</b><p>${rich(f.trade)}</p></div>
+        ${f.flow ? `<button class="watch" data-sc="${FLOW_TO_SC[f.flow]}">▶ Watch flow: ${esc(SCEN[FLOW_TO_SC[f.flow]].name)}</button>` : ''}
+      </div></details>`).join('')}
+  </div>`;
+  reader.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { fuGroup = b.dataset.g; renderFollowups(); });
+  reader.querySelectorAll('.watch').forEach(b => b.onclick = () => { setView('flow'); start(b.dataset.sc); });
+}
+// sticky jump bars scroll inside the reading panel
+reader.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-to]');
+  if (!b) return;
+  const el = document.getElementById(b.dataset.to), bar = b.parentElement;
+  reader.scrollTo({ top: el.offsetTop - bar.offsetHeight - 8 });
+});
+
+function setView(v) {
+  view = v;
+  document.body.className = 'v-' + v;
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  if (v !== 'flow') {
+    closeDrawer(); setLegend(false);
+    if (v === 'explain') renderExplain(); else if (v === 'answer') renderAnswer(); else renderFollowups();
+    reader.scrollTop = 0;
+  }
+  last = performance.now();
+}
+document.querySelectorAll('#viewSeg button').forEach(b => b.onclick = () => { b.blur(); setView(b.dataset.view); });
+
+// ---------------- header: previous / next design + hub (engine/catalog.js) ----------------
+(function designNav() {
+  const cat = (window.SD_CATALOG || []).filter(c => c.file), at = cat.findIndex(c => c.id === 'chat');
+  const link = (d, txt, dir) => d ? `<a href="${d.file}" title="${dir}: ${d.n} · ${esc(d.title)}">${txt}</a>` : `<span class="off" title="No ${dir.toLowerCase()} design">${txt}</span>`;
+  document.getElementById('dNav').innerHTML = link(cat[at - 1], '←', 'Previous') + link(cat[at + 1], '→', 'Next')
+    + `<a class="hub" href="../02_SD_Interview_Simulator.html" title="All designs">All designs</a>`;
+})();
+
+
+start('happy');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

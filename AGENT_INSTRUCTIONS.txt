@@ -263,3 +263,10 @@ CHANGE LOG
 2026-11-02  Core Components page (LB, cache, Kafka + cheat sheet/quiz) replaces the URL Shortener Learn page.
 2026-11-03  Interview-ready answer style (7b): 1-2 min spoken paragraphs, no forced headings.
 2026-11-12  Core Components v2.2: + CDN and DB scaling components.
+2026-11-12  Core Components v2.3: + API gateway component.
+2026-11-12  Rate Limiter page (02_Rate_Limiter.html); app.js: component `core` link + paragraph summaries.
+2026-11-12  Notification System page (04_Notification_System.html).
+2026-11-12  E-commerce Order System page (05_Ecommerce_Order.html).
+2026-11-12  Chat System page (07_Chat_System.html); WebSockets are taught in its first flow.
+2026-11-13  Job Scheduler, News Feed, Search (teaches Elasticsearch), Video Streaming, Distributed Cache (teaches consistent hashing) pages (08–12); hub note lists where WebSockets/ES/hashing are taught.
+2026-11-13  Ticket Booking / File Upload: added component core links + summary arrays (URL Shortener intentionally left as is).

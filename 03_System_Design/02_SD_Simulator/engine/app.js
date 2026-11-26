@@ -256,6 +256,7 @@
       <div class="why"><b>✅ Why it's required</b><p>${rich(c.why)}</p></div>
       <div class="without"><b>❌ Without it</b><p>${rich(c.without)}</p></div>
       <dl class="facts"><dt>Tech</dt><dd>${rich(c.tech)}</dd><dt>Scales by</dt><dd>${rich(c.scale)}</dd><dt>If it fails</dt><dd>${rich(c.fails)}</dd></dl>
+      ${c.core ? `<a class="core-link" href="00_Core_Components.html#${c.core[0]}/what">🧩 Basics: ${esc(c.core[1])} in Core Components →</a>` : ''}
     </div>`;
   }
   // Beside the component, on the side that hides the least of what it connects to (the lit-up neighbours count
@@ -591,7 +592,7 @@
       <nav class="jump" id="jump" aria-label="Jump to a section">${[['a-pitch', '⏱ 60-second answer'], ...A.sections.map((sec, k) => [`a-sec${k}`, sec.h]), ['a-dec', '⚖ Trade-offs'], ['a-code', '{ } Code']].map(([id, t]) => `<button data-jump="${id}">${esc(t)}</button>`).join('')}</nav></div>
       <section class="pitch" id="a-pitch">
         <div class="pitch-head"><b>⏱ The 60-second answer</b><button id="copy-pitch">⧉ Copy</button></div>
-        <p>${rich(A.summary)}</p>
+        ${[].concat(A.summary).map(p => `<p>${rich(p)}</p>`).join('')}
       </section>
       <div class="ans-grid">${A.sections.map((sec, k) => `<section class="ans" id="a-sec${k}" style="--c:${sec.color ?? '#2f6fe0'}"><h3>${esc(sec.h)}</h3>${sec.html}</section>`).join('')}</div>
       <section class="ans wide" id="a-dec" style="--c:#8f4fc4"><h3>⚖ Key decisions & trade-offs</h3>
@@ -602,7 +603,7 @@
         <pre><code>${highlight(c.code).split('\n').map(line => `<span class="ln">${line || ' '}</span>`).join('')}</code></pre></section>`).join('')}</div>
       <div class="cta-row end"><button class="cta" id="to-follow">6 · Practise the follow-ups →</button></div>
     </div>`;
-    $('copy-pitch').addEventListener('click', () => navigator.clipboard?.writeText(A.summary.replace(/\*\*|`/g, '')).then(() => toast('Copied the 60-second answer'), () => toast('Copy failed')));
+    $('copy-pitch').addEventListener('click', () => navigator.clipboard?.writeText([].concat(A.summary).join(String.fromCharCode(10, 10)).replace(/\*\*|`/g, '')).then(() => toast('Copied the 60-second answer'), () => toast('Copy failed')));
     $('to-follow').addEventListener('click', () => setTab('followups'));
     for (const b of $('doc').querySelectorAll('[data-code]')) b.addEventListener('click', () => navigator.clipboard?.writeText(A.code[+b.dataset.code].code).then(() => toast('Code copied'), () => toast('Copy failed')));
     // Jump bar: scroll inside the pane, and mark the section currently under the frozen header.

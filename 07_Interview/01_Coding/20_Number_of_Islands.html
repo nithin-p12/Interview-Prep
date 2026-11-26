@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-islands">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>20. Number of Islands · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int numIslands(char[][] grid) {
+    int count = 0;
+    for (int r = 0; r < grid.length; r++) {
+        for (int c = 0; c < grid[0].length; c++) {
+            if (grid[r][c] == '1') {
+                count++;
+                sink(grid, r, c);
+            }
+        }
+    }
+    return count;
+}
+private void sink(char[][] grid, int r, int c) {
+    if (r < 0 || r >= grid.length) return;
+    if (c < 0 || c >= grid[0].length) return;
+    if (grid[r][c] != '1') return;
+    grid[r][c] = '0';
+    sink(grid, r + 1, c);
+    sink(grid, r - 1, c);
+    sink(grid, r, c + 1);
+    sink(grid, r, c - 1);
+}`;
+
+// The real algorithm (DFS that sinks each island). After every line that matters we save a snapshot (= one step).
+function run(rows){
+ const S=[],g=rows.map(r=>[...r]),R=g.length,C=g[0].length,sunk={},frames=[];let count=0,fid=0;
+ function snap(o){const hl={};Object.keys(sunk).forEach(k=>hl[k]='seen');if(o.at)hl[o.at]=(sunk[o.at]?'seen ':'')+'cur';
+  const top=frames[frames.length-1];
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{cells:g.map(r=>r.slice()),hl},
+   vizx:{calls:{items:frames.map(f=>({id:f.id,v:`sink(${f.r},${f.c})`})),hl:top?{[top.id]:'cur'}:{}}},
+   vars:[{t:'method',note:'numIslands',v:[['count',count]]},
+         {t:'loop',note:'the scan',v:[['r',o.r],['c',o.c]]},
+         {t:'this call',note:'top sink frame',v:[['r',top?top.r:undefined],['c',top?top.c:undefined]]}]});}
+ function sink(r,c,isl){if(r<0||r>=R||c<0||c>=C||g[r][c]!=='1')return;
+  const f={id:'f'+(++fid),r,c};frames.push(f);g[r][c]='0';sunk[r+','+c]=isl;
+  snap({r:o0.r,c:o0.c,at:r+','+c,line:[14,15,16,17],ann:{17:`grid[${r}][${c}] = '0'`},tone:'good',
+   text:`<b>sink(${r}, ${c})</b>: inside the grid and land → mark it visited by writing <b>'0'</b> (green). Then try down, up, right, left.`});
+  sink(r+1,c,isl);sink(r-1,c,isl);sink(r,c+1,isl);sink(r,c-1,isl);
+  frames.pop();}
+ const o0={};
+ snap({line:[2],ann:{2:'count = 0'},text:'Scan every cell. Each time we meet <b>land (\'1\')</b> that is not sunk yet, it is a <b>new island</b>: count it and sink the whole island.'});
+ let skip=[];
+ const flush=()=>{if(!skip.length)return;const [a,b]=[skip[0],skip[skip.length-1]];
+  snap({r:b[0],c:b[1],at:b.join(','),line:[4,5],ann:{5:'== \'1\' → false'},text:skip.length>1?`Cells (${a.join(', ')}) … (${b.join(', ')}): water or already sunk → nothing to do.`:`Cell (${a.join(', ')}): water or already sunk → nothing to do.`});skip=[];};
+ for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+  if(g[r][c]!=='1'){skip.push([r,c]);continue;}
+  flush();o0.r=r;o0.c=c;count++;
+  snap({r,c,at:r+','+c,line:[5,6],ann:{5:`grid[${r}][${c}] == '1'`,6:`count = ${count}`},tone:'good',text:`(${r}, ${c}) is unvisited land → island <b>#${count}</b>. Now sink all land connected to it.`});
+  snap({r,c,at:r+','+c,line:[7],ann:{7:`sink(grid, ${r}, ${c})`},text:'Call <b>sink</b> — a DFS. Every call goes on the call stack (right).'});
+  sink(r,c,count);
+  o0.r=undefined;
+  snap({r,c,at:r+','+c,line:[7],ann:{7:'island sunk'},text:`All calls returned → island #${count} is completely sunk (green). Continue the scan.`});
+ }
+ flush();
+ snap({line:[11],ann:{11:`return ${count}`},tone:'good',result:count,text:`Every cell scanned → <b>${count}</b> island${count===1?'':'s'}.`});
+ return S;}
+
+PLAYER.start({
+ title:'20. Number of Islands',code:CODE,run,
+ problem:{pattern:'Grid DFS · sink what you visit',text:'<code>grid</code> has \'1\' (land) and \'0\' (water). Count the islands (land connected up / down / left / right).',example:'11000 · 11000 · 00100 · 00011 → 3'},
+ viz:{kind:'grid',title:'green = sunk (now \'0\') · orange = current cell',opts:{cls:v=>v==='1'?'land':'water'},side:true,
+  rows:[{id:'calls',label:'',kind:'stack',opts:{sm:true,w:118}}]},
+ ds:[],dsNote:'The <b>grid</b> (<code>char[][]</code>) is changed in place: ‘1’ → ‘0’ marks a cell visited.<br>The DFS uses the <b>call stack</b>.',
+ input:{label:'grid rows =',value:'1100,1001,0011',presets:['110,110,001','111,010,111','101,010,101','000,000'],
+  parse(v){const rows=v.split(/[\s,|]+/).filter(Boolean);if(!rows.length||rows.length>4)throw '1 to 4 rows, e.g. 1100,1001,0011';
+   if(rows.some(r=>!/^[01]+$/.test(r)))throw 'rows of 0 and 1 only';if(rows.some(r=>r.length!==rows[0].length))throw 'all rows need the same length';
+   if(rows[0].length>5)throw 'max 5 columns (so it fits)';return rows;}},
+ remember:{
+  mnem:{letters:['S','C','B','D'],phrase:'Scan · Count · Bounds · Dive',sub:'New land = new island → sink it all, so it is never counted again.'},
+  chunks:[
+   {t:'Scan',d:'two loops over every cell',lines:[2,3,4]},
+   {t:'Count',d:'grid[r][c] == \'1\' → count++, sink(r, c); return count',lines:[5,6,7,11]},
+   {t:'Bounds',d:'outside the grid or not land → return',lines:[16,13,14,15]},
+   {t:'Dive',d:'grid[r][c] = \'0\', then sink 4 neighbours',lines:[17,18,19,20,21]}],
+  declare:[
+   ['int count = 0;','islands found so far'],
+   ['private void sink(char[][] grid, int r, int c)','DFS helper: sinks one island'],
+   ['grid[r][c] = \'0\';','mark visited before recursing']],
+  forget:[
+   'It is <code>char</code>: compare with <b><code>\'1\'</code></b>, not the int 1.',
+   'Mark the cell <b>before</b> the 4 calls, or two cells call each other forever.',
+   'Check <b>bounds first</b>, then <code>grid[r][c]</code> (or it throws).',
+   'Only 4 directions — diagonals are not connected.'],
+  cx:{time:'O(R · C)',timeWhy:'every cell is scanned once and sunk at most once',space:'O(R · C)',spaceWhy:'worst-case DFS depth (all land)',
+   rows:[['DFS, sink in place','O(R·C)','O(R·C)','short ✓ (stack depth)',true],
+    ['BFS with a queue','O(R·C)','O(min(R,C))','no deep recursion',false],
+    ['Union-Find','O(R·C·α)','O(R·C)','good when cells are added over time',false]],
+   follow:[
+    ['Can’t modify the input?','Use <code>boolean[][] visited</code> instead of writing \'0\'.'],
+    ['Very large grid (StackOverflowError)?','BFS with <code>ArrayDeque&lt;int[]&gt;</code>: offer the start, poll, offer land neighbours.'],
+    ['Max area of an island?','Let sink return 1 + the sum of the 4 calls; keep the max.']]}}
+});
+</script>
+</body></html>

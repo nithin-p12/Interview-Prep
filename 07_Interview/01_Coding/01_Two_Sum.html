@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-two-sum">
+<meta name="doc-version" content="v2.1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1. Two Sum · Coding Practice · v2.1</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int[] twoSum(int[] nums, int target) {
+    Map<Integer, Integer> seen = new HashMap<>();
+    for (int i = 0; i < nums.length; i++) {
+        int need = target - nums[i];
+        if (seen.containsKey(need)) {
+            return new int[]{seen.get(need), i};
+        }
+        seen.put(nums[i], i);
+    }
+    return new int[]{-1, -1};
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run({nums,target}){
+ const S=[],seen=new Map();
+ function snap(o){const i=o.i,inLoop=i!=null&&i<nums.length,hl={};
+  nums.forEach((v,k)=>{if(seen.get(v)===k)hl[k]='in';});
+  if(inLoop)hl[i]='cur';(o.hit||[]).forEach(k=>hl[k]='hit');
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:nums,hl,ptrs:{i:inLoop?i:null}},
+   ds:{seen:{entries:[...seen],hl:o.mhl||{},probe:o.probe}},
+   vars:[{t:'method',note:'whole call',v:[['nums',nums],['target',target]]},
+         {t:'loop',note:'new each turn',v:[['i',inLoop?i:undefined],['nums[i]',inLoop?nums[i]:undefined],['need',inLoop?o.need:undefined]]},
+         ]});}
+
+ snap({line:[2],ann:{2:'seen = {}'},text:'Create an empty map <b>seen</b>. It will remember <b>value → index</b> of every number we already walked past.'});
+ for(let i=0;i<nums.length;i++){const x=nums[i],need=target-x;
+  snap({i,line:[3],ann:{3:`i = ${i}`},text:`<b>for</b> loop: i = ${i} → look at <b>nums[${i}] = ${x}</b>.`});
+  snap({i,need,line:[4],ann:{4:`need = ${target} - ${x} = ${need}`},text:`The partner I need is <b>${target} − ${x} = ${need}</b>.`});
+  if(seen.has(need)){const j=seen.get(need);
+   snap({i,need,hit:[j],mhl:{[need]:'hit'},line:[5],ann:{5:`containsKey(${need}) → true`},tone:'good',probe:{t:`seen.containsKey(${need})`,r:'true',ok:true},
+    text:`<b>${need}</b> is in the map — we saw it at index <b>${j}</b>. Partner found!`});
+   snap({i,need,hit:[j,i],mhl:{[need]:'hit'},line:[6],ann:{6:`return [${j}, ${i}]`},tone:'good',result:[j,i],
+    text:`Return <b>[seen.get(${need}), i] = [${j}, ${i}]</b> → ${need} + ${x} = ${target} ✓`});
+   return S;}
+  snap({i,need,line:[5],ann:{5:`containsKey(${need}) → false`},probe:{t:`seen.containsKey(${need})`,r:'false',ok:false},
+   text:`<b>${need}</b> is not in the map yet → no partner so far.`});
+  seen.set(x,i);
+  snap({i,need,mhl:{[x]:'new'},line:[8],ann:{8:`put(${x}, ${i})`},probe:{t:`seen.put(${x}, ${i})`,r:'stored',ok:null},
+   text:`Remember myself: <b>seen.put(${x}, ${i})</b>, so a later number that needs ${x} can find me.`});
+ }
+ snap({line:[10],ann:{10:'return [-1, -1]'},tone:'bad',result:[-1,-1],text:'The loop ended without a match → no two numbers add up to the target.'});
+ return S;}
+
+PLAYER.start({
+ title:'1. Two Sum',code:CODE,run,
+ problem:{pattern:'HashMap · complement lookup',text:'Return the <b>indices</b> of the two numbers in <code>nums</code> that add up to <code>target</code>.',example:'[2, 7, 11, 15], 9 → [0, 1]'},
+ viz:{kind:'array',title:'nums — light blue = already stored in the map',opts:{cw:50,ptrColors:{i:'#F97316'}}},
+ ds:[{id:'seen',kind:'map',decl:'Map&lt;Integer, Integer&gt; seen',note:'value → index of numbers already walked past',opts:{k:'value (key)',v:'index'}}],
+ input:{label:'nums | target =',value:'3,8,2,7 | 9',presets:['2,7,11,15 | 9','3,2,4 | 6','3,3 | 6','1,5,9 | 4'],
+  parse(v){const [a,b]=v.split('|');const nums=(a||'').match(/-?\d+/g)?.map(Number)||[],t=parseInt(b,10);
+   if(nums.length<2||nums.length>10)throw 'nums: 2 to 10 numbers, e.g. 2,7,11,15 | 9';if(isNaN(t))throw 'add the target after a |, e.g. 2,7,11,15 | 9';return {nums,target:t};}},
+ remember:{
+  mnem:{letters:['D','L','C','S'],phrase:'Declare · Loop · Check · Store',sub:'Ask “have I seen my partner?” BEFORE you store yourself.'},
+  chunks:[
+   {t:'Declare',d:'an empty HashMap: value → index',lines:[2]},
+   {t:'Loop',d:'for i = 0..n−1, need = target − nums[i]',lines:[3,4]},
+   {t:'Check',d:'map has need? → return [map.get(need), i]',lines:[5,6,7]},
+   {t:'Store',d:'else put(nums[i], i); after the loop return a fallback',lines:[8,10]}],
+  declare:[
+   ['Map&lt;Integer, Integer&gt; seen = new HashMap&lt;&gt;();','key = the number, value = its index'],
+   ['for (int i = 0; i &lt; nums.length; i++)','we must return indices, so loop by index'],
+   ['int need = target - nums[i];','the partner value to look up (loop-local)']],
+  forget:[
+   'The map is <b>value → index</b> (key = the number) — we look up by value.',
+   '<b>Check before put.</b> Putting first can pair a number with itself ([3], target 6 → wrong [0, 0]).',
+   'Return order is <code>{seen.get(need), i}</code> — the older index first.',
+   'Java needs a return after the loop: <code>return new int[]{-1, -1};</code> (or throw).'],
+  cx:{time:'O(n)',timeWhy:'one pass; each get / put is O(1) on average',space:'O(n)',spaceWhy:'the map can hold up to n − 1 numbers',
+   rows:[['Two loops (every pair)','O(n²)','O(1)','check i &lt; j',false],
+    ['Sort + two pointers','O(n log n)','O(n)','must keep the original indices',false],
+    ['HashMap, one pass','O(n)','O(n)','trade memory for speed ✓',true]],
+   follow:[
+    ['Array already sorted (Two Sum II)?','Two pointers L = 0, R = n−1: sum too small → L++, too big → R−−. O(n) time, O(1) space.'],
+    ['Count all pairs?','Don\'t return early; keep value → frequency and add <code>freq.get(need)</code> each step.'],
+    ['Duplicates like [3, 3], target 6?','Works: the first 3 is stored, the second finds it → [0, 1]. Check-before-put makes it right.'],
+    ['Return the values, not indices?','A HashSet is enough — no index to remember.']]}}
+});
+</script>
+</body></html>

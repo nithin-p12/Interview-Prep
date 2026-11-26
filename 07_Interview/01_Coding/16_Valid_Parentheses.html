@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-valid-parentheses">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>16. Valid Parentheses · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public boolean isValid(String s) {
+    Deque<Character> stack = new ArrayDeque<>();
+    for (char c : s.toCharArray()) {
+        if (c == '(') {
+            stack.push(')');
+        } else if (c == '[') {
+            stack.push(']');
+        } else if (c == '{') {
+            stack.push('}');
+        } else if (stack.isEmpty() || stack.pop() != c) {
+            return false;
+        }
+    }
+    return stack.isEmpty();
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(s){
+ const S=[],n=s.length,st=[],ok=new Set();let uid=0;
+ const PUSH={'(':[4,5,')'],'[':[6,7,']'],'{':[8,9,'}']};
+ function snap(o){const p=o.p,inLoop=p!=null&&p<n,hl={};
+  for(let k=0;k<n;k++){if(ok.has(k))hl[k]='hit';else if(p!=null&&k<p)hl[k]='in';}
+  if(inLoop)hl[p]=o.bad?'bad':o.match?'hit':'cur';(o.badOpen!=null)&&(hl[o.badOpen]='bad');
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:[...s],hl,ptrs:{c:inLoop?p:null}},
+   ds:{stack:{items:st.map(x=>({id:x.id,v:x.v})),hl:o.shl||{},probe:o.probe}},
+   vars:[{t:'method',note:'whole call',v:[['s',s],['stack.size()',st.length]]},
+         {t:'loop',note:'new each turn',v:[['c',inLoop?s[p]:undefined]]}]});}
+
+ snap({line:[2],ann:{2:'stack = []'},text:'A <b>stack</b> (ArrayDeque). For every opener we push the <b>closer we expect</b> later.'});
+ for(let p=0;p<n;p++){const c=s[p];
+  snap({p,line:[3],ann:{3:`c = '${c}'`},text:`Next character: <b>'${c}'</b>.`});
+  if(PUSH[c]){const [a,b,cl]=PUSH[c],id='e'+(++uid);st.push({id,v:cl,at:p});
+   snap({p,shl:{[id]:'new'},line:[a,b],ann:{[a]:'true',[b]:`push('${cl}')`},probe:{t:`stack.push('${cl}')`,r:`size ${st.length}`,ok:null},
+    text:`'${c}' opens a group → push the closer we now expect: <b>'${cl}'</b>. It goes on <b>top</b>.`});
+   continue;}
+  if(!st.length){
+   snap({p,bad:true,line:[10,11],ann:{10:'isEmpty() → true',11:'return false'},tone:'bad',result:false,probe:{t:'stack.isEmpty()',r:'true',ok:false},
+    text:`'${c}' closes something, but the stack is <b>empty</b> → nothing to close. Return <b>false</b>.`});
+   return S;}
+  const top=st.pop();
+  if(top.v!==c){
+   snap({p,bad:true,badOpen:top.at,line:[10,11],ann:{10:`'${top.v}' != '${c}'`,11:'return false'},tone:'bad',result:false,probe:{t:'stack.pop()',r:`'${top.v}'`,ok:false},
+    text:`We expected <b>'${top.v}'</b> (to close s[${top.at}]) but got <b>'${c}'</b> → wrong order. Return <b>false</b>.`});
+   return S;}
+  ok.add(p);ok.add(top.at);
+  snap({p,match:true,line:[10],ann:{10:`'${top.v}' == '${c}'`},tone:'good',probe:{t:'stack.pop()',r:`'${top.v}'`,ok:true},
+   text:`Pop the top: <b>'${top.v}'</b> is exactly '${c}' → s[${top.at}] and s[${p}] are a pair (green).`});
+ }
+ const e=st.length===0;
+ snap({p:n,line:[14],ann:{14:`isEmpty() → ${e}`},tone:e?'good':'bad',result:e,probe:{t:'stack.isEmpty()',r:String(e),ok:e},
+  text:e?'All characters read and the stack is empty → every opener was closed. Return <b>true</b>.':`Characters ran out but <b>${st.length}</b> opener${st.length>1?'s are':' is'} still waiting to be closed → <b>false</b>.`});
+ return S;}
+
+PLAYER.start({
+ title:'16. Valid Parentheses',code:CODE,run,
+ problem:{pattern:'Stack · push the expected closer',text:'Return <b>true</b> if every bracket in <code>s</code> is closed by the same type, in the right order.',example:'"()[]{}" → true · "([)]" → false'},
+ viz:{kind:'array',title:'s — green = matched pair',opts:{cw:42,top:6,ptrColors:{c:'#F97316'}}},
+ ds:[{id:'stack',kind:'stack',decl:'Deque&lt;Character&gt; stack',note:'closers we still expect, newest on top'}],
+ input:{label:'s =',value:'([]{})',presets:['()[]{}','(]','([)]','(('],
+  parse(v){v=v.replace(/\s/g,'');if(!v)throw 'type brackets, e.g. ([]{})';if(!/^[()\[\]{}]+$/.test(v))throw 'only ( ) [ ] { } please';if(v.length>10)throw 'max 10 characters (so it fits)';return v;}},
+ remember:{
+  mnem:{letters:['D','L','P','C'],phrase:'Deque · Loop · Push-closer · Check',sub:'Opener → push its closer. Closer → it must equal pop().'},
+  chunks:[
+   {t:'Deque',d:'Deque&lt;Character&gt; stack = new ArrayDeque&lt;&gt;()',lines:[2]},
+   {t:'Loop',d:'for each char c',lines:[3]},
+   {t:'Push-closer',d:'( → push ) · [ → push ] · { → push }',lines:[4,5,6,7,8,9]},
+   {t:'Check',d:'empty or pop() != c → false; end: isEmpty()',lines:[10,11,14]}],
+  declare:[
+   ['Deque&lt;Character&gt; stack','new ArrayDeque&lt;&gt;() · LIFO: the last opener closes first'],
+   ['for (char c : s.toCharArray())','one character at a time']],
+  forget:[
+   'Check <code>isEmpty()</code> <b>before</b> <code>pop()</code> — ")" alone would throw.',
+   'At the end return <code>stack.isEmpty()</code>, not true — "((" is invalid.',
+   'Use <code>ArrayDeque</code>, not the old synchronized <code>Stack</code> class.',
+   'Odd length? You can return false right away.'],
+  cx:{time:'O(n)',timeWhy:'each char is pushed / popped at most once',space:'O(n)',spaceWhy:'all openers, e.g. "(((("',
+   rows:[['Remove "()", "[]", "{}" until no change','O(n²)','O(n)','string rebuilding',false],
+    ['Stack of openers + Map','O(n)','O(n)','map closer → opener',false],
+    ['Stack of expected closers','O(n)','O(n)','no map needed ✓',true]],
+   follow:[
+    ['Only one type, "(" and ")"?','No stack needed: a counter; never below 0, must end at 0.'],
+    ['Minimum removals to make it valid?','Stack of indices of unmatched brackets; remove those.'],
+    ['Longest valid substring?','Stack of indices starting with −1; length = i − stack.peek().']]}}
+});
+</script>
+</body></html>

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-longest-substring">
+<meta name="doc-version" content="v2.1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>8. Longest Substring Without Repeating Characters · Coding Practice · v2.1</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int lengthOfLongestSubstring(String s) {
+    Set<Character> window = new HashSet<>();
+    int left = 0, best = 0;
+    for (int right = 0; right < s.length(); right++) {
+        char c = s.charAt(right);
+        while (window.contains(c)) {
+            window.remove(s.charAt(left));
+            left++;
+        }
+        window.add(c);
+        best = Math.max(best, right - left + 1);
+    }
+    return best;
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(s){
+ const S=[];let set=[],left=0,best=0;
+ function snap(o){const r=o.right,n=s.length,inLoop=r!=null&&r<n,added=o.added;
+  const hi=r==null?-1:r>=n?n-1:added?r:r-1,hl={};
+  for(let k=0;k<n;k++){if(k<left)hl[k]='done';else if(k<=hi)hl[k]='in';}
+  if(inLoop&&!added)hl[r]=o.clash?'bad':'cur';
+  if(o.clash)for(let k=left;k<r;k++)if(s[k]===s[r])hl[k]='bad';
+  const dsHl={};if(o.clash)dsHl[s[r]]='bad';if(added)dsHl[s[r]]='new';
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:[...s],hl,ptrs:{left:left<n?left:null,right:inLoop?r:null},win:[left,hi],winBad:!!o.clash},
+   ds:{window:{items:set.map(ch=>({id:ch,v:ch})),hl:dsHl,probe:o.probe}},
+   vars:[{t:'method',note:'whole call',v:[['s',s],['left',left],['best',best,o.result!=null?'res':'']]},
+         {t:'loop',note:'new each turn',v:[['right',inLoop?r:undefined],['c',inLoop?s[r]:undefined]]},
+         {t:'expr',v:[['right - left + 1',o.len]]}]});}
+
+ snap({line:[2,3],ann:{2:'window = {}',3:'left = 0, best = 0'},text:'Create an empty <b>HashSet</b> for the letters inside the window. <b>left = 0</b>, <b>best = 0</b>.'});
+ for(let r=0;r<s.length;r++){const c=s[r];
+  snap({right:r,line:[4,5],ann:{4:`right = ${r}`,5:`c = '${c}'`},text:`<b>for</b> loop: right = ${r}, read <b>c = '${c}'</b>.`});
+  let shrunk=false;
+  while(set.includes(c)){shrunk=true;
+   snap({right:r,clash:true,line:[6],ann:{6:`contains('${c}') → true`},tone:'bad',probe:{t:`window.contains('${c}')`,r:'true',ok:false},
+    text:`<b>while</b>: '${c}' is already in the window → duplicate! Shrink from the left.`});
+   const d=s[left];set=set.filter(x=>x!==d);left++;
+   snap({right:r,line:[7,8],ann:{7:`remove('${d}')`,8:`left = ${left}`},tone:'bad',probe:{t:`window.remove('${d}')`,r:'removed',ok:null},
+    text:`Throw out <b>'${d}'</b> (the leftmost letter) and move <b>left → ${left}</b>. Then check again.`});
+  }
+  snap({right:r,line:[6],ann:{6:`contains('${c}') → false`},probe:{t:`window.contains('${c}')`,r:'false',ok:true},
+   text:`'${c}' is not in the window → no duplicate, the <b>while</b> loop ${shrunk?'stops':'is skipped'}.`});
+  set.push(c);
+  snap({right:r,added:true,line:[10],ann:{10:`add('${c}')`},tone:'good',probe:{t:`window.add('${c}')`,r:'true',ok:true},
+   text:`Add <b>'${c}'</b> to the window → window is now "<b>${s.slice(left,r+1)}</b>".`});
+  const len=r-left+1,old=best;best=Math.max(best,len);
+  snap({right:r,added:true,len,line:[11],ann:{11:`max(${old}, ${len}) = ${best}`},tone:best>old?'good':'',
+   text:best>old?`Window length ${len} beats ${old} → <b>best = ${best}</b> 🏆`:`Window length ${len} is not more than ${old} → best stays <b>${best}</b>.`});
+ }
+ snap({right:s.length,line:[13],ann:{13:`return ${best}`},tone:'good',result:best,
+  text:`<b>for</b> loop finished (right = ${s.length} = s.length()). Return <b>${best}</b>.`});
+ return S;}
+
+PLAYER.start({
+ title:'8. Longest Substring Without Repeating Characters',code:CODE,run,
+ problem:{pattern:'Sliding window',text:'Return the length of the longest substring of <code>s</code> with no repeating characters.',example:'"abcabcbb" → 3 ("abc")'},
+ viz:{kind:'array',title:'s as letters — blue box = current window',opts:{cw:46,ptrColors:{left:'#16A34A',right:'#F97316'}}},
+ ds:[{id:'window',kind:'set',decl:'Set&lt;Character&gt; window',note:'letters in the current window (no duplicates)'}],
+ input:{label:'s =',value:'abcb',presets:['abcabcbb','pwwkew','abba','bbbb'],
+  parse(v){v=v.replace(/\s/g,'');if(!v)throw 'type a string';if(v.length>12)throw 'max 12 characters (so it fits)';return v;}},
+ remember:{
+  mnem:{letters:['D','E','S','A'],phrase:'Declare · Expand · Shrink · Add',sub:'right moves every turn; left moves only when there is a duplicate.'},
+  chunks:[
+   {t:'Declare',d:'a HashSet for the window, left = 0, best = 0',lines:[2,3]},
+   {t:'Expand',d:'for right = 0..n−1, take c = s.charAt(right)',lines:[4,5]},
+   {t:'Shrink',d:'while the set has c: remove s.charAt(left), left++',lines:[6,7,8,9]},
+   {t:'Add',d:'add c, best = max(best, right − left + 1), return best',lines:[10,11,13]}],
+  declare:[
+   ['Set&lt;Character&gt; window = new HashSet&lt;&gt;();','letters inside the current window'],
+   ['int left = 0, best = 0;','start of the window · longest length so far'],
+   ['for (int right = 0; right &lt; s.length(); right++)','end of the window, grows every turn'],
+   ['char c = s.charAt(right);','the letter we try to add (loop-local)']],
+  forget:[
+   'It is a <b>while</b>, not an <b>if</b> — "abcb" must throw out <b>two</b> letters (a, then b).',
+   'Remove <code>s.charAt(left)</code> (the leftmost letter), <b>not</b> <code>c</code>.',
+   'Length is <code>right − left + 1</code> — don\'t forget the <b>+1</b>.',
+   'Add <code>c</code> <b>after</b> the while loop, then update best.'],
+  cx:{time:'O(n)',timeWhy:'each letter is added once and removed at most once (≤ 2n)',
+   space:'O(min(n, k))',spaceWhy:'the set holds only the window (k = alphabet size)',
+   rows:[['Every start + a set','O(n²)','O(k)','restart the set for each start',false],
+    ['Sliding window + Set','O(n)','O(k)','left and right only move forward ✓',true],
+    ['Window + Map (last index)','O(n)','O(k)','left jumps, no while loop',false]],
+   follow:[
+    ['Make left jump instead of crawl?','Keep <code>Map&lt;Character,Integer&gt; last</code>: <code>left = max(left, last.get(c) + 1)</code>, then <code>last.put(c, right)</code>.'],
+    ['Return the substring itself?','Save <code>start = left</code> when best improves → <code>s.substring(start, start + best)</code>.'],
+    ['At most k distinct characters?','Same window with a count map; shrink while <code>map.size() &gt; k</code>.']]}}
+});
+</script>
+</body></html>

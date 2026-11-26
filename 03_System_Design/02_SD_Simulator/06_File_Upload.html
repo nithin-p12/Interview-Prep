@@ -3,617 +3,1087 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="sd-file-upload">
-<meta name="doc-version" content="v2.2">
+<meta name="doc-version" content="v3.0">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>File Upload & Storage · System Design · v2.2</title>
-<link rel="stylesheet" href="engine/sd.css">
+<title>File Upload &amp; Storage · System Design · v3.0</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:#ffffff;color:#0f172a}
+
+/* ---------- header ---------- */
+header{height:64px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.brand .logo{flex-shrink:0}
+.brand .txt{min-width:0}
+.brand .t{font-size:16px;font-weight:800;white-space:nowrap;display:flex;align-items:baseline;gap:10px}
+.brand .t a{font-size:11.5px;font-weight:600;color:#0b5cff;text-decoration:none}
+.brand .t a:hover{text-decoration:underline}
+.brand .s{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrls{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.seg{display:flex;align-items:center;background:#f1f5f9;border-radius:10px;padding:3px;gap:2px}
+.seg .lbl{font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;padding:0 6px 0 7px}
+.seg button{border:0;background:transparent;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#475569;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.seg button:hover{color:#0f172a}
+.seg button.on{background:#fff;color:#0b5cff;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.btn{border:1px solid #e2e8f0;background:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#334155;padding:7px 12px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f8fafc}
+
+/* ---------- main / svg ---------- */
+main{position:relative;height:calc(100vh - 64px - 78px)}
+#dia{display:block;width:100%;height:100%;user-select:none}
+.hint{position:absolute;left:12px;bottom:8px;font-size:11px;color:#64748b;background:rgba(255,255,255,.85);padding:3px 8px;border-radius:6px;pointer-events:none}
+.zl{font-size:13px;font-weight:800;letter-spacing:1.2px;fill:#334155}
+.nl{font:11px ui-monospace,Consolas,monospace;fill:#64748b}
+.edge{fill:none;stroke:#94a3b8;stroke-width:2;stroke-dasharray:6 7}
+.edge.hot{stroke-dasharray:none;stroke-width:3}
+.elbl{font-size:11px;font-weight:600;fill:#64748b;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.node{cursor:pointer}
+.node .card{transition:filter .2s,stroke-width .2s;filter:drop-shadow(0 1px 3px rgba(15,23,42,.08))}
+.node:hover .card{filter:drop-shadow(0 4px 10px rgba(15,23,42,.18))}
+.node.active .card{stroke-width:3.5;filter:drop-shadow(0 0 14px rgba(11,92,255,.55))}
+.nlab{font-size:14px;font-weight:700;fill:#0f172a;text-anchor:middle}
+.nsub{font-size:11px;fill:#64748b;text-anchor:middle}
+.tag text{font-size:10.5px;font-weight:700;fill:#fff;text-anchor:middle}
+.ptag{font-size:10.5px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3.5px;stroke-linejoin:round;text-anchor:middle}
+
+/* ---------- legend popover ---------- */
+.ibtn{width:34px;padding:7px 0;text-align:center;font-size:14px;line-height:1}
+.ibtn.on{background:#eef4ff;border-color:#cfe0ff;color:#0b5cff}
+#legendPop{position:fixed;top:70px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 44px rgba(15,23,42,.2),0 3px 10px rgba(15,23,42,.08);padding:12px 14px;z-index:7;display:none}
+#legendPop.open{display:block}
+#legendPop:before{content:"";position:absolute;top:-6px;right:var(--arrow,20px);width:10px;height:10px;background:#fff;border-left:1px solid #e5e7eb;border-top:1px solid #e5e7eb;transform:rotate(45deg)}
+.lgh{font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8;margin:2px 0 8px}
+.lgk{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+.lgk span{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569}
+.lgk i{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.06),0 0 7px var(--c);background:var(--c)}
+.lgs{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:10px}
+.lgs b{display:block;font-size:16px;font-weight:800;color:#0f172a;line-height:1.15}
+.lgs span{font-size:11px;color:#475569}
+.lgn{font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:8px}
+
+/* ---------- footer ---------- */
+footer{height:78px;background:#fff;border-top:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+#badge{flex-shrink:0;min-width:52px;height:44px;padding:0 8px;border-radius:12px;background:#0b5cff;color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+#badge.live{background:#16a34a;letter-spacing:1px}
+.fmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.frow{display:flex;align-items:center;gap:8px;min-width:0}
+#ftitle{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{flex-shrink:0;font:600 11px ui-monospace,Consolas,monospace;color:#0b5cff;background:#eef4ff;border:1px solid #cfe0ff;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill:empty{display:none}
+.grow{flex:1}
+#dots{display:flex;gap:3px;flex-shrink:0}
+#dots i{display:block;width:18px;height:4px;border-radius:2px;background:#e2e8f0}
+#dots i.on{background:#0b5cff}
+#ftext{font-size:12.5px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{display:flex;gap:8px;flex-shrink:0}
+.stat{width:78px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:6px 8px}
+.stat b{display:block;font-size:18px;line-height:1.1}
+.stat span{font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#64748b;white-space:nowrap}
+
+/* ---------- drawer ---------- */
+#drawer{position:fixed;right:14px;top:76px;bottom:90px;width:380px;max-width:calc(100vw - 28px);background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.22),0 4px 14px rgba(15,23,42,.08);transform:translateX(420px);transition:transform .35s ease;display:flex;flex-direction:column;overflow:hidden;z-index:5}
+#drawer.open{transform:translateX(0)}
+.dh{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #e5e7eb}
+.dh .dl{width:52px;height:52px;border-radius:12px;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dh h3{margin:0;font-size:16px}
+.dh p{margin:2px 0 0;font-size:12px;color:#475569}
+.dh button{margin-left:auto;align-self:flex-start;border:0;background:rgba(255,255,255,.7);border-radius:8px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#334155}
+.db{padding:14px 16px 18px;overflow:auto;font-size:13px;line-height:1.5;color:#334155}
+.db h4{margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.db ul{margin:0;padding-left:18px}
+.db li{margin:3px 0}
+.db pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.db code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px}
+.core-link{display:inline-block;margin-top:14px;font-size:12.5px;font-weight:600;color:#0b5cff;text-decoration:none;background:#eef4ff;border:1px solid #cfe0ff;padding:6px 10px;border-radius:9px}
+.core-link:hover{text-decoration:underline}
+
+/* ---------- header nav + view tabs ---------- */
+.brand .s{display:flex;align-items:center;gap:6px}
+.brand .s .sub{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.brand .nav{display:flex;align-items:center;gap:1px;flex-shrink:0}
+.brand .nav a,.brand .nav span{font-size:11.5px;font-weight:700;color:#0b5cff;text-decoration:none;padding:0 4px;border-radius:5px;line-height:16px}
+.brand .nav a:hover{background:#eef4ff}
+.brand .nav span.off{color:#cbd5e1;cursor:default}
+.brand .nav a.hub{color:#64748b;font-weight:600}
+body:not(.v-flow) .flowonly{display:none}
+body:not(.v-flow) main,body:not(.v-flow) footer,body:not(.v-flow) #drawer,body:not(.v-flow) #legendPop{display:none}
+body.v-flow #reader{display:none}
+
+/* ---------- reading panel (tabs 2-4) ---------- */
+#reader{position:relative;height:calc(100vh - 64px);overflow:auto;background:#f8fafc;scroll-behavior:smooth}
+.rd{max-width:1120px;margin:0 auto;padding:18px 20px 40px}
+.rd-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:12px}
+.rd-head h2{margin:0;font-size:20px;font-weight:800}
+.rd-head p{margin:4px 0 0;font-size:13px;color:#64748b;max-width:760px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.rcard{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.05);padding:14px 16px;margin-bottom:12px;font-size:13.5px;line-height:1.55;color:#334155}
+.rcard code,.fu code,.rd td code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px;color:#0f172a}
+.rcard h3{margin:0 0 6px;font-size:15px;color:#0f172a}
+/* explain */
+.timebar{position:sticky;top:0;z-index:2;display:flex;gap:4px;background:#f8fafc;padding:6px 0 10px}
+.timebar button{min-width:126px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:6px 8px;text-align:left;cursor:pointer;font:inherit;border-top:3px solid var(--c)}
+.timebar button:hover{background:#f1f5f9}
+.timebar b{display:block;font-size:12px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timebar span{font-size:11px;color:#64748b}
+.stage{border-left:4px solid var(--c);scroll-margin-top:70px}
+.stage-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.stage-h .sn{width:24px;height:24px;border-radius:50%;background:var(--c);color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center}
+.stage-h .mn{font-size:11px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:999px;padding:1px 8px}
+.goal{margin:2px 0 10px;color:#64748b}
+.msg{display:flex;gap:10px;margin:6px 0;align-items:flex-start}
+.msg .who{flex-shrink:0;width:88px;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding-top:3px}
+.msg p{margin:0;flex:1;padding:6px 10px;border-radius:10px}
+.msg.iv .who{color:#7c3aed}.msg.iv p{background:#f5f3ff}
+.msg.you .who{color:#0b5cff}.msg.you p{background:#eef4ff}
+.msg.tip .who{color:#a16207}.msg.tip p{background:#fefce8;font-style:italic}
+.avoid{margin:10px 0 0;padding:8px 12px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+/* answer */
+.jump{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.jump button,.chips button{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:4px 11px;font:600 12px "Segoe UI",system-ui,sans-serif;color:#475569;cursor:pointer}
+.jump button:hover,.chips button:hover{border-color:#cbd5e1;color:#0f172a}
+.pitch{border-left:4px solid #0b5cff;scroll-margin-top:56px}
+.pitch p{margin:0 0 8px}.pitch p:last-child{margin:0}
+.ans-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.ans-grid .rcard{margin:0}
+.ans{border-top:4px solid var(--c);scroll-margin-top:56px}
+.ans ul,.ans ol{margin:0;padding-left:20px}.ans li{margin:3px 0}
+.ans table{border-collapse:collapse;width:100%;font-size:13px}
+.ans td,.ans th{border-bottom:1px solid #f1f5f9;padding:5px 8px;text-align:left;vertical-align:top}
+.ans th{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8}
+.ans .m{font:12px ui-monospace,Consolas,monospace;white-space:nowrap;color:#0f172a}
+.ans pre,.codeblk pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.code-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;scroll-margin-top:56px}
+.codeblk{margin:0}
+.codeblk h3{font-size:13px}
+/* follow-ups */
+.chips{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.chips button small{color:#94a3b8;font-weight:700;margin-left:2px}
+.chips button.on{background:var(--c,#0b5cff);border-color:var(--c,#0b5cff);color:#fff}
+.chips button.on small{color:rgba(255,255,255,.8)}
+.fu{padding:0;border-left:4px solid var(--c)}
+.fu summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px}
+.fu summary::-webkit-details-marker{display:none}
+.fu summary:after{content:"▸";margin-left:auto;color:#94a3b8;transition:transform .2s}
+.fu[open] summary:after{transform:rotate(90deg)}
+.fu-g{flex-shrink:0;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border-radius:999px;padding:2px 9px}
+.fu-q{font-size:14px;font-weight:700;color:#0f172a}
+.fu-body{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:0 16px 14px}
+.fu-body > div > b{display:block;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8;margin-bottom:2px}
+.fu-body p{margin:0}
+.fu-body .say{grid-column:1/-1;background:#eef4ff;border-radius:10px;padding:8px 12px}
+.fu-body .say > b{color:#0b5cff}
+.watch{grid-column:1/-1;justify-self:start;border:0;background:#0b5cff;color:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;padding:7px 14px;border-radius:9px;cursor:pointer}
+.watch:hover{background:#0a4fe0}
+</style>
 </head>
-<body>
-<script src="engine/scene.js"></script>
-<script src="engine/player.js"></script>
+<body class="v-flow">
+<header>
+  <div class="brand">
+    <svg class="logo" width="34" height="34" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#0b5cff"/><path d="M15 33.5a7.5 7.5 0 0 1-.6-15 10 10 0 0 1 19.3-1.6 8.3 8.3 0 0 1 .3 16.6" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M24 37V24M19 28.5l5-5 5 5" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="txt">
+      <div class="t" title="File Upload &amp; Storage">File Upload</div>
+      <div class="s"><span class="nav" id="dNav"></span><span class="sub">Presigned PUT straight to S3 · multipart · ObjectCreated → SQS → scan before serve · CDN signed downloads · leaked URLs · cleanup</span></div>
+    </div>
+  </div>
+  <div class="ctrls">
+    <div class="seg" id="viewSeg">
+      <button data-view="flow" class="on" title="Animated data flow">Data flow</button>
+      <button data-view="explain" title="How to explain it, stage by stage">Explain</button>
+      <button data-view="answer" title="Interview-ready answer">Answer</button>
+      <button data-view="followups" title="Follow-up questions">Follow-ups</button>
+    </div>
+    <div class="seg flowonly" id="scSeg"><span class="lbl">Scenario</span>
+      <button data-sc="upload" title="Upload &amp; scan: presigned PUT straight to S3 · ObjectCreated → SQS → scanner · PENDING → READY">Upload</button>
+      <button data-sc="download" title="Download via CDN: access check · 302 to a CloudFront signed URL · edge MISS → S3 origin (OAC) · HIT">CDN</button>
+      <button data-sc="multipart" title="Large file: multipart · 10 MB parts in parallel · retry one part · resume with uploadId · complete">Multipart</button>
+      <button data-sc="scan" title="Virus scan result: 409 while PENDING · malware → quarantine + INFECTED · 403 · crashed worker → redelivery">Scan</button>
+      <button data-sc="leak" title="Leaked upload URL: broad vs scoped presign · overwrite → versioning · expiry">Leak</button>
+      <button data-sc="edge" title="Duplicate event (idempotent update) · poison message → DLQ · abandoned upload → cleanup job + lifecycle rule">Cleanup</button>
+      <button data-sc="live" title="Live mixed traffic">Live</button>
+    </div>
+    <div class="seg flowonly" id="spSeg"><span class="lbl">Speed</span>
+      <button data-sp="0.5">0.5x</button><button data-sp="1" class="on">1x</button><button data-sp="2">2x</button>
+    </div>
+    <button class="btn flowonly" id="pauseBtn">⏸ Pause</button>
+    <button class="btn flowonly" id="replayBtn">↻ Replay</button>
+    <button class="btn ibtn flowonly" id="legendBtn" title="Legend &amp; scale (L)" aria-haspopup="dialog" aria-expanded="false">ⓘ</button>
+  </div>
+</header>
+
+<main>
+  <svg id="dia" viewBox="0 0 1600 600" preserveAspectRatio="xMidYMid meet"></svg>
+  <div class="hint">Click any component for details · Space pause · 1 2 3 speed · R replay · L legend</div>
+</main>
+
+<footer>
+  <div id="badge">1/1</div>
+  <div class="fmid">
+    <div class="frow"><span id="ftitle"></span><span id="fproto" class="pill"></span><span class="grow"></span><div id="dots"></div></div>
+    <div id="ftext"></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="stReq">0</b><span>Requests</span></div>
+    <div class="stat"><b id="stHit">0</b><span>Cache hits</span></div>
+    <div class="stat"><b id="stEvt">0</b><span>Events</span></div>
+    <div class="stat"><b id="stRes">0</b><span>Responses</span></div>
+  </div>
+</footer>
+
+<section id="reader" aria-live="polite"></section>
+
+<div id="legendPop" role="dialog" aria-label="Legend and scale">
+  <div class="lgh">PACKETS</div>
+  <div class="lgk" id="lgKinds"></div>
+  <div class="lgh">SCALE (FROM THE FULL DESIGN)</div>
+  <div class="lgs">
+    <div><b>2 M</b><span>uploads / day (~25/s)</span></div>
+    <div><b>≤ 5 GB</b><span>per file · multipart</span></div>
+    <div><b>~4 TB</b><span>new data / day</span></div>
+    <div><b>0 bytes</b><span>through our servers</span></div>
+  </div>
+  <div class="lgn">Dashed edges crawl in the request direction · solid = packet in transit</div>
+</div>
+
+<aside id="drawer" aria-hidden="true">
+  <div class="dh" id="dHead"><div class="dl" id="dLogo"></div><div><h3 id="dTitle"></h3><p id="dTag"></p></div><button id="dClose" title="Close (Esc)">×</button></div>
+  <div class="db" id="dBody"></div>
+</aside>
+
 <script src="engine/catalog.js"></script>
 <script>
-// File Upload & Storage (Google Drive attachments / Dropbox style). Everything specific to this design lives here;
-// engine/app.js renders it.
-const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+'use strict';
+// =====================================================================
+// File Upload & Storage · Data Flow: nodes grouped by app role (client · entry · app services · storage · async scanning);
+// no infra containers. The CDN is part of this design (downloads of popular files), so it sits in Entry next to the gateway.
+// Content comes from 06_File_Upload.html (v2.3): presigned PUT straight to S3, multipart for big files, S3 ObjectCreated → SQS →
+// virus scanner with a conditional PENDING → READY update, downloads only for READY + shared files, scoped short-lived URLs,
+// versioning, cleanup job + AbortIncompleteMultipartUpload. Self-contained: no engine/ except catalog.js for prev/next.
+// =====================================================================
 
-// File record status colours (the metadata DB is the truth about what may be downloaded).
-const ST = {
-  PENDING: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
-  READY: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
-  INFECTED: { fill: '#fff4f4', stroke: RED, color: RED },
-  EXPIRED: { fill: '#f0f1f2', stroke: '#c3c9ce', color: GREY },
+const NS = 'http://www.w3.org/2000/svg';
+const KIND = { request: '#2563eb', response: '#16a34a', event: '#f97316', error: '#dc2626' };
+const CLIENTS = new Set(['userA', 'userB', 'attacker']);
+const PAL = {
+  userB: ['#eef0ff', '#818cf8'], userA: ['#eef0ff', '#818cf8'], attacker: ['#f1f5f9', '#334155'],
+  cdn: ['#e0f7fc', '#0891b2'], gw: ['#ffffff', '#7c3aed'],
+  api: ['#fff9db', '#e0b400'],
+  meta: ['#e6f6ea', '#34a853'], s3: ['#fff1eb', '#e25444'],
+  sqs: ['#ffffff', '#db2777'], scanner: ['#ecfdf5', '#059669'], dlq: ['#ffffff', '#be123c'], cleanup: ['#fef9c3', '#ca8a04'],
 };
-const fmt = (id, name, status) => `${id} ${name.padEnd(10)} ${status}`;
+// zone tints: [fill, stroke, label] (same palette as 01_URL_Shortener.html)
+const ZT = {
+  client: ['#fed7aa', '#fb923c', '#9a3412'], entry: ['#ddd6fe', '#8b5cf6', '#5b21b6'], app: ['#bfdbfe', '#3b82f6', '#1e3a8a'],
+  data: ['#e5e7eb', '#9ca3af', '#374151'], async: ['#ffe4e6', '#fb7185', '#9f1239'],
+};
 
-// State shown next to the components: the signed URL the API holds, the files collection, the S3 objects, the queue.
-function setup(s, v, { files = [], objects = [], queue = 0, sign = 'no URL issued' } = {}) {
-  v.sign = s.chip(445, 62, sign, { mono: true, color: GREY });
-  v.files = s.store(605, 170, 170, 'FILES · metadata', { color: AMBER });
-  v.objs = s.store(605, 428, 170, 'S3 · uploads/', { color: AMBER });
-  v.queue = s.chip(995, 428, `queue depth ${queue}`, { mono: true, color: PURPLE });
-  v.q = queue;
-  v.rows = {};
-  // With now: true the row is drawn immediately (s.row still returns a promise), so read it back from the store.
-  files.forEach(([id, name, status], k) => {
-    s.row(v.files, fmt(id, name, status), { ...ST[status], now: true });
-    v.rows[id] = v.files.rows[k];
-    v.rows[id].meta = [id, name, status];
-  });
-  for (const o of objects) s.row(v.objs, o, { now: true });
-  return v;
-}
-async function addFile(s, v, id, name, status) {
-  v.rows[id] = await s.row(v.files, fmt(id, name, status), ST[status]);
-  v.rows[id].meta = [id, name, status];
-}
-async function setStatus(s, v, id, status) {
-  const r = v.rows[id], [, name] = r.meta;
-  r.meta = [id, name, status];
-  r.label.textContent = fmt(id, name, status);
-  s.paintRow(r, ST[status]);
-  await s.pulse(r, 1, 1.05);
-}
-function setQueue(s, v, n) { v.q = n; s.setChip(v.queue, `queue depth ${n}`); }
-const objRow = (v, prefix) => v.objs.rows.find(r => r.label.textContent.startsWith(prefix));
+// ---------------- logos (48x48 inline SVG) ----------------
+const cube = (badge) => `<path d="M24 5l17 9.5v19L24 43 7 33.5v-19z" fill="#326ce5"/><path d="M24 24l17-9.5v19L24 43z" fill="#2557c4"/><path d="M24 5l17 9.5L24 24 7 14.5z" fill="#6f9cf0"/>${badge}`;
+const person = c => `<circle cx="24" cy="15" r="8.5" fill="${c}"/><path d="M7 43c0-10 7.6-16 17-16s17 6 17 16z" fill="${c}"/>`;
+const LOGO = {
+  userA: person('#6366f1') + `<circle cx="37" cy="36" r="8.5" fill="#2563eb" stroke="#fff" stroke-width="2"/><path d="M37 40.5v-8.5M33.4 35.4L37 31.8l3.6 3.6" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  userB: person('#6366f1') + `<circle cx="37" cy="36" r="8.5" fill="#16a34a" stroke="#fff" stroke-width="2"/><path d="M37 31.5V40M33.4 36.6L37 40.2l3.6-3.6" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  attacker: `<path d="M24 4C14.6 4 9 11.5 9 20.5V28c0 2.6 1.5 4.6 3.6 5.6V44h22.8V33.6c2.1-1 3.6-3 3.6-5.6v-7.5C39 11.5 33.4 4 24 4z" fill="#334155"/><path d="M15 23c0-5.2 4-8.6 9-8.6s9 3.4 9 8.6v3.6c0 2-1.6 3.6-3.6 3.6H18.6c-2 0-3.6-1.6-3.6-3.6z" fill="#0f172a"/><path d="M17.5 23.5l4.5 1.6M30.5 23.5L26 25.1" stroke="#f87171" stroke-width="2.6" stroke-linecap="round"/><rect x="18" y="35" width="12" height="7" rx="1.5" fill="#f59e0b"/><path d="M20.5 35v-2.2a3.5 3.5 0 0 1 7 0" fill="none" stroke="#f59e0b" stroke-width="2"/>`,
+  cdn: `<path d="M13.5 37a9.5 9.5 0 0 1-1.2-18.9A12.5 12.5 0 0 1 36.2 15.6 10.7 10.7 0 0 1 35.5 37z" fill="#06b6d4"/><path d="M16.5 30.5l7.5-8 7.5 8" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><g fill="#fff"><circle cx="16.5" cy="30.5" r="3"/><circle cx="24" cy="22.5" r="3"/><circle cx="31.5" cy="30.5" r="3"/></g>`,
+  gw: `<rect x="5" y="5" width="38" height="38" rx="10" fill="#7c3aed"/><path d="M15 38V23a9 9 0 0 1 18 0v15" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M11 38h26" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="28" cy="31" r="1.9" fill="#fff"/>`,
+  api: cube(`<circle cx="37" cy="37" r="9" fill="#e0b400" stroke="#fff" stroke-width="2"/><path d="M33 34.5l4-4 4 4M37 31v10" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`),
+  meta: `<path d="M24 3c8 9 12 17 12 24.5 0 8.5-5.2 13.5-10.6 15.5h-2.8C17.2 41 12 36 12 27.5 12 20 16 12 24 3z" fill="#13aa52"/><path d="M24 9v37" stroke="#0b6b33" stroke-width="2"/>`,
+  s3: `<path d="M7 12l4.2 28.5c.3 2.2 6.1 4 12.8 4s12.5-1.8 12.8-4L41 12z" fill="#e25444"/><path d="M8.6 22.5c3.6 1.7 9.2 2.7 15.4 2.7s11.8-1 15.4-2.7M9.9 31.5c3.3 1.5 8.4 2.4 14.1 2.4s10.8-.9 14.1-2.4" fill="none" stroke="#fff" stroke-width="1.6" opacity=".55"/><ellipse cx="24" cy="12" rx="17" ry="5.5" fill="#f58536"/><ellipse cx="24" cy="12" rx="12.5" ry="3.2" fill="#8c2a1d"/>`,
+  sqs: `<rect x="3" y="9" width="42" height="30" rx="8" fill="#e7157b"/><g fill="#fff"><rect x="9" y="16" width="8" height="16" rx="2"/><rect x="20" y="16" width="8" height="16" rx="2" opacity=".85"/><rect x="31" y="16" width="8" height="16" rx="2" opacity=".65"/></g>`,
+  scanner: `<path d="M24 3l17 6.5v12.2C41 33 33.6 41.4 24 45 14.4 41.4 7 33 7 21.7V9.5z" fill="#059669"/><circle cx="22" cy="21" r="7" fill="none" stroke="#fff" stroke-width="3"/><path d="M27.2 26.2l6 6" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/>`,
+  dlq: `<rect x="3" y="9" width="42" height="30" rx="8" fill="#be123c"/><g fill="#fff" opacity=".9"><rect x="9" y="16" width="8" height="16" rx="2"/><rect x="20" y="16" width="8" height="16" rx="2"/></g><circle cx="35" cy="24" r="7" fill="#fff"/><path d="M32 21l6 6M38 21l-6 6" stroke="#be123c" stroke-width="2.4" stroke-linecap="round"/>`,
+  cleanup: `<circle cx="22" cy="24" r="17" fill="#ca8a04"/><circle cx="22" cy="24" r="13" fill="#fef3c7"/><path d="M22 15v9l6 4" fill="none" stroke="#92400e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 30l9-9" stroke="#78350f" stroke-width="2.6" stroke-linecap="round"/><path d="M31 31l3-3 5 5-4 6c-3-1-6-4-6-6z" fill="#f59e0b" stroke="#78350f" stroke-width="1.4" stroke-linejoin="round"/>`,
+};
 
-window.DESIGN = {
-  id: 'files', n: 6, title: 'File Upload & Storage', tagline: 'Drive / Dropbox style: direct-to-S3 uploads, scan before serve',
-  viewBox: [1100, 520],
+// ---------------- topology ----------------
+const NODES = {
+  userB: { x: 93, y: 170, label: 'Viewer B', sub: 'shared with · downloads' },
+  userA: { x: 93, y: 375, label: 'Uploader A', sub: 'browser / mobile app' },
+  attacker: { x: 93, y: 505, label: 'Attacker C', sub: 'found a leaked URL' },
+  cdn: { x: 355, y: 115, label: 'CloudFront CDN', sub: 'signed URLs · edge cache', replicas: 3 },
+  gw: { x: 355, y: 265, label: 'API Gateway', sub: 'JWT · rate limits', replicas: 2 },
+  api: { x: 650, y: 115, label: 'Upload API', sub: 'presign · metadata', replicas: 2 },
+  meta: { x: 900, y: 115, label: 'Metadata DB', sub: 'MongoDB · files', replicas: 3 },
+  s3: { x: 900, y: 505, label: 'S3 bucket', sub: 'private · versioned' },
+  sqs: { x: 1180, y: 505, label: 'S3 events', sub: 'SQS queue' },
+  scanner: { x: 1320, y: 300, label: 'Virus Scanner', sub: 'ClamAV workers', replicas: 3 },
+  dlq: { x: 1470, y: 505, label: 'Dead-letter queue', sub: 'poison events · alert' },
+  cleanup: { x: 1470, y: 115, label: 'Cleanup Job', sub: '@Scheduled hourly' },
+};
+// grouped by developer role, not by infrastructure
+const ZONES = [
+  { x: 8, y: 8, w: 172, h: 584, t: 'client', label: 'CLIENT', cap: 'users · attacker' },
+  { x: 192, y: 8, w: 276, h: 584, t: 'entry', label: 'ENTRY', cap: 'API door · CDN' },
+  { x: 480, y: 8, w: 310, h: 584, t: 'app', label: 'APP SERVICES', cap: 'control plane · no bytes', dash: true },
+  { x: 802, y: 8, w: 196, h: 584, t: 'data', label: 'STORAGE', cap: 'bytes + truth', dash: true },
+  { x: 1010, y: 8, w: 582, h: 584, t: 'async', label: 'ASYNC SCANNING', cap: 'S3 events → SQS → scan before serve', dash: true },
+];
+// [from, to, protocol label]; the path direction is the request direction (dashes crawl that way).
+const EDGE_DEFS = [
+  ['userB', 'cdn', 'GET signed'], ['userB', 'gw', ''], ['userA', 'gw', 'HTTPS'],
+  ['userA', 's3', 'PUT presigned URL'], ['attacker', 's3', 'leaked URL'],
+  ['gw', 'api', '/files'], ['cdn', 's3', 'origin GET · OAC'],
+  ['api', 'meta', 'insert · find'], ['api', 's3', 'multipart API'],
+  ['s3', 'sqs', 'ObjectCreated'], ['sqs', 'scanner', 'receive'], ['sqs', 'dlq', 'maxReceiveCount 5'],
+  ['scanner', 's3', 'HEAD · GET · move'], ['scanner', 'meta', 'if PENDING → …'],
+  ['cleanup', 'meta', 'expire PENDING > 24 h'],
+];
 
-  // ---------------- architecture ----------------
-  layers: [
-    { id: 'entry', title: 'Clients & edge', x0: 0, x1: 340, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
-      why: 'Where uploads start. The client talks to us only for **small JSON calls** (permission, URLs, status); the gateway authenticates and rate-limits them.',
-      detail: 'The client is also the one moving the bytes, straight to S3. That is the whole trick of this design: the edge never carries file content.' },
-    { id: 'app', title: 'Control plane', x0: 340, x1: 552, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
-      why: 'Decides **who may upload or download what**, records it, and signs short-lived URLs. It never touches file bytes.',
-      detail: 'Because the API only signs and records, a couple of small stateless pods handle millions of uploads a day.' },
-    { id: 'data', title: 'Storage', x0: 552, x1: 828, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
-      why: 'Two stores with different jobs: **S3 holds the bytes** (cheap, durable, huge), the **metadata DB holds the truth** about each file (owner, status, sharing).',
-      detail: 'Neither replaces the other: S3 cannot answer "is this file clean and may B read it?", and a database is a terrible place for gigabytes of blobs.' },
-    { id: 'async', title: 'Async processing', x0: 828, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
-      why: 'Work that happens **after** the upload, driven by S3 events: virus scanning, and housekeeping for uploads that never finished.',
-      detail: 'Events come from S3 itself, not from the client, so a crashed or lying client cannot skip the scan.' },
-  ],
-  layersIntro: {
-    title: 'Control path and data path are separate',
-    text: 'Small JSON requests go **Client → Gateway → Upload API → Metadata DB**. File bytes go **Client → S3** directly. S3 then drives the **async** side (events → scanner), which flips the file record to READY. Hover a layer or a component to see why it exists.',
+// ---------------- drawer content ----------------
+const INFO = {
+  userB: {
+    tag: 'Someone A shared the file with',
+    desc: 'Downloads go <b>through the API for permission</b> and then <b>straight to the bytes</b>: the API checks that the record is <b>READY</b> and that B is the owner or in <code>sharedWith</code>, then answers <b>302</b> to a short-lived signed URL. B never talks to S3 with credentials of its own.',
+    points: ['<code>GET /files/{id}/download</code> → 302, 403 (not shared / infected) or 409 (still scanning)', 'The signed URL lives 5 minutes; asking again gets a fresh one after a fresh check', 'Popular files come from the CDN edge, not from the bucket', 'Existence of an object is never permission: the record decides'],
+    code: `# ask the API (JSON only, no bytes)
+curl -i https://files.ex/files/f-1/download \\
+  -H 'Authorization: Bearer eyJ…'
+# HTTP/2 302
+# location: https://d111.cloudfront.net/uploads/A/f-1.pdf?versionId=v1
+#           &Expires=1763631000&Signature=…&Key-Pair-Id=K2JC…
+
+# follow it: bytes come from the CDN edge (or S3 behind it)
+curl -L -o report.pdf "$LOCATION"`,
   },
-  nodes: {
-    client: { x: 80, y: 245, w: 140, label: 'Client', sub: 'browser / app', icon: '👤', layer: 'entry' },
-    gateway: { x: 245, y: 110, w: 150, label: 'API Gateway', sub: 'auth · rate limits', icon: '🛡️', layer: 'entry' },
-    api: { x: 445, y: 110, label: 'Upload API', sub: 'presign · metadata', icon: '✍️', layer: 'app' },
-    meta: { x: 690, y: 110, label: 'Metadata DB', sub: 'files · status', icon: '🍃', layer: 'data' },
-    s3: { x: 690, y: 375, label: 'S3 bucket', sub: 'private · versioned', icon: '🪣', layer: 'data' },
-    events: { x: 995, y: 375, w: 160, label: 'S3 events', sub: 'SQS queue', icon: '📨', layer: 'async' },
-    scanner: { x: 995, y: 250, w: 160, label: 'Virus scanner', sub: 'scan workers', icon: '🔬', layer: 'async' },
-    cleanup: { x: 995, y: 110, w: 160, label: 'Cleanup job', sub: 'stale PENDING', icon: '🧹', layer: 'async' },
-  },
-  wires: [['client', 'gateway'], ['gateway', 'api'], ['api', 'meta'], ['api', 's3'], ['client', 's3'], ['s3', 'events'], ['events', 'scanner'], ['scanner', 's3'], ['scanner', 'meta'], ['cleanup', 'meta']],
+  userA: {
+    tag: 'Browser or mobile app · moves the bytes itself',
+    desc: 'Asks the API for permission and a URL, then sends the <b>bytes straight to S3</b>, with progress and retries. It is the only party that has the file, so letting it upload directly removes our servers from the byte path entirely.',
+    points: ['Small files: one presigned <code>PUT</code>; above ~100 MB: <b>multipart</b> with one URL per 10 MB part', 'Keeps the <b>ETag</b> of every part and resumes with the stored <code>uploadId</code>', 'Network drops are normal: retry only the failed part', 'Shows "scanning…" until the record is READY', 'Each client brings its own bandwidth: our servers never scale with it'],
+    code: `// 1. ask for permission + URL (metadata only)
+const { fileId, uploadUrl } = await (await fetch('/files', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ name: file.name, size: file.size,
+                         contentType: file.type })
+})).json();
 
-  components: {
-    client: {
-      what: 'Browser or mobile app. Asks the API for permission and a URL, then sends the **bytes straight to S3**, with progress and retries.',
-      why: 'It is the only party that has the file, so letting it upload directly removes our servers from the byte path entirely.',
-      without: 'Not optional, but the alternative design (client → our API → S3) makes every byte cross our servers: bandwidth, memory and timeouts become our problem.',
-      tech: '`fetch` / XHR with progress events; multipart upload for big files', scale: 'Each client brings its own bandwidth.', fails: 'Network drops are normal: retry only the failed part and resume with the stored `uploadId`.',
-    },
-    gateway: {
-      name: 'API Gateway',
-      what: 'Entry point for the **small JSON calls**: authenticate (JWT), rate-limit per user, route to the Upload API.',
-      why: 'Auth and abuse protection in one place, before any URL is signed. Uploads cost storage money, so limits matter.',
-      without: 'Every service re-implements auth; nothing stops one user from requesting millions of upload URLs.',
-      tech: 'Spring Cloud Gateway / AWS ALB / API Gateway', scale: 'Light: no file bytes pass through it.', fails: 'Redundant instances behind DNS / LB; health checks drop bad ones.',
-    },
-    api: {
-      name: 'Upload API (control plane)',
-      what: 'Checks type, size and quota, inserts a **PENDING** record, and **signs** a presigned URL for exactly one key, method and content type. Also authorises downloads.',
-      why: 'It is the place that decides **who may write which key** and **who may read which file**. The URL it signs is the permission slip.',
-      without: 'Clients would need AWS credentials, or the bucket would be writable by anyone. Neither is acceptable.',
-      tech: 'Spring Boot + AWS SDK v2 `S3Presigner` (signing is local SigV4, no call to S3)', scale: 'Stateless pods; ~25 uploads/s is tiny.', fails: 'A crash after signing is harmless: the PENDING record is expired later by the cleanup job.',
-    },
-    meta: {
-      name: 'Metadata DB (source of truth)',
-      what: 'One document per file: `{ _id, owner, name, key, size, contentType, status, etag, versionId, sharedWith }`. Status: PENDING → READY / INFECTED / EXPIRED.',
-      why: 'S3 knows bytes, not business rules. Downloads are decided by the **record** (READY + shared with you), not by whether an object exists.',
-      without: 'You would serve whatever is in the bucket, including unscanned or infected files, and could not list or share files efficiently.',
-      tech: 'MongoDB (or PostgreSQL); index `{ owner: 1, createdAt: -1 }` and `{ status: 1, createdAt: 1 }`', scale: '~1 KB per file, ~2 GB/day: easy. Shard by owner if needed.', fails: 'Down → no new upload URLs (503); uploads already in flight still land in S3 and the scanner retries its update later.',
-    },
-    s3: {
-      name: 'S3 bucket (bytes)',
-      what: 'Private bucket (Block Public Access on), versioning on, SSE-KMS encryption. Keys are **generated by us** (`uploads/{owner}/{fileId}.ext`), never user file names.',
-      why: 'Cheap, practically unlimited, 11-nines-durable storage that accepts uploads directly from clients using signed URLs.',
-      without: 'Blobs in the database: huge backups, slow replication, and app servers proxying every byte.',
-      tech: 'Amazon S3 (or GCS / Azure Blob); multipart up to 5 TiB per object; lifecycle rules for tiers and cleanup', scale: 'Practically unlimited; spread keys across prefixes for very high request rates.', fails: 'Very rare; event notifications are at-least-once and can arrive late or out of order.',
-    },
-    events: {
-      name: 'S3 events → SQS',
-      what: 'S3 publishes an **ObjectCreated** event for every new object into a queue the scanner reads.',
-      why: 'S3 knows when an object **really** exists. Driving the scan from S3 means a client that crashes, or lies, cannot skip it.',
-      without: 'You depend on the client calling "upload finished"; some never will, and a malicious one could claim a file is done before it is.',
-      tech: 'S3 Event Notifications → SQS (or EventBridge), with a DLQ', scale: 'Buffers bursts; scanners scale on queue depth.', fails: 'Duplicates happen (at-least-once) → idempotent handler; poison messages go to the DLQ after N receives.',
-    },
-    scanner: {
-      name: 'Virus scanner',
-      what: 'Takes an event, checks the real size/type with **HeadObject**, streams the object through the scanner, then conditionally sets the record to READY or INFECTED (and moves infected files to `quarantine/`).',
-      why: 'User uploads are untrusted. Scan-before-serve stops one user from distributing malware to everyone they share with.',
-      without: 'Infected files are served to other users straight from your domain.',
-      tech: 'ClamAV workers or a vendor scanning API', scale: 'Scale workers on queue depth; big files need a longer visibility timeout.', fails: 'Crash mid-scan → the message reappears after the visibility timeout and another worker scans again.',
-    },
-    cleanup: {
-      name: 'Cleanup job',
-      what: 'Expires **PENDING** records nobody finished uploading. An S3 lifecycle rule (`AbortIncompleteMultipartUpload`) removes orphan multipart parts.',
-      why: 'Abandoned uploads are normal (tab closed, app killed). Without housekeeping, records and billed parts pile up forever.',
-      without: 'Ghost "uploading…" files in users\' lists and a growing storage bill for invisible multipart parts.',
-      tech: 'Scheduled job (hourly) + S3 lifecycle rule', scale: 'One indexed query per run.', fails: 'If it stops, nothing breaks; only storage cost and clutter grow.',
-    },
+// 2. bytes go straight to S3 with the signed URL
+const xhr = new XMLHttpRequest();
+xhr.upload.onprogress = e => bar.value = e.loaded / e.total;
+xhr.open('PUT', uploadUrl);
+xhr.setRequestHeader('Content-Type', file.type);  // part of the signature
+xhr.send(file);                                    // -> 200, ETag "9b2c…"`,
   },
+  attacker: {
+    tag: 'Holds a presigned URL that leaked',
+    desc: 'Presigned URLs are <b>bearer tokens</b>: whoever holds one can use it. C found A\'s upload URL in a proxy log. The design limits the damage to almost nothing: <b>one key, one method, one content type, 15 minutes</b>.',
+    points: ['Any other key, method or content type → <b>403 SignatureDoesNotMatch</b>', 'After 15 minutes → <b>403 Request has expired</b>', 'Overwriting the same key within 15 min only creates an unscanned new <b>version</b>, which is never served', 'Never log full URLs: strip query strings from access logs and analytics'],
+    code: `# C replays the leaked URL with a different key or method
+curl -X PUT --data-binary @malware.exe \\
+  'https://files-prod.s3.amazonaws.com/uploads/A/x.exe?X-Amz-Signature=…'
+# 403 <Code>SignatureDoesNotMatch</Code>
 
-  // ---------------- 1 · overview loop ----------------
-  intro: {
-    headline: 'Ask for a URL, upload to S3, scan, then share.',
-    points: [
-      { t: 'Ask & sign', color: BLUE, d: 'Client sends only metadata. The API records **PENDING** and signs a URL for one key, valid 15 min.' },
-      { t: 'Upload direct', color: BLUE, d: 'Client PUTs the bytes **straight to S3**. Our servers never see them.' },
-      { t: 'Scan', color: TEAL, d: 'S3 emits **ObjectCreated** → queue → scanner, which flips the record to **READY** (or INFECTED).' },
-      { t: 'Download', color: PURPLE, d: 'API checks READY + sharing, then **302** to a 5-minute presigned GET.' },
+# …or after the 15 minutes are over
+curl -X PUT --data-binary @report.pdf \\
+  'https://files-prod.s3.amazonaws.com/uploads/A/f-1.pdf?X-Amz-Expires=900&…'
+# 403 <Message>Request has expired</Message>`,
+  },
+  cdn: {
+    tag: 'CloudFront in front of the private bucket',
+    desc: 'Serves <b>popular downloads</b> from edge locations close to the viewer. Only the CDN may read the bucket (<b>Origin Access Control</b>), and viewers need a <b>CloudFront signed URL</b> (or cookie) that the API issues after its access check, so the edge never serves a file to someone the API did not approve.',
+    points: ['Signed URL = resource + expiry, signed with our private key; the edge verifies it with the public key', 'Cache key = path + <code>versionId</code>; the signature query params are not part of it', 'MISS → origin GET to S3 signed with SigV4 by OAC; HIT → served from the edge', 'Cuts latency and S3 egress cost for files many people download', 'Trade-off: revoking access is slower once content sits at the edge (short TTLs, invalidation)'],
+    code: `// Spring: issue a CloudFront signed URL after the access check
+CloudFrontUtilities cf = CloudFrontUtilities.create();
+SignedUrl url = cf.getSignedUrlWithCannedPolicy(r -> r
+    .resourceUrl("https://d111.cloudfront.net/" + f.key()
+                 + "?versionId=" + f.versionId())
+    .privateKey(Path.of("/secrets/cf-private-key.pem"))
+    .keyPairId("K2JCJMDEHXQW5F")
+    .expirationDate(Instant.now().plus(Duration.ofMinutes(5))));
+return ResponseEntity.status(FOUND).location(URI.create(url.url())).build();`,
+  },
+  gw: {
+    tag: 'Entry point for the small JSON calls',
+    desc: 'Authenticates (JWT), rate-limits per user and routes <code>/files/**</code> to the Upload API. Auth and abuse protection live in one place, before any URL is signed: uploads cost storage money, so limits matter.',
+    points: ['Light: <b>no file bytes</b> pass through it, only metadata, URLs and statuses', 'Per-user limit on <code>POST /files</code> stops someone requesting millions of upload URLs', 'Redundant instances; health checks drop bad ones', 'Without it every service re-implements auth'],
+    code: `# Spring Cloud Gateway: application.yml
+spring:
+  cloud:
+    gateway:
+      routes:
+      - id: files
+        uri: lb://upload-api
+        predicates: [ Path=/files/** ]
+        filters:
+        - TokenRelay=                      # JWT checked by the gateway
+        - name: RequestRateLimiter         # per user, backed by Redis
+          args:
+            redis-rate-limiter.replenishRate: 2
+            redis-rate-limiter.burstCapacity: 20
+            key-resolver: "#{@userKeyResolver}"`,
+  },
+  api: {
+    tag: 'Spring Boot · control plane · never touches bytes',
+    desc: 'Checks type, size and quota, inserts a <b>PENDING</b> record, and <b>signs</b> a presigned URL for exactly one key, method and content type. Also authorises downloads. The URL it signs is the permission slip: it decides <b>who may write which key</b> and <b>who may read which file</b>.',
+    points: ['Signing is local SigV4 with <code>S3Presigner</code>: <b>no call to S3</b>', 'Keys are generated by us: <code>uploads/{owner}/{fileId}.ext</code>, never the user\'s file name', 'Big files: <code>CreateMultipartUpload</code> + one presigned URL per part, <code>CompleteMultipartUpload</code> at the end', 'Stateless pods; ~25 uploads/s is tiny', 'A crash after signing is harmless: the PENDING record is expired later by the cleanup job'],
+    code: `@PostMapping("/files")
+ResponseEntity<UploadUrl> create(@Valid @RequestBody NewFile req, Principal user) {
+  quota.check(user.getName(), req.size());                  // 413 / 429
+  String id = ids.next(), key = "uploads/" + user.getName() + "/" + id + ext(req);
+  files.insert(new FileRecord(id, user.getName(), req.name(), key,
+                              req.size(), req.contentType(), PENDING));
+  PresignedPutObjectRequest url = presigner.presignPutObject(r -> r
+      .signatureDuration(Duration.ofMinutes(15))
+      .putObjectRequest(p -> p.bucket(BUCKET).key(key)
+                              .contentType(req.contentType())));
+  return ResponseEntity.status(CREATED).body(new UploadUrl(id, url.url()));
+}`,
+  },
+  meta: {
+    tag: 'Source of truth about every file',
+    desc: 'One document per file: <code>{ _id, owner, name, key, size, contentType, status, etag, versionId, sharedWith }</code>. Status: <b>PENDING → READY / INFECTED / EXPIRED</b>. S3 knows bytes, not business rules: downloads are decided by the <b>record</b>, not by whether an object exists.',
+    points: ['Index <code>{ owner: 1, createdAt: -1 }</code> for "my files", <code>{ status: 1, createdAt: 1 }</code> for cleanup', '~1 KB per file, ~2 GB/day: easy; shard by owner if needed', 'Status changes are <b>conditional</b> (<code>status: "PENDING"</code>), so duplicate events are no-ops', 'Down → no new upload URLs (503); uploads in flight still land in S3 and the scanner retries later'],
+    code: `// files
+{ _id: "f-1", owner: "A", name: "report.pdf",
+  key: "uploads/A/f-1.pdf", size: 2097152,
+  contentType: "application/pdf", status: "READY",
+  etag: "9b2c…", versionId: "v1", sharedWith: ["B"],
+  createdAt: ISODate("2026-11-20T10:00:00Z") }
+
+db.files.createIndex({ owner: 1, createdAt: -1 })
+db.files.createIndex({ status: 1, createdAt: 1 })   // cleanup job
+
+db.files.updateOne({ _id: "f-1", status: "PENDING", etag: "9b2c…" },
+                   { $set: { status: "READY", versionId: "v1" } })
+// { matchedCount: 1, modifiedCount: 1 }  (0 / 0 on a duplicate event)`,
+  },
+  s3: {
+    tag: 'Private bucket · versioning · SSE-KMS',
+    desc: 'Cheap, practically unlimited, 11-nines-durable storage that accepts uploads <b>directly from clients</b> with signed URLs. Block Public Access is on; keys are generated by us; infected files move to a locked-down <code>quarantine/</code> prefix.',
+    points: ['Checks signature, key, method, content type and expiry on every presigned request', 'Multipart: parts ≥ 5 MiB (except the last), up to 10,000 parts and 5 TiB per object', '<b>Versioning</b>: an overwrite creates a new version; we serve only the scanned <code>versionId</code>', 'Emits <b>ObjectCreated</b> events (at-least-once, may be late or duplicated)', 'Lifecycle rules: <code>AbortIncompleteMultipartUpload</code> after 7 days, colder tiers for old files'],
+    code: `{ "Rules": [
+  { "ID": "abort-orphan-parts", "Status": "Enabled",
+    "Filter": { "Prefix": "uploads/" },
+    "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 } },
+  { "ID": "old-to-ia", "Status": "Enabled",
+    "Filter": { "Prefix": "uploads/" },
+    "Transitions": [ { "Days": 90, "StorageClass": "STANDARD_IA" } ] } ] }
+
+# event notification: every new object -> SQS
+aws s3api put-bucket-notification-configuration --bucket files-prod \\
+  --notification-configuration '{"QueueConfigurations":[{
+    "QueueArn":"arn:aws:sqs:…:file-scan","Events":["s3:ObjectCreated:*"]}]}'`,
+  },
+  sqs: {
+    tag: 'S3 Event Notifications → SQS queue',
+    desc: 'S3 publishes an <b>ObjectCreated</b> event for every new object into a queue the scanner reads. S3 knows when an object <b>really</b> exists, so a client that crashes, or lies, cannot skip the scan.',
+    points: ['At-least-once: duplicates happen → every handler is idempotent', 'Buffers bursts; scanners scale on queue depth', '<b>Visibility timeout</b>: a message a crashed worker never deleted reappears and is scanned again', 'After <code>maxReceiveCount</code> receives a poison message moves to the <b>DLQ</b>', 'Same role as a Kafka topic here; SQS fits because S3 targets it natively'],
+    code: `@SqsListener(value = "file-scan", maxConcurrentMessages = "10",
+             acknowledgementMode = "ON_SUCCESS")   // delete only after success
+void onEvent(S3EventNotification event) {
+  event.getRecords().forEach(r -> scanner.scan(
+      r.getS3().getObject().getKey(),
+      r.getS3().getObject().getETag(),
+      r.getS3().getObject().getVersionId()));
+}
+// queue: VisibilityTimeout 300 s · RedrivePolicy maxReceiveCount 5 -> file-scan-dlq`,
+  },
+  scanner: {
+    tag: 'Scan before serve · idempotent status update',
+    desc: 'Takes an event, checks the real size and type with <b>HeadObject</b>, streams the object through the virus scanner, then <b>conditionally</b> sets the record to READY or INFECTED (moving infected files to <code>quarantine/</code>). User uploads are untrusted: this stops one user from distributing malware to everyone they share with.',
+    points: ['Size from HeadObject must match the record (a presigned PUT cannot enforce a size range)', 'Sniffs the real type from magic bytes: a "PDF" that is an executable is rejected', 'Update only matches <code>status: "PENDING"</code> + ETag: duplicates and retries change nothing', 'Crash mid-scan → the message reappears after the visibility timeout', 'Scale workers on queue depth; big files need a longer visibility timeout'],
+    code: `void scan(String key, String etag, String versionId) {
+  HeadObjectResponse head = s3.headObject(b -> b.bucket(BUCKET).key(key));
+  FileRecord f = files.findByKey(key);
+  if (head.contentLength() != f.size()) { reject(f); return; }
+
+  boolean clean = clamav.scan(s3.getObject(b -> b.bucket(BUCKET).key(key)));
+  if (!clean) quarantine(key);                       // copy + delete original
+  UpdateResult r = files.updateOne(
+      and(eq("_id", f.id()), eq("status", "PENDING"), eq("etag", etag)),
+      combine(set("status", clean ? "READY" : "INFECTED"),
+              set("versionId", versionId)));
+  log.info("{} -> matched {}", f.id(), r.getMatchedCount());   // 0 on duplicates
+}`,
+  },
+  dlq: {
+    tag: 'Where poison events end up',
+    desc: 'A message that fails <code>maxReceiveCount</code> times (a corrupt archive that crashes the scanner, a bug) is moved here by the queue\'s <b>redrive policy</b> instead of blocking or looping forever. The file stays <b>PENDING</b>, so nobody can download it meanwhile.',
+    points: ['Alarm on <code>ApproximateNumberOfMessagesVisible &gt; 0</code>', 'Fix the cause, then redrive the messages back to the main queue', 'The record never turns READY on its own: unsafe files stay invisible', 'Keep the DLQ retention longer than the main queue (e.g. 14 days)'],
+    code: `aws sqs set-queue-attributes --queue-url $SCAN_Q --attributes '{
+  "RedrivePolicy": "{\\"deadLetterTargetArn\\":\\"arn:aws:sqs:…:file-scan-dlq\\",
+                    \\"maxReceiveCount\\":\\"5\\"}" }'
+
+# after the fix: move the messages back
+aws sqs start-message-move-task \\
+  --source-arn arn:aws:sqs:…:file-scan-dlq`,
+  },
+  cleanup: {
+    tag: 'Expires uploads nobody finished',
+    desc: 'Abandoned uploads are normal (tab closed, app killed). An hourly job marks <b>PENDING</b> records older than 24 h as <b>EXPIRED</b>; an S3 lifecycle rule (<code>AbortIncompleteMultipartUpload</code>) removes the orphan multipart parts, which are billed until aborted.',
+    points: ['One indexed query per run on <code>{ status: 1, createdAt: 1 }</code>', 'Never touches finished files', 'If it stops, nothing breaks: only storage cost and clutter grow', 'Without it: ghost "uploading…" files and a growing bill for invisible parts'],
+    code: `@Scheduled(cron = "0 0 * * * *")                     // hourly
+@SchedulerLock(name = "expire-pending")                // one instance at a time
+void expirePending() {
+  UpdateResult r = files.updateMany(
+      and(eq("status", "PENDING"),
+          lt("createdAt", Instant.now().minus(Duration.ofHours(24)))),
+      set("status", "EXPIRED"));
+  log.info("expired {} stale uploads", r.getModifiedCount());
+}`,
+  },
+};
+
+// building blocks taught once in 00_Core_Components.html (same "#id/what" links as the engine pages)
+const CORE = {
+  gw: ['gw', 'API Gateway'], cdn: ['cdn', 'CDN'], meta: ['db', 'DB scaling'], s3: ['s3', 'Storage · S3'],
+  sqs: ['kafka', 'Queue · Kafka'], dlq: ['kafka', 'Queue · Kafka'],
+};
+
+// ---------------- scenarios ----------------
+// hop: `via` = two-leg hop through a pass-through node (client -> gateway -> API in one step, one packet per leg).
+// hop: `count` = several packets 0.25 s apart (parallel parts, duplicate events).
+const hop = (from, to, kind, tag, title, proto, text, extra) => Object.assign({ type: 'hop', from, to, kind, tag, title, proto, text }, extra || {});
+const node = (id, tag, title, proto, text, extra) => Object.assign({ type: 'node', id, tag, title, proto, text }, extra || {});
+const GREEN = '#16a34a', RED = '#dc2626', AMBER = '#d97706', BLUE = '#0b5cff', GREY = '#64748b';
+const GW = { via: 'gw' };
+
+const SCEN = {
+  // Ported from the old page's "Upload, scan, download" flow (upload + scan half; the download half is the Download scenario).
+  upload: {
+    name: 'Upload & scan',
+    steps: [
+      hop('userA', 'api', 'request', 'POST /files', 'A asks for an upload URL', 'HTTPS · 443 → gateway → :8080', 'A picks report.pdf (2 MB) and sends only metadata, POST /files {name, size: 2097152, contentType: "application/pdf"}; the gateway checks the JWT and the per-user rate limit and routes /files/** to the Upload API.', GW),
+      node('api', 'type · size · quota ✓', 'Validate type, size and quota', 'Spring Boot · @Valid · quota', 'The Upload API checks that application/pdf is allowed, that 2 MB ≤ the 5 GB limit and that A has quota left, and generates fileId f-1 and the key uploads/A/f-1.pdf (never the user\'s file name).'),
+      hop('api', 'meta', 'request', 'insert f-1 PENDING', 'Record the file as PENDING', 'Mongo wire · TCP 27017 · insertOne', 'insertOne({_id:"f-1", owner:"A", name:"report.pdf", key:"uploads/A/f-1.pdf", size, contentType, status:"PENDING", createdAt}) with writeConcern majority.'),
+      node('meta', 'f-1 PENDING', 'The record exists before any URL', 'status: PENDING', 'PENDING means "upload allowed, not downloadable": nothing is served until the scanner flips it, and the cleanup job expires it if A never finishes.', { tagColor: AMBER }),
+      hop('meta', 'api', 'response', 'ack', 'Insert acknowledged', '{ acknowledged: true }', 'The primary acknowledges once a majority of the replica set has the record, typically 2–5 ms.'),
+      node('api', 'SigV4 · no S3 call', 'Sign a presigned PUT locally', 'S3Presigner · 15 min', 'S3Presigner computes a SigV4 signature over PUT, the bucket, the key uploads/A/f-1.pdf and Content-Type application/pdf with X-Amz-Expires=900: pure local crypto, no request to S3.', { tagColor: BLUE }),
+      hop('api', 'userA', 'response', '201 uploadUrl', 'Return the upload URL', 'HTTP 201 · JSON', 'The API answers 201 {fileId:"f-1", uploadUrl:"https://files-prod.s3…/uploads/A/f-1.pdf?X-Amz-Signature=…"}; the URL is a bearer token, so it is short-lived and scoped to exactly this request.', GW),
+      hop('userA', 's3', 'request', 'PUT 2 MB', 'Upload straight to S3', 'HTTPS PUT · presigned URL', 'The client PUTs the 2 MB body directly to S3 with Content-Type: application/pdf; gateway and API carry none of these bytes, so upload bandwidth never limits our servers.'),
+      node('s3', 'signature ✓ · stored', 'S3 verifies the signature and stores the object', 'SigV4 check · SSE-KMS · versioning', 'S3 recomputes the signature for the method, key, content type and expiry, rejects any mismatch with 403, then stores the object encrypted with SSE-KMS as version v1.', { tagColor: GREEN }),
+      { type: 'fork', title: 'Async: S3 answers A while it announces the object', proto: '200 OK · ETag', text: 'In parallel: S3 returns 200 with ETag "9b2c…" to A, whose UI shows "scanning…", while S3 emits ObjectCreated; the client is never trusted to say "upload finished".', steps: [
+        hop('s3', 'userA', 'response', '200 · ETag 9b2c…', 'Upload done', 'HTTP 200 · ETag', 'A gets the ETag.'),
+        node('userA', 'scanning…', 'UI shows scanning', 'poll GET /files/f-1', 'The file is listed as scanning.', { tagColor: AMBER }),
+      ] },
+      hop('s3', 'sqs', 'event', 'ObjectCreated', 'S3 announces the new object', 'S3 Event Notification → SQS', 'S3 publishes s3:ObjectCreated:Put {bucket, key: uploads/A/f-1.pdf, size, eTag, versionId: v1} to the file-scan queue, at-least-once.'),
+      hop('sqs', 'scanner', 'event', 'receive f-1', 'A scanner worker takes the message', 'SQS ReceiveMessage · long poll 20 s', 'The message becomes invisible to other workers for the 300 s visibility timeout while this worker scans; it is deleted only on success.'),
+      hop('scanner', 's3', 'request', 'HEAD + GET', 'Check the real size, then read the bytes', 'HeadObject · GetObject (stream)', 'HeadObject returns contentLength 2097152 and the ETag, compared with the record before anything else; then GetObject streams the body.'),
+      hop('s3', 'scanner', 'response', 'stream 2 MB', 'The object streams into the scanner', 'HTTP 200 · chunked body', 'The body is streamed through ClamAV (clamd INSTREAM) and never written to the worker\'s disk.'),
+      node('scanner', 'size ✓ · clean ✓', 'Decision: clean', 'ClamAV · magic bytes', 'The size matches the record, the magic bytes say %PDF (the claimed type), and no signature matched: the file is clean.', { tagColor: GREEN, dur: 2.6 }),
+      hop('scanner', 'meta', 'request', 'if PENDING → READY', 'Mark READY, only if still PENDING', 'updateOne · conditional', 'updateOne({_id:"f-1", status:"PENDING", etag:"9b2c…"}, {$set:{status:"READY", versionId:"v1"}}): a duplicate event or a retry matches nothing and changes nothing.'),
+      node('meta', 'READY ✓', 'f-1 is READY', 'matched 1 · modified 1', 'From now on the API may hand out download URLs for f-1, and only for version v1, the bytes that were actually scanned.', { tagColor: GREEN }),
+      hop('scanner', 'sqs', 'request', 'DeleteMessage', 'Delete the message', 'SQS DeleteMessage · receipt handle', 'Only after the update succeeded does the worker delete the message, so a crash anywhere before this point means a redelivery, never a lost scan.'),
+      node('userA', 'READY ✓', 'A sees the file as ready to share', 'GET /files/f-1 → READY', 'Bytes went client → S3; our servers only signed, recorded and decided, and the file became downloadable only after the scan.', { tagColor: GREEN, dur: 2.6 }),
     ],
-    stats: [['2 M', 'uploads / day'], ['≤ 5 GB', 'per file'], ['~4 TB', 'new data / day'], ['0 bytes', 'through our servers']],
   },
-  async overview(s, v, ui) {
-    if (!v.ready) { setup(s, v); v.ready = true; }
-    for (const r of [...v.files.rows]) await s.unrow(v.files, r);
-    for (const r of [...v.objs.rows]) await s.unrow(v.objs, r);
-    s.setChip(v.sign, 'no URL issued', { color: GREY });
-    setQueue(s, v, 0);
-
-    ui.say(0); ui.cap('**Ask** · the client sends only metadata: `POST /files { name, size, type }`');
-    await s.send(['client', 'gateway', 'api'], 'POST /files', BLUE, { ms: 460 });
-    ui.cap('The API records the file as **PENDING** and signs a URL for one key, valid 15 minutes');
-    await s.send(['api', 'meta'], 'insert PENDING', BLUE, { ms: 440 });
-    await addFile(s, v, 'f-1', 'report.pdf', 'PENDING');
-    s.setChip(v.sign, 'PUT A/f-1.pdf · 15 min', { color: BLUE }); await s.pulse(v.sign);
-    await s.send(['api', 'gateway', 'client'], '201 uploadUrl', GREEN, { ms: 440 });
-
-    ui.say(1); ui.cap('**Upload** · the bytes go **straight to S3**, gateway and API are skipped');
-    await s.send(['client', 's3'], 'PUT 2 MB', BLUE, { ms: 900 });
-    await s.row(v.objs, 'A/f-1.pdf    2 MB');
-
-    ui.say(2); ui.cap('**Scan** · S3 emits **ObjectCreated**; a scanner checks and scans the object');
-    await s.send(['s3', 'events'], 'ObjectCreated', TEAL, { ms: 440 });
-    setQueue(s, v, 1);
-    await s.send(['events', 'scanner'], 'f-1', TEAL, { ms: 400 });
-    setQueue(s, v, 0);
-    await s.send(['scanner', 's3'], 'GET stream', TEAL, { ms: 440 });
-    await s.flash(995, 205, 'clean ✓', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 350);
-    ui.cap('Conditional update: **PENDING → READY**, so a duplicate event changes nothing');
-    await s.send(['scanner', 'meta'], 'PENDING → READY', TEAL, { ms: 460 });
-    await setStatus(s, v, 'f-1', 'READY');
-
-    ui.say(3); ui.cap('**Download** · B asks the API; it checks READY + sharing and redirects to a 5-minute GET');
-    await s.send(['client', 'gateway', 'api'], 'B: download', PURPLE, { ms: 440 });
-    await s.send(['api', 'meta'], 'READY? shared?', PURPLE, { ms: 400 });
-    await s.send(['api', 'gateway', 'client'], '302 GET · 5 min', PURPLE, { ms: 440 });
-    await s.send(['client', 's3'], 'GET', PURPLE, { ms: 600 });
-    await s.send(['s3', 'client'], '2 MB', PURPLE, { ms: 800 });
-    await s.wait(1800);
-    ui.say(-1); ui.cap('');
-    await s.wait(400);
+  // Ported from the download half of the old "Upload, scan, download" flow, plus the CDN follow-up (signed URLs, OAC, edge cache).
+  download: {
+    name: 'Download via CDN',
+    steps: [
+      hop('userB', 'api', 'request', 'GET /download', 'B asks to download f-1', 'HTTPS → gateway → :8080', 'User B, whom A shared the file with, calls GET /files/f-1/download with a JWT; the gateway authenticates and routes it to the Upload API.', GW),
+      hop('api', 'meta', 'request', 'findById f-1', 'Read the record, not the bucket', 'Mongo wire · findById', 'The API loads f-1: whether an object exists in S3 is not permission, the record is.'),
+      node('meta', 'READY · shared B ✓', 'Decision: READY and shared with B', 'status · sharedWith', 'status is READY and "B" is in sharedWith, so B may read f-1, and only its scanned versionId v1.', { tagColor: GREEN }),
+      hop('meta', 'api', 'response', 'READY · v1', 'Record returned', 'BSON · { status, key, versionId }', 'The API gets key uploads/A/f-1.pdf and versionId v1 back.'),
+      node('api', 'sign CDN URL · 5 min', 'Sign a CloudFront URL for 5 minutes', 'CloudFront signed URL · canned policy', 'The API signs https://d111.cloudfront.net/uploads/A/f-1.pdf?versionId=v1 with our CloudFront private key (key pair K2JC…) and Expires = now + 5 min.', { tagColor: BLUE }),
+      hop('api', 'userB', 'response', '302 · signed URL', '302 to the signed URL', 'HTTP 302 · Location', 'The API answers 302 with Location set to the signed URL and Content-Disposition: attachment, so the browser downloads instead of rendering the file inline.', GW),
+      hop('userB', 'cdn', 'request', 'GET ?Signature=…', 'B fetches from the nearest edge', 'HTTPS · CloudFront edge', 'The browser follows the redirect to the closest CloudFront edge location, not to our servers and not to the bucket.'),
+      node('cdn', 'signature ✓ · MISS', 'Decision: signature valid, cache MISS', 'public key verify · cache key', 'The edge verifies the signature with the public key and the expiry, then looks up the cache key path + versionId (signature params excluded): nobody near B fetched it yet.', { tagColor: RED }),
+      hop('cdn', 's3', 'request', 'origin GET · OAC', 'Origin fetch from the private bucket', 'HTTPS · SigV4 by Origin Access Control', 'The edge signs its own origin request with OAC; the bucket policy allows s3:GetObject only for this distribution, so the bucket stays private.'),
+      node('s3', 'v1 · policy ✓', 'S3 serves the scanned version', 'bucket policy · versionId=v1', 'The bucket policy matches the CloudFront service principal and AWS:SourceArn of this distribution, and S3 returns exactly version v1, not a newer unscanned one.', { tagColor: GREEN }),
+      hop('s3', 'cdn', 'response', '2 MB · v1', 'Bytes back to the edge', 'HTTP 200 · 2 MB', 'S3 returns the object with its ETag and Cache-Control: private, max-age=3600.'),
+      node('cdn', 'cached · TTL 1 h', 'The edge keeps a copy', 'edge cache · TTL 3600 s', 'The next approved viewer near this edge gets the bytes without touching S3: lower latency and less S3 egress.', { tagColor: BLUE }),
+      hop('cdn', 'userB', 'response', '200 · 2 MB', 'B gets report.pdf', 'HTTP 200 · Content-Disposition: attachment', 'B downloads straight from the edge; the API only checked access and signed, it carried no bytes.'),
+      hop('userB', 'api', 'request', 'GET /download', 'Later, B opens the file again', 'HTTPS → gateway → :8080', 'The old URL expired after 5 minutes, so B\'s app asks the API again: every download starts with a fresh access check.', GW),
+      hop('api', 'meta', 'request', 'READY? shared?', 'Check access again', 'Mongo wire · findById', 'If A had unshared the file or it had been re-flagged, this is where B would get 403: access is decided per request, not per URL.'),
+      hop('meta', 'api', 'response', 'READY · v1', 'Still READY and shared', 'BSON · { status, versionId }', 'Nothing changed: READY, shared with B, version v1.'),
+      hop('api', 'userB', 'response', '302 · new URL', 'A fresh 5-minute URL', 'HTTP 302 · Location', 'A new signature with a new expiry; the cache key is still path + versionId, so it maps to the same cached object.', GW),
+      hop('userB', 'cdn', 'request', 'GET ?Signature=…', 'Same edge, new signature', 'HTTPS · CloudFront edge', 'The edge verifies the new signature first: a valid cache entry is never served to an unsigned or expired request.'),
+      node('cdn', 'HIT ✓', 'Decision: cache HIT', 'edge cache · ~20 ms', 'The object is still in the edge cache, so it is served in tens of milliseconds and S3 is not asked at all.', { tagColor: GREEN, stat: 'hit' }),
+      hop('cdn', 'userB', 'response', '200 from edge', 'Served from the edge', 'HTTP 200 · x-cache: Hit from cloudfront', 'Popular files cost one origin fetch per edge per TTL, not one per download.'),
+      node('cdn', 'revoke = slower', 'Trade-off: revoking access at the edge', 'short TTL · invalidation', 'If A unshares the file, new URLs stop at once, but a URL already handed out stays valid until it expires, so keep URL lifetimes short and invalidate /uploads/A/f-1.pdf when it matters.', { tagColor: AMBER, dur: 3 }),
+    ],
   },
+  // Ported from the old page's "Large file: multipart" flow: uploadId, part URLs, parallel parts, one failed part, resume, complete.
+  multipart: {
+    name: 'Large file: multipart',
+    steps: [
+      hop('userA', 'api', 'request', 'POST /files 1.2 GB', 'A starts a 1.2 GB upload', 'HTTPS → gateway → :8080', 'A picks video.mp4 (1.2 GB) on a mobile connection; one 1.2 GB PUT would restart from zero on every network drop, so above ~100 MB the client asks for a multipart upload.', GW),
+      node('api', '> 100 MB → multipart', 'Decision: single PUT or multipart', 'size threshold · 10 MB parts', 'size = 1.2 GB is above the 100 MB threshold, so the API plans 10 MB parts: 120 parts (minimum 5 MiB each except the last, maximum 10,000 parts and 5 TiB per object).', { tagColor: BLUE }),
+      hop('api', 'meta', 'request', 'insert f-2 PENDING', 'Record f-2 as PENDING', 'Mongo wire · insertOne', 'insertOne({_id:"f-2", owner:"A", name:"video.mp4", key:"uploads/A/f-2.mp4", size:1288490188, status:"PENDING"}).'),
+      hop('meta', 'api', 'response', 'ack', 'Record stored', '{ acknowledged: true }', 'f-2 is PENDING, so it is invisible to downloads and will be expired by the cleanup job if A never completes it.'),
+      hop('api', 's3', 'request', 'CreateMultipartUpload', 'Open a multipart upload', 'S3 API · POST ?uploads', 'CreateMultipartUpload(bucket, key uploads/A/f-2.mp4, contentType video/mp4) is the one real S3 call the API makes for an upload.'),
+      hop('s3', 'api', 'response', 'uploadId u-77', 'S3 returns an uploadId', 'XML · <UploadId>', 'uploadId u-77 identifies this upload; the API stores it on the record so the client can resume later.'),
+      node('api', '120 part URLs', 'Presign one URL per part', 'presignUploadPart · 30 min', 'For partNumber 1…120 the API presigns UploadPart(uploadId u-77, partNumber n), each valid 30 minutes, again locally with no S3 calls.', { tagColor: BLUE }),
+      hop('api', 'userA', 'response', 'u-77 · 120 URLs', 'Part URLs to the client', 'HTTP 201 · { uploadId, partUrls }', 'The API answers 201 {fileId:"f-2", uploadId:"u-77", partUrls:[…120]}; the client persists uploadId so it can resume after a restart.', GW),
+      hop('userA', 's3', 'request', null, 'Parts upload in parallel', 'HTTPS PUT · ?partNumber=n&uploadId=u-77', 'The client sends 4–6 parts at once, each to its own signed URL, which uses the bandwidth far better than one long stream.', { count: 3, tags: ['part 1', 'part 2', 'part 3'] }),
+      hop('s3', 'userA', 'response', null, 'An ETag for every part', 'HTTP 200 · ETag', 'S3 returns an ETag per part; the client keeps [partNumber, ETag] for the final complete call.', { count: 3, tags: ['ETag 1', 'ETag 2', 'ETag 3'] }),
+      node('userA', 'parts 57/120', 'The counter climbs', 'parallel parts · progress', 'Parts 1–57 are in S3 (570 MB) and their ETags are stored on the device.', { tagColor: BLUE }),
+      hop('userA', 's3', 'error', 'part 58 ✕', 'The train enters a tunnel: part 58 fails', 'TCP reset mid-body', 'The connection drops halfway through part 58; S3 discards the incomplete part, and without multipart A would lose everything uploaded so far.'),
+      node('userA', 'resume · ListParts u-77', 'Retry only that part', 'ListParts · stored uploadId', 'Only part 58 (10 MB) is sent again, not 1.2 GB; if the app is killed, it resumes later with the stored uploadId and ListParts to see which parts S3 already has.', { tagColor: AMBER }),
+      hop('userA', 's3', 'request', 'part 58 retry', 'Part 58 again', 'HTTPS PUT · partNumber=58', 'Same signed URL (still within its 30 minutes), same part number: S3 simply stores the part.'),
+      hop('s3', 'userA', 'response', 'ETag 58', 'Part 58 stored', 'HTTP 200 · ETag', 'The rest of the parts follow the same way, up to 120/120.'),
+      hop('userA', 'api', 'request', 'complete [n, ETag]', 'Ask the API to complete', 'POST /files/f-2/complete · 120 × [n, ETag]', 'The client sends the list of [partNumber, ETag]: S3 needs it to assemble the object in order.', GW),
+      hop('api', 's3', 'request', 'CompleteMultipartUpload', 'S3 assembles the object', 'S3 API · POST ?uploadId=u-77', 'CompleteMultipartUpload(u-77, parts) checks every ETag and stitches the 120 parts into one 1.2 GB object.'),
+      node('s3', '1.2 GB · 1 object', 'One object, and only now an event', 'ObjectCreated:CompleteMultipartUpload', 'Parts were never visible as an object; only the completed object exists and triggers ObjectCreated, so scanning starts exactly as for a small file.', { tagColor: GREEN }),
+      { type: 'fork', title: 'Async: scanning starts as for any file', proto: 'ObjectCreated → SQS → scanner', text: 'In parallel: S3 emits ObjectCreated:CompleteMultipartUpload into the scan queue and a worker picks it up; f-2 stays PENDING until it is scanned.', steps: [
+        hop('s3', 'sqs', 'event', 'ObjectCreated', 'ObjectCreated', 'S3 → SQS', 'Event for f-2.'),
+        hop('sqs', 'scanner', 'event', 'receive f-2', 'Scan f-2', 'SQS receive', 'A worker scans f-2.'),
+      ] },
+      hop('s3', 'api', 'response', '200 · ETag-120', 'Complete acknowledged', 'XML · <ETag>"…-120"</ETag>', 'The multipart ETag ends in -120, the number of parts.'),
+      hop('api', 'userA', 'response', '202 scanning', '202: uploaded, now scanning', 'HTTP 202 · { status: "PENDING" }', 'One fragile 1.2 GB transfer became 120 small ones: parallel, individually retried, resumable with the stored uploadId and assembled by S3.', GW),
+    ],
+  },
+  // Ported from the old page's "Virus scan result" flow: refused while PENDING, malware → quarantine + INFECTED, 403, crash → redelivery.
+  scan: {
+    name: 'Virus scan result',
+    steps: [
+      hop('userB', 'api', 'request', 'GET /download f-3', 'B clicks download straight away', 'HTTPS → gateway → :8080', 'A shared setup.exe (f-3) with B, and B clicks download while the scan is still queued.', GW),
+      hop('api', 'meta', 'request', 'status f-3?', 'The API checks the record', 'Mongo wire · findById', 'The object already exists in S3, but existence is not permission: the API reads the record.'),
+      node('meta', 'PENDING', 'Decision: not READY yet', 'status: PENDING', 'f-3 is still PENDING, so no download URL may be signed for it.', { tagColor: AMBER }),
+      hop('meta', 'api', 'response', 'PENDING', 'Status returned', 'BSON · { status: "PENDING" }', 'The API maps PENDING to 409 Conflict with a "still scanning" body.'),
+      hop('api', 'userB', 'error', '409 scanning', 'B is refused: still scanning', 'HTTP 409', 'Nothing is served before the scan finishes; the UI shows "scanning, try again in a moment".', GW),
+      hop('sqs', 'scanner', 'event', 'receive f-3', 'A worker takes the f-3 event', 'SQS ReceiveMessage', 'The ObjectCreated event for uploads/A/f-3.exe reaches a scanner worker.'),
+      hop('scanner', 's3', 'request', 'GET stream', 'Stream setup.exe from S3', 'GetObject · stream', 'HeadObject confirms 4 MB, then GetObject streams the body into clamd.'),
+      hop('s3', 'scanner', 'response', 'stream 4 MB', 'Bytes into the engine', 'HTTP 200 · chunked', 'The engine reads the stream as it arrives.'),
+      node('scanner', 'Win.Trojan ✕', 'Decision: malware found', 'ClamAV · signature match', 'The engine reports a known trojan signature in setup.exe.', { tagColor: RED, dur: 2.6 }),
+      hop('scanner', 's3', 'error', 'move → quarantine/', 'Quarantine the object', 'CopyObject + DeleteObject', 'The worker copies the object to quarantine/A/f-3.exe (readable only by the security team) and deletes the original key.'),
+      hop('scanner', 'meta', 'error', 'PENDING → INFECTED', 'Mark INFECTED, same conditional update', 'updateOne · status: "PENDING"', 'updateOne({_id:"f-3", status:"PENDING"}, {$set:{status:"INFECTED"}}); A gets a notification that the file was blocked.'),
+      node('meta', 'INFECTED', 'f-3 is INFECTED', 'status: INFECTED', 'An INFECTED record can never turn READY again, and no presigned GET is ever signed for it.', { tagColor: RED }),
+      hop('userB', 'api', 'request', 'GET /download f-3', 'B tries again', 'HTTPS → gateway → :8080', 'Same request, a minute later.', GW),
+      hop('api', 'meta', 'request', 'status f-3?', 'The API reads the record again', 'Mongo wire · findById', 'Every download is decided by the current record status.'),
+      hop('meta', 'api', 'error', 'INFECTED', 'INFECTED', 'BSON · { status: "INFECTED" }', 'The record says INFECTED.'),
+      hop('api', 'userB', 'error', '403 infected', 'Every download is refused', 'HTTP 403', 'B gets 403 and no URL: a file is invisible until the scanner says READY, and blocked for good once it says INFECTED.', GW),
+      hop('sqs', 'scanner', 'event', 'f-4 · receive 1', 'A new upload: notes.txt', 'SQS ReceiveMessage · receive count 1', 'The ObjectCreated event for f-4 (notes.txt, 1 KB) is received by a worker.'),
+      node('scanner', 'worker crashed ✕', 'The worker crashes mid-scan', 'no DeleteMessage', 'The worker dies before deleting the message, so the message is not lost: it stays in the queue, invisible.', { tagColor: RED }),
+      node('sqs', 'visibility timeout…', 'The message becomes visible again', 'VisibilityTimeout 300 s · DLQ after 5', 'After the visibility timeout another worker can receive it; after maxReceiveCount failed receives it would go to the DLQ with an alert, and f-4 stays PENDING meanwhile.', { tagColor: AMBER }),
+      hop('sqs', 'scanner', 'event', 'f-4 · receive 2', 'Redelivered to another worker', 'SQS ReceiveMessage · receive count 2', 'A healthy worker scans notes.txt from the start.'),
+      hop('scanner', 'meta', 'request', 'f-4 PENDING → READY', 'f-4 ends READY', 'updateOne · conditional', 'The second attempt finishes and flips f-4 to READY; crashed scans are simply retried from the queue.'),
+    ],
+  },
+  // Ported from the old page's "Leaked upload URL" flow: broad vs scoped presign, overwrite within 15 min (versioning), expiry.
+  leak: {
+    name: 'Leaked upload URL',
+    steps: [
+      node('attacker', '🔓 URL in a log', "A's upload URL leaks", 'bearer token', 'Presigned URLs are bearer tokens: A\'s URL for uploads/A/f-1.pdf ended up in a proxy log that attacker C can read.', { tagColor: RED }),
+      node('api', '❌ uploads/* · 7 days', '❌ Suppose we had signed broadly', 'whole prefix · any type · 7 days', 'Imagine the API had signed for the whole uploads/ prefix, any content type, valid for a week.', { tagColor: RED }),
+      hop('attacker', 's3', 'error', 'PUT malware.exe', 'C uploads anything under our bucket', 'HTTPS PUT · broad URL', 'With a broad URL C can PUT uploads/A/malware.exe, as often as they like.'),
+      node('s3', 'malware.exe ✕', 'S3 accepts it', 'signature covers the prefix', 'The signature is valid for that key, so S3 stores the file and our domain now hosts it.', { tagColor: RED }),
+      hop('s3', 'attacker', 'error', '200 OK ✕', 'Broad URLs give C a free file host', 'HTTP 200', 'This is why presigned URLs must be scoped as tightly as possible.'),
+      node('api', '✅ 1 key · pdf · 15 min', '✅ Scoped: one key, one method, one type', 'PUT uploads/A/f-1.pdf · application/pdf · 900 s', 'Our real URL covers only PUT uploads/A/f-1.pdf with Content-Type: application/pdf for 15 minutes; all of these are inside the signature.', { tagColor: GREEN }),
+      hop('attacker', 's3', 'error', null, 'C tries another key and another method', 'HTTPS PUT / GET · same signature', 'C tries PUT uploads/A/x.exe and GET uploads/A/f-1.pdf with the leaked signature.', { count: 2, tags: ['PUT A/x.exe', 'GET A/f-1.pdf'] }),
+      node('s3', 'SignatureDoesNotMatch', 'Decision: the signature does not match', 'SigV4 recomputed', 'Any other key, method or content type changes the string to sign, so the signature no longer matches.', { tagColor: RED }),
+      hop('s3', 'attacker', 'error', null, 'Both bounce with 403', 'HTTP 403', 'A leak cannot be reused for anything else.', { count: 2, tags: ['403', '403'] }),
+      hop('attacker', 's3', 'error', 'PUT A/f-1.pdf', 'Within 15 minutes: overwrite the same key', 'HTTPS PUT · exact key', 'The one thing C can still do is PUT that exact key with that content type before it expires.'),
+      node('s3', 'v2 · unscanned', 'Versioning keeps v1', 'versioning: new version v2', 'With versioning on, the overwrite creates version v2; v1, the version the scanner approved, is untouched.', { tagColor: AMBER }),
+      hop('s3', 'attacker', 'error', '200 · v2', 'C stored an unscanned v2', 'HTTP 200 · x-amz-version-id: v2', 'v2 triggers its own ObjectCreated event, but the record already says READY with versionId v1, so the conditional update ignores it.'),
+      hop('userB', 'api', 'request', 'GET /download', 'Meanwhile B downloads f-1', 'HTTPS → gateway → :8080', 'B asks for the file as usual.', GW),
+      hop('api', 'meta', 'request', 'versionId?', 'Which version was scanned?', 'Mongo wire · findById', 'The record stores the versionId the scanner approved.'),
+      node('meta', 'serve v1 ✓', 'The record pins version v1', 'versionId: v1', 'Downloads always ask for that version, so the unscanned v2 is never served.', { tagColor: GREEN }),
+      hop('meta', 'api', 'response', 'v1', 'versionId v1', 'BSON · { versionId: "v1" }', 'The API signs the download for versionId=v1.'),
+      hop('api', 'userB', 'response', '302 · versionId=v1', 'B gets A\'s real file', 'HTTP 302 · Location', 'The signed URL names versionId=v1 explicitly.', GW),
+      hop('attacker', 's3', 'error', 'PUT after 15 min', 'After 15 minutes the URL is dead', 'HTTPS PUT · X-Amz-Expires=900', 'C tries the same URL again after the 900 seconds are over.'),
+      node('s3', 'Request has expired', 'Decision: expired', 'X-Amz-Date + X-Amz-Expires < now', 'S3 rejects any presigned request past its expiry, whatever else matches.', { tagColor: RED }),
+      hop('s3', 'attacker', 'error', '403 expired', '403 Request has expired', 'HTTP 403', 'Short expiry, tight scope, versioning, and never logging full URLs keep the blast radius of a leak tiny.'),
+    ],
+  },
+  // Ported from the old page's "Duplicate event & abandoned upload" flow (+ a poison message to the DLQ).
+  edge: {
+    name: 'Duplicates & abandoned uploads',
+    steps: [
+      hop('s3', 'sqs', 'event', null, 'S3 delivers the same event twice', 'S3 Event Notification · at-least-once', 'S3 event notifications are at-least-once: the ObjectCreated event for f-1 arrives twice.', { count: 2, tags: ['ObjectCreated f-1', 'ObjectCreated f-1'] }),
+      node('sqs', 'depth 2 · same event', 'Two copies in the queue', 'two messages · same key + ETag', 'Two workers may pick them up at the same time; nothing in the queue deduplicates them.', { tagColor: AMBER }),
+      hop('sqs', 'scanner', 'event', 'f-1 (copy 1)', 'The first copy is scanned', 'SQS ReceiveMessage', 'Worker 1 scans the file and finds it clean.'),
+      hop('scanner', 'meta', 'request', 'if PENDING → READY', 'Conditional update', 'updateOne · status: "PENDING"', 'updateOne({_id:"f-1", status:"PENDING"}, {$set:{status:"READY"}}).'),
+      node('meta', 'matched 1 → READY', 'The first delivery marks READY', 'matched 1 · modified 1', 'f-1 turns READY.', { tagColor: GREEN }),
+      hop('sqs', 'scanner', 'event', 'f-1 (copy 2)', 'The second copy arrives', 'SQS ReceiveMessage', 'Worker 2 runs the same code for the same object.'),
+      hop('scanner', 'meta', 'request', 'if PENDING → READY', 'The same conditional update', 'updateOne · status: "PENDING"', 'The record is no longer PENDING, so the filter matches nothing.'),
+      node('meta', 'matched 0 · no-op', 'The second delivery is a no-op', 'matched 0 · modified 0', 'No double processing and no flip back to an older state; the worker deletes the message and moves on.', { tagColor: GREY }),
+      hop('scanner', 'sqs', 'request', 'DeleteMessage ×2', 'Both messages deleted', 'SQS DeleteMessage', 'Scanning twice still costs CPU, which is the only price of at-least-once delivery here.'),
+      hop('sqs', 'scanner', 'event', 'f-9 · receive 5', 'A poison message', 'SQS ReceiveMessage · receive count 5', 'A corrupt archive f-9 makes the scanner crash on every attempt; this is its fifth receive.'),
+      node('scanner', 'parse error ✕', 'It fails again', 'exception · no DeleteMessage', 'The worker cannot finish, so the message would come back forever and waste scanner capacity.', { tagColor: RED }),
+      hop('sqs', 'dlq', 'event', 'redrive f-9', 'Moved to the dead-letter queue', 'RedrivePolicy · maxReceiveCount 5', 'After 5 receives SQS moves the message to file-scan-dlq instead of redelivering it.'),
+      node('dlq', 'alert · f-9 PENDING', 'Alert, and f-9 stays unsafe', 'CloudWatch alarm · redrive later', 'An alarm fires on the DLQ depth; f-9 stays PENDING, so nobody can download it until someone fixes the cause and redrives the message.', { tagColor: RED }),
+      node('meta', 'f-8 PENDING 26 h', 'An upload that never finishes', 'big.zip · 3/40 parts', 'Yesterday A started uploading big.zip in 40 parts, sent 3 and closed the laptop; the record is stuck at PENDING.', { tagColor: AMBER }),
+      node('s3', '3 parts billed', 'Orphan parts cost money', 'incomplete multipart upload', 'The 3 uploaded parts are billed even though no object exists and nobody is coming back.', { tagColor: AMBER }),
+      hop('cleanup', 'meta', 'request', 'expire PENDING > 24 h', 'The hourly cleanup job runs', '@Scheduled · updateMany', 'updateMany({status:"PENDING", createdAt:{$lt: now − 24 h}}, {$set:{status:"EXPIRED"}}) using the index {status: 1, createdAt: 1}.'),
+      node('meta', 'f-8 EXPIRED', 'f-8 is EXPIRED', 'modified 1', 'The ghost "uploading…" entry disappears from A\'s list; finished files are never touched.', { tagColor: GREY }),
+      node('s3', 'lifecycle: abort > 7 d', 'The lifecycle rule removes the orphan parts', 'AbortIncompleteMultipartUpload · 7 days', 'S3 itself aborts multipart uploads older than 7 days and deletes their parts; returning users must re-upload after the window.', { tagColor: GREEN, dur: 3 }),
+    ],
+  },
+};
+const LIVE_MIX = [['upload', 0.4], ['download', 0.4], ['multipart', 0.2]];
 
-  // ---------------- 3 · flows ----------------
-  flows: [
-    {
-      id: 'happy', title: 'Upload, scan, download', sub: 'presigned PUT · direct to S3', color: BLUE,
-      build: (s, v) => setup(s, v),
-      takeaway: 'Bytes go **client → S3**; our servers only **sign, record and decide**. Files become downloadable only after the scanner flips them to **READY**.',
-      steps: [
-        {
-          title: 'A asks for an upload URL',
-          text: 'User A picks `report.pdf` (2 MB). The client sends only **metadata**: `POST /files { name, size, contentType }`. No file bytes go to our servers, ever.',
-          observe: 'A small JSON request reaches the Upload API through the gateway.',
-          say: 'The client first asks our API for permission and a URL; the bytes never go through us.',
-          focus: v => [v.n.api],
-          async run(s) { await s.send(['client', 'gateway', 'api'], 'POST /files', BLUE); },
-        },
-        {
-          title: 'Validate, record PENDING, sign locally',
-          text: 'The API checks type, size and quota, inserts `f-1` as **PENDING**, and signs a presigned PUT for **one key** (`uploads/A/f-1.pdf`), **one method**, **one content type**, valid **15 minutes**. Signing is local SigV4 with our credentials: no call to S3.',
-          observe: 'A PENDING row appears and the API holds a signed URL; nothing goes to S3.',
-          say: 'The API writes a PENDING record and signs a URL scoped to one key for 15 minutes.',
-          focus: v => [v.files, v.sign],
-          async run(s, v) {
-            await s.send(['api', 'meta'], 'insert PENDING', BLUE);
-            await addFile(s, v, 'f-1', 'report.pdf', 'PENDING');
-            s.setChip(v.sign, 'PUT A/f-1.pdf · 15 min', { color: BLUE, stroke: BLUE }); await s.pulse(v.sign);
-            await s.flash(445, 190, 'signed locally · no S3 call', { color: TEAL, stroke: TEAL }, 600);
-          },
-        },
-        {
-          title: 'Return the upload URL',
-          text: 'The API answers **201** with `{ fileId: "f-1", uploadUrl }`. The URL is a bearer token, so it is short-lived and scoped to exactly what A asked for.',
-          observe: 'The signed URL travels back to the client.',
-          focus: v => [v.n.client],
-          async run(s) { await s.send(['api', 'gateway', 'client'], '201 uploadUrl', GREEN); },
-        },
-        {
-          title: 'Upload straight to S3',
-          text: 'The client PUTs the 2 MB **directly to S3** with the signed URL. S3 checks the signature, key, content type and expiry, stores the object and returns an **ETag**. Gateway and API carry none of these bytes, so upload bandwidth never limits our servers.',
-          observe: 'The big packet goes from the client straight to S3, skipping gateway and API.',
-          say: 'Bytes go client to S3 directly, so our servers do not scale with upload bandwidth.',
-          focus: v => [v.n.s3, v.objs],
-          async run(s, v) {
-            await s.send(['client', 's3'], 'PUT 2 MB', BLUE, { ms: 1100 });
-            await s.row(v.objs, 'A/f-1.pdf    2 MB');
-            await s.flash(80, 195, 'ETag "9b2c…"', { mono: true, color: BLUE, stroke: BLUE }, 600);
-          },
-        },
-        {
-          title: 'S3 announces the new object',
-          text: 'S3 publishes an **ObjectCreated** event to an SQS queue. We do not trust the client to say "upload finished": S3 knows when the object really exists. Delivery is **at-least-once**, so every handler must be idempotent.',
-          observe: 'An event lands in the queue.',
-          focus: v => [v.n.events, v.queue],
-          async run(s, v) {
-            await s.send(['s3', 'events'], 'ObjectCreated', TEAL);
-            setQueue(s, v, 1); await s.pulse(v.queue);
-          },
-        },
-        {
-          title: 'The scanner checks and scans',
-          text: 'A scanner worker takes the message, calls **HeadObject** to compare the real size and type with the record, then streams the object through the virus scanner (ClamAV or a vendor API).',
-          observe: 'The scanner reads the object from S3 and finds it clean.',
-          say: 'S3 events drive a scanner, so a file is checked before anyone can download it.',
-          focus: v => [v.n.scanner],
-          async run(s, v) {
-            await s.send(['events', 'scanner'], 'f-1 event', TEAL);
-            setQueue(s, v, 0);
-            await s.send(['scanner', 's3'], 'HEAD + GET', TEAL);
-            await s.send(['s3', 'scanner'], 'stream', TEAL);
-            await s.flash(995, 205, 'size ✓ · clean ✓', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 600);
-          },
-        },
-        {
-          title: 'Mark READY, only if still PENDING',
-          text: '`updateOne({ _id: "f-1", status: "PENDING", etag }, { $set: { status: "READY" } })`. The condition makes the update **idempotent**: a duplicate event or a retry matches nothing and changes nothing.',
-          observe: 'The f-1 row turns green: READY.',
-          say: 'The scanner updates conditionally from PENDING, so duplicate events are harmless.',
-          focus: v => [v.rows['f-1']],
-          async run(s, v) {
-            await s.send(['scanner', 'meta'], 'PENDING → READY', TEAL);
-            await setStatus(s, v, 'f-1', 'READY');
-          },
-        },
-        {
-          title: 'B asks to download',
-          text: 'User B, whom A shared the file with, asks for it. The API checks the **record**, not just the object: status must be **READY** and B must be the owner or in `sharedWith`.',
-          observe: 'The API looks up f-1 before handing out anything.',
-          focus: v => [v.n.api, v.rows['f-1']],
-          async run(s) {
-            await s.send(['client', 'gateway', 'api'], 'B: GET /download', PURPLE);
-            await s.send(['api', 'meta'], 'READY? shared?', PURPLE);
-            await s.flash(690, 158, '✓ READY · shared with B', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 500);
-          },
-        },
-        {
-          title: 'A short-lived GET straight from S3',
-          text: 'The API answers **302** to a presigned GET valid **5 minutes**, with `Content-Disposition: attachment`. B downloads straight from S3 (or from a CDN with signed URLs for popular files).',
-          observe: 'The download also bypasses our servers.',
-          say: 'Downloads are authorised by the API and served by S3 through a five-minute URL.',
-          focus: v => [v.n.client, v.n.s3],
-          async run(s) {
-            await s.send(['api', 'gateway', 'client'], '302 GET · 5 min', PURPLE);
-            await s.send(['client', 's3'], 'GET', PURPLE, { ms: 700 });
-            await s.send(['s3', 'client'], '2 MB', PURPLE, { ms: 1000 });
-          },
-        },
-      ],
-    },
-    {
-      id: 'multipart', title: 'Large file: multipart', sub: '10 MB parts · retry one part', color: TEAL,
-      build: (s, v) => setup(s, v, { files: [['f-1', 'report.pdf', 'READY']], objects: ['A/f-1.pdf    2 MB'] }),
-      takeaway: 'Multipart turns one fragile 1.2 GB transfer into **120 small ones**: parallel, individually retried, resumable with the stored `uploadId`, and assembled by S3.',
-      steps: [
-        {
-          title: 'A starts a 1.2 GB upload',
-          text: 'A picks `video.mp4` (1.2 GB) on a mobile connection. One PUT of 1.2 GB would restart from zero on every network drop, so above ~100 MB the client uses **multipart upload**.',
-          observe: 'The request asks for a multipart upload.',
-          focus: v => [v.n.api],
-          async run(s) { await s.send(['client', 'gateway', 'api'], 'POST /files 1.2 GB', TEAL); },
-        },
-        {
-          title: 'The API opens a multipart upload',
-          text: 'The API records `f-2` as PENDING, calls **CreateMultipartUpload** to get an `uploadId`, and presigns one URL **per part** (10 MB each → 120 parts). Parts must be at least 5 MiB (except the last); up to 10,000 parts and 5 TiB per object.',
-          observe: 'S3 returns an uploadId and the client receives 120 part URLs.',
-          say: 'For large files the API opens a multipart upload and signs one URL per part.',
-          focus: v => [v.sign, v.objs],
-          async run(s, v) {
-            await s.send(['api', 'meta'], 'insert PENDING', TEAL, { ms: 460 });
-            await addFile(s, v, 'f-2', 'video.mp4', 'PENDING');
-            await s.send(['api', 's3'], 'CreateMultipartUpload', TEAL);
-            await s.send(['s3', 'api'], 'uploadId u-77', TEAL);
-            await s.row(v.objs, 'A/f-2.mp4 parts 0/120', ST.PENDING);
-            s.setChip(v.sign, 'u-77 · 120 part URLs', { color: TEAL, stroke: TEAL }); await s.pulse(v.sign);
-            await s.send(['api', 'gateway', 'client'], '120 part URLs', GREEN);
-          },
-        },
-        {
-          title: 'Parts upload in parallel',
-          text: 'The client uploads several parts at once, each with its own signed URL, and keeps the **ETag** S3 returns for every part. Parallel parts also use the bandwidth much better than one long stream.',
-          observe: 'Parts stream into S3 and the counter climbs.',
-          focus: v => [objRow(v, 'A/f-2')],
-          async run(s, v) {
-            const r = objRow(v, 'A/f-2');
-            await Promise.all([1, 2, 3].map(k => s.wait((k - 1) * 220).then(() => s.send(['client', 's3'], `part ${k}`, TEAL, { ms: 650, pulse: false }))));
-            r.label.textContent = 'A/f-2.mp4 parts 3/120';
-            await s.clock.tween(900, t => { r.label.textContent = `A/f-2.mp4 parts ${Math.round(3 + t * 54)}/120`; });
-            await s.flash(80, 195, 'ETags kept per part', { color: TEAL, stroke: TEAL }, 500);
-          },
-        },
-        {
-          title: 'One part fails',
-          text: 'The train enters a tunnel and **part 58** fails halfway. Without multipart, A would lose everything uploaded so far.',
-          observe: 'Part 58 bounces; the 57 parts already in S3 stay there.',
-          focus: v => [v.n.client],
-          async run(s) {
-            await s.bounce('client', 's3', 'part 58', TEAL);
-            await s.flash(80, 195, 'network drop', { color: RED, stroke: RED, fill: '#fff4f4' }, 600);
-          },
-        },
-        {
-          title: 'Retry only that part',
-          text: 'Only part 58 (10 MB) is sent again, not 1.2 GB. If the app is killed, it resumes later with the stored `uploadId` and **ListParts** to see which parts S3 already has.',
-          observe: 'Only one small part is re-sent, then the rest complete.',
-          say: 'A failed part is retried on its own, and uploads resume with the stored uploadId.',
-          focus: v => [objRow(v, 'A/f-2')],
-          async run(s, v) {
-            const r = objRow(v, 'A/f-2');
-            await s.send(['client', 's3'], 'part 58 retry', TEAL);
-            await s.clock.tween(900, t => { r.label.textContent = `A/f-2.mp4 parts ${Math.round(58 + t * 62)}/120`; });
-          },
-        },
-        {
-          title: 'Complete: S3 assembles the object',
-          text: 'The client calls `POST /files/f-2/complete` with the list of `[partNumber, ETag]`. The API calls **CompleteMultipartUpload**; S3 assembles the parts into one object and only now emits **ObjectCreated**, so scanning starts exactly as for a small file.',
-          observe: 'The parts become one 1.2 GB object and an event enters the queue.',
-          focus: v => [objRow(v, 'A/f-2'), v.queue],
-          async run(s, v) {
-            await s.send(['client', 'gateway', 'api'], 'complete [n, ETag]', TEAL);
-            await s.send(['api', 's3'], 'CompleteMultipartUpload', TEAL);
-            const r = objRow(v, 'A/f-2');
-            r.label.textContent = 'A/f-2.mp4    1.2 GB';
-            s.paintRow(r, { fill: '#f6f7fb', stroke: '#e3e6ee', color: '#203347' });
-            await s.pulse(r, 1, 1.05);
-            await s.send(['s3', 'events'], 'ObjectCreated', TEAL);
-            setQueue(s, v, 1); await s.pulse(v.queue);
-          },
-        },
-      ],
-    },
-    {
-      id: 'scan', title: 'Virus scan result', sub: 'scan before serve · quarantine', color: AMBER,
-      build: (s, v) => setup(s, v, { files: [['f-3', 'setup.exe', 'PENDING']], objects: ['A/f-3.exe    4 MB'], queue: 1, sign: 'PUT A/f-3.exe · 15 min' }),
-      takeaway: 'A file is invisible until the scanner says **READY**. Infected files are **quarantined** and every download is refused; crashed scans are simply retried from the queue.',
-      steps: [
-        {
-          title: 'Not downloadable while PENDING',
-          text: 'A shared `setup.exe` with B, and B clicks download straight away. The API checks the record: status is still **PENDING**, so it answers **409 "still scanning"**. The object exists in S3, but existence is not permission.',
-          observe: 'B is refused because the record is not READY yet.',
-          say: 'Downloads depend on the record status, so nothing is served before the scan finishes.',
-          focus: v => [v.rows['f-3']],
-          async run(s) {
-            await s.send(['client', 'gateway', 'api'], 'B: GET /download', PURPLE);
-            await s.send(['api', 'meta'], 'status?', PURPLE, { ms: 460 });
-            await s.send(['meta', 'api'], 'PENDING', AMBER, { ms: 460 });
-            await s.send(['api', 'gateway', 'client'], '409 scanning', AMBER);
-          },
-        },
-        {
-          title: 'The scanner finds malware',
-          text: 'A scanner worker takes the event, streams `setup.exe` from S3 and the engine reports a known trojan signature.',
-          observe: 'The scanner turns red with a detection.',
-          focus: v => [v.n.scanner],
-          async run(s, v) {
-            await s.send(['events', 'scanner'], 'f-3 event', TEAL);
-            setQueue(s, v, 0);
-            await s.send(['scanner', 's3'], 'GET stream', TEAL);
-            await s.send(['s3', 'scanner'], 'stream', TEAL);
-            s.tone(v.n.scanner, 'fail'); s.setSub(v.n.scanner, 'Win.Trojan found', RED);
-            await s.shake(v.n.scanner);
-          },
-        },
-        {
-          title: 'Quarantine and mark INFECTED',
-          text: 'The scanner copies the object to a locked-down `quarantine/` prefix (only security can read it), deletes the original, and sets the record **PENDING → INFECTED** with the same conditional update.',
-          observe: 'The object moves to quarantine and the row turns red.',
-          say: 'Infected files are moved to quarantine and the record is marked INFECTED.',
-          focus: v => [v.rows['f-3'], objRow(v, 'quar')],
-          async run(s, v) {
-            await s.send(['scanner', 's3'], 'move → quarantine/', RED);
-            const r = objRow(v, 'A/f-3');
-            r.label.textContent = 'quar/A/f-3.exe   4 MB';
-            s.paintRow(r, ST.INFECTED); await s.pulse(r, 1, 1.05);
-            await s.send(['scanner', 'meta'], 'PENDING → INFECTED', RED);
-            await setStatus(s, v, 'f-3', 'INFECTED');
-            s.tone(v.n.scanner, null); s.setSub(v.n.scanner, 'scan workers');
-          },
-        },
-        {
-          title: 'Every download is refused',
-          text: 'B tries again: the API sees **INFECTED** and answers **403**. A gets a notification that the file was blocked. No presigned GET is ever signed for an infected file.',
-          observe: 'B gets 403 and no URL.',
-          focus: v => [v.n.client],
-          async run(s) {
-            await s.send(['client', 'gateway', 'api'], 'B: GET /download', PURPLE);
-            await s.send(['api', 'meta'], 'status?', PURPLE, { ms: 460 });
-            await s.send(['api', 'gateway', 'client'], '403 infected', RED);
-          },
-        },
-        {
-          title: 'A scanner crashes mid-scan',
-          text: 'A new upload `notes.txt` arrives and the worker scanning it crashes. It never deleted the SQS message, so after the **visibility timeout** the message reappears and another worker scans it. After N failed receives it goes to a **DLQ** with an alert; the file stays PENDING meanwhile.',
-          observe: 'The same event is delivered a second time and the file ends READY.',
-          say: 'If a scanner crashes, the queue redelivers the event after the visibility timeout.',
-          focus: v => [v.n.events, v.rows['f-4']],
-          async run(s, v) {
-            await addFile(s, v, 'f-4', 'notes.txt', 'PENDING');
-            await s.row(v.objs, 'A/f-4.txt    1 KB');
-            await s.send(['s3', 'events'], 'ObjectCreated', TEAL, { ms: 460 });
-            setQueue(s, v, 1);
-            await s.send(['events', 'scanner'], 'f-4 (receive 1)', TEAL, { ms: 460 });
-            s.tone(v.n.scanner, 'fail'); s.setSub(v.n.scanner, 'worker crashed ✕', RED);
-            await s.shake(v.n.scanner);
-            await s.flash(995, 205, 'visibility timeout…', { color: AMBER, stroke: AMBER }, 500);
-            s.tone(v.n.scanner, null); s.setSub(v.n.scanner, 'scan workers');
-            await s.send(['events', 'scanner'], 'f-4 (receive 2)', TEAL, { ms: 460 });
-            setQueue(s, v, 0);
-            await s.send(['scanner', 'meta'], 'PENDING → READY', TEAL);
-            await setStatus(s, v, 'f-4', 'READY');
-          },
-        },
-      ],
-    },
-    {
-      id: 'leak', title: 'Leaked upload URL', sub: 'broad vs scoped presign', color: RED,
-      build: (s, v) => setup(s, v, { files: [['f-1', 'report.pdf', 'READY']], objects: ['A/f-1.pdf v1 2 MB'], sign: 'PUT A/f-1.pdf · 15 min' }),
-      takeaway: 'Presigned URLs are **bearer tokens**: keep them **short-lived** and scoped to **one key, one method, one content type**, never log them, and serve only the **scanned version**.',
-      steps: [
-        {
-          title: "A's upload URL leaks",
-          text: 'Presigned URLs are **bearer tokens**: whoever holds one can use it. A\'s URL ends up in a proxy log that attacker C can read. What can C do with it?',
-          observe: 'C now holds a URL that S3 will accept.',
-          focus: v => [v.sign],
-          async run(s, v) {
-            await s.flash(80, 195, '🔓 URL in a log', { color: RED, stroke: RED, fill: '#fff4f4' }, 700);
-            await s.pulse(v.sign);
-          },
-        },
-        {
-          title: '❌ With a broad, long-lived URL',
-          text: 'Suppose we had signed for a whole prefix, any content type, valid for a week. C could upload **anything** under our bucket, as often as they like, and our domain would host it.',
-          observe: 'C uploads a file A never asked for.',
-          focus: v => [v.objs],
-          async run(s, v) {
-            s.setChip(v.sign, 'PUT uploads/* · 7 days', { color: RED, stroke: RED, fill: '#fff4f4' }); await s.shake(v.sign);
-            await s.send(['client', 's3'], 'C: PUT malware.exe', RED);
-            v.bad = await s.row(v.objs, 'A/malware.exe   ??', ST.INFECTED);
-            await s.shake(v.objs);
-          },
-        },
-        {
-          title: '✅ Scoped: one key, one method, one type',
-          text: 'Our real URL covers only `PUT uploads/A/f-1.pdf` with `Content-Type: application/pdf`. Any other key, method or type changes the signature, so S3 answers **403 SignatureDoesNotMatch**.',
-          observe: 'Both of C\'s attempts bounce with 403.',
-          say: 'Each URL is scoped to one key, one method and one content type, so a leak cannot be reused for anything else.',
-          focus: v => [v.sign, v.n.s3],
-          async run(s, v) {
-            if (v.bad) await s.unrow(v.objs, v.bad);
-            s.setChip(v.sign, 'PUT A/f-1.pdf · pdf · 15 min', { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }); await s.pulse(v.sign);
-            await s.bounce('client', 's3', 'C: PUT A/x.exe', RED);
-            await s.bounce('client', 's3', 'C: GET A/f-1.pdf', RED);
-            await s.flash(690, 320, '403 SignatureDoesNotMatch', { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, 600);
-          },
-        },
-        {
-          title: 'Within 15 minutes: overwrite the same key',
-          text: 'The one thing C can still do is PUT that **exact** key before it expires. With **versioning** on, that creates a new version; the record stores the `versionId` the scanner approved, and downloads always serve **that version**, so the unscanned v2 is never served.',
-          observe: 'A v2 appears in S3 but stays unserved.',
-          focus: v => [objRow(v, 'A/f-1.pdf v2')],
-          async run(s, v) {
-            await s.send(['client', 's3'], 'C: PUT A/f-1.pdf', AMBER);
-            await s.row(v.objs, 'A/f-1.pdf v2 unscanned', ST.PENDING);
-            await s.flash(690, 158, 'serve versionId = v1', { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, 600);
-          },
-        },
-        {
-          title: 'After 15 minutes the URL is dead',
-          text: 'Past the expiry S3 answers **403 Request has expired**. Also: strip query strings from access logs and analytics, and never send upload URLs to third parties.',
-          observe: 'C\'s next attempt is rejected as expired.',
-          say: 'URLs expire in minutes and are never logged, so a leak has a tiny blast radius.',
-          focus: v => [v.sign],
-          async run(s, v) {
-            s.setChip(v.sign, 'expired', { color: GREY, stroke: '#d5d9dc', fill: '#fff' }); await s.pulse(v.sign);
-            await s.bounce('client', 's3', 'C: PUT A/f-1.pdf', RED);
-            await s.flash(690, 320, '403 Request has expired', { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, 700);
-          },
-        },
-      ],
-    },
-    {
-      id: 'edge', title: 'Duplicate event & abandoned upload', sub: 'idempotent · cleanup · lifecycle', color: GREY,
-      build: (s, v) => setup(s, v, {
-        files: [['f-1', 'report.pdf', 'PENDING'], ['f-8', 'big.zip', 'PENDING']],
-        objects: ['A/f-1.pdf    2 MB', 'A/f-8.zip parts 3/40'],
-      }),
-      takeaway: 'Make every event handler **idempotent** (conditional update on PENDING), and clean up what clients abandon: a **cleanup job** for PENDING records and an S3 **lifecycle rule** for incomplete multipart uploads.',
-      steps: [
-        {
-          title: 'S3 delivers the same event twice',
-          text: 'S3 event notifications are **at-least-once**. The ObjectCreated event for `f-1` arrives twice, and two scanner workers may pick them up.',
-          observe: 'Two copies of one event sit in the queue.',
-          focus: v => [v.queue],
-          async run(s, v) {
-            await s.send(['s3', 'events'], 'ObjectCreated f-1', TEAL);
-            setQueue(s, v, 1);
-            await s.send(['s3', 'events'], 'ObjectCreated f-1', TEAL);
-            setQueue(s, v, 2); await s.pulse(v.queue);
-          },
-        },
-        {
-          title: 'The first delivery marks READY',
-          text: 'The first worker scans the file and runs `updateOne({ _id: "f-1", status: "PENDING" }, { $set: { status: "READY" } })`: matched 1, modified 1.',
-          observe: 'f-1 turns READY.',
-          focus: v => [v.rows['f-1']],
-          async run(s, v) {
-            await s.send(['events', 'scanner'], 'f-1 (copy 1)', TEAL);
-            setQueue(s, v, 1);
-            await s.send(['scanner', 'meta'], 'if PENDING → READY', TEAL);
-            await setStatus(s, v, 'f-1', 'READY');
-          },
-        },
-        {
-          title: 'The second delivery is a no-op',
-          text: 'The second worker runs the **same conditional update**. The record is no longer PENDING, so it matches nothing; the worker deletes the message and moves on. No double processing, no flip back to an older state.',
-          observe: 'The second update matches 0 documents and nothing changes.',
-          say: 'Duplicate events are expected, so the status update is conditional and idempotent.',
-          focus: v => [v.rows['f-1']],
-          async run(s, v) {
-            await s.send(['events', 'scanner'], 'f-1 (copy 2)', TEAL);
-            setQueue(s, v, 0);
-            await s.send(['scanner', 'meta'], 'if PENDING → READY', GREY);
-            await s.flash(690, 158, 'matched 0 · no-op', { mono: true, color: GREY, stroke: '#c3c9ce' }, 700);
-          },
-        },
-        {
-          title: 'An upload that never finishes',
-          text: 'Yesterday A started uploading `big.zip` in 40 parts, sent 3 and closed the laptop. The record is stuck at **PENDING**, and the 3 parts are **billed** even though no object exists yet.',
-          observe: 'An old PENDING record and orphan parts with nobody coming back.',
-          focus: v => [v.rows['f-8'], objRow(v, 'A/f-8')],
-          async run(s, v) {
-            const r = v.rows['f-8'];
-            r.label.textContent = 'f-8 big.zip  PENDING 26h';
-            await s.pulse(r, 1, 1.05);
-            await s.pulse(objRow(v, 'A/f-8'), 1, 1.05);
-          },
-        },
-        {
-          title: 'Cleanup job and lifecycle rule',
-          text: 'The hourly **cleanup job** marks PENDING records older than 24 h as **EXPIRED** (index `{ status: 1, createdAt: 1 }`). An S3 **lifecycle rule** `AbortIncompleteMultipartUpload` after 7 days deletes the orphan parts. Neither touches finished files.',
-          observe: 'f-8 turns EXPIRED and its orphan parts disappear.',
-          say: 'A cleanup job expires stale PENDING records and a lifecycle rule aborts incomplete multipart uploads.',
-          focus: v => [v.rows['f-8'], v.n.cleanup],
-          async run(s, v) {
-            await s.send(['cleanup', 'meta'], 'expire PENDING > 24h', GREY);
-            v.rows['f-8'].meta = ['f-8', 'big.zip', 'PENDING'];
-            await setStatus(s, v, 'f-8', 'EXPIRED');
-            await s.flash(690, 320, 'lifecycle: abort parts > 7d', { mono: true, color: AMBER, stroke: AMBER }, 500);
-            await s.unrow(v.objs, objRow(v, 'A/f-8'));
-          },
-        },
-      ],
-    },
-  ],
+// =====================================================================
+// rendering
+// =====================================================================
+const svg = document.getElementById('dia');
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const box = id => { const n = NODES[id]; return { l: n.x - 75, r: n.x + 75, t: n.y - 56, b: n.y + 56 }; };
 
+function edgePath(a, b) {
+  const A = NODES[a], B = NODES[b], dx = B.x - A.x, dy = B.y - A.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const s = Math.sign(dx) || 1, x1 = A.x + 75 * s, x2 = B.x - 75 * s, mx = (x1 + x2) / 2;
+    return { d: `M${x1} ${A.y} C${mx} ${A.y} ${mx} ${B.y} ${x2} ${B.y}`, horiz: true };
+  }
+  const s = Math.sign(dy) || 1, y1 = A.y + 56 * s, y2 = B.y - 56 * s, my = (y1 + y2) / 2;
+  return { d: `M${A.x} ${y1} C${A.x} ${my} ${B.x} ${my} ${B.x} ${y2}`, horiz: false };
+}
+
+function buildSvg() {
+  let s = `<defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#eef1f5"/></pattern>
+    <filter id="glow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect id="bg" x="-2000" y="-1200" width="5600" height="3000" fill="url(#grid)"/>`;
+  // zones: grouped by developer role (solid = outside our code, dashed = our backend)
+  for (const z of ZONES) {
+    const [f, st, lc] = ZT[z.t];
+    s += `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="18" fill="${f}" stroke="${st}" stroke-width="1.6"${z.dash ? ' stroke-dasharray="7 5"' : ''}/>`;
+    s += `<text class="zl" x="${z.x + 16}" y="${z.y + 24}" style="fill:${lc}">${esc(z.label)}</text>`;
+    if (z.cap) s += `<text class="nl" x="${z.x + 16}" y="${z.y + 41}" style="fill:${lc};opacity:.75">${esc(z.cap)}</text>`;
+  }
+  // edges + labels
+  s += '<g id="edges">';
+  EDGE_DEFS.forEach(([a, b], i) => { s += `<path class="edge" id="e${i}" d="${edgePath(a, b).d}"/>`; });
+  s += '</g><g id="elabels"></g><g id="ripples"></g><g id="nodes">';
+  // nodes
+  for (const [id, n] of Object.entries(NODES)) {
+    const [bg, st] = PAL[id];
+    let dots = '';
+    const r = n.replicas || 0;
+    for (let k = 0; k < r; k++) dots += `<circle cx="${75 + (k - (r - 1) / 2) * 10}" cy="104" r="3.2" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>`;
+    s += `<g class="node" data-id="${id}" transform="translate(${n.x - 75},${n.y - 56})">
+      <rect class="sel" x="-6" y="-6" width="162" height="124" rx="18" fill="none" stroke="#0b5cff" stroke-width="2" stroke-dasharray="6 5" opacity="0"/>
+      <rect class="card" width="150" height="112" rx="14" fill="${bg}" stroke="${st}" stroke-width="1.6"/>
+      <rect x="49" y="8" width="52" height="52" rx="12" fill="#fff" opacity=".85"/>
+      <g transform="translate(52.9,11.9) scale(.92)">${LOGO[id]}</g>
+      <text class="nlab" x="75" y="78">${esc(n.label)}</text>
+      <text class="nsub" x="75" y="95">${esc(n.sub)}</text>${dots}
+      <g class="tag" style="display:none"><rect y="-11" height="20" rx="10"/><text y="3.5"></text></g>
+    </g>`;
+  }
+  s += '</g><g id="packets"></g>';
+  svg.innerHTML = s;
+}
+buildSvg();
+
+const EDGES = EDGE_DEFS.map(([a, b, label], i) => {
+  const el = document.getElementById('e' + i);
+  return { a, b, label, el, len: el.getTotalLength(), hot: 0, horiz: edgePath(a, b).horiz };
+});
+// protocol labels at the path midpoint: above horizontal edges, right of vertical ones
+(function labels() {
+  const g = document.getElementById('elabels');
+  for (const e of EDGES) {
+    const p = e.el.getPointAtLength(e.len / 2);
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('class', 'elbl');
+    if (e.horiz) { t.setAttribute('x', p.x); t.setAttribute('y', p.y - 8); t.setAttribute('text-anchor', 'middle'); }
+    else { t.setAttribute('x', p.x + 8); t.setAttribute('y', p.y + 4); }
+    t.textContent = e.label;
+    g.appendChild(t);
+  }
+})();
+const NODE_EL = {};
+document.querySelectorAll('.node').forEach(g => { NODE_EL[g.dataset.id] = { g, act: 0, tagTok: 0 }; });
+
+// =====================================================================
+// engine: one rAF loop, own timer queue, everything scaled by speed
+// =====================================================================
+let speed = 1, paused = false, GEN = 0, current = 'upload', view = 'flow';
+let timers = [], packets = [], ripples = [], dashOffset = 0, flows = 0;
+const stats = { req: 0, hit: 0, evt: 0, res: 0 };
+const STAT_EL = { req: document.getElementById('stReq'), hit: document.getElementById('stHit'), evt: document.getElementById('stEvt'), res: document.getElementById('stRes') };
+
+function wait(sec, cb) { timers.push({ t: sec, cb, gen: GEN }); }
+const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function bump(k, n = 1) { stats[k] += n; STAT_EL[k].textContent = stats[k]; }
+
+function findEdge(from, to) {
+  for (const e of EDGES) {
+    if (e.a === from && e.b === to) return { e, rev: false };
+    if (e.a === to && e.b === from) return { e, rev: true };
+  }
+  throw new Error('no edge ' + from + ' -> ' + to);
+}
+function heat(e, color) { e.hot++; e.el.classList.add('hot'); e.el.style.stroke = color; }
+function cool(e) { e.hot = Math.max(0, e.hot - 1); if (!e.hot) { e.el.classList.remove('hot'); e.el.style.stroke = ''; } }
+
+function activate(id, sec) {
+  const n = NODE_EL[id]; n.act++; n.g.classList.add('active');
+  wait(sec, () => { n.act = Math.max(0, n.act - 1); if (!n.act) n.g.classList.remove('active'); });
+}
+function ripple(id) {
+  const b = box(id), el = document.createElementNS(NS, 'rect');
+  el.setAttribute('rx', 16); el.setAttribute('fill', 'none'); el.setAttribute('stroke', PAL[id][1]); el.setAttribute('stroke-width', 2.5);
+  document.getElementById('ripples').appendChild(el);
+  ripples.push({ el, b, age: 0 });
+}
+function showTag(id, text, color, sec) {
+  const n = NODE_EL[id], tag = n.g.querySelector('.tag'), r = tag.querySelector('rect'), t = tag.querySelector('text');
+  const w = Math.max(34, text.length * 6.3 + 16);
+  t.textContent = text; r.setAttribute('width', w); r.setAttribute('x', 152 - w); r.setAttribute('fill', color);
+  t.setAttribute('x', 152 - w / 2); tag.setAttribute('transform', 'translate(0,0)');
+  tag.style.display = '';
+  const tok = ++n.tagTok;
+  wait(sec, () => { if (n.tagTok === tok) tag.style.display = 'none'; });
+}
+
+function spawn(from, to, kind, tag, onArrive) {
+  const { e, rev } = findEdge(from, to), color = KIND[kind];
+  const g = document.createElementNS(NS, 'g');
+  const trail = [];
+  for (let i = 0; i < 6; i++) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('r', 6 - i * 0.8); c.setAttribute('fill', color); c.setAttribute('opacity', (0.35 - i * 0.05).toFixed(2));
+    c.style.display = 'none'; g.appendChild(c); trail.push(c);
+  }
+  const head = document.createElementNS(NS, 'circle');
+  head.setAttribute('r', 7.5); head.setAttribute('fill', color); head.setAttribute('stroke', '#fff'); head.setAttribute('stroke-width', 2); head.setAttribute('filter', 'url(#glow)');
+  g.appendChild(head);
+  let txt = null;
+  if (tag) { txt = document.createElementNS(NS, 'text'); txt.setAttribute('class', 'ptag'); txt.setAttribute('fill', color); txt.textContent = tag; g.appendChild(txt); }
+  document.getElementById('packets').appendChild(g);
+  heat(e, color);
+  if (CLIENTS.has(from) && kind === 'request') bump('req');
+  const p = { e, rev, kind, to, dist: 0, hist: [], g, head, trail, txt, onArrive };
+  packets.push(p);
+  place(p, 0);
+}
+function place(p, t) {
+  const { e } = p, len = e.len;
+  let s = ease(t) * len; if (p.rev) s = len - s;
+  const a = e.el.getPointAtLength(s);
+  const b = s + 1 <= len ? e.el.getPointAtLength(s + 1) : e.el.getPointAtLength(s - 1);
+  let tx = b.x - a.x, ty = b.y - a.y; if (s + 1 > len) { tx = -tx; ty = -ty; }
+  const m = Math.hypot(tx, ty) || 1, off = p.rev ? -6 : 6;
+  const x = a.x + (-ty / m) * off, y = a.y + (tx / m) * off;
+  p.hist.unshift([x, y]); if (p.hist.length > 24) p.hist.pop();
+  p.head.setAttribute('cx', x); p.head.setAttribute('cy', y);
+  p.trail.forEach((c, i) => {
+    const h = p.hist[(i + 1) * 3];
+    if (h) { c.style.display = ''; c.setAttribute('cx', h[0]); c.setAttribute('cy', h[1]); } else c.style.display = 'none';
+  });
+  if (p.txt) { p.txt.setAttribute('x', x); p.txt.setAttribute('y', y - 13); }
+}
+function arrive(p) {
+  p.g.remove(); cool(p.e);
+  activate(p.to, 0.45); ripple(p.to);
+  if (p.to === 'sqs' && p.kind === 'event') bump('evt');
+  if (CLIENTS.has(p.to) && (p.kind === 'response' || p.kind === 'error')) bump('res');
+  p.onArrive && p.onArrive();
+}
+
+function update(k) {
+  dashOffset -= 40 * k;
+  for (const e of EDGES) if (!e.hot) e.el.style.strokeDashoffset = dashOffset;
+  // timers
+  for (const tm of timers) tm.t -= k;
+  const due = timers.filter(tm => tm.t <= 0);
+  if (due.length) { timers = timers.filter(tm => tm.t > 0); due.forEach(tm => { if (tm.gen === GEN) tm.cb(); }); }
+  // packets
+  const done = [];
+  for (const p of packets) {
+    p.dist += 260 * k;
+    const t = Math.min(1, p.dist / p.e.len);
+    place(p, t);
+    if (t >= 1) done.push(p);
+  }
+  if (done.length) { packets = packets.filter(p => !done.includes(p)); done.forEach(arrive); }
+  // ripples: grow ~14px and fade over 0.5s
+  ripples = ripples.filter(r => {
+    r.age += k;
+    const q = r.age / 0.5;
+    if (q >= 1) { r.el.remove(); return false; }
+    const g = 14 * q;
+    r.el.setAttribute('x', r.b.l - g); r.el.setAttribute('y', r.b.t - g);
+    r.el.setAttribute('width', 150 + 2 * g); r.el.setAttribute('height', 112 + 2 * g);
+    r.el.setAttribute('opacity', (1 - q).toFixed(3));
+    return true;
+  });
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused && view === 'flow') update(dt * speed);
+  requestAnimationFrame(frame);
+}
+
+// ---------------- step runner ----------------
+// o.footer: top-level scenario (updates footer, reading pauses); o.fast: live mode (short pauses, no packet tags)
+function runFlow(steps, o) {
+  let i = 0;
+  const next = () => {
+    if (i >= steps.length) { o.done && o.done(); return; }
+    const st = steps[i];
+    if (o.footer) showStep(i, steps.length, st);
+    i++;
+    exec(st, o, next);
+  };
+  next();
+}
+function exec(st, o, next) {
+  if (st.type === 'hop' && st.via) {
+    // two-leg hop through a pass-through node (client -> gateway -> API): one step, one packet per leg
+    const tag = o.fast ? null : st.tag;
+    spawn(st.from, st.via, st.kind, tag, () => spawn(st.via, st.to, st.kind, tag, () => wait(o.footer ? 1.1 : 0.08, next)));
+  } else if (st.type === 'hop') {
+    // fan-out / fan-in: an array on one side = one packet per pair, all at once; otherwise `count` packets 0.25 s apart
+    const fan = Array.isArray(st.to) ? st.to.map(t => [st.from, t]) : Array.isArray(st.from) ? st.from.map(f => [f, st.to]) : null;
+    const pairs = fan || Array.from({ length: st.count || 1 }, () => [st.from, st.to]);
+    const n = pairs.length; let got = 0;
+    pairs.forEach(([from, to], k) => {
+      const kind = st.kinds ? st.kinds[k] : st.kind;
+      const tag = o.fast ? null : (st.tags ? st.tags[k] : st.tag);
+      const fire = () => spawn(from, to, kind, tag, () => { if (++got === n) wait(o.footer ? 1.1 : 0.08, next); });
+      if (k && !fan) wait(k * 0.25, fire); else fire();
+    });
+  } else if (st.type === 'node') {
+    const d = o.fast ? Math.max(0.25, (st.dur || 2.2) * 0.3) : (o.footer ? (st.dur || 2.4) : (st.dur || 1));
+    [].concat(st.id).forEach((id, k) => {
+      activate(id, d); ripple(id);
+      const tag = st.tags ? st.tags[k] : st.tag;
+      if (tag) showTag(id, tag, st.tagColor || '#0b5cff', d + (o.fast ? 0.15 : 0.6));
+    });
+    if (st.stat === 'hit') bump('hit');
+    wait(d, next);
+  } else if (st.type === 'fork') {
+    runFlow(st.steps, { fast: o.fast });
+    wait(o.footer ? 2.0 : 0.05, next);
+  }
+}
+
+// ---------------- footer ----------------
+const badge = document.getElementById('badge'), fTitle = document.getElementById('ftitle'), fProto = document.getElementById('fproto'), fText = document.getElementById('ftext'), dotsEl = document.getElementById('dots');
+function buildDots(n) { dotsEl.innerHTML = '<i></i>'.repeat(n); }
+function showStep(i, total, st) {
+  badge.className = ''; badge.textContent = `${i + 1}/${total}`;
+  fTitle.textContent = st.title; fProto.textContent = st.proto || '';
+  fText.textContent = st.text || ''; fText.title = st.text || '';
+  [...dotsEl.children].forEach((d, k) => d.classList.toggle('on', k <= i));
+}
+
+// ---------------- scenarios / live ----------------
+function reset() {
+  GEN++;
+  timers = [];
+  packets.forEach(p => p.g.remove()); packets = [];
+  ripples.forEach(r => r.el.remove()); ripples = [];
+  EDGES.forEach(e => { e.hot = 0; e.el.classList.remove('hot'); e.el.style.stroke = ''; });
+  Object.values(NODE_EL).forEach(n => { n.act = 0; n.g.classList.remove('active'); n.g.querySelector('.tag').style.display = 'none'; });
+  flows = 0;
+  for (const k in stats) { stats[k] = 0; STAT_EL[k].textContent = 0; }
+}
+function start(id) {
+  current = id;
+  document.querySelectorAll('#scSeg button').forEach(b => b.classList.toggle('on', b.dataset.sc === id));
+  reset();
+  if (id === 'live') startLive(); else runMain(id);
+}
+function runMain(id) {
+  const steps = SCEN[id].steps;
+  buildDots(steps.length);
+  runFlow(steps, {
+    footer: true,
+    done: () => {
+      badge.className = ''; badge.textContent = '✓';
+      fTitle.textContent = '✓ Journey complete'; fProto.textContent = SCEN[id].name;
+      fText.textContent = 'Looping in 2.5 s · press R to replay now, or pick another scenario.'; fText.title = '';
+      wait(2.5, () => runMain(id));
+    },
+  });
+}
+function pickMix() {
+  let r = Math.random();
+  for (const [id, w] of LIVE_MIX) { if ((r -= w) <= 0) return id; }
+  return 'upload';
+}
+function startLive() {
+  dotsEl.innerHTML = '';
+  badge.className = 'live'; badge.textContent = 'LIVE';
+  fTitle.textContent = 'Live mixed traffic'; fProto.textContent = '40% upload · 40% CDN download · 20% multipart';
+  const tick = () => {
+    if (flows < 14) {
+      const id = pickMix(); flows++;
+      runFlow(SCEN[id].steps, { fast: true, done: () => { flows--; } });
+    }
+    wait(0.55 + Math.random() * 0.6, tick);
+  };
+  const info = () => {
+    const hr = Math.round(100 * stats.hit / Math.max(1, stats.req));
+    fText.textContent = `${flows} flows and ${packets.length} packets in flight · bytes go client → S3 and CDN → client while the API only signs and records · ${stats.evt} scan events · CDN hits/requests ≈ ${hr}%`;
+    fText.title = '';
+    wait(0.5, info);
+  };
+  tick(); info();
+}
+
+// ---------------- drawer ----------------
+const drawer = document.getElementById('drawer');
+let selected = null;
+function openDrawer(id) {
+  const n = NODES[id], inf = INFO[id], [bg, st] = PAL[id];
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = id; NODE_EL[id].g.querySelector('.sel').setAttribute('opacity', 1);
+  document.getElementById('dHead').style.background = bg;
+  document.getElementById('dHead').style.borderBottomColor = st;
+  document.getElementById('dLogo').innerHTML = `<svg width="44" height="44" viewBox="0 0 48 48">${LOGO[id]}</svg>`;
+  document.getElementById('dTitle').textContent = n.label;
+  document.getElementById('dTag').textContent = inf.tag;
+  const body = document.getElementById('dBody');
+  const core = CORE[id];
+  body.innerHTML = `<div>${inf.desc}</div><h4>Key points</h4><ul>${inf.points.map(p => `<li>${p}</li>`).join('')}</ul><h4>Example</h4><pre></pre>`
+    + (core ? `<a class="core-link" href="00_Core_Components.html#${core[0]}/what">🧩 Basics: ${esc(core[1])} in Core Components →</a>` : '');
+  body.querySelector('pre').textContent = inf.code;
+  body.scrollTop = 0;
+  drawer.classList.add('open'); drawer.setAttribute('aria-hidden', 'false');
+}
+function closeDrawer() {
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = null; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true');
+}
+svg.addEventListener('click', ev => {
+  const g = ev.target.closest('.node');
+  if (g) openDrawer(g.dataset.id); else closeDrawer();
+});
+document.getElementById('dClose').onclick = closeDrawer;
+
+// ---------------- legend popover ----------------
+const legendPop = document.getElementById('legendPop'), legendBtn = document.getElementById('legendBtn');
+document.getElementById('lgKinds').innerHTML = Object.entries(KIND).map(([k, c]) => `<span><i style="--c:${c}"></i>${k}</span>`).join('');
+const legendOpen = () => legendPop.classList.contains('open');
+function setLegend(open) {
+  if (open) {   // point the little arrow at the button
+    const r = legendBtn.getBoundingClientRect();
+    legendPop.style.setProperty('--arrow', Math.max(12, window.innerWidth - 16 - (r.left + r.width / 2) - 6) + 'px');
+  }
+  legendPop.classList.toggle('open', open);
+  legendBtn.classList.toggle('on', open);
+  legendBtn.setAttribute('aria-expanded', open);
+}
+legendBtn.addEventListener('click', () => setLegend(!legendOpen()));
+document.addEventListener('mousedown', ev => {
+  if (legendOpen() && !legendPop.contains(ev.target) && !legendBtn.contains(ev.target)) setLegend(false);
+});
+
+// ---------------- controls ----------------
+function setSpeed(v) { speed = v; document.querySelectorAll('#spSeg button').forEach(b => b.classList.toggle('on', +b.dataset.sp === v)); }
+function togglePause() { paused = !paused; document.getElementById('pauseBtn').textContent = paused ? '▶ Play' : '⏸ Pause'; }
+document.querySelectorAll('header button').forEach(b => b.addEventListener('click', () => b.blur()));
+document.querySelectorAll('#scSeg button').forEach(b => b.onclick = () => start(b.dataset.sc));
+document.querySelectorAll('#spSeg button').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp));
+document.getElementById('pauseBtn').onclick = togglePause;
+document.getElementById('replayBtn').onclick = () => start(current);
+document.addEventListener('keydown', ev => {
+  if (ev.target.closest && ev.target.closest('input,textarea')) return;
+  if (view !== 'flow' || ev.ctrlKey || ev.metaKey || ev.altKey) return;   // shortcuts drive the Data flow tab only
+  if (ev.code === 'Space') { ev.preventDefault(); togglePause(); }
+  else if (ev.key === '1') setSpeed(0.5);
+  else if (ev.key === '2') setSpeed(1);
+  else if (ev.key === '3') setSpeed(2);
+  else if (ev.key === 'r' || ev.key === 'R') start(current);
+  else if (ev.key === 'l' || ev.key === 'L') setLegend(!legendOpen());
+  else if (ev.key === 'Escape') { if (legendOpen()) setLegend(false); else closeDrawer(); }
+});
+
+
+
+
+// ====================================================================
+// interview content: copied verbatim from 06_File_Upload.html (v2.3)
+// ====================================================================
+const CONTENT = {
   // ---------------- 4 · how to explain ----------------
   explain: [
     {
@@ -693,7 +1163,12 @@ window.DESIGN = {
 
   // ---------------- 5 · interview answer ----------------
   answer: {
-    summary: 'Clients **never send file bytes through our servers**. The client asks the Upload API for a URL; the API checks type, size and quota, inserts a **PENDING** record and signs, locally, a **presigned PUT for exactly one key and content type, valid 15 minutes**. The client uploads **straight to S3**; large files use **multipart** with 10 MB parts that are retried individually and assembled with CompleteMultipartUpload. S3 sends an **ObjectCreated** event to a queue; the scanner checks the size, scans the stream and **conditionally** updates the record from PENDING to READY or INFECTED, which also makes duplicate events harmless. Downloads go through the API for the access and status check and **redirect to a 5-minute presigned GET**. Presigned URLs are bearer tokens, so they are short and scoped; a cleanup job expires abandoned PENDING records and a lifecycle rule aborts incomplete multipart uploads.',
+    summary: [
+      'For file upload, the key decision is that **file bytes never go through our servers**. Our Spring Boot Upload API is only the control plane: the client asks it for an upload URL, it checks the type, size and the user\'s quota, inserts a **PENDING** record in MongoDB, and signs a **presigned PUT** for exactly one key and content type, valid for about fifteen minutes. Signing is done locally, so it is cheap.',
+      'The client then uploads **straight to S3**. Large files use **multipart upload**: say 10 MB parts, sent in parallel and retried individually, and CompleteMultipartUpload stitches them together. So a flaky mobile network only costs one part, not the whole file, and our servers never hold gigabytes in memory.',
+      'When the object lands, S3 sends an **ObjectCreated** event to a queue. A scanner worker checks the real size, virus-scans the stream, and then **conditionally** updates the record from PENDING to READY or INFECTED. Because that update only matches PENDING, a duplicate or late event is harmless. Downloads go back through the API, which checks access and status and then redirects to a short **five-minute presigned GET**.',
+      'Presigned URLs are basically bearer tokens, so I keep them short-lived and scoped to one key, keep the bucket private, and generate the keys myself instead of using user file names. A cleanup job expires PENDING records that never completed, and a **lifecycle rule** aborts incomplete multipart uploads so we do not pay for orphaned parts.',
+    ],
     sections: [
       { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
         <li><b>Functional:</b> upload (with progress and resume for big files), scan, share, download, delete.</li>
@@ -772,7 +1247,100 @@ window.DESIGN = {
     { g: 'tc', q: 'How would you dedupe identical files?', what: 'Many users upload the same large files.', why: 'Storing identical bytes twice wastes storage.', how: 'Compute a content hash (client-side or in the scanner), keep one object per hash with a reference count, and point records at it.', trade: 'Hashing cost, careful deletes (refcounts), and privacy: hash checks can reveal that a file exists.' },
   ],
 };
+
+// =====================================================================
+// reading tabs: How to explain · Interview answer · Follow-ups (self-contained renderers)
+// =====================================================================
+const reader = document.getElementById('reader');
+// **bold** and `code` in plain-text content (same rules as engine/app.js)
+const rich = s => esc(s).replace(/"/g, '&quot;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+// old flow ids -> scenarios on the Data flow tab
+const FLOW_TO_SC = { happy: 'upload', multipart: 'multipart', scan: 'scan', leak: 'leak', edge: 'edge' };
+const STAGE_C = ['#fb923c', '#8b5cf6', '#3b82f6', '#0d9488', '#db2777', '#16a34a'];
+
+function renderExplain() {
+  const E = CONTENT.explain, total = E.reduce((a, s) => a + s.min, 0);
+  const who = { I: ['Interviewer', 'iv'], C: ['You', 'you'], P: ['Tip', 'tip'] };
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">How to explain it</span><h2>Drive the ${total}-minute interview, stage by stage</h2>
+    <p>Interviewers grade the <b>structure</b> as much as the design. Follow the stages in order and say out loud which stage you are in.</p></div></div>
+    <div class="timebar">${E.map((s, k) => `<button data-to="ex${k}" style="flex:${s.min};--c:${STAGE_C[k % STAGE_C.length]}"><b>${k + 1}. ${esc(s.t)}</b><span>${s.min} min</span></button>`).join('')}</div>
+    ${E.map((s, k) => `<section class="rcard stage" id="ex${k}" style="--c:${STAGE_C[k % STAGE_C.length]}">
+      <div class="stage-h"><span class="sn">${k + 1}</span><h3>${esc(s.t)}</h3><span class="mn">~${s.min} min</span></div>
+      <p class="goal"><b>Goal:</b> ${rich(s.goal)}</p>
+      ${s.lines.map(([w, t]) => `<div class="msg ${who[w][1]}"><span class="who">${who[w][0]}</span><p>${rich(t)}</p></div>`).join('')}
+      ${s.avoid ? `<p class="avoid"><b>⚠ Avoid</b> ${rich(s.avoid)}</p>` : ''}
+    </section>`).join('')}
+  </div>`;
+}
+
+function renderAnswer() {
+  const A = CONTENT.answer;
+  const jumps = [['a-pitch', '⏱ 60-second answer'], ...A.sections.map((s, k) => [`a-sec${k}`, s.h]), ['a-dec', '⚖ Trade-offs'], ['a-code', '{ } Code']];
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Interview-ready answer</span><h2>What to actually say</h2>
+    <p>Start with the 60-second version, then expand any section the interviewer picks.</p></div></div>
+    <nav class="jump">${jumps.map(([id, t]) => `<button data-to="${id}">${esc(t)}</button>`).join('')}</nav>
+    <section class="rcard pitch" id="a-pitch"><h3>⏱ The 60-second answer</h3>${[].concat(A.summary).map(p => `<p>${rich(p)}</p>`).join('')}</section>
+    <div class="ans-grid">${A.sections.map((s, k) => `<section class="rcard ans" id="a-sec${k}" style="--c:${s.color || '#0b5cff'}"><h3>${esc(s.h)}</h3>${s.html}</section>`).join('')}</div>
+    <section class="rcard ans" id="a-dec" style="--c:#7c3aed"><h3>⚖ Key decisions &amp; trade-offs</h3>
+      <table><thead><tr><th>Decision</th><th>Why</th><th>Trade-off</th></tr></thead><tbody>${A.decisions.map(r => `<tr>${r.map(c => `<td>${rich(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>
+    <div class="code-grid" id="a-code">${A.code.map(c => `<section class="rcard codeblk"><h3>${esc(c.t)}</h3><pre>${esc(c.code)}</pre></section>`).join('')}</div>
+  </div>`;
+}
+
+let fuGroup = 'all';
+function renderFollowups() {
+  const G = CONTENT.followGroups, F = CONTENT.followups, list = F.filter(f => fuGroup === 'all' || f.g === fuGroup);
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Follow-up questions</span><h2>What they ask next, and what to answer</h2>
+    <p>Each answer has the same shape: <b>what happens</b> → <b>why</b> → <b>how you handle it</b> → <b>the trade-off</b>. Saying the trade-off unprompted is what separates senior answers.</p></div></div>
+    <div class="chips"><button data-g="all" class="${fuGroup === 'all' ? 'on' : ''}">All <small>${F.length}</small></button>${Object.entries(G).map(([k, g]) => `<button data-g="${k}" class="${fuGroup === k ? 'on' : ''}" style="--c:${g.color}">${esc(g.name)} <small>${F.filter(f => f.g === k).length}</small></button>`).join('')}</div>
+    ${list.map((f, k) => `<details class="rcard fu" style="--c:${G[f.g].color}"${k === 0 ? ' open' : ''}>
+      <summary><span class="fu-g">${esc(G[f.g].name)}</span><span class="fu-q">${esc(f.q)}</span></summary>
+      <div class="fu-body">
+        <div><b>What happens</b><p>${rich(f.what)}</p></div>
+        <div><b>Why</b><p>${rich(f.why)}</p></div>
+        <div class="say"><b>🎤 Say this</b><p>${rich(f.how)}</p></div>
+        <div style="grid-column:1/-1"><b>Trade-off</b><p>${rich(f.trade)}</p></div>
+        ${f.flow ? `<button class="watch" data-sc="${FLOW_TO_SC[f.flow]}">▶ Watch flow: ${esc(SCEN[FLOW_TO_SC[f.flow]].name)}</button>` : ''}
+      </div></details>`).join('')}
+  </div>`;
+  reader.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { fuGroup = b.dataset.g; renderFollowups(); });
+  reader.querySelectorAll('.watch').forEach(b => b.onclick = () => { setView('flow'); start(b.dataset.sc); });
+}
+// sticky jump bars scroll inside the reading panel
+reader.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-to]');
+  if (!b) return;
+  const el = document.getElementById(b.dataset.to), bar = b.parentElement;
+  reader.scrollTo({ top: el.offsetTop - bar.offsetHeight - 8 });
+});
+
+function setView(v) {
+  view = v;
+  document.body.className = 'v-' + v;
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  if (v !== 'flow') {
+    closeDrawer(); setLegend(false);
+    if (v === 'explain') renderExplain(); else if (v === 'answer') renderAnswer(); else renderFollowups();
+    reader.scrollTop = 0;
+  }
+  last = performance.now();
+}
+document.querySelectorAll('#viewSeg button').forEach(b => b.onclick = () => { b.blur(); setView(b.dataset.view); });
+
+// ---------------- header: previous / next design + hub (engine/catalog.js) ----------------
+(function designNav() {
+  const cat = (window.SD_CATALOG || []).filter(c => c.file), at = cat.findIndex(c => c.id === 'files');
+  const link = (d, txt, dir) => d ? `<a href="${d.file}" title="${dir}: ${d.n} · ${esc(d.title)}">${txt}</a>` : `<span class="off" title="No ${dir.toLowerCase()} design">${txt}</span>`;
+  document.getElementById('dNav').innerHTML = link(cat[at - 1], '←', 'Previous') + link(cat[at + 1], '→', 'Next')
+    + `<a class="hub" href="../02_SD_Interview_Simulator.html" title="All designs">All designs</a>`;
+})();
+
+
+start('upload');
+requestAnimationFrame(frame);
 </script>
-<script src="engine/app.js"></script>
 </body>
 </html>

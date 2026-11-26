@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-structures">
+<meta name="doc-version" content="v1.1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Structures Gallery · Coding Practice · v1.1</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+<style>
+.stabs{display:flex;gap:6px;flex-wrap:wrap;padding:10px 18px 0}
+.stabs button{font:inherit;font-size:13px;font-weight:800;padding:5px 12px;border-radius:999px;border:2px solid var(--line-strong);background:#fff;cursor:pointer;color:var(--text)}
+.stabs button.on{background:var(--purple);border-color:var(--purple);color:#fff}
+.gal{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,1fr);gap:12px;padding:10px 18px 14px;height:calc(100vh - 52px - 46px);min-height:440px}
+.stagebox{border:2px solid var(--purple);background:var(--purple-bg);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;min-height:0}
+.stagebox h2{margin:0 0 8px;font-size:16px;color:var(--ink);display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.stagebox h2 small{font-size:13px;color:var(--muted);font-weight:600}
+.canvas{flex:1;background:#fff;border-radius:12px;padding:22px 26px;overflow:auto;min-height:0}
+.log{margin-top:8px;background:#1E1E1E;color:#D4D4D4;border-radius:10px;font-family:var(--font-mono);font-size:13.5px;padding:7px 12px;min-height:92px;line-height:1.6}
+.log div{opacity:.45}.log div:last-child{opacity:1;color:#FDE68A}
+.side{border:2px solid var(--line-strong);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:10px;overflow:auto;min-height:0}
+.decl{background:#1E1E1E;color:#D4D4D4;border-radius:10px;font-family:var(--font-mono);font-size:13px;padding:8px 12px;white-space:pre-wrap}
+.decl .t{color:#4EC9B0}.decl .k{color:#569CD6}
+.use{font-size:13.5px;line-height:1.5;color:var(--text)}
+.use b{color:var(--ink)}
+.ops{display:flex;flex-direction:column;gap:6px}
+.ops button{font:inherit;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;font-family:var(--font-mono);font-size:13.5px;font-weight:700;padding:6px 11px;border-radius:9px;border:1.5px solid var(--line-strong);background:#fff;cursor:pointer;color:var(--ink)}
+.ops button:hover{border-color:var(--purple);box-shadow:0 0 0 3px var(--purple-lt)}
+.ops button em{font-style:normal;font-family:var(--font-sans);font-size:11.5px;font-weight:800;border-radius:6px;padding:1px 7px;background:var(--success-bg);color:#166534;white-space:nowrap}
+.ops button em.slow{background:var(--warning-bg);color:#92400E}
+.side h4{margin:0;font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.row2{display:flex;gap:8px}
+.legend{display:flex;gap:6px;flex-wrap:wrap;font-size:12px}
+.legend span{border:2px solid;border-radius:7px;padding:0 7px;font-weight:700}
+</style>
+</head>
+<body>
+<header class="ptop"><a href="00_Coding_Practice.html">← Coding</a><h1>Data structures gallery — watch first</h1><span class="kbd">click an operation and watch what moves · same views are used in every problem</span></header>
+<nav class="stabs" id="tabs"></nav>
+<main class="gal">
+ <section class="stagebox"><h2 id="name"></h2><div class="canvas"><div id="host"></div></div><div class="log" id="log"></div></section>
+ <aside class="side">
+  <div class="decl" id="decl"></div>
+  <div class="use" id="use"></div>
+  <h4>Operations · cost</h4><div class="ops" id="ops"></div>
+  <div class="row2"><button class="btn p" id="demo">▶ Play demo</button><button class="btn" id="reset">↺ Reset</button></div>
+  <div class="legend"><span style="border-color:var(--orange);background:var(--orange-bg)">current</span><span style="border-color:var(--blue);background:var(--blue-bg)">new</span><span style="border-color:var(--success);background:var(--success-bg)">found / hit</span><span style="border-color:var(--danger);background:var(--danger-bg)">duplicate / miss</span><span style="border-color:#FACC15;background:#FEF9C3">value changed</span></div>
+ </aside>
+</main>
+<script src="engine/ds.js"></script>
+<script>
+const POOL=[5,3,8,1,9,2,7,4,6];let pi=0;const nx=()=>POOL[pi++%POOL.length];
+let uid=0;const nid=()=>'n'+(++uid);
+const T=s=>s.replace(/\b(int|new|char)\b/g,'<span class="k">$1</span>').replace(/\b([A-Z]\w*)\b/g,'<span class="t">$1</span>');
+
+const ITEMS=[
+ {name:'Array',sub:'fixed size · index → value · pointers move, data stays',kind:'array',opts:{ptrColors:{i:'#6366F1',left:'#16A34A',right:'#F97316'}},
+  decl:'int[] arr = {4, 7, 1, 9, 3, 6};',use:'Use when the size is known and you jump by index. <b>Two pointers</b> and <b>sliding windows</b> are just ints moving over an array.',
+  init:()=>({a:[4,7,1,9,3,6],i:0,l:0,r:-1}),
+  view:m=>({vals:m.a,hl:m.hl,ptrs:{i:m.i,left:m.r>=0?m.l:null,right:m.r>=0?m.r:null},win:m.r>=0?[m.l,m.r]:null}),
+  ops:[['i++ → read arr[i]','O(1)',m=>{m.i=(m.i+1)%m.a.length;m.hl={[m.i]:'cur'};return `int x = arr[${m.i}];   // x = ${m.a[m.i]}`;}],
+   ['arr[i] = x','O(1)',m=>{const v=nx();m.a=[...m.a];m.a[m.i]=v;m.hl={[m.i]:'new'};return `arr[${m.i}] = ${v};   // overwrite in place`;}],
+   ['right++ (window grows)','O(1)',m=>{if(m.r<m.a.length-1)m.r++;m.hl={[m.r]:'cur'};return `right = ${m.r};   // window = arr[${m.l}..${m.r}]`;}],
+   ['left++ (window shrinks)','O(1)',m=>{if(m.l<=m.r)m.l++;m.hl={};return `left = ${m.l};   // window = arr[${m.l}..${m.r}]`;}]],
+  demo:[0,0,1,2,2,2,3,2,3]},
+ {name:'ArrayList',sub:'resizable array · indexes shift on insert/remove',kind:'arraylist',
+  decl:'List<Integer> list = new ArrayList<>();',use:'Default list. Fast <b>get(i)</b> and add at the end; inserting or removing at the front shifts every element.',
+  init:()=>({it:[4,7,1].map(v=>({id:nid(),v}))}),view:m=>({items:m.it,hl:m.hl}),
+  ops:[['add(x)','O(1)*',m=>{const v=nx(),id=nid();m.it=[...m.it,{id,v}];m.hl={[id]:'new'};return `list.add(${v});   // appended at index ${m.it.length-1}`;}],
+   ['add(0, x)','O(n)',m=>{const v=nx(),id=nid();m.it=[{id,v},...m.it];m.hl={[id]:'new'};return `list.add(0, ${v});   // every element shifts right`;}],
+   ['get(1)','O(1)',m=>{if(m.it.length<2)return '// need 2 items';m.hl={[m.it[1].id]:'hit'};return `list.get(1) → ${m.it[1].v}`;}],
+   ['set(0, x)','O(1)',m=>{if(!m.it.length)return '// empty';const v=nx();m.it=[{...m.it[0],v},...m.it.slice(1)];m.hl={};return `list.set(0, ${v});   // value replaced, nothing moves`;}],
+   ['remove(0)','O(n)',m=>{if(!m.it.length)return '// empty';const v=m.it[0].v;m.it=m.it.slice(1);m.hl={};return `list.remove(0) → ${v}   // everything shifts left`;}],
+   ['remove(size()-1)','O(1)',m=>{if(!m.it.length)return '// empty';const v=m.it.at(-1).v;m.it=m.it.slice(0,-1);m.hl={};return `list.remove(list.size()-1) → ${v}`;}]],
+  demo:[0,0,1,2,3,4,5]},
+ {name:'LinkedList',sub:'nodes + next pointers · reverse = flip the arrows',kind:'linked',opts:{ptrColors:{head:'#334155',prev:'#9333EA',curr:'#F97316'}},
+  decl:'ListNode head;   // class ListNode { int val; ListNode next; }',use:'Insert/remove at the ends in O(1), no shifting. No index: you <b>walk</b> with <code>curr = curr.next</code>. Reversing = for each node, point <code>next</code> back to <code>prev</code>.',
+  init:()=>{const m={nodes:[1,2,3,4].map(v=>({id:nid(),v}))};chain(m);return m;},
+  view:m=>({nodes:m.nodes,hl:m.hl,ptrs:m.rev?{head:m.head,prev:m.prev,curr:m.curr}:{head:m.head,...(m.walk!==undefined?{curr:m.walk}:{})}}),
+  ops:[['addFirst(x)','O(1)',m=>{const v=nx(),id=nid();m.nodes=[{id,v},...m.nodes];chain(m);m.hl={[id]:'new'};return `head = new ListNode(${v}, head);`;}],
+   ['addLast(x)','O(1)*',m=>{const v=nx(),id=nid();m.nodes=[...m.nodes,{id,v}];chain(m);m.hl={[id]:'new'};return `tail.next = new ListNode(${v});   // O(1) with a tail pointer`;}],
+   ['removeFirst()','O(1)',m=>{if(!m.nodes.length)return '// empty';const v=m.nodes[0].v;m.nodes=m.nodes.slice(1);chain(m);m.hl={};return `head = head.next;   // removed ${v}`;}],
+   ['curr = curr.next','O(1) / step',m=>{if(m.rev)chain(m);if(m.head==null)return '// empty list';const from=m.walk,start=from===undefined||from===null,n=start?m.head:byId(m,from).next;m.walk=n;m.hl=n?{[n]:'cur'}:{};
+     if(start)return `ListNode curr = head;   // curr.val = ${byId(m,n).v}`;return n?`curr = curr.next;   // curr.val = ${byId(m,n).v}`:'curr = curr.next;   // null → end of list';}],
+   ['reverse: one step','O(n) total',m=>{
+     if(!m.rev){chain(m);m.rev=true;m.prev=null;m.curr=m.head;m.walk=undefined;m.hl={[m.curr]:'cur'};return 'ListNode prev = null, curr = head;';}
+     if(m.curr==null){m.rev=false;m.hl={[m.head]:'hit'};return 'head = prev;   // done — the list is reversed';}
+     const c=byId(m,m.curr),nxt=c.next;c.next=m.prev;m.prev=m.curr;m.curr=nxt;if(m.curr==null)m.head=m.prev;
+     m.hl={[m.prev]:'new',...(m.curr?{[m.curr]:'cur'}:{})};return `next = curr.next; curr.next = prev; prev = curr; curr = next;   // flipped ${c.v}`;}]],
+  demo:[3,3,3,0,4,4,4,4,4,4,4]},
+ {name:'Queue',sub:'FIFO · first in, first out · like a ticket line',kind:'queue',
+  decl:'Queue<Integer> queue = new ArrayDeque<>();',use:'Process things in arrival order: <b>BFS</b> (level by level), task buffers. offer at the back, poll from the front.',
+  init:()=>({q:[4,7].map(v=>({id:nid(),v}))}),view:m=>({items:m.q,hl:m.hl,probe:m.pr}),
+  ops:[['offer(x)','O(1)',m=>{const v=nx(),id=nid();m.q=[...m.q,{id,v}];m.hl={[id]:'new'};return `queue.offer(${v});   // joins at the back`;}],
+   ['poll()','O(1)',m=>{if(!m.q.length)return 'queue.poll() → null   // empty';const v=m.q[0].v;m.q=m.q.slice(1);m.hl={};return `queue.poll() → ${v}   // leaves from the front`;}],
+   ['peek()','O(1)',m=>{if(!m.q.length)return 'queue.peek() → null';m.hl={[m.q[0].id]:'hit'};return `queue.peek() → ${m.q[0].v}   // look, don't remove`;}],
+   ['isEmpty()','O(1)',m=>{m.hl={};return `queue.isEmpty() → ${!m.q.length}`;}]],
+  demo:[0,0,2,1,0,1,1,3]},
+ {name:'Stack',sub:'LIFO · last in, first out · like a pile of plates',kind:'stack',
+  decl:'Deque<Integer> stack = new ArrayDeque<>();',use:'Undo, matching brackets (<b>Valid Parentheses</b>), "next greater element", DFS without recursion. push and pop happen only at the top.',
+  init:()=>({s:[4,7].map(v=>({id:nid(),v}))}),view:m=>({items:m.s,hl:m.hl}),
+  ops:[['push(x)','O(1)',m=>{const v=nx(),id=nid();m.s=[...m.s,{id,v}];m.hl={[id]:'new'};return `stack.push(${v});   // goes on top`;}],
+   ['pop()','O(1)',m=>{if(!m.s.length)return '// pop() on empty → NoSuchElementException';const v=m.s.at(-1).v;m.s=m.s.slice(0,-1);m.hl={};return `stack.pop() → ${v}   // top leaves`;}],
+   ['peek()','O(1)',m=>{if(!m.s.length)return 'stack.peek() → null';m.hl={[m.s.at(-1).id]:'hit'};return `stack.peek() → ${m.s.at(-1).v}`;}]],
+  demo:[0,0,2,1,0,1,1]},
+ {name:'HashMap',sub:'key → value · O(1) lookup by key',kind:'map',opts:{k:'key',v:'value'},
+  decl:'Map<Character, Integer> map = new HashMap<>();',use:'Count things (<b>merge</b>), remember "value → index" (<b>Two Sum</b>), group things (<b>Group Anagrams</b>: key → List). Order is not guaranteed.',
+  init:()=>({e:[['a',1],['b',2]],c:0}),view:m=>({entries:m.e,hl:m.hl,probe:m.pr}),
+  ops:[['put(k, v) new key','O(1)',m=>{const k=[...'cdefgh'].find(x=>!m.e.some(e=>e[0]===x));if(!k)return '// enough keys';const v=nx();m.e=[...m.e,[k,v]];m.hl={[k]:'new'};return `map.put('${k}', ${v});`;}],
+   ['merge(k, 1, Integer::sum)','O(1)',m=>{if(!m.e.length)return '// empty';const j=m.c++%m.e.length,k=m.e[j][0];m.e=m.e.map(e=>e[0]===k?[k,e[1]+1]:e);m.hl={[k]:'cur'};return `map.merge('${k}', 1, Integer::sum);   // count → ${m.e[j][1]}`;}],
+   ['get(k)','O(1)',m=>{if(!m.e.length)return '// empty';const [k,v]=m.e[m.e.length-1];m.hl={[k]:'hit'};m.pr={t:`map.get('${k}')`,r:String(v),ok:true};return `map.get('${k}') → ${v}`;}],
+   ['containsKey(\'z\')','O(1)',m=>{m.hl={};m.pr={t:"map.containsKey('z')",r:'false',ok:false};return "map.containsKey('z') → false";}],
+   ['remove(k)','O(1)',m=>{if(!m.e.length)return '// empty';const k=m.e[0][0];m.e=m.e.slice(1);m.hl={};return `map.remove('${k}');`;}]],
+  demo:[0,1,1,2,3,0,4]},
+ {name:'HashSet',sub:'unique items only · "have I seen it?" in O(1)',kind:'set',
+  decl:'Set<Character> set = new HashSet<>();',use:'Duplicates check (<b>Contains Duplicate</b>), the current window in <b>Longest Substring</b>, visited cells. <code>add</code> returns false if it is already there.',
+  init:()=>({s:['a','b']}),view:m=>({items:m.s.map(v=>({id:v,v})),hl:m.hl,probe:m.pr}),
+  ops:[['add(x) new','O(1)',m=>{const k=[...'cdefgh'].find(x=>!m.s.includes(x));if(!k)return '// enough';m.s=[...m.s,k];m.hl={[k]:'new'};m.pr={t:`set.add('${k}')`,r:'true',ok:true};return `set.add('${k}') → true`;}],
+   ['add(x) duplicate','O(1)',m=>{if(!m.s.length)return '// empty';const k=m.s[0];m.hl={[k]:'bad'};m.pr={t:`set.add('${k}')`,r:'false — already there',ok:false};return `set.add('${k}') → false   // nothing changes`;}],
+   ['contains(x)','O(1)',m=>{if(!m.s.length)return '// empty';const k=m.s.at(-1);m.hl={[k]:'hit'};m.pr={t:`set.contains('${k}')`,r:'true',ok:true};return `set.contains('${k}') → true`;}],
+   ['remove(x)','O(1)',m=>{if(!m.s.length)return '// empty';const k=m.s[0];m.s=m.s.slice(1);m.hl={};m.pr={t:`set.remove('${k}')`,r:'true',ok:null};return `set.remove('${k}');`;}]],
+  demo:[0,1,0,2,3,1]},
+ {name:'TreeMap',sub:'sorted map · balanced tree (red-black)',kind:'treemap',
+  decl:'TreeMap<Integer, Integer> map = new TreeMap<>();',use:'Like HashMap but <b>keys stay sorted</b>: firstKey, lastKey, floorKey(x) = biggest key ≤ x. Every operation is O(log n). (Tree drawn balanced; colours of red-black left out.)',
+  init:()=>({e:[[50,1],[30,1],[70,1]],k:0}),view:m=>({entries:m.e,hl:m.hl,probe:m.pr}),
+  ops:[['put(k, v)','O(log n)',m=>{const P=[20,40,60,80,35,65,10,90],k=P.find(x=>!m.e.some(e=>e[0]===x));if(k==null)return '// enough';m.e=[...m.e,[k,1]];m.hl={[k]:'new'};return `map.put(${k}, 1);   // lands in sorted position`;}],
+   ['firstKey()','O(log n)',m=>{if(!m.e.length)return '// empty';const k=Math.min(...m.e.map(e=>e[0]));m.hl={[k]:'hit'};return `map.firstKey() → ${k}   // leftmost node`;}],
+   ['floorKey(45)','O(log n)',m=>{const c=m.e.map(e=>e[0]).filter(x=>x<=45);if(!c.length){m.hl={};return 'map.floorKey(45) → null';}const k=Math.max(...c);m.hl={[k]:'hit'};return `map.floorKey(45) → ${k}   // biggest key ≤ 45`;}],
+   ['remove(firstKey())','O(log n)',m=>{if(!m.e.length)return '// empty';const k=Math.min(...m.e.map(e=>e[0]));m.e=m.e.filter(e=>e[0]!==k);m.hl={};return `map.remove(${k});   // tree rebalances`;}]],
+  demo:[0,0,0,1,2,0,3]},
+ {name:'TreeSet',sub:'sorted unique items · balanced tree',kind:'treeset',
+  decl:'TreeSet<Integer> set = new TreeSet<>();',use:'Unique + sorted: first(), last(), floor(x), ceiling(x). O(log n) each. Good for "closest value" questions.',
+  init:()=>({k:[40,20,60]}),view:m=>({keys:m.k,hl:m.hl}),
+  ops:[['add(x)','O(log n)',m=>{const P=[10,30,50,70,25,55,80],k=P.find(x=>!m.k.includes(x));if(k==null)return '// enough';m.k=[...m.k,k];m.hl={[k]:'new'};return `set.add(${k});`;}],
+   ['first()','O(log n)',m=>{if(!m.k.length)return '// empty';const k=Math.min(...m.k);m.hl={[k]:'hit'};return `set.first() → ${k}`;}],
+   ['last()','O(log n)',m=>{if(!m.k.length)return '// empty';const k=Math.max(...m.k);m.hl={[k]:'hit'};return `set.last() → ${k}`;}],
+   ['pollFirst()','O(log n)',m=>{if(!m.k.length)return '// empty';const k=Math.min(...m.k);m.k=m.k.filter(x=>x!==k);m.hl={};return `set.pollFirst() → ${k}`;}]],
+  demo:[0,0,0,1,2,3,3]},
+ {name:'Binary tree',sub:'nodes with left/right · DFS vs BFS order',kind:'tree',opts:{dx:58,dy:64},
+  decl:'TreeNode root;   // class TreeNode { int val; TreeNode left, right; }',use:'<b>DFS</b> (recursion) goes deep first; <b>BFS</b> (a Queue) goes level by level. Max depth = deepest level reached.',
+  init:()=>({vis:[],mode:null}),
+  view:m=>{const N={t1:{v:3,l:'t2',r:'t3'},t2:{v:9,l:'t6',r:null},t3:{v:20,l:'t4',r:'t5'},t4:{v:15},t5:{v:7},t6:{v:4}},D={t1:1,t2:2,t3:2,t6:3,t4:3,t5:3},hl={};
+   m.vis.forEach((id,j)=>{hl[id]=j===m.vis.length-1?'cur':'done';N[id]={...N[id],label:`#${j+1} · depth ${D[id]}`};});
+   return {nodes:N,root:'t1',hl,note:m.mode?`${m.mode} order so far: <b>${m.vis.map(id=>N[id].v).join(' → ')}</b>`:'pick DFS or BFS'};},
+  ops:[['DFS: next node','O(n) total',m=>{const O=['t1','t2','t6','t3','t4','t5'];if(m.mode!=='DFS'){m.mode='DFS';m.vis=[];}if(m.vis.length<6)m.vis=[...m.vis,O[m.vis.length]];return `dfs(node) → visit, then dfs(left), dfs(right)   // ${m.vis.length}/6`;}],
+   ['BFS: next node','O(n) total',m=>{const O=['t1','t2','t3','t6','t4','t5'];if(m.mode!=='BFS'){m.mode='BFS';m.vis=[];}if(m.vis.length<6)m.vis=[...m.vis,O[m.vis.length]];return `node = queue.poll(); queue.offer(left/right)   // ${m.vis.length}/6`;}]],
+  demo:[0,0,0,0,0,0,1,1,1,1,1,1]},
+ {name:'2D grid',sub:'rows × cols · neighbours up/down/left/right',kind:'grid',opts:{cls:v=>v==='1'?'land':'water'},
+  decl:'char[][] grid;   // grid[r][c], 4 neighbours: (r±1, c), (r, c±1)',use:'<b>Number of Islands</b>, <b>Word Search</b>: visit a cell, then spread to its neighbours (DFS or BFS), marking visited cells so you never count them twice.',
+  init:()=>({k:0}),
+  view:m=>{const G=[['1','1','0','0','0'],['1','1','0','0','1'],['0','0','1','0','1'],['0','0','0','1','1']];const hl={};
+   ORDER.slice(0,m.k).forEach(([r,c],j)=>hl[r+','+c]=j===m.k-1?'seen cur':'seen');return {cells:G,hl};},
+  ops:[['flood fill: next cell','O(rows×cols)',m=>{if(m.k>=ORDER.length)return `// done → ${ISL} islands`;m.k++;const [r,c,isl,first]=ORDER[m.k-1];return first?`// new land (${r},${c}) not visited → island #${isl}, start DFS`:`// spread to neighbour (${r},${c}) of island #${isl}`;}]],
+  demo:[0,0,0,0,0,0,0,0,0]},
+ {name:'Intervals',sub:'[start, end] pairs on a number line · sort by start, then merge',kind:'intervals',opts:{},
+  decl:'int[][] intervals = {{8, 10}, {1, 3}, {2, 6}, {15, 18}};',use:'<b>Merge Intervals</b>, meeting rooms, insert interval: sort by start, then only the <b>last</b> merged interval can overlap the next one.',
+  init:()=>({iv:[[8,10],[1,3],[2,6],[15,18]].map((p,k)=>({id:'v'+k,lo:p[0],hi:p[1]})),k:0,merged:[],gone:[],last:null,cur:null,sorted:false}),
+  view:m=>{const hl={};m.gone.forEach(id=>hl[id]='done');m.merged.forEach(x=>hl[x.id]=x===m.last?'new':'hit');if(m.cur&&!m.gone.includes(m.cur)&&!m.merged.some(x=>x.id===m.cur))hl[m.cur]='cur';
+   return {items:m.iv.map(x=>({id:x.id,lo:x.lo,hi:x.hi})),hl,axis:[0,18]};},
+  ops:[['sort by start','O(n log n)',m=>{m.iv=m.iv.slice().sort((a,b)=>a.lo-b.lo);m.sorted=true;m.k=0;m.merged=[];m.gone=[];m.last=null;m.cur=null;return 'Arrays.sort(intervals, Comparator.comparingInt(a -> a[0]));';}],
+   ['merge next','O(1)',m=>{if(!m.sorted)return '// sort by start first!';if(m.k>=m.iv.length)return `// done → ${m.merged.map(x=>`[${x.lo},${x.hi}]`).join(' ')}`;
+    const cur=m.iv[m.k++];m.cur=cur.id;if(!m.last||m.last.hi<cur.lo){m.last=cur;m.merged.push(cur);return `// [${cur.lo},${cur.hi}] starts after last ends → new interval`;}
+    m.last.hi=Math.max(m.last.hi,cur.hi);m.gone.push(cur.id);return `last[1] = max(last[1], ${cur.hi})   // overlap → [${m.last.lo},${m.last.hi}]`;}]],
+  demo:[0,1,1,1,1,1]}];
+// grid visit order (DFS per island) for the 2D grid demo
+const ORDER=[],ISL=(()=>{const G=['11000','11001','00101','00011'].map(r=>[...r]),seen=new Set();let n=0;
+ for(let r=0;r<4;r++)for(let c=0;c<5;c++)if(G[r][c]==='1'&&!seen.has(r+','+c)){n++;let first=true;
+  (function dfs(r,c){if(r<0||c<0||r>=4||c>=5||G[r][c]!=='1'||seen.has(r+','+c))return;seen.add(r+','+c);ORDER.push([r,c,n,first]);first=false;dfs(r+1,c);dfs(r-1,c);dfs(r,c+1);dfs(r,c-1);})(r,c);}
+ return n;})();
+function chain(m){m.nodes.forEach((n,i)=>n.next=m.nodes[i+1]?m.nodes[i+1].id:null);m.head=m.nodes.length?m.nodes[0].id:null;m.rev=false;m.walk=undefined;}
+function byId(m,id){return m.nodes.find(n=>n.id===id);}
+
+const $=id=>document.getElementById(id);
+let cur,view,model,demoT=null,logs=[];
+function render(){view.set(cur.view(model));}
+function log(t){logs.push(t);logs=logs.slice(-4);$('log').innerHTML=logs.map(l=>`<div>${l.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>`).join('');}
+function pick(j){stopDemo();cur=ITEMS[j];document.querySelectorAll('#tabs button').forEach((b,k)=>b.classList.toggle('on',k===j));
+ try{localStorage.setItem('ds-gallery-tab',j);}catch(e){}
+ $('name').innerHTML=`${cur.name} <small>${cur.sub}</small>`;$('decl').innerHTML=T(cur.decl.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')).replace(/(\/\/.*)$/,'<span style="color:#6A9955">$1</span>');
+ $('use').innerHTML=cur.use;
+ $('ops').innerHTML=cur.ops.map(([l,b],k)=>`<button data-o="${k}"><span>${l}</span><em class="${/n\)|total|×/.test(b)&&!/log/.test(b)?'slow':''}">${b}</em></button>`).join('');
+ const host=$('host');host.replaceWith(Object.assign(document.createElement('div'),{id:'host'}));
+ view=DS.make(cur.kind,$('host'),cur.opts);model=cur.init();logs=[];log('// '+cur.decl);render();}
+function op(k){model.hl={};model.pr=undefined;log(cur.ops[k][2](model));render();}
+function stopDemo(){clearTimeout(demoT);demoT=null;$('demo').textContent='▶ Play demo';}
+$('tabs').innerHTML=ITEMS.map((it,j)=>`<button data-j="${j}">${it.name}</button>`).join('');
+$('tabs').onclick=e=>{const b=e.target.closest('[data-j]');if(b)pick(+b.dataset.j);};
+$('ops').onclick=e=>{const b=e.target.closest('[data-o]');if(b){stopDemo();op(+b.dataset.o);}};
+$('reset').onclick=()=>pick(ITEMS.indexOf(cur));
+$('demo').onclick=()=>{if(demoT){stopDemo();return;}pick(ITEMS.indexOf(cur));$('demo').textContent='⏸ Stop';let j=0;
+ const tick=()=>{if(j>=cur.demo.length){stopDemo();return;}op(cur.demo[j++]);demoT=setTimeout(tick,1300);};demoT=setTimeout(tick,600);};
+let start=0;try{start=+(localStorage.getItem('ds-gallery-tab')||0);}catch(e){}
+pick(ITEMS[start]?start:0);
+</script>
+</body></html>

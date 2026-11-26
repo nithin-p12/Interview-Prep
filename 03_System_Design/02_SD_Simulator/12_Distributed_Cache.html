@@ -1,0 +1,1137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-distributed-cache">
+<meta name="doc-version" content="v2.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Distributed Cache · System Design · v2.0</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// Distributed cache (Redis nodes in front of MongoDB). Consistent hashing is taught HERE (flow "Why consistent hashing?"),
+// not in Core Components. Basic Redis caching (cache-aside, TTL) and DB basics live in 00_Core_Components.html.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f', INDIGO = '#5a5fc8';
+const KEEP = '#d5d9dc', MONO = 'Consolas, "Cascadia Mono", monospace';
+
+// Each cache node has an identity colour, used for its badge and its points on the ring.
+const NC = { c1: BLUE, c2: TEAL, c3: AMBER, c4: PURPLE };
+// The ring (drawn above the app pods: it is the copy every pod holds). Angles stand for positions in 0 … 2^32.
+const RC = { cx: 275, cy: 112, r: 50 };
+const ONE = { c1: [50], c2: [175], c3: [270], c4: [345] };                       // one point per node
+const VN = { c1: [225, 355], c2: [15, 120], c3: [85, 205], c4: [102, 190] };      // extra virtual nodes
+const KEYS = { 'cart:7': 32, 'user:42': 150, 'prod:9': 240, 'sess:5': 325 };    // murmur3(key) on the ring
+
+// Row colours for the two tables (cache contents, MongoDB documents).
+const ST = {
+  OK: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
+  NEW: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  BAD: { fill: '#fff4f4', stroke: RED, color: RED },
+  OLD: { fill: '#f6f7f8', stroke: KEEP, color: GREY },
+  MOVE: { fill: '#faf6fd', stroke: PURPLE, color: PURPLE },
+};
+const fc = (node, key, val) => `${node.padEnd(4)}${key.padEnd(9)}${val}`;   // cache row
+const fd = (key, val) => `${key.padEnd(9)}${val}`;                         // MongoDB row
+const fk = (key, how, node) => `${key.padEnd(9)}${how.padEnd(9)}→ ${node}`;  // key → owner row (flow 1)
+
+// ---- ring drawing ----
+const pt = (deg, r = RC.r) => { const a = deg * Math.PI / 180; return [RC.cx + r * Math.sin(a), RC.cy - r * Math.cos(a)]; };
+function dot(s, v, n, deg) {
+  const [x, y] = pt(deg), d = s.g(x, y, v.ring.g);
+  SD.el('circle', { r: 6.8, fill: NC[n], stroke: '#fff', 'stroke-width': 1.5 }, d);
+  s.text(d, 0, .5, n.slice(1), { 'font-size': 9, 'font-weight': 800, fill: '#fff' });
+  d.deg = deg; v.ring.dots[n].push(d);
+  return d;
+}
+async function addDots(s, v, n, degs) { for (const deg of degs) await s.pop(dot(s, v, n, deg), 220); }
+async function dropDots(s, v, n) { for (const d of v.ring.dots[n]) { await s.fade(d, 0, 200); d.remove(); } v.ring.dots[n] = []; }
+// Consistent hashing for real: the first point at or after the key's angle, wrapping around.
+function ownerOf(v, deg) {
+  const all = Object.entries(v.ring.dots).flatMap(([n, ds]) => ds.map(d => [d.deg, n])).sort((a, b) => a[0] - b[0]);
+  return all.length ? (all.find(([d]) => d >= deg) ?? all[0])[1] : null;
+}
+function keyMark(s, v, k) {
+  const deg = KEYS[k], [x1, y1] = pt(deg, RC.r - 6), [x2, y2] = pt(deg, RC.r + 6), [lx, ly] = pt(deg, RC.r + 13);
+  SD.el('line', { x1, y1, x2, y2, stroke: '#203347', 'stroke-width': 2.4, 'stroke-linecap': 'round' }, v.ring.g);
+  const t = s.g(lx, ly, v.ring.g);
+  t.label = s.text(t, 0, 0, k, { 'text-anchor': deg < 180 ? 'start' : 'end', 'font-size': 11.5, 'font-weight': 700, 'font-family': MONO });
+  v.ring.keys[k] = t;
+}
+// Colour every key by its current owner; returns the keys whose owner changed.
+function paintKeys(v) {
+  const moved = [];
+  for (const [k, t] of Object.entries(v.ring.keys)) {
+    const o = ownerOf(v, KEYS[k]);
+    if (t.owner && t.owner !== o) moved.push(k);
+    t.owner = o;
+    t.label.setAttribute('fill', o ? NC[o] : GREY);
+  }
+  return moved;
+}
+async function repaint(s, v) { const moved = paintKeys(v); for (const k of moved) await s.pulse(v.ring.keys[k], 1, 1.3); return moved; }
+function drawRing(s, v, { vnodes, faded }) {
+  const g = s.g(0, 0);
+  SD.el('circle', { cx: RC.cx, cy: RC.cy, r: RC.r, fill: '#fff', stroke: '#b9c2c9', 'stroke-width': 2.2 }, g);
+  s.text(g, RC.cx, RC.cy - 7, 'HASH RING', { 'font-size': 9.5, 'font-weight': 700, fill: '#65727a', 'letter-spacing': '.06em' });
+  s.text(g, RC.cx, RC.cy + 8, '0 … 2³²', { 'font-size': 10.5, fill: '#9aa3a9', 'font-family': MONO });
+  v.ring = { g, dots: { c1: [], c2: [], c3: [], c4: [] }, keys: {} };
+  for (const k of Object.keys(KEYS)) keyMark(s, v, k);
+  for (const n of ['c1', 'c2', 'c3']) for (const deg of vnodes ? [...ONE[n], ...VN[n]] : ONE[n]) dot(s, v, n, deg);
+  paintKeys(v);
+  if (faded) g.setAttribute('opacity', .25);
+}
+// Node c4 is outside the ring until a flow adds it.
+function c4Off(s, v) {
+  v.n.c4.setAttribute('opacity', .35); s.setSub(v.n.c4, 'not in ring');
+  for (const k of ['app>c4', 'coord>c4']) s.links[k]?.setAttribute('opacity', .3);
+}
+async function c4On(s, v, sub = 'empty · new') {
+  for (const k of ['app>c4', 'coord>c4']) s.links[k]?.setAttribute('opacity', 1);
+  await s.fade(v.n.c4, 1, 300); s.setSub(v.n.c4, sub, PURPLE);
+}
+function badge(s, n, id) {
+  const g = s.g(n.w / 2 - 12, -n.h / 2 + 12, n);
+  SD.el('circle', { r: 7, fill: NC['c' + id.slice(1)], opacity: id[0] === 'r' ? .55 : 1 }, g);
+  s.text(g, 0, .5, id.slice(1), { 'font-size': 9, 'font-weight': 800, fill: '#fff' });
+}
+
+// State shown next to the components: ring, cache contents, MongoDB documents, DB load, users, the pods' L1.
+function setup(s, v, { cache = [], db = [], cacheTitle = 'CACHE NODES · key → value', clock = '11:00:00', vnodes = true, ringFaded = false, c4 = false, a = 'idle', b = 'idle', app = 'L1: empty', dbl = 'DB 400 reads/s', repl = 'replication: async' } = {}) {
+  v.clock = s.chip(15, 500, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
+  for (const id of ['c1', 'c2', 'c3', 'c4', 'r1', 'r2', 'r3']) badge(s, v.n[id], id);
+  v.cache = s.store(805, 50, 280, cacheTitle, { color: TEAL });
+  v.db = s.store(805, 318, 280, 'MONGODB · source of truth', { color: GREEN });
+  v.rows = {};
+  cache.forEach(([id, txt, st = 'OK']) => { s.row(v.cache, txt, { ...ST[st], now: true }); v.rows[`cache:${id}`] = pre(v.cache.rows[v.cache.rows.length - 1]); });
+  db.forEach(([id, txt, st = 'OK']) => { s.row(v.db, txt, { ...ST[st], now: true }); v.rows[`db:${id}`] = pre(v.db.rows[v.db.rows.length - 1]); });
+  v.ua = s.chip(70, 196, a, { color: GREY });
+  v.ub = s.chip(70, 406, b, { color: GREY });
+  v.app = s.chip(255, 303, app, { mono: true, color: GREY });
+  v.dbl = s.chip(945, 212, dbl, { mono: true, color: GREEN });
+  v.repl = s.chip(690, 445, repl, { mono: true, color: GREY });
+  drawRing(s, v, { vnodes, faded: ringFaded });
+  if (!c4) c4Off(s, v);
+  return v;
+}
+// Keep the padded columns: SVG would otherwise collapse repeated spaces.
+const pre = r => { r.label.style.whiteSpace = 'pre'; return r; };
+async function put(s, v, which, id, txt, st = 'OK') {
+  const k = `${which}:${id}`, box = which === 'db' ? v.db : v.cache, r = v.rows[k];
+  if (!r) { const p = s.row(box, txt, ST[st]); pre(box.rows[box.rows.length - 1]); v.rows[k] = await p; return; }
+  r.label.textContent = txt;
+  s.paintRow(r, ST[st]);
+  await s.pulse(r, 1, 1.05);
+}
+async function drop(s, v, which, id) {
+  const k = `${which}:${id}`, r = v.rows[k];
+  if (r) { delete v.rows[k]; await s.unrow(which === 'db' ? v.db : v.cache, r); }
+}
+async function clearCache(s, v) { for (const k of Object.keys(v.rows).filter(k => k.startsWith('cache:'))) await drop(s, v, 'cache', k.slice(6)); }
+const paint = color => ({ color, stroke: color === GREY ? KEEP : color });
+const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
+const who = (s, v, u, txt, color = GREY) => s.setChip(u === 'B' ? v.ub : v.ua, txt, paint(color));
+const appc = (s, v, t, color = GREY) => s.setChip(v.app, t, paint(color));
+const dbl = (s, v, t, color = GREEN) => s.setChip(v.dbl, t, paint(color));
+const repl = (s, v, t, color = GREY) => s.setChip(v.repl, t, paint(color));
+const both = (...ps) => Promise.all(ps);
+const ok = { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, bad = { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, info = { mono: true, color: INDIGO, stroke: INDIGO };
+
+window.DESIGN = {
+  id: 'cache', n: 12, title: 'Distributed Cache', tagline: 'a hash ring routes every key, the database stays the truth, versions and TTLs bound staleness',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'Clients', x0: 0, x1: 160, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'Users call ordinary APIs (`GET /users/42`). They never see the cache: it only makes answers **faster** and keeps load **off the database**.',
+      detail: 'A cache hit is ~1 ms; a MongoDB read is several ms and costs far more capacity.' },
+    { id: 'app', title: 'App pods + ring', x0: 160, x1: 400, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: 'Every Spring Boot pod holds the **same hash ring** (drawn at the top) and computes which cache node owns a key: `murmur3(key)` → next node **clockwise**. **Membership** (etcd) pushes the node list when it changes.',
+      detail: 'No proxy and no lookup service on the hot path: routing is a `TreeMap.ceilingEntry` in memory.' },
+    { id: 'data', title: 'Cache cluster (Redis)', x0: 400, x1: 790, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: 'Redis primaries **c1–c3** each own several arcs of the ring; **c4** joins when memory runs out. Each primary copies its writes **asynchronously** to a replica (r1–r3) that is promoted if it dies.',
+      detail: 'Memory is bounded: `maxmemory` + `allkeys-lru` / `allkeys-lfu`, and every key has a TTL.' },
+    { id: 'async', title: 'Source of truth', x0: 790, x1: 1100, color: '#348747', soft: '#f3faf2', chip: '#ddf0da', line: '#cfe8cb',
+      why: '**MongoDB** holds the real data. Every miss reads it; every write goes here **first**. Losing the whole cache costs latency, never data.',
+      detail: 'The tables show what the cache nodes hold (top) and what MongoDB holds (bottom).' },
+  ],
+  layersIntro: {
+    title: 'Route by ring, read through, write to the database first',
+    text: 'An app pod hashes the key onto its copy of the **ring** and talks straight to the owning **Redis node**. On a **miss** it reads **MongoDB** and fills the cache with a TTL; on a **write** it updates MongoDB, then **deletes** the key. Adding a node moves only ~**1/N** of the keys. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    userA: { x: 70, y: 150, w: 120, label: 'User A', sub: 'browser', icon: '👤', layer: 'entry' },
+    userB: { x: 70, y: 360, w: 120, label: 'User B', sub: 'browser', icon: '👤', layer: 'entry' },
+    app: { x: 285, y: 255, w: 160, label: 'App pods', sub: 'ring client · L1', icon: '☕', layer: 'app' },
+    coord: { x: 285, y: 445, w: 160, label: 'Membership', sub: 'etcd · ring v7', icon: '🔑', layer: 'app' },
+    c1: { x: 490, y: 70, w: 150, label: 'Cache c1', sub: 'Redis primary', icon: '⚡', layer: 'data' },
+    c2: { x: 490, y: 180, w: 150, label: 'Cache c2', sub: 'Redis primary', icon: '⚡', layer: 'data' },
+    c3: { x: 490, y: 330, w: 150, label: 'Cache c3', sub: 'Redis primary', icon: '⚡', layer: 'data' },
+    c4: { x: 490, y: 445, w: 150, label: 'Cache c4', sub: 'joins later', icon: '⚡', layer: 'data' },
+    r1: { x: 690, y: 70, w: 150, label: 'Replica r1', sub: 'copy of c1', icon: '🪞', layer: 'data' },
+    r2: { x: 690, y: 200, w: 150, label: 'Replica r2', sub: 'copy of c2', icon: '🪞', layer: 'data' },
+    r3: { x: 690, y: 330, w: 150, label: 'Replica r3', sub: 'copy of c3', icon: '🪞', layer: 'data' },
+    db: { x: 945, y: 255, w: 160, label: 'MongoDB', sub: 'source of truth', icon: '🍃', layer: 'async' },
+  },
+  wires: [['userA', 'app'], ['userB', 'app'], ['app', 'coord'], ['coord', 'c4'], ['app', 'c1'], ['app', 'c2'], ['app', 'c3'], ['app', 'c4'], ['app', 'r2'], ['c1', 'r1'], ['c2', 'r2'], ['c3', 'r3'], ['app', 'db']],
+
+  components: {
+    userA: {
+      name: 'Users (A, B)',
+      what: 'Call normal APIs such as `GET /users/42` or `PUT /users/42/plan`.',
+      why: 'They are why latency matters: a profile page may need 10–50 cache reads.',
+      without: '—',
+      tech: 'Browser / mobile app', scale: '1 M reads/s in total in this design.', fails: 'They only notice the cache when it is slow, or when it serves stale data.',
+    },
+    userB: {
+      name: 'User B',
+      what: 'Second caller: in the flows B usually writes (upgrades the plan) while A reads.',
+      why: 'Two callers make the races visible.',
+      without: '—',
+      tech: 'Browser / mobile app', scale: '—', fails: 'Sees a stale plan in the race flow.',
+    },
+    app: {
+      name: 'App pods (cache client + ring)',
+      what: 'Spring Boot services with a cache client that holds the **hash ring**: `murmur3(key)` → first virtual node clockwise → that Redis node. Implements **cache-aside**, **delete-on-write**, **single-flight** and a small **Caffeine L1** for hot keys.',
+      why: 'Routing in the client means no extra network hop and no central bottleneck.',
+      without: 'A proxy on every request (one more hop and one more thing to scale), or `hash % N` routing that falls apart on resize.',
+      tech: 'Spring Boot + Lettuce / Jedis; own ring (TreeMap) or Redis Cluster client', scale: 'Stateless; add pods freely.', fails: 'Short cache timeouts (50–100 ms) + circuit breaker: a sick cache node becomes a miss, never a slow request.',
+    },
+    coord: {
+      name: 'Membership (ring config)',
+      what: 'Stores the list of cache nodes, their vnode count and a **ring version**; pods watch it and rebuild their ring when it changes.',
+      why: 'All pods must agree on the ring, or they would read and write the same key on different nodes.',
+      without: 'Hard-coded node lists: every resize needs a redeploy, and pods disagree during the rollout.',
+      tech: 'etcd / ZooKeeper / Consul watch (Redis Cluster: gossip + 16 384 hash slots instead)', scale: 'Tiny data, rare changes.', fails: 'If it is down, pods keep the last ring they saw: routing still works.',
+    },
+    c1: {
+      name: 'Cache nodes (Redis primaries)',
+      what: 'In-memory key/value servers. Each owns several **arcs** of the ring (its virtual nodes) and serves GET / SET / DEL in well under a millisecond.',
+      why: 'Spread 2 TB of hot data and 1 M reads/s over many machines.',
+      without: 'One giant Redis: limited by one machine\'s memory and CPU, and a single point of failure.',
+      tech: 'Redis (or Memcached); `maxmemory` + `allkeys-lru`/`lfu`', scale: '~100 k simple ops/s and ~64 GB usable per node; add nodes, only ~1/N of keys move.', fails: 'Node loss: its replica is promoted, or its keys miss and refill from MongoDB.',
+      core: ['cache', 'Cache · Redis'],
+    },
+    c2: {
+      name: 'Cache node c2',
+      what: 'Owns `user:42` in most flows.',
+      why: 'Shows routing, the stale race and failover on one concrete node.',
+      without: '—',
+      tech: 'Redis primary', scale: 'Same as c1.', fails: 'Crashes in the "Cache node dies" flow.',
+      core: ['cache', 'Cache · Redis'],
+    },
+    c3: {
+      name: 'Cache node c3',
+      what: 'Owns `prod:9`, the hot product in the flash-sale flow.',
+      why: 'Shows how one hot key can overload one node while the others idle.',
+      without: '—',
+      tech: 'Redis primary', scale: 'Same as c1.', fails: 'CPU saturation on a hot key.',
+      core: ['cache', 'Cache · Redis'],
+    },
+    c4: {
+      name: 'Joining node c4',
+      what: 'A new, empty node. It registers in Membership; pods insert its virtual nodes into the ring.',
+      why: 'Scaling out when memory or CPU runs high.',
+      without: '—',
+      tech: 'Redis primary (+ its own replica in production)', scale: 'Takes ~1/4 of the keys when going 3 → 4, a little from **every** node.', fails: 'Cold at first: its keys miss once and refill.',
+      core: ['cache', 'Cache · Redis'],
+    },
+    r1: {
+      name: 'Replicas (r1, r3)',
+      what: 'Asynchronous copies of their primary\'s data (`replicaof c1`).',
+      why: 'A dead primary is replaced in seconds without a cold cache.',
+      without: 'Every node failure means a burst of misses on MongoDB.',
+      tech: 'Redis replication + Sentinel (or Redis Cluster failover)', scale: 'Can also serve reads that tolerate a little lag.', fails: 'Async: the last few ms of writes can be lost on failover. Fine for a cache.',
+    },
+    r2: {
+      name: 'Replica r2',
+      what: 'Copy of c2; promoted to primary when c2 dies.',
+      why: 'Keeps c2\'s keys warm through a failure.',
+      without: 'c2\'s ~1/3 of keys all miss at once.',
+      tech: 'Redis replica', scale: '—', fails: 'Promoted in the failure flow.',
+    },
+    r3: {
+      name: 'Replica r3',
+      what: 'Copy of c3.',
+      why: 'Same as r1.',
+      without: '—',
+      tech: 'Redis replica', scale: '—', fails: '—',
+    },
+    db: {
+      name: 'MongoDB (source of truth)',
+      what: 'Holds the real documents, each with a `version` incremented on every write. Answers every cache miss; receives every write first.',
+      why: 'The cache can lose anything at any time; correctness comes from here.',
+      without: '—',
+      tech: 'MongoDB replica set (sharded at scale)', scale: 'Sized for the **miss** rate: at 95 % hits it sees 1 read in 20.', fails: 'If the cache empties, load ×20: protect it with single-flight, rate limits and gradual warm-up.',
+      core: ['db', 'DB scaling'],
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Hash to a node, read through, delete on write, grow by 1/N.',
+    points: [
+      { t: 'Route', color: PURPLE, d: 'The pod hashes the key onto its copy of the **ring** and picks the next node clockwise: no lookup on the hot path.' },
+      { t: 'Read through', color: BLUE, d: '**Miss** → read MongoDB → `SET` with a TTL; the next read is a **hit** in about a millisecond.' },
+      { t: 'Write', color: AMBER, d: 'Update MongoDB **first**, then **DEL** the key; the replica copies the delete asynchronously.' },
+      { t: 'Scale', color: GREEN, d: '**c4 joins**: only the keys on its new arcs move, about **1/N**, so there is no miss storm.' },
+    ],
+    stats: [['~1 ms', 'cache hit'], ['95 %', 'hit rate'], ['1/N', 'keys move on resize'], ['150', 'vnodes / node']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v, { db: [['user:42', fd('user:42', 'plan=free  v1')]] }); v.ready = true; }
+    await clearCache(s, v);
+    if (v.ring.dots.c4.length) { await dropDots(s, v, 'c4'); paintKeys(v); c4Off(s, v); }
+    await put(s, v, 'db', 'user:42', fd('user:42', 'plan=free  v1'));
+    s.setSub(v.n.coord, 'etcd · ring v7'); who(s, v, 'A', 'idle'); who(s, v, 'B', 'idle'); repl(s, v, 'replication: async');
+
+    ui.say(0); ui.cap('**Route** · A asks for user:42; the pod hashes it onto the ring → next node clockwise is c2');
+    await s.send(['userA', 'app'], 'GET /users/42', BLUE, { ms: 420 });
+    await s.pulse(v.ring.keys['user:42'], 1, 1.3);
+    await s.send(['app', 'c2'], 'GET user:42', TEAL, { ms: 420 });
+    ui.say(1); ui.cap('**Read through** · miss → read MongoDB → SET with a TTL; B\'s read is then a hit');
+    await s.send(['c2', 'app'], '(nil) miss', GREY, { ms: 380 });
+    await s.send(['app', 'db'], 'findOne(42)', GREEN, { ms: 420 });
+    await s.send(['db', 'app'], 'free · v1', GREEN, { ms: 380 });
+    await s.send(['app', 'c2'], 'SET EX 600', TEAL, { ms: 400 });
+    await put(s, v, 'cache', 'user:42', fc('c2', 'user:42', 'free v1 · TTL 600'));
+    who(s, v, 'A', 'profile ✓', GREEN);
+    await s.send(['userB', 'app'], 'GET /users/42', BLUE, { ms: 380 });
+    await s.send(['app', 'c2'], 'GET user:42', TEAL, { ms: 360 });
+    await s.send(['c2', 'app'], 'HIT', GREEN, { ms: 340 });
+    who(s, v, 'B', 'profile ✓ 1 ms', GREEN);
+    ui.say(2); ui.cap('**Write** · B upgrades to pro: MongoDB first, then DEL the key (r2 copies the delete)');
+    await s.send(['userB', 'app'], 'PUT plan=pro', AMBER, { ms: 380 });
+    await s.send(['app', 'db'], 'update → v2', GREEN, { ms: 400 });
+    await put(s, v, 'db', 'user:42', fd('user:42', 'plan=pro   v2'), 'NEW');
+    await s.send(['app', 'c2'], 'DEL user:42', AMBER, { ms: 400 });
+    await drop(s, v, 'cache', 'user:42');
+    await s.send(['c2', 'r2'], 'DEL (async)', GREY, { ms: 360 });
+    ui.say(3); ui.cap('**Scale** · c4 joins; pods get ring v8; only the keys on c4\'s arcs move (here 1 of 4)');
+    await c4On(s, v);
+    await s.send(['c4', 'coord'], 'register', PURPLE, { ms: 380 });
+    s.setSub(v.n.coord, 'etcd · ring v8');
+    await s.send(['coord', 'app'], 'ring v8', PURPLE, { ms: 380 });
+    await addDots(s, v, 'c4', [...ONE.c4, ...VN.c4]);
+    await repaint(s, v);
+    await s.flash(285, 205, 'sess:5 → c4 · 1 of 4', info, 900);
+    await s.wait(1600);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'ring', title: 'Why consistent hashing?', sub: 'hash % N vs hash ring', color: PURPLE,
+      build: (s, v) => setup(s, v, {
+        cacheTitle: 'KEYS · which node owns them', vnodes: false, ringFaded: true, app: 'node = h % 3', a: 'reads user:42', b: 'reads sess:5',
+        cache: [['cart:7', fk('cart:7', 'h%3=0', 'c1')], ['user:42', fk('user:42', 'h%3=1', 'c2')], ['prod:9', fk('prod:9', 'h%3=2', 'c3')], ['sess:5', fk('sess:5', 'h%3=0', 'c1')]],
+      }),
+      takeaway: 'With `hash % N`, changing N remaps **~75 %** of keys (3 → 4 nodes) and the misses flood the database. A **hash ring** puts nodes and keys in the same `murmur3` space (0 … 2³²); a key belongs to the **next node clockwise**. **Virtual nodes** (100–200 per server) even out the arcs, and adding a node moves only **~1/N** of the keys, a little from every node. Redis Cluster does the same job with **16 384 hash slots**.',
+      steps: [
+        {
+          title: '❌ hash(key) % N: simple and fast',
+          text: 'The obvious way to spread keys over 3 cache nodes: `node = murmur3(key) % 3`. Every pod computes the same answer with no lookup. `user:42` gives `% 3 = 1` → **c2**. It works perfectly, as long as N never changes.',
+          observe: 'Every key has exactly one node (table, top right).',
+          focus: v => [v.cache, v.n.c2],
+          async run(s, v) {
+            await s.send(['userA', 'app'], 'GET user:42', BLUE);
+            await s.flash(285, 205, 'murmur3 % 3 = 1', info, 700);
+            await s.send(['app', 'c2'], 'GET user:42', TEAL);
+            await s.send(['c2', 'app'], 'HIT', GREEN);
+            who(s, v, 'A', 'profile ✓', GREEN);
+          },
+        },
+        {
+          title: '❌ Add a 4th node: now it is % 4',
+          text: 'Memory is at 85 %, so **c4** joins and every pod switches to `% 4`. A key stays put only if `h % 3 == h % 4`, which is true for about **1 key in 4**. Here **cart:7, user:42 and sess:5** now point to a different node; only prod:9 stays.',
+          observe: '3 of 4 rows turn red: ~75 % of all keys moved.',
+          focus: v => [v.cache, v.app],
+          async run(s, v) {
+            await c4On(s, v);
+            await s.send(['c4', 'coord'], 'join', PURPLE);
+            await s.send(['coord', 'app'], 'N = 4', PURPLE);
+            appc(s, v, 'node = h % 4', RED);
+            await put(s, v, 'cache', 'cart:7', fk('cart:7', 'h%4=2', 'c3 ✕'), 'BAD');
+            await put(s, v, 'cache', 'user:42', fk('user:42', 'h%4=3', 'c4 ✕'), 'BAD');
+            await put(s, v, 'cache', 'prod:9', fk('prod:9', 'h%4=2', 'c3'), 'OK');
+            await put(s, v, 'cache', 'sess:5', fk('sess:5', 'h%4=1', 'c2 ✕'), 'BAD');
+          },
+        },
+        {
+          title: '❌ ...and a miss storm hits MongoDB',
+          text: 'Moved keys are looked up on nodes that never had them: **miss**. With a 95 % hit rate the DB normally sees 1 read in 20; now ~75 % of reads fall through at once. DB load ×15, latency spikes, maybe an outage: **adding capacity caused an outage**.',
+          observe: 'user:42 misses on c4 and MongoDB turns red.',
+          say: 'With hash mod N, changing N remaps most keys and all those misses land on the database.',
+          focus: v => [v.n.db, v.dbl],
+          async run(s, v) {
+            await s.send(['userA', 'app'], 'GET user:42', BLUE);
+            await s.send(['app', 'c4'], 'GET user:42', PURPLE);
+            await s.send(['c4', 'app'], '(nil) MISS', RED);
+            await s.send(['app', 'db'], 'findOne ×15', RED);
+            s.tone(v.n.db, 'fail'); dbl(s, v, 'DB 6 k reads/s ✕', RED);
+            await s.shake(v.n.db);
+            who(s, v, 'A', 'slow · 2 s', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: put nodes and keys on a ring',
+          text: 'Hash **nodes** and **keys** into the same space, `murmur3 → 0 … 2³²`, and bend it into a circle. A key belongs to the **first node clockwise** from its hash: `ring.ceilingEntry(h)`, wrapping to the first entry. user:42 sits at ~150° → next node is **c2**. Every pod holds the same ring, so they all agree.',
+          observe: 'Each key takes the colour of the node it belongs to.',
+          say: 'Consistent hashing: a key belongs to the next node clockwise on a hash ring.',
+          focus: v => [v.ring.g, v.cache],
+          async run(s, v) {
+            s.tone(v.n.db, null); dbl(s, v, 'DB 400 reads/s'); c4Off(s, v); who(s, v, 'A', 'reads user:42');
+            appc(s, v, 'ring v7 · 3 nodes', INDIGO);
+            await s.fade(v.ring.g, 1, 400);
+            for (const k of Object.keys(KEYS)) await put(s, v, 'cache', k, fk(k, `@${KEYS[k]}°`, ownerOf(v, KEYS[k])), 'OK');
+            await s.send(['userA', 'app'], 'GET user:42', BLUE);
+            await s.pulse(v.ring.keys['user:42'], 1, 1.3);
+            await s.send(['app', 'c2'], 'user:42 → c2', TEAL);
+          },
+        },
+        {
+          title: '✅ Virtual nodes even out the load',
+          text: 'With one point per node the arcs are uneven: c1 owns ~39 % of the ring, c3 only ~26 %. So each server is placed **many times**: `murmur3("c1#0")`, `"c1#1"`, … (100–200 **virtual nodes** per server; 3 here). The arcs interleave and every node owns about 1/3, within a few percent.',
+          observe: 'Each node now has 3 dots around the ring; no key changed owner.',
+          focus: v => [v.ring.g],
+          async run(s, v) {
+            for (const n of ['c1', 'c2', 'c3']) await addDots(s, v, n, VN[n]);
+            await repaint(s, v);
+            appc(s, v, '3 × 150 vnodes', INDIGO);
+          },
+        },
+        {
+          title: '✅ Add c4: only its arcs move',
+          text: 'c4 registers in **Membership** (etcd); pods get **ring v8** and insert c4\'s virtual nodes. A key moves only if one of c4\'s new points now comes first clockwise: here **only sess:5** (it was on c1). In general **~1/N** of keys move (25 % going 3 → 4), taken a little from **every** old node thanks to vnodes.',
+          observe: 'Only sess:5 changes colour: 1 key in 4.',
+          say: 'Adding a node moves only about one N-th of the keys, spread across all the old nodes.',
+          focus: v => [v.ring.g, v.rows['cache:sess:5']],
+          async run(s, v) {
+            await c4On(s, v);
+            await s.send(['c4', 'coord'], 'register c4', PURPLE);
+            s.setSub(v.n.coord, 'etcd · ring v8');
+            await s.send(['coord', 'app'], 'ring v8', PURPLE);
+            await addDots(s, v, 'c4', [...ONE.c4, ...VN.c4]);
+            const moved = await repaint(s, v);
+            for (const k of moved) await put(s, v, 'cache', k, fk(k, `@${KEYS[k]}°`, `${ownerOf(v, KEYS[k])} (moved)`), 'MOVE');
+            appc(s, v, 'ring v8 · 4 nodes', INDIGO);
+          },
+        },
+        {
+          title: 'Moved keys miss once, then refill',
+          text: 'B reads sess:5: it now goes to c4 → **miss** → MongoDB → `SET` on c4. Only the moved quarter misses, spread over time, so the DB sees a small bump instead of a storm. (Real-world variant: **Redis Cluster** splits the key space into **16 384 hash slots** and migrates whole slots between nodes.)',
+          observe: 'One miss, one refill on c4; the DB barely notices.',
+          focus: v => [v.n.c4, v.dbl],
+          async run(s, v) {
+            await s.send(['userB', 'app'], 'GET sess:5', BLUE);
+            await s.send(['app', 'c4'], 'GET sess:5', PURPLE);
+            await s.send(['c4', 'app'], '(nil)', GREY);
+            await s.send(['app', 'db'], 'findOne', GREEN);
+            await s.send(['db', 'app'], 'session', GREEN);
+            await s.send(['app', 'c4'], 'SET EX 600', PURPLE);
+            s.setSub(v.n.c4, 'warming up', PURPLE);
+            dbl(s, v, 'DB 450/s · small bump', AMBER);
+            who(s, v, 'B', 'session ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'read', title: 'Read & write path', sub: 'cache-aside · update DB, then DEL', color: BLUE,
+      build: (s, v) => setup(s, v, { db: [['user:42', fd('user:42', 'plan=free  v1')]], a: 'opens profile', b: 'opens it later' }),
+      takeaway: 'Reads are **cache-aside**: the ring picks the node, a miss reads MongoDB and fills the key with a TTL, and every other pod then hits the same node. Writes go to **MongoDB first**, then **DEL** the key (not SET): deletes cannot leave an older value behind, and the next read loads the fresh one. (Cache-aside and TTL basics: Core Components → Cache.)',
+      steps: [
+        {
+          title: 'A asks for user 42; the pod finds the owner',
+          text: '`GET /users/42` reaches an app pod. Its cache client hashes `"user:42"` (murmur3) onto its local ring → ~150° → the next virtual node clockwise belongs to **c2**. No proxy, no central lookup: a `TreeMap.ceilingEntry` in memory.',
+          observe: 'user:42 lights up on the ring; the request goes to c2.',
+          focus: v => [v.ring.keys['user:42'], v.n.c2],
+          async run(s, v) {
+            who(s, v, 'A', 'loading…', AMBER);
+            await s.send(['userA', 'app'], 'GET /users/42', BLUE);
+            await s.pulse(v.ring.keys['user:42'], 1, 1.3);
+            await s.send(['app', 'c2'], 'GET user:42', TEAL);
+          },
+        },
+        {
+          title: 'Miss on c2',
+          text: 'First read of the day: c2 has nothing → `(nil)`. In **cache-aside** the app talks to the cache and to the database; the cache never calls the database itself.',
+          observe: 'c2 answers (nil).',
+          focus: v => [v.n.c2],
+          async run(s) { await s.send(['c2', 'app'], '(nil) miss', GREY); },
+        },
+        {
+          title: 'Read MongoDB, then fill the cache with a TTL',
+          text: '`findOne({_id: 42})` → `{plan: "free", version: 1}`. The pod writes it to c2 with `SET user:42 … EX 600` (plus a little jitter). c2 copies the write to its replica **r2** asynchronously.',
+          observe: 'c2 now holds user:42 for 10 minutes; A sees the profile.',
+          say: 'Cache-aside: on a miss, read the database and set the key with a TTL.',
+          focus: v => [v.rows['cache:user:42'], v.n.userA],
+          async run(s, v) {
+            await s.send(['app', 'db'], 'findOne(42)', GREEN);
+            await s.send(['db', 'app'], 'free · v1', GREEN);
+            await s.send(['app', 'c2'], 'SET EX 600', TEAL);
+            await put(s, v, 'cache', 'user:42', fc('c2', 'user:42', 'free v1 · TTL 600'));
+            await s.send(['c2', 'r2'], 'replicate', GREY, { ms: 360 });
+            await s.send(['app', 'userA'], '200 · 12 ms', GREEN);
+            who(s, v, 'A', 'profile ✓ 12 ms', GREEN);
+          },
+        },
+        {
+          title: 'B reads it: same hash, same node, hit',
+          text: 'B lands on a **different pod**, which holds the same ring → also c2. **Hit** in under a millisecond. With a 95 % hit rate MongoDB sees only 1 read in 20.',
+          observe: 'B gets the profile from c2 in ~1 ms.',
+          focus: v => [v.n.userB],
+          async run(s, v) {
+            tick(s, v, '11:00:05');
+            await s.send(['userB', 'app'], 'GET /users/42', BLUE);
+            await s.send(['app', 'c2'], 'GET user:42', TEAL);
+            await s.send(['c2', 'app'], 'HIT', GREEN);
+            who(s, v, 'B', 'profile ✓ 1 ms', GREEN);
+          },
+        },
+        {
+          title: 'B upgrades to pro: write MongoDB first',
+          text: 'Writes go to the **source of truth** first: `updateOne({_id: 42}, {$set: {plan: "pro"}, $inc: {version: 1}})`. If the cache were written first and the DB write failed, the cache would show a plan that does not exist.',
+          observe: 'MongoDB has v2; the cache still has v1.',
+          focus: v => [v.rows['db:user:42'], v.rows['cache:user:42']],
+          async run(s, v) {
+            tick(s, v, '11:01:00');
+            await s.send(['userB', 'app'], 'PUT plan=pro', AMBER);
+            await s.send(['app', 'db'], 'update → v2', GREEN);
+            await put(s, v, 'db', 'user:42', fd('user:42', 'plan=pro   v2'), 'NEW');
+            await put(s, v, 'cache', 'user:42', fc('c2', 'user:42', 'free v1 · stale'), 'NEW');
+          },
+        },
+        {
+          title: '...then DELETE the key, don\'t SET it',
+          text: 'After the DB commit the pod sends `DEL user:42`. Why not `SET` the new value? Two writers that both SET can finish in the wrong order and leave the **older** value cached; two DELs cannot. Delete is idempotent, and the next read loads the fresh document.',
+          observe: 'user:42 disappears from c2 (and from r2).',
+          say: 'On writes, update the database first, then delete the cache key.',
+          focus: v => [v.n.c2],
+          async run(s, v) {
+            await s.send(['app', 'c2'], 'DEL user:42', AMBER);
+            await drop(s, v, 'cache', 'user:42');
+            await s.send(['c2', 'r2'], 'DEL (async)', GREY, { ms: 360 });
+            await s.send(['app', 'userB'], '200 OK', GREEN);
+            who(s, v, 'B', 'plan = pro ✓', GREEN);
+          },
+        },
+        {
+          title: 'The next read refills with v2',
+          text: 'A reloads: miss on c2 → MongoDB → `SET` v2. The cache was wrong for zero reads: between the DB write and the DEL, a few milliseconds at most.',
+          observe: 'c2 holds pro v2.',
+          focus: v => [v.rows['cache:user:42'], v.n.userA],
+          async run(s, v) {
+            await s.send(['userA', 'app'], 'GET /users/42', BLUE);
+            await s.send(['app', 'c2'], 'GET user:42', TEAL);
+            await s.send(['c2', 'app'], '(nil)', GREY);
+            await s.send(['app', 'db'], 'findOne(42)', GREEN);
+            await s.send(['app', 'c2'], 'SET v2 EX 600', TEAL);
+            await put(s, v, 'cache', 'user:42', fc('c2', 'user:42', 'pro v2 · TTL 600'));
+            who(s, v, 'A', 'sees pro ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'stale', title: 'Stale value race', sub: 'slow reader vs writer · versions', color: AMBER,
+      build: (s, v) => setup(s, v, { db: [['user:42', fd('user:42', 'plan=free  v1')]], a: 'reads profile', b: 'upgrades to pro' }),
+      takeaway: 'Delete-on-write still has a race: a **slow reader** can `SET` the value it read **before** the update, after the writer\'s DEL, and it stays wrong for the whole TTL. Fix: store the **DB version** with the value and let a Lua script overwrite only with a **higher** version; keep a TTL (with jitter) as the safety net for everything else.',
+      steps: [
+        {
+          title: 'A misses and reads v1 from MongoDB',
+          text: 'A\'s request runs on pod 1: miss on c2, then `findOne` returns `{plan: "free", version: 1}`. Pod 1 is about to SET it.',
+          observe: 'Pod 1 holds free v1 in memory.',
+          focus: v => [v.app],
+          async run(s, v) {
+            await s.send(['userA', 'app'], 'GET /users/42', BLUE);
+            await s.send(['app', 'c2'], 'GET user:42', TEAL);
+            await s.send(['c2', 'app'], '(nil)', GREY);
+            await s.send(['app', 'db'], 'findOne(42)', GREEN);
+            await s.send(['db', 'app'], 'free · v1', GREEN);
+            appc(s, v, 'pod1: free v1', AMBER);
+          },
+        },
+        {
+          title: 'Pod 1 stalls',
+          text: 'A **stop-the-world GC pause** (or a slow network) freezes pod 1 for 300 ms, just before its `SET`. Nothing unusual: at 1 M reads/s this happens all the time.',
+          observe: 'Pod 1 is paused with the old value.',
+          focus: v => [v.n.app],
+          async run(s, v) {
+            s.tone(v.n.app, 'warn'); s.setSub(v.n.app, 'pod 1: GC pause', AMBER);
+            await s.flash(285, 205, '⏸ GC pause 300 ms', { color: AMBER, stroke: AMBER }, 700);
+          },
+        },
+        {
+          title: 'Meanwhile B upgrades: DB, then DEL',
+          text: 'B\'s write on pod 2 does everything right: MongoDB `$set plan: "pro"`, `$inc version` → **v2**, then `DEL user:42` (there is nothing to delete yet).',
+          observe: 'MongoDB says pro v2; the cache is empty.',
+          focus: v => [v.rows['db:user:42']],
+          async run(s, v) {
+            await s.send(['userB', 'app'], 'PUT plan=pro', AMBER, { pulse: false });
+            await s.send(['app', 'db'], 'update → v2', GREEN);
+            await put(s, v, 'db', 'user:42', fd('user:42', 'plan=pro   v2'), 'NEW');
+            await s.send(['app', 'c2'], 'DEL user:42', AMBER);
+            who(s, v, 'B', 'plan = pro ✓', GREEN);
+          },
+        },
+        {
+          title: '❌ Pod 1 wakes up and SETs its old value',
+          text: 'The pause ends and pod 1 finishes its cache-aside step: `SET user:42 {plan: "free"} EX 600`. The DEL already happened, so nothing removes this.',
+          observe: 'c2 now caches free v1 while MongoDB says pro v2.',
+          focus: v => [v.rows['cache:user:42'], v.rows['db:user:42']],
+          async run(s, v) {
+            s.tone(v.n.app, null); s.setSub(v.n.app, 'ring client · L1');
+            await s.send(['app', 'c2'], 'SET free v1', RED);
+            await put(s, v, 'cache', 'user:42', fc('c2', 'user:42', 'free v1 · TTL 600'), 'BAD');
+            appc(s, v, 'L1: empty');
+          },
+        },
+        {
+          title: '❌ Wrong for the whole TTL',
+          text: 'B reloads: **hit**, "free". Nothing fixes it until the TTL runs out, 10 minutes later. Delete-on-write makes the window tiny, but it cannot close it, and "SET after update" has the same problem when two writers race.',
+          observe: 'B sees the old plan.',
+          say: 'A slow reader can put an old value back after the delete, and it stays until the TTL.',
+          focus: v => [v.n.userB],
+          async run(s, v) {
+            await s.send(['userB', 'app'], 'GET /users/42', BLUE);
+            await s.send(['app', 'c2'], 'GET user:42', TEAL);
+            await s.send(['c2', 'app'], 'HIT · free', RED);
+            who(s, v, 'B', 'still "free" ✕', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: version-aware SET',
+          text: 'Every document carries a `version` that MongoDB increments on each write. The cache stores `{v, data}`, and every fill goes through a small **Lua script**: set only if the incoming version is **higher** than the cached one (atomic on the Redis node). B\'s write now also caches **v2** this way.',
+          observe: 'c2 holds pro v2.',
+          say: 'Store the database version with the value and only overwrite with a higher version.',
+          focus: v => [v.rows['cache:user:42']],
+          async run(s, v) {
+            await drop(s, v, 'cache', 'user:42');
+            who(s, v, 'B', 'plan = pro ✓', GREEN);
+            await s.send(['app', 'c2'], 'setIfNewer v2', GREEN);
+            await put(s, v, 'cache', 'user:42', fc('c2', 'user:42', 'pro v2 · TTL 600'));
+          },
+        },
+        {
+          title: '✅ Pod 1\'s stale SET is rejected',
+          text: 'Pod 1 wakes up and calls `setIfNewer(user:42, v1, …)`. The script sees cached **v2 ≥ 1** and returns 0: ignored. B reloads and gets **pro**. The TTL stays as a safety net for any path that forgets to invalidate. Versions must come from the DB, never from app clocks.',
+          observe: 'The v1 write bounces off; B sees pro.',
+          focus: v => [v.rows['cache:user:42'], v.n.userB],
+          async run(s, v) {
+            await s.send(['app', 'c2'], 'setIfNewer v1', AMBER);
+            await s.send(['c2', 'app'], '0 · older, ignored', GREEN);
+            await s.pulse(v.rows['cache:user:42'], 1, 1.05);
+            await s.send(['userB', 'app'], 'GET /users/42', BLUE);
+            await s.send(['app', 'c2'], 'GET user:42', TEAL);
+            await s.send(['c2', 'app'], 'HIT · pro', GREEN);
+            who(s, v, 'B', 'sees pro ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'evict', title: 'Memory full', sub: 'maxmemory · LRU / LFU · TTL jitter', color: TEAL,
+      build: (s, v) => {
+        setup(s, v, { clock: '20:00:00', a: 'shopping', cache: [['sess:5', fc('c1', 'sess:5', 'idle 3 h'), 'OLD'], ['cart:7', fc('c1', 'cart:7', 'used 2 s ago')]] });
+        s.setSub(v.n.c1, 'mem 100 % full', RED); s.tone(v.n.c1, 'warn');
+        return v;
+      },
+      takeaway: 'A cache must have a bound and a rule for what to drop: `maxmemory` + **allkeys-lru** (recency) or **allkeys-lfu** (frequency, survives scans). Redis\' default, **noeviction**, refuses writes when full: right for a database, wrong for a cache. Add **jitter** to TTLs so keys created together do not all expire together.',
+      steps: [
+        {
+          title: 'c1 is at maxmemory',
+          text: 'Evening peak: c1 has used its whole `maxmemory 8gb`. A new key arrives: `SET cart:77 … EX 1800` (it hashes to c1). What happens now is decided by **maxmemory-policy**.',
+          observe: 'A write reaches a full node.',
+          focus: v => [v.n.c1],
+          async run(s) {
+            await s.send(['userA', 'app'], 'add to cart', BLUE);
+            await s.send(['app', 'c1'], 'SET cart:77', BLUE);
+          },
+        },
+        {
+          title: '❌ noeviction (Redis default): writes fail',
+          text: '`OOM command not allowed when used memory > \'maxmemory\'`. Correct when Redis is a database or a queue, wrong for a cache: during the peak nothing new can be cached, the hit rate drops and MongoDB takes the load. The app must also treat cache errors as misses.',
+          observe: 'An OOM error comes back; the read falls through to MongoDB.',
+          focus: v => [v.n.c1, v.dbl],
+          async run(s, v) {
+            await s.send(['c1', 'app'], 'OOM error', RED);
+            await s.send(['app', 'db'], 'fallback read', AMBER);
+            dbl(s, v, 'DB 900 reads/s ↑', AMBER);
+          },
+        },
+        {
+          title: '✅ Rewind: allkeys-lru evicts the coldest key',
+          text: 'With `maxmemory-policy allkeys-lru`, Redis samples a few keys (`maxmemory-samples 5`) and evicts the least recently used: **sess:5**, idle for 3 h. Approximate LRU is fine for a cache: anything evicted can be read again from MongoDB.',
+          observe: 'sess:5 is evicted, cart:77 is stored.',
+          say: 'Set maxmemory with an LRU or LFU policy, so a full cache evicts instead of failing.',
+          focus: v => [v.cache, v.n.c1],
+          async run(s, v) {
+            dbl(s, v, 'DB 400 reads/s');
+            await put(s, v, 'cache', 'sess:5', fc('c1', 'sess:5', 'evicted (LRU)'), 'BAD');
+            await drop(s, v, 'cache', 'sess:5');
+            await put(s, v, 'cache', 'cart:77', fc('c1', 'cart:77', 'new · TTL 1800'), 'NEW');
+            await s.send(['c1', 'app'], 'OK', GREEN);
+            s.tone(v.n.c1, null); s.setSub(v.n.c1, 'mem 99 % · LRU', TEAL);
+          },
+        },
+        {
+          title: 'LFU when popularity matters',
+          text: '`allkeys-lfu` counts how **often** a key is used (with decay). A nightly job that scans a million keys once would push hot keys out under LRU; under LFU they survive because they are used thousands of times a minute. `volatile-*` policies only evict keys that have a TTL.',
+          observe: 'A scan passes by; cart:7 stays.',
+          focus: v => [v.rows['cache:cart:7']],
+          async run(s, v) {
+            await s.send(['app', 'c1'], 'scan job ×1 M', AMBER);
+            await s.flash(490, 125, 'LFU keeps cart:7 (hot)', ok, 800);
+            await s.pulse(v.rows['cache:cart:7'], 1, 1.05);
+            s.setSub(v.n.c1, 'mem 99 % · LFU', TEAL);
+          },
+        },
+        {
+          title: '❌ TTLs that all expire together',
+          text: 'Next morning a deploy warms 200 k product keys at 09:00, all with `EX 600`. At **09:10:00** they expire in the same second → a burst of misses on MongoDB.',
+          observe: 'A wall of misses at 09:10.',
+          focus: v => [v.n.db, v.dbl],
+          async run(s, v) {
+            tick(s, v, '09:10:00');
+            await put(s, v, 'cache', 'prod', fc('c*', 'prod:*', '200 k expire 09:10'), 'BAD');
+            await s.send(['app', 'db'], 'misses ×200 k', RED);
+            s.tone(v.n.db, 'warn'); dbl(s, v, 'DB 20 k reads/s ✕', RED);
+            await s.shake(v.n.db);
+          },
+        },
+        {
+          title: '✅ Add jitter to TTLs',
+          text: '`EX 600 + random(0, 120)`: expiries spread over two minutes, so misses trickle in. For a few very hot keys, refresh **before** expiry in the background (probabilistic early refresh), so they never expire under load.',
+          observe: 'The same keys now expire over 2 minutes; the DB stays calm.',
+          say: 'Add random jitter to TTLs so keys written together do not expire together.',
+          focus: v => [v.rows['cache:prod'], v.dbl],
+          async run(s, v) {
+            await put(s, v, 'cache', 'prod', fc('c*', 'prod:*', 'TTL 600–720 s'), 'OK');
+            s.tone(v.n.db, null);
+            await s.send(['app', 'db'], 'trickle', GREEN);
+            dbl(s, v, 'DB 520 reads/s', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'fail', title: 'Cache node dies', sub: 'replica promotion · ring fallback', color: RED,
+      build: (s, v) => setup(s, v, {
+        a: 'reads profile', repl: 'c2 → r2 · lag 5 ms',
+        cache: [['user:42', fc('c2', 'user:42', 'pro v2 · TTL 600')], ['r2:user:42', fc('r2', 'user:42', 'pro v2 (copy)')]],
+        db: [['user:42', fd('user:42', 'plan=pro   v2')]],
+      }),
+      takeaway: 'A cache node failure must cost **latency, not correctness**: short client timeouts turn it into misses, a **replica** is promoted in seconds (async replication may drop the last few ms of writes, acceptable for a cache), and without replicas the ring simply hands the dead node\'s arcs to the next node clockwise, so **only its keys** miss.',
+      steps: [
+        {
+          title: 'c2 crashes',
+          text: 'c2\'s process is OOM-killed. Its keys (about 1/3 of the ring) are unreachable. r2 still holds an asynchronous copy.',
+          observe: 'c2 turns red.',
+          focus: v => [v.n.c2],
+          async run(s, v) {
+            s.tone(v.n.c2, 'fail'); s.setSub(v.n.c2, '✕ down', RED);
+            await s.shake(v.n.c2);
+            await put(s, v, 'cache', 'user:42', fc('c2', 'user:42', '✕ unreachable'), 'BAD');
+          },
+        },
+        {
+          title: 'A\'s read fails fast',
+          text: 'The pod\'s Redis client has a **50 ms timeout** and a circuit breaker. The GET to c2 times out, the pod treats it as a **miss** and reads MongoDB, so A gets an answer, just a few ms slower. A cache outage must never make requests hang.',
+          observe: 'The GET bounces; A is served from MongoDB.',
+          say: 'Cache errors are treated as misses, with short timeouts, so a dead node never makes requests slow.',
+          focus: v => [v.n.c2, v.n.userA],
+          async run(s, v) {
+            await s.send(['userA', 'app'], 'GET /users/42', BLUE);
+            await s.bounce('app', 'c2', 'GET user:42', TEAL);
+            await s.send(['app', 'db'], 'findOne(42)', GREEN);
+            who(s, v, 'A', 'profile ✓ (slower)', AMBER);
+          },
+        },
+        {
+          title: '✅ r2 is promoted to primary',
+          text: 'Sentinel (or Redis Cluster) sees c2 missing for `down-after-milliseconds` (~5 s), a **majority** agrees, and **r2 becomes the primary** for c2\'s arcs. Membership publishes the change; pods refresh and send c2\'s keys to r2.',
+          observe: 'r2 turns green: it now owns c2\'s keys.',
+          focus: v => [v.n.r2, v.n.coord],
+          async run(s, v) {
+            tick(s, v, '11:00:05');
+            s.setSub(v.n.coord, 'ring v9 · c2 → r2');
+            await s.send(['coord', 'app'], 'c2 → r2', PURPLE);
+            s.tone(v.n.r2, 'ok'); s.setSub(v.n.r2, 'PRIMARY now', GREEN);
+            await s.pulse(v.n.r2);
+            repl(s, v, 'r2 has no replica yet', AMBER);
+          },
+        },
+        {
+          title: 'Reads continue from r2',
+          text: 'A\'s next read goes to r2 and **hits**: the cache stayed warm through the failure. A new replica for r2 is created in the background.',
+          observe: 'HIT from r2.',
+          focus: v => [v.n.r2, v.n.userA],
+          async run(s, v) {
+            await s.send(['userA', 'app'], 'GET /users/42', BLUE);
+            await s.send(['app', 'r2'], 'GET user:42', TEAL);
+            await s.send(['r2', 'app'], 'HIT', GREEN);
+            who(s, v, 'A', 'profile ✓ 1 ms', GREEN);
+          },
+        },
+        {
+          title: 'Async replication can lose the last writes',
+          text: 'Redis replicates **asynchronously**: a `DEL user:7` that c2 acknowledged 2 ms before it died never reached r2, so r2 still has the old user:7. For a cache that is acceptable: the DB is still correct, and the **TTL** heals the key. Another reason every key gets a TTL.',
+          observe: 'r2 has one stale key that will expire.',
+          focus: v => [v.rows['cache:r2:user:7'], v.repl],
+          async run(s, v) {
+            await put(s, v, 'cache', 'r2:user:7', fc('r2', 'user:7', 'DEL lost · TTL heals'), 'NEW');
+            repl(s, v, 'lost: last ~2 ms', AMBER);
+          },
+        },
+        {
+          title: '✅ No replica? The ring just drops c2',
+          text: 'Without replicas the pods remove c2 from the ring. Its arcs fall to the **next vnode clockwise**: user:42 → **c3**. Only c2\'s keys (~1/3) miss and refill from MongoDB; c1 and c3 keep all of theirs. Correct, just slower for a minute; single-flight (next flow) protects the DB.',
+          observe: 'user:42 turns amber (c3) on the ring and refills there.',
+          say: 'Without a replica, the ring moves only the dead node\'s keys to the next node, and they refill from the database.',
+          focus: v => [v.ring.g, v.n.c3],
+          async run(s, v) {
+            s.tone(v.n.r2, null); s.setSub(v.n.r2, 'not used here', GREY);
+            await drop(s, v, 'cache', 'r2:user:42'); await drop(s, v, 'cache', 'r2:user:7');
+            await dropDots(s, v, 'c2');
+            await repaint(s, v);
+            s.setSub(v.n.coord, 'etcd · ring v9');
+            await s.send(['app', 'c3'], 'GET user:42', AMBER);
+            await s.send(['c3', 'app'], '(nil)', GREY);
+            await s.send(['app', 'db'], 'findOne(42)', GREEN);
+            await s.send(['app', 'c3'], 'SET EX 600', AMBER);
+            await drop(s, v, 'cache', 'user:42');
+            await put(s, v, 'cache', 'c3:user:42', fc('c3', 'user:42', 'pro v2 · refilled'));
+          },
+        },
+      ],
+    },
+    {
+      id: 'hot', title: 'Hot key & stampede', sub: 'single-flight · L1 · key copies', color: INDIGO,
+      build: (s, v) => setup(s, v, {
+        a: 'flash sale', b: 'flash sale', app: 'L1: off',
+        cache: [['prod:9', fc('c3', 'prod:9', 'iPhone · TTL 60')]],
+        db: [['prod:9', fd('prod:9', 'iPhone  price 999')]],
+      }),
+      takeaway: 'All reads of a key go to **one** node, so a hot key can overload it, and when it **expires** thousands of requests miss at once (**thundering herd**). Fix: **single-flight** (`SET lock NX PX`, or coalescing per pod) so one request reloads it; a short-lived **Caffeine L1** in every pod; and for the hottest keys, **copies** (`prod:9#1…#n`) on different nodes.',
+      steps: [
+        {
+          title: 'Flash sale: one key, 50 k reads/s',
+          text: 'Every product page reads `prod:9`. All of them hash to the same owner, **c3**. One Redis node does ~100 k simple ops/s, so this single key eats half of c3 while c1 and c2 idle.',
+          observe: 'c3 runs hot.',
+          focus: v => [v.n.c3],
+          async run(s, v) {
+            await both(s.send(['userA', 'app'], '25 k/s', BLUE), s.send(['userB', 'app'], '25 k/s', BLUE, { pulse: false }));
+            await s.send(['app', 'c3'], 'GET prod:9 ×50 k', AMBER);
+            s.tone(v.n.c3, 'warn'); s.setSub(v.n.c3, 'CPU 95 %', AMBER);
+          },
+        },
+        {
+          title: '❌ The key expires: 10 000 requests miss at once',
+          text: 'At 12:00:00 the TTL ends. Every request in flight during the next ~200 ms sees `(nil)` and goes to MongoDB **for the same document**: a **cache stampede** (thundering herd). 10 k identical queries, and then 10 k identical SETs.',
+          observe: 'MongoDB turns red.',
+          say: 'When a hot key expires, every concurrent request misses and hits the database at once.',
+          focus: v => [v.n.db, v.dbl],
+          async run(s, v) {
+            tick(s, v, '12:00:00');
+            await put(s, v, 'cache', 'prod:9', fc('c3', 'prod:9', 'expired'), 'BAD');
+            await s.send(['app', 'c3'], 'GET prod:9', AMBER);
+            await s.send(['c3', 'app'], '(nil) ×10 k', RED);
+            await s.send(['app', 'db'], 'findOne ×10 k', RED);
+            s.tone(v.n.db, 'fail'); dbl(s, v, 'DB 10 k reads/s ✕', RED);
+            await s.shake(v.n.db);
+            who(s, v, 'A', 'spinner…', AMBER); who(s, v, 'B', 'spinner…', AMBER);
+          },
+        },
+        {
+          title: '✅ Rewind: single-flight with SET NX',
+          text: 'On a miss, a request first tries `SET lock:prod:9 <token> NX PX 3000`. Only **one** wins and reads MongoDB; the others wait ~50 ms and re-read the cache. Inside one pod, concurrent misses also share one `CompletableFuture` (request coalescing).',
+          observe: 'One DB read; everyone else gets the refilled key.',
+          say: 'Single-flight: only one request reloads an expired key, the rest wait for it.',
+          focus: v => [v.n.db, v.rows['cache:prod:9']],
+          async run(s, v) {
+            s.tone(v.n.db, null); dbl(s, v, 'DB 400 reads/s');
+            await s.send(['app', 'c3'], 'SET lock NX PX', GREEN);
+            await s.send(['c3', 'app'], 'OK · 1 winner', GREEN);
+            await s.flash(490, 255, 'others wait 50 ms', info, 700);
+            await s.send(['app', 'db'], 'findOne ×1', GREEN);
+            await s.send(['app', 'c3'], 'SET EX 60±10', AMBER);
+            await put(s, v, 'cache', 'prod:9', fc('c3', 'prod:9', 'iPhone · TTL 64'));
+            dbl(s, v, 'DB 401 reads/s', GREEN);
+            who(s, v, 'A', 'page ✓', GREEN); who(s, v, 'B', 'page ✓', GREEN);
+          },
+        },
+        {
+          title: '✅ A tiny L1 cache in every pod',
+          text: 'Each pod keeps hot keys in a **Caffeine** cache for 1–5 s. With 50 pods, c3 sees at most ~50 reads of prod:9 per second instead of 50 k. Trade-off: a few seconds of staleness, fine for a product page, not for stock decrements.',
+          observe: 'Reads stop at the pod; c3 cools down.',
+          focus: v => [v.app, v.n.c3],
+          async run(s, v) {
+            appc(s, v, 'L1: prod:9 2 s', GREEN);
+            await both(s.send(['userA', 'app'], 'GET prod:9', BLUE), s.send(['userB', 'app'], 'GET prod:9', BLUE, { pulse: false }));
+            await s.flash(285, 205, 'L1 hit · 50 µs', ok, 700);
+            s.tone(v.n.c3, null); s.setSub(v.n.c3, 'CPU 20 %', TEAL);
+          },
+        },
+        {
+          title: '✅ Or spread copies of the key',
+          text: 'For keys too hot even with L1 (or that must be fresher), store N copies: `prod:9#1 … #3` hash to **different nodes**. Readers pick a random copy; writers update or delete all of them.',
+          observe: 'Three copies on three nodes share the load.',
+          focus: v => [v.n.c1, v.n.c2, v.n.c3],
+          async run(s, v) {
+            await s.send(['app', 'c1'], 'GET prod:9#1', BLUE, { ms: 420 });
+            await put(s, v, 'cache', 'p1', fc('c1', 'prod:9#1', 'copy'));
+            await s.send(['app', 'c2'], 'GET prod:9#2', TEAL, { ms: 420 });
+            await put(s, v, 'cache', 'p2', fc('c2', 'prod:9#2', 'copy'));
+            await s.send(['app', 'c3'], 'GET prod:9#3', AMBER, { ms: 420 });
+            await put(s, v, 'cache', 'p3', fc('c3', 'prod:9#3', 'copy'));
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Cache or store? Size, traffic, staleness.',
+      lines: [
+        ['I', 'Design a distributed cache, like a Redis cluster for our services.'],
+        ['C', 'Is it a cache in front of a database, or should it be a primary store too?'],
+        ['I', 'A cache in front of MongoDB.'],
+        ['C', 'How much hot data and how much traffic?'],
+        ['I', 'About 2 TB of hot data and 1 million reads per second.'],
+        ['C', 'How stale can data be?'],
+        ['I', 'Seconds are fine for most data; a user\'s plan should update quickly.'],
+        ['P', 'Write: cache only · 2 TB · 1 M reads/s · seconds of staleness · DB is the truth.'],
+      ],
+      avoid: 'Designing persistence and transactions: the cache is allowed to lose everything.',
+    },
+    {
+      t: 'Estimate the scale', min: 3, goal: 'Memory and ops decide the node count.',
+      lines: [
+        ['C', '2 TB ÷ ~64 GB usable per node ≈ **32 primaries**, plus one replica each.'],
+        ['C', '1 M reads/s ÷ 32 ≈ **31 k ops/s per node**; Redis does ~100 k, so there is headroom for hot spots.'],
+        ['C', 'At a 95 % hit rate MongoDB sees **50 k reads/s**; with an empty cache it would see 1 M.'],
+        ['P', 'That last number is why resizing and failures must not empty the cache.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 4, goal: 'Cache operations and what a value looks like.',
+      lines: [
+        ['C', '`get(key)`, `set(key, value, ttl)`, `delete(key)`, `setIfNewer(key, version, value)`.'],
+        ['C', 'Keys like `user:42`; values are JSON with the DB `version`; every key has a TTL with jitter.'],
+        ['C', 'Ring config in etcd: `{ version: 8, nodes: [c1…c4], vnodes: 150 }`.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Ring routing, cache-aside, replicas.',
+      lines: [
+        ['P', 'Draw: app pods (ring client) → Redis primaries + replicas; Membership (etcd); MongoDB behind.'],
+        ['C', 'hash % N would remap ~75 % of keys when going 3 → 4 nodes, so I use **consistent hashing**: murmur3 ring, next node clockwise, ~150 virtual nodes per server.'],
+        ['C', 'Clients route directly; membership changes are pushed from etcd. Redis Cluster with 16 384 slots is the off-the-shelf version.'],
+        ['C', 'Reads are cache-aside with a jittered TTL; writes update MongoDB, then DEL the key.'],
+        ['P', 'Walk user:42: hash → c2 → miss → MongoDB → SET → B hits c2.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Resize, staleness, eviction, failures, hot keys.',
+      lines: [
+        ['I', 'We add a node.'],
+        ['C', 'Only keys on its new arcs move, ~1/N, a little from every node; they miss once and refill.'],
+        ['I', 'Can the cache serve stale data?'],
+        ['C', 'Yes: a slow reader can SET an old value after the DEL. I store the DB version and use a Lua setIfNewer, with TTL as the safety net.'],
+        ['I', 'Memory fills up.'],
+        ['C', 'maxmemory with allkeys-lru or lfu; the default noeviction would make writes fail.'],
+        ['I', 'A node dies.'],
+        ['C', 'Short timeouts → miss; the replica is promoted (async, may lose a few ms of writes); without replicas the ring moves only its keys.'],
+        ['I', 'One product gets 50 k reads/s and then expires.'],
+        ['C', 'Single-flight with SET NX, a Caffeine L1 in each pod, and copies of the key on several nodes.'],
+      ],
+      avoid: 'Writing to the cache first, or SETting the new value on update instead of deleting it.',
+    },
+    {
+      t: 'Wrap up', min: 3, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: consistent hashing with vnodes, cache-aside with jittered TTLs, DB-first writes with DEL, versioned sets, LRU/LFU, replicas, single-flight.'],
+        ['C', 'Next: metrics (hit rate, evictions, per-node ops, hot-key detection), CDC-driven invalidation for other services, warm-up after a full restart.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): 1–2 minutes, pause between paragraphs
+    summary: [
+      "The cache sits in front of **MongoDB**, which stays the source of truth, so losing the cache can make us slower but never lose data. I'd run a cluster of Redis primaries, each with a replica, and the first question is which node owns a key. The naive answer is hash of the key mod N, but the moment we add a fourth node about three quarters of the keys map somewhere else and the database gets a miss storm. So I use **consistent hashing**: nodes and keys are hashed with murmur3 onto a ring, a key belongs to the next node clockwise, and each server gets around 150 **virtual nodes** so the load is even. Adding a node then moves only about one N-th of the keys.",
+      "The ring lives in the client library inside each Spring Boot pod, basically a TreeMap with ceilingEntry, and the node list comes from etcd, so there's no extra hop. In practice **Redis Cluster** does the same with 16,384 hash slots and Lettuce routes for us. Reads are **cache-aside**: get from Redis, on a miss read Mongo and set with a TTL plus some jitter. On writes I update Mongo first and then **delete** the key rather than setting it, because a delete can never leave an older value behind.",
+      "There's still one race: a slow reader can put an old value back after a writer deleted it. For data where that hurts, like a user's plan, I store the document **version** and a small Lua script only overwrites with a higher version; the TTL is the safety net for everything else. Memory is bounded with maxmemory and **allkeys-lru** or **LFU**, because Redis' default, noeviction, would make writes fail when it's full.",
+      "For failures, clients use short timeouts and treat errors as misses. If a primary dies, its **replica is promoted**; replication is async, so we might lose the last few writes, which is fine for a cache. Without replicas the ring just drops the node and only its keys miss. And for **hot keys**, when a popular key expires I use **single-flight** with SET NX so only one request reloads it, plus a small Caffeine cache in each pod and, for the very hottest keys, a few copies spread across nodes.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> get, set with TTL, delete, eviction when full; add and remove nodes online.</li>
+        <li><b>Non-functional:</b> ~1 ms reads, 1 M reads/s, 2 TB hot data, survive node loss, bounded staleness (seconds).</li>
+        <li><b>Not a database:</b> MongoDB is the source of truth; the cache may lose anything.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Memory</td><td class="m">2 TB ÷ 64 GB</td><td>≈ 32 primaries + 32 replicas</td></tr>
+        <tr><td>Ops per node</td><td class="m">1 M ÷ 32</td><td>≈ 31 k/s (Redis ~100 k)</td></tr>
+        <tr><td>DB reads</td><td class="m">5 % of 1 M</td><td>≈ 50 k/s; empty cache → 1 M</td></tr>
+        <tr><td>Resize 3 → 4</td><td class="m">% N vs ring</td><td>≈ 75 % vs 25 % of keys move</td></tr></table>` },
+      { h: '3 · Routing', color: '#c47d1e', html: `<ul>
+        <li><code>h = murmur3(key)</code> in 0 … 2<sup>32</sup>; owner = first virtual node clockwise (<code>ceilingEntry</code>, wrap to <code>firstEntry</code>).</li>
+        <li>~150 vnodes per server → even arcs; a new node takes a little from every node.</li>
+        <li>Ring config in etcd with a version; pods watch and swap their ring atomically.</li>
+        <li>Off the shelf: Redis Cluster, <code>CRC16(key) % 16384</code> slots, <code>MOVED</code>/<code>ASK</code> redirects, <code>{hash tags}</code>.</li></ul>` },
+      { h: '4 · Data', color: '#8f4fc4', html: `<pre>// MongoDB (truth)
+{ _id: 42, name: "Asha", plan: "pro", version: 2 }
+
+// Redis (cache) — hash with the DB version
+HSET user:42 v 2 data '{"name":"Asha","plan":"pro"}'
+EXPIRE user:42 637            // 600 s + jitter
+
+// etcd (ring config)
+{ version: 8, nodes: ["c1","c2","c3","c4"], vnodes: 150 }</pre>` },
+      { h: '5 · Read & write path', color: '#2f6fe0', html: `<ol>
+        <li>Read: ring → node → <code>GET</code>; miss → single-flight lock → MongoDB → <code>setIfNewer</code> with TTL.</li>
+        <li>Write: MongoDB <code>$set</code> + <code>$inc version</code> → <code>DEL key</code> (or setIfNewer with the new version).</li>
+        <li>Hot keys: Caffeine L1 (1–5 s) and key copies <code>k#1…k#n</code>.</li></ol>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>Cache errors = misses: 50–100 ms timeouts, circuit breaker.</li>
+        <li>Async replica per primary; Sentinel / Cluster failover in seconds; may lose the last ms of writes.</li>
+        <li>maxmemory + allkeys-lru / lfu; TTL with jitter on every key.</li>
+        <li>Protect MongoDB during warm-up: single-flight, rate limits, add nodes one at a time.</li></ul>` },
+    ],
+    decisions: [
+      ['Consistent hashing + vnodes', 'Resize moves ~1/N of keys, evenly.', 'Every client must hold the same ring.'],
+      ['Client-side routing', 'No proxy hop, no central bottleneck.', 'Ring logic in every client language.'],
+      ['Cache-aside, DB first, then DEL', 'DB stays correct; deletes are order-free.', 'One extra miss after every write.'],
+      ['Versioned setIfNewer', 'Closes the slow-reader race.', 'Needs a version field and a Lua script.'],
+      ['allkeys-lru / lfu', 'Full cache evicts instead of failing.', 'Evicted keys cost a DB read.'],
+      ['Async replicas', 'Warm failover in seconds.', 'May lose the last writes; double memory.'],
+      ['Single-flight + L1', 'Hot keys never stampede the DB.', 'A little latency for waiters; L1 is seconds stale.'],
+    ],
+    code: [
+      { t: 'Consistent-hash ring with virtual nodes (TreeMap)', code: `public final class HashRing {
+  private static final int VNODES = 150;
+  private volatile TreeMap<Long, String> ring = new TreeMap<>();
+
+  // Called when etcd pushes a new ring version: build a new map, swap it atomically.
+  public void setNodes(Collection<String> nodes) {
+    TreeMap<Long, String> r = new TreeMap<>();
+    for (String node : nodes)
+      for (int i = 0; i < VNODES; i++) r.put(hash(node + "#" + i), node);   // "c1#0", "c1#1", …
+    ring = r;
+  }
+
+  public String nodeFor(String key) {
+    TreeMap<Long, String> r = ring;
+    Map.Entry<Long, String> e = r.ceilingEntry(hash(key));   // first vnode clockwise
+    return (e != null ? e : r.firstEntry()).getValue();      // wrap around past 2^32
+  }
+
+  private static long hash(String s) {                       // murmur3 → 0 … 2^32
+    return Hashing.murmur3_32_fixed().hashString(s, UTF_8).asInt() & 0xffffffffL;
+  }
+}` },
+      { t: 'Cache-aside with RedisTemplate, delete on write', code: `@Service
+class UserCache {
+  // With Redis Cluster, Lettuce routes each key to its slot's node; with our own ring: pools.get(ring.nodeFor(key))
+  private final StringRedisTemplate redis;
+  private final UserRepository users;
+
+  User get(long id) {
+    String key = "user:" + id;
+    String hit = redis.opsForValue().get(key);
+    if (hit != null) return Json.read(hit, User.class);
+    User u = users.findById(id).orElseThrow();                 // miss → source of truth
+    redis.opsForValue().set(key, Json.write(u), ttl());
+    return u;
+  }
+
+  void changePlan(long id, String plan) {
+    users.updatePlan(id, plan);              // MongoDB first: $set plan, $inc version
+    redis.delete("user:" + id);              // then DELETE, never SET
+  }
+
+  private Duration ttl() { return Duration.ofSeconds(600 + ThreadLocalRandom.current().nextInt(120)); }  // jitter
+}` },
+      { t: 'Versioned set: only a higher version wins (Lua)', code: `private static final RedisScript<Long> SET_IF_NEWER = RedisScript.of("""
+    local cur = redis.call('HGET', KEYS[1], 'v')
+    if cur and tonumber(cur) >= tonumber(ARGV[1]) then return 0 end   -- older or equal: ignore
+    redis.call('HSET', KEYS[1], 'v', ARGV[1], 'data', ARGV[2])
+    redis.call('EXPIRE', KEYS[1], ARGV[3])
+    return 1
+    """, Long.class);
+
+boolean cache(User u) {
+  Long ok = redis.execute(SET_IF_NEWER, List.of("user:" + u.id()),
+      String.valueOf(u.version()), Json.write(u), String.valueOf(ttl().toSeconds()));
+  return ok != null && ok == 1;      // 0 → a newer version is already cached (the slow reader loses)
+}` },
+      { t: 'Single-flight with SET NX PX + Caffeine L1', code: `private final Cache<String, Product> l1 = Caffeine.newBuilder()
+    .maximumSize(10_000).expireAfterWrite(Duration.ofSeconds(2)).build();
+
+Product get(String key) {
+  return l1.get(key, this::fromRedis);         // L1; Caffeine also coalesces concurrent loads in this pod
+}
+
+private Product fromRedis(String key) {
+  for (int attempt = 0; attempt < 20; attempt++) {
+    String hit = redis.opsForValue().get(key);
+    if (hit != null) return Json.read(hit, Product.class);
+    String token = UUID.randomUUID().toString();
+    if (Boolean.TRUE.equals(redis.opsForValue()
+          .setIfAbsent("lock:" + key, token, Duration.ofSeconds(3)))) {      // SET lock NX PX 3000
+      try {
+        Product p = products.findById(key).orElseThrow();                   // the only DB read
+        redis.opsForValue().set(key, Json.write(p), ttl());
+        return p;
+      } finally { unlockIfOwner("lock:" + key, token); }                     // Lua: DEL only if value == token
+    }
+    sleepMillis(50);                                                         // someone else is loading
+  }
+  return products.findById(key).orElseThrow();                              // give up waiting
+}` },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    ch: { name: 'Consistent hashing', color: '#8f4fc4' },
+    cc: { name: 'Consistency', color: '#c47d1e' },
+    ev: { name: 'Memory & eviction', color: '#13968a' },
+    rr: { name: 'Failures', color: '#ce3434' },
+    sc: { name: 'Scale & hot keys', color: '#2f6fe0' },
+  },
+  followups: [
+    { g: 'ch', q: 'Why not hash(key) % N?', what: 'Changing N remaps most keys.', why: 'A key stays only if h % N == h % (N+1): about 1/(N+1) of keys.', how: 'Consistent hashing: nodes and keys on one ring, next node clockwise; resize moves ~1/N.', trade: 'Every client must hold the same ring.', flow: 'ring' },
+    { g: 'ch', q: 'What are virtual nodes, and how many?', what: 'Each server placed at many points on the ring.', why: 'A few random points give very uneven arcs, and a new node would take keys from one neighbour only.', how: '100–200 vnodes per server (murmur3("c1#i")); weight bigger machines with more vnodes.', trade: 'A bigger TreeMap in each client (still tiny).', flow: 'ring' },
+    { g: 'ch', q: 'How does Redis Cluster do it?', what: '16 384 hash slots instead of a ring.', why: 'Slots are a fixed set of buckets that can be moved between nodes.', how: 'slot = CRC16(key) % 16384; each primary owns slot ranges; clients follow MOVED / ASK redirects; {hash tags} keep related keys in one slot.', trade: 'Multi-key commands only within one slot.', flow: 'ring' },
+    { g: 'ch', q: 'Where does the ring live: client, proxy or coordinator?', what: 'Someone must map key → node.', why: 'All callers must agree.', how: 'Client library + etcd membership (no hop); or a proxy (twemproxy, Envoy) for polyglot fleets; or Redis Cluster (gossip).', trade: 'A proxy adds latency and a component to scale.' },
+    { g: 'cc', q: 'Why delete on write instead of updating the cache?', what: 'Two writers can SET in the wrong order.', why: 'The older value may land last and stay until the TTL.', how: 'DB first, then DEL; the next read loads the latest version.', trade: 'One extra miss after each write.', flow: 'read' },
+    { g: 'cc', q: 'A slow reader writes an old value after an update.', what: 'Stale until the TTL expires.', why: 'Read-DB-then-SET races with write-then-DEL.', how: 'Store the DB version; Lua setIfNewer rejects older versions; short TTLs elsewhere (or a delayed second DEL).', trade: 'Needs a version field on every document.', flow: 'stale' },
+    { g: 'cc', q: 'How do other services\' caches learn that data changed?', what: 'Several services cache the same user.', why: 'Only the writer knows it changed.', how: 'Publish change events (MongoDB change streams / CDC → Kafka) and DEL keys in each consumer; TTL as a backup.', trade: 'Event lag = staleness window.' },
+    { g: 'cc', q: 'Cache-aside, write-through or write-behind?', what: 'Who writes the cache, and when.', why: 'Each trades freshness, latency and risk.', how: 'Cache-aside (default, app controls it); write-through (cache layer writes DB synchronously); write-behind (async to DB: fast but can lose writes).', trade: 'Write-behind turns the cache into a database you can lose.' },
+    { g: 'ev', q: 'Memory is full: what happens?', what: 'Depends on maxmemory-policy.', why: 'Redis\' default is noeviction: writes fail with OOM.', how: 'allkeys-lru or allkeys-lfu for a cache; volatile-* only if some keys must never be evicted.', trade: 'Evicted hot keys cost DB reads.', flow: 'evict' },
+    { g: 'ev', q: 'LRU or LFU?', what: 'Recency vs frequency.', why: 'A one-off scan pushes hot keys out of an LRU.', how: 'LFU for skewed, stable popularity; LRU for recency-driven data like sessions. Both are sampled approximations in Redis.', trade: 'LFU adapts slowly when popularity shifts.', flow: 'evict' },
+    { g: 'ev', q: 'TTL with or without jitter?', what: 'Keys written together expire together.', why: 'Synchronised expiry = a burst of misses.', how: 'TTL + random(0, 20 %); early background refresh for hot keys.', trade: 'Slightly less predictable expiry.', flow: 'evict' },
+    { g: 'rr', q: 'A cache node dies.', what: 'Its keys are unreachable.', why: 'Each key lives on one primary.', how: 'Short timeouts → miss; Sentinel / Cluster promotes the replica; without replicas the ring hands its arcs to the next node.', trade: 'A short burst of misses or slower reads.', flow: 'fail' },
+    { g: 'rr', q: 'Can a failover lose data?', what: 'Yes, the last few ms of writes.', why: 'Redis replication is asynchronous.', how: 'Acceptable for a cache (DB is the truth, TTL heals); WAIT for replicas only where it matters.', trade: 'WAIT adds latency to writes.', flow: 'fail' },
+    { g: 'rr', q: 'The whole cluster restarts empty.', what: 'Every read goes to MongoDB.', why: 'Hit rate drops from 95 % to 0.', how: 'Single-flight, rate-limit DB access, warm critical keys first, bring traffic back gradually.', trade: 'Degraded latency during warm-up.' },
+    { g: 'sc', q: 'One key gets 200 k reads/s.', what: 'Its single owner node saturates.', why: 'All reads of a key go to one node.', how: 'Caffeine L1 in every pod (seconds TTL), copies k#1…k#n on different nodes, read replicas.', trade: 'L1 and copies are slightly staler.', flow: 'hot' },
+    { g: 'sc', q: 'A popular key expires (cache stampede).', what: 'Thousands of identical DB queries at once.', why: 'Every concurrent request sees the miss.', how: 'Single-flight lock (SET NX PX) or per-pod coalescing; serve the stale value while one request refreshes; early refresh.', trade: 'Waiters get a little latency.', flow: 'hot' },
+    { g: 'sc', q: 'How many nodes for 2 TB and 1 M reads/s?', what: 'Memory and throughput both matter.', why: '~64 GB usable and ~100 k ops/s per Redis node.', how: '~32 primaries + replicas, leaving headroom for fragmentation, hot keys and a node failure.', trade: 'Over-provisioning costs memory.' },
+    { g: 'sc', q: 'Redis or Memcached?', what: 'Both are fast in-memory key/value stores.', why: 'Memcached: simple, multi-threaded, strings only. Redis: data structures, Lua, replication, cluster.', how: 'Redis when you need scripts (setIfNewer, locks), structures or replication; Memcached for plain huge caches.', trade: 'Redis executes commands on one thread per node.' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>

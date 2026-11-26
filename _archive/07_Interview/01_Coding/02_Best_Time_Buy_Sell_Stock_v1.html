@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-stock">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2. Best Time to Buy &amp; Sell Stock · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../../_shared/design-tokens.css">
+<link rel="stylesheet" href="../../../_shared/deck.css">
+<link rel="stylesheet" href="engine_v1/algo.css">
+</head>
+<body data-topic="code:Best Time to Buy and Sell Stock">
+<header class="topbar">
+ <a class="tbrand" href="../../../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="../../../07_Interview/01_Coding/00_Coding_Practice.html" title="All 22 coding problems" style="color:#4338CA">⌨ Coding</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2>2. Best Time to Buy &amp; Sell Stock</h2><span class="sub">Arrays · Easy · the "lowest so far, best so far" pattern</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="prob" id="prob"></div>
+ <div class="toc" id="toc"></div>
+ <div class="howuse"><span><b>← →</b> keys move between slides</span><span><b>Overview</b> loops by itself · <b>Step by step</b> = you click</span><span>Type your own input on the step slide</span></div>
+</div>
+</section>
+
+<section class="cat" data-name="1. Overview" data-col="b">
+<h1 class="cat-title">1. Overview</h1>
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.1</span><h2>Watch the whole run</h2><span class="sub">prices = [7, 1, 5, 3, 6, 4] — track the cheapest day so far and the best sale so far</span></div>
+ <div id="ov"></div>
+</div>
+</section>
+
+<section class="cat" data-name="2. Step by step" data-col="p">
+<h1 class="cat-title">2. Step by step</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.1</span><h2>Step by step — minimum loop</h2><span class="sub">[3, 1, 4, 2] → 4 days cover every case: first day, new low, better sale, no change</span></div>
+ <div id="st"></div>
+</div>
+</section>
+
+<section class="cat" data-name="3. Remember" data-col="o">
+<h1 class="cat-title">3. Remember</h1>
+<div class="slide c-o">
+ <div class="sh"><span class="sn">3.1</span><h2>Variables, approach &amp; the 4-chunk shortcut</h2><span class="sub">write it from memory: D · L · B · S</span></div>
+ <div id="rem"></div>
+</div>
+</section>
+
+<section class="cat" data-name="4. Complexity" data-col="g">
+<h1 class="cat-title">4. Complexity</h1>
+<div class="slide c-g">
+ <div class="sh"><span class="sn">4.1</span><h2>Time &amp; space</h2><span class="sub">one pass, two variables — no extra structure</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div id="cx"></div>
+</div>
+</section>
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <span class="kbd">← → keys</span>
+</footer>
+
+<script src="../../../_shared/deck.js"></script>
+<script src="engine_v1/algo.js"></script>
+<script>
+const CODE=`public int maxProfit(int[] prices) {
+    int minPrice = Integer.MAX_VALUE;   // cheapest buy so far
+    int maxProfit = 0;                  // best answer so far
+    for (int price : prices) {
+        if (price < minPrice) {
+            minPrice = price;           // new cheapest day to buy
+        } else {
+            maxProfit = Math.max(maxProfit, price - minPrice);
+        }
+    }
+    return maxProfit;
+}`;
+
+// the real algorithm, recording a frame at every interesting line
+function run({prices}){
+ const F=[],MAX=2147483647;let minPrice=MAX,maxProfit=0,buy=-1,bb=-1,bs=-1;
+ const best=()=>bb<0?'best deal: none yet':`best deal: buy day ${bb} (${prices[bb]}) → sell day ${bs} (${prices[bs]})`;
+ const arr=(d,extra={},tags)=>{const cls={},ptr={};prices.forEach((_,j)=>{if(d!=null&&j>d)cls[j]='dim';});
+  if(buy>=0){cls[buy]='buy';ptr.buy=buy;}if(d!=null){cls[d]='cur';ptr.day=d;}Object.assign(cls,extra);
+  return {name:'prices',vals:prices,bars:true,ptr,pcol:{buy:'g',day:'y'},cls,tags,note:best()};};
+ const V=(price,diff)=>[...(price!=null?[['price',price]]:[]),['minPrice',minPrice],['maxProfit',maxProfit],...(diff!=null?[['price − minPrice',diff]]:[])];
+ F.push({line:[2,3],chunk:0,arr:arr(null),vars:V(),msg:'Start with <b>minPrice = MAX</b> (nothing bought yet) and <b>maxProfit = 0</b> (not trading is allowed, so profit is never negative).'});
+ prices.forEach((p,d)=>{
+  F.push({line:4,chunk:1,arr:arr(d),vars:V(p),msg:`<b>Day ${d}</b>: price = <b>${p}</b>.`});
+  if(p<minPrice){
+   F.push({line:5,chunk:2,arr:arr(d),vars:V(p),msg:`Is ${p} &lt; minPrice (${minPrice===MAX?'MAX':minPrice})? <b>Yes</b> → cheaper than any day before.`});
+   minPrice=p;buy=d;
+   F.push({line:6,chunk:2,arr:arr(d),vars:V(p),fly:['a'+d,'vminPrice',p],msg:`New cheapest day to buy: <b>minPrice = ${p}</b> (day ${d}). Selling today would give 0, so skip the sell check.`});
+  }else{
+   const diff=p-minPrice,span={};for(let j=buy+1;j<d;j++)span[j]='span';
+   F.push({line:5,chunk:2,arr:arr(d,span),vars:V(p),msg:`Is ${p} &lt; minPrice (${minPrice})? <b>No</b> → try selling today instead.`});
+   const better=diff>maxProfit;if(better){maxProfit=diff;bb=buy;bs=d;}
+   F.push({line:8,chunk:3,arr:arr(d,span,{[d]:(diff>=0?'+':'')+diff}),vars:V(p,diff),msg:`Profit if I sell today = ${p} − ${minPrice} = <b>${diff}</b>. ${better?`Better than before → <b>maxProfit = ${diff}</b>.`:`Not better than ${maxProfit} → keep it.`}`});
+  }});
+ const fin={};if(bb>=0){fin[bb]='hit';fin[bs]='hit';}
+ F.push({line:11,chunk:3,arr:{...arr(null,fin),ptr:bb>=0?{buy:bb,sell:bs}:{},pcol:{buy:'g',sell:'g'}},vars:V(),out:maxProfit,
+  msg:bb>=0?`Done: buy on day ${bb} at ${prices[bb]}, sell on day ${bs} at ${prices[bs]} → <b>${maxProfit}</b>.`:'Prices only went down → no profitable trade, return <b>0</b>.'});
+ return F;}
+
+ALGO.page({
+ file:'StockProfit.java',code:CODE,run,
+ statement:'<code>prices[i]</code> is the stock price on day <code>i</code>. Buy on one day and sell on a <b>later</b> day. Return the maximum profit, or <b>0</b> if no profit is possible.',
+ examples:[['prices = [7, 1, 5, 3, 6, 4]','5   (buy at 1, sell at 6)'],['prices = [7, 6, 4, 3, 1]','0   (never buy)']],
+ idea:'Walk the days once. Remember the <b>cheapest price so far</b> (best day to have bought). On every other day ask "what if I sell today?" and keep the <b>best profit so far</b>.',
+ tags:[['two variables','warn'],['one pass','ok'],['running minimum','no'],['O(n) · O(1)','ok']],
+ mnem:{letters:['D','L','B','S'],phrase:'Declare · Loop · Buy-low · Sell-check',sub:'Lowest so far, best so far — you can only sell after you buy.'},
+ overview:{prices:[7,1,5,3,6,4]},
+ step:{prices:[3,1,4,2]},
+ fields:[{k:'prices',type:'arr',min:2,max:9}],
+ chunks:[
+  {t:'Declare',d:'minPrice = MAX, maxProfit = 0',lines:[2,3]},
+  {t:'Loop',d:'for each price (left → right = time order)',lines:[4]},
+  {t:'Buy-low',d:'cheaper than minPrice? → minPrice = price',lines:[5,6]},
+  {t:'Sell-check',d:'else maxProfit = max(maxProfit, price − minPrice); return it',lines:[7,8,11]}],
+ declare:[
+  ['minPrice','int','Integer.MAX_VALUE','cheapest buy price seen so far'],
+  ['maxProfit','int','0','best profit so far (0 = don\'t trade)'],
+  ['price','int','loop variable','today\'s price (sell candidate)']],
+ approach:'Go left to right. If today is the cheapest day so far, it becomes the new buy day. Otherwise compute today\'s profit against that cheapest day and keep the maximum. Because the buy day is always to the left, "sell after buy" is automatic.',
+ forget:[
+  '<b>maxProfit starts at 0</b>, not Integer.MIN_VALUE — no profitable trade means answer 0.',
+  '<b>minPrice starts at MAX_VALUE</b> (or <code>prices[0]</code> and loop from 1).',
+  'Don\'t look for the global min and global max — the max may come <b>before</b> the min (e.g. [7, 1]).',
+  'No array or map needed: two ints are the whole "data structure".'],
+ cx:{time:'O(n)',timeWhy:'every day is visited exactly once',space:'O(1)',spaceWhy:'only minPrice and maxProfit, whatever n is',
+  rows:[['Brute force: every buy/sell pair','O(n²)','O(1)','two loops, sell index j &gt; i',false],
+   ['One pass, running minimum','O(n)','O(1)','keeps the best buy day while walking ✓',true]],
+  race:[{label:'Two loops n²/2',f:n=>n*(n-1)/2,col:'#EF4444'},{label:'One pass n',f:n=>n,col:'#22C55E'}],
+  follow:[
+   ['Unlimited transactions (Stock II)?','Add every positive day-to-day rise: <code>profit += max(0, p[i] − p[i−1])</code>. O(n), O(1).'],
+   ['Return the buy and sell days?','Store buyDay when minPrice changes; when maxProfit improves, save (buyDay, today).'],
+   ['At most 2 or k transactions / fee / cooldown?','Dynamic programming with hold / not-hold states per day.'],
+   ['Prices only decrease?','minPrice keeps dropping, the else branch never improves → returns 0.'],
+   ['How is this related to Kadane?','It is max subarray (#5) on the daily differences p[i] − p[i−1].']],
+  gtk:'Same "running best so far" idea powers <b>Maximum Subarray / Kadane</b> (#5): keep a running value and a best value in one pass.'}
+});
+</script>
+</body></html>

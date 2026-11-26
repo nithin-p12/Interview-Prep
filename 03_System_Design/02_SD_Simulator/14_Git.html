@@ -1,0 +1,896 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-git">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Git · System Design · v1.0</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// Git internals + hosted Git (GitHub-like). Taught HERE: content-addressed objects (Merkle DAG), refs as pointers,
+// merge base + 3-way merge, push/fetch negotiation + packfiles, ref update as compare-and-set, replicated repo
+// storage, Git LFS. Kafka, S3 and DB scaling basics live in 00_Core_Components.html.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+const KEEP = '#d5d9dc';
+
+// Row colours for objects (blob / tree / commit) and refs.
+const ST = {
+  BLOB: { fill: '#f3f6fe', stroke: BLUE, color: BLUE },
+  TREE: { fill: '#f2faf9', stroke: TEAL, color: TEAL },
+  COMMIT: { fill: '#faf6fd', stroke: PURPLE, color: PURPLE },
+  REF: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  OK: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
+  LOG: { fill: '#f6f7fb', stroke: '#e3e6ee', color: '#203347' },
+  BAD: { fill: '#fff4f4', stroke: RED, color: RED },
+};
+// SVG collapses normal spaces, so pad with non-breaking ones to keep the monospace columns aligned.
+const pad = (str, n) => str.padEnd(n, ' ');
+const O = (sha, type, rest = '') => `${pad(sha, 5)}${pad(type, 7)}${rest}`;    // object row
+const R = (ref, rest) => `${pad(ref, 9)}${rest}`;                              // ref row
+const KIND = { blob: 'BLOB', tree: 'TREE', commit: 'COMMIT' };
+
+// Commit graph (bottom left): columns and lanes.
+const X = [28, 66, 104, 142, 180], MAIN = 410, FEAT = 470;
+function drawCommit(s, v, id, x, y, parents = [], color = PURPLE) {
+  for (const p of parents) {
+    const P = v.dag[p], dx = x - P._x, dy = y - P._y, d = Math.hypot(dx, dy);
+    v.dagLines.push(s.line(x - dx / d * 11, y - dy / d * 11, P._x + dx / d * 12, P._y + dy / d * 12, { stroke: '#9aa3a9', width: 1.4 }));
+  }
+  const g = s.g(x, y, s.root, { class: 'sd-commit' });
+  g.circle = SD.el('circle', { cx: 0, cy: 0, r: 9, fill: '#fff', stroke: color, 'stroke-width': 2.2 }, g);
+  s.text(g, 0, -17, id, { 'font-size': 10.5, 'font-weight': 700, fill: color, 'font-family': 'Consolas, "Cascadia Mono", monospace' });
+  v.dag[id] = g;
+  return g;
+}
+async function commit(s, v, id, lane, col, parents, color) { await s.pop(drawCommit(s, v, id, X[col], lane, parents, color), 260); }
+const branchAt = (s, v, name, x, y, color) => { v.br[name] = s.chip(x, y + 23, name, { size: 10.5, mono: true, color, stroke: color, fill: '#fff' }); };
+async function moveBranch(s, v, name, col, lane) { await s.move(v.br[name], X[col], lane + 23, 420); await s.pulse(v.br[name], 1, 1.1); }
+
+// State drawn next to the components: objects, refs, commit graph, people, router and replica refs, PR.
+function setup(s, v, { objs = [], refs = [], graph = [], branches = [], a = 'local repo', b = 'local repo', rt = 'repo-42 → A · B · C', ra = 'main → —', rb = 'main → —', rc = 'main → —', pr = 'no PR', objTitle = 'OBJECTS · repo-42', refTitle = 'REFS · repo-42' } = {}) {
+  v.obj = s.store(885, 196, 205, objTitle, { color: PURPLE });
+  v.ref = s.store(885, 366, 205, refTitle, { color: AMBER });
+  v.rows = {};
+  objs.forEach(([key, txt, st]) => { s.row(v.obj, txt, { ...ST[st], now: true }); v.rows[key] = v.obj.rows[v.obj.rows.length - 1]; v.rows[key].st = v.obj; });
+  refs.forEach(([key, txt, st]) => { s.row(v.ref, txt, { ...ST[st ?? 'REF'], now: true }); v.rows[key] = v.ref.rows[v.ref.rows.length - 1]; v.rows[key].st = v.ref; });
+  v.dag = {}; v.dagLines = []; v.br = {};
+  v.dagT = s.note(15, 372, 'COMMIT GRAPH', { 'text-anchor': 'start', 'font-size': 11, 'font-weight': 700, fill: GREY, 'letter-spacing': '.04em' });
+  graph.forEach(([id, lane, col, parents, color]) => drawCommit(s, v, id, X[col], lane, parents, color));
+  branches.forEach(([name, lane, col, color]) => branchAt(s, v, name, X[col], lane, color ?? AMBER));
+  v.ua = s.chip(95, 140, a, { color: GREY });
+  v.ub = s.chip(95, 320, b, { color: GREY });
+  v.rt = s.chip(310, 320, rt, { mono: true, color: GREY });
+  v.ra = s.chip(555, 140, ra, { mono: true, color: GREY });
+  v.rb = s.chip(555, 320, rb, { mono: true, color: GREY });
+  v.rc = s.chip(555, 497, rc, { mono: true, color: GREY });
+  v.pr = s.chip(785, 320, pr, { color: GREY });
+  return v;
+}
+// Add (or update) an object row; keeps the last 5 visible.
+async function obj(s, v, key, txt, st) {
+  const r = v.rows[key];
+  if (r) { r.label.textContent = txt; s.paintRow(r, ST[st]); await s.pulse(r, 1, 1.05); return; }
+  if (v.obj.rows.length >= 5) { const old = v.obj.rows[0]; await s.unrow(v.obj, old); for (const k in v.rows) if (v.rows[k] === old) delete v.rows[k]; }
+  v.rows[key] = await s.row(v.obj, txt, ST[st]); v.rows[key].st = v.obj;
+}
+async function ref(s, v, key, txt, st = 'REF') {
+  const r = v.rows[key];
+  if (r) { r.label.textContent = txt; s.paintRow(r, ST[st]); await s.pulse(r, 1, 1.05); return; }
+  v.rows[key] = await s.row(v.ref, txt, ST[st]); v.rows[key].st = v.ref;
+}
+async function reset(s, v) {
+  for (const st of [v.obj, v.ref]) for (const r of [...st.rows]) await s.unrow(st, r);
+  v.rows = {};
+  for (const g of Object.values(v.dag)) g.remove(); for (const l of v.dagLines) l.remove(); for (const c of Object.values(v.br)) c.remove();
+  v.dag = {}; v.dagLines = []; v.br = {};
+}
+const paint = color => ({ color, stroke: color === GREY ? KEEP : color });
+const who = (s, v, u, txt, color = GREY) => s.setChip({ a: v.ua, b: v.ub, rt: v.rt, ra: v.ra, rb: v.rb, rc: v.rc, pr: v.pr }[u], txt, paint(color));
+const ok = { mono: true, color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, bad = { mono: true, color: RED, stroke: RED, fill: '#fff4f4' }, warn = { mono: true, color: AMBER, stroke: AMBER, fill: '#fdf6ea' };
+
+// Server state shared by the hosted-Git flows: main → c2 on all three replicas.
+const SERVER = { objs: [['c2', O('c2b7', 'commit', 'tree 7a41 ← c1a0'), 'COMMIT']], refs: [['main', R('main', '→ c2b7'), 'REF']],
+  graph: [['c1', MAIN, 0, [], PURPLE], ['c2', MAIN, 1, ['c1'], PURPLE]], branches: [['main', MAIN, 1, AMBER]], ra: 'main → c2b7', rb: 'main → c2b7', rc: 'main → c2b7' };
+
+window.DESIGN = {
+  id: 'git', n: 14, title: 'Git', tagline: 'immutable content-addressed objects, branches as tiny pointers, and every ref update is a compare-and-set',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'Developers', x0: 0, x1: 200, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'Every developer has a **full local repository**: all objects and all history. Commits, branches and merges are local operations; only push and fetch talk to the server.',
+      detail: 'The commit graph (bottom) is the history: each commit points to its parents.' },
+    { id: 'app', title: 'Front end & LFS', x0: 200, x1: 420, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: 'The **Git front end** terminates SSH / HTTPS, authenticates and checks permissions; the **repo router** knows which storage nodes hold each repository. **LFS** keeps large binaries out of Git.',
+      detail: 'Stateless; scale by adding instances.' },
+    { id: 'data', title: 'Repo storage', x0: 420, x1: 690, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: 'A repository is a directory of **packfiles + refs** on local disk. Each repo lives on **3 storage nodes**; a push is written to all of them and the ref update needs a **quorum**.',
+      detail: 'Repos are sharded by repo id: one repo never spans nodes, many repos share a node.' },
+    { id: 'async', title: 'Events & checks', x0: 690, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'After a ref changes, a **push event** goes to Kafka. Pull requests, checks, webhooks and CI all react to it, without slowing the push down.',
+      detail: 'The stores on the right show one repository\'s objects and refs.' },
+  ],
+  layersIntro: {
+    title: 'Objects are immutable, refs are pointers, the server only moves pointers safely',
+    text: 'Developers commit locally: content becomes **blobs, trees and commits** named by their **SHA**. A **push** sends only the missing objects in a **packfile** to the front end, which finds the repo\'s **storage nodes** and writes to all replicas; the branch then moves with a **compare-and-set**. A **push event** drives pull requests, webhooks and CI. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    devA: { x: 95, y: 90, w: 150, label: 'Asha', sub: 'git push', icon: '👩‍💻', layer: 'entry' },
+    devB: { x: 95, y: 270, w: 150, label: 'Ben', sub: 'git fetch · merge', icon: '👨‍💻', layer: 'entry' },
+    edge: { x: 310, y: 90, w: 160, label: 'Git front end', sub: 'SSH · HTTPS · auth', icon: '🚪', layer: 'app' },
+    router: { x: 310, y: 270, w: 160, label: 'Repo router', sub: 'repo → replicas', icon: '🧭', layer: 'app' },
+    lfs: { x: 310, y: 445, w: 160, label: 'LFS store', sub: 'S3 · big files', icon: '🪣', layer: 'app' },
+    st1: { x: 555, y: 90, w: 160, label: 'Storage A', sub: 'replica · disk', icon: '🗄️', layer: 'data' },
+    st2: { x: 555, y: 270, w: 160, label: 'Storage B', sub: 'replica · disk', icon: '🗄️', layer: 'data' },
+    st3: { x: 555, y: 445, w: 160, label: 'Storage C', sub: 'replica · disk', icon: '🗄️', layer: 'data' },
+    kafka: { x: 785, y: 90, w: 150, label: 'Kafka', sub: 'push events', icon: '📨', layer: 'async' },
+    hooks: { x: 785, y: 270, w: 150, label: 'PRs & webhooks', sub: 'checks · merge', icon: '🔀', layer: 'async' },
+    ci: { x: 985, y: 90, w: 150, label: 'CI', sub: 'external', icon: '🤖', layer: 'async', ext: true },
+  },
+  wires: [['devA', 'edge'], ['devB', 'edge'], ['devA', 'lfs'], ['edge', 'router'], ['edge', 'st1'], ['edge', 'st2'], ['edge', 'st3'], ['st1', 'st2'], ['st1', 'st3'],
+    ['st1', 'kafka'], ['kafka', 'hooks'], ['hooks', 'ci'], ['hooks', 'st1']],
+
+  components: {
+    devA: {
+      name: 'Developers (local repositories)',
+      what: '`git add` writes **blobs**, `git commit` writes a **tree** and a **commit**, and moves the branch. All of it happens in `.git/objects` and `.git/refs` on the laptop.',
+      why: 'Git is distributed: every clone is a complete, verifiable copy of the history, so most work needs no server.',
+      without: 'A central VCS (SVN) where every commit, branch and log needs the server.',
+      tech: 'git CLI / IDE (IntelliJ uses JGit-like logic), SSH key or token', scale: 'Millions of developers, each with full copies.', fails: 'Laptop dies → any other clone has the full history.',
+    },
+    devB: {
+      name: 'Ben',
+      what: 'A second developer: fetches Asha\'s work, merges branches and races her to push to `main`.',
+      why: 'Two developers show merges, non-fast-forward rejections and fetch negotiation.',
+      without: '—',
+      tech: 'Same', scale: 'Same', fails: 'Same',
+    },
+    edge: {
+      name: 'Git front end',
+      what: 'Speaks the Git wire protocol (v2) over **SSH** and **smart HTTPS**: authenticates the key / token, checks repo permissions and branch protection, then streams the pack between client and storage.',
+      why: 'Storage nodes should only store; auth, rate limits and protocol handling live in one stateless tier.',
+      without: 'Every storage node exposed to the internet with its own auth.',
+      tech: 'SSH daemon + HTTP service (e.g. Spring Boot with JGit\'s `ReceivePack` / `UploadPack`), behind an LB', scale: 'Stateless: add instances; long-lived connections for big clones.', fails: 'A dropped push leaves only unreferenced objects behind; the ref never moved.',
+      core: ['gw', 'API gateway'],
+    },
+    router: {
+      name: 'Repo router',
+      what: 'Maps `repo-42 → [A, B, C]` and tells the front end which replicas are healthy and up to date. Backed by a small metadata DB, heavily cached.',
+      why: 'Repositories are sharded across thousands of storage nodes; something must know where each one lives.',
+      without: 'Hash repo id mod N: adding a node moves huge repos around.',
+      tech: 'MySQL / Postgres table `repo_replicas(repo_id, node, checksum)`, Redis cache', scale: 'Read-heavy, tiny rows; cache everything.', fails: 'Cache keeps serving; moves and repairs pause.',
+      core: ['db', 'DB scaling'],
+    },
+    lfs: {
+      name: 'Git LFS store',
+      what: 'Large files (videos, models, PSDs) are replaced in Git by a **pointer** (`oid sha256:…, size`). The content goes to the LFS API, which hands out **presigned S3 URLs**.',
+      why: 'Git keeps every version of every file in every clone; binaries do not delta well.',
+      without: 'A 2 GB file in history makes every clone 2 GB bigger, forever.',
+      tech: 'LFS batch API + S3 (+ CDN for downloads), content addressed by SHA-256', scale: 'Object storage: practically unlimited.', fails: 'Download fails → the pointer file stays; retry `git lfs pull`.',
+      core: ['s3', 'Storage · S3'],
+    },
+    st1: {
+      name: 'Storage nodes (replicas)',
+      what: 'Plain Git repositories on local SSD: `objects/pack/*.pack` + `.idx`, refs, and **object pools** shared by forks. Every repo has **3 replicas** on different racks.',
+      why: 'Git needs fast random access to packs on a local filesystem; replicating whole repos keeps that simple.',
+      without: 'One disk per repo: a disk failure loses unpushed history for everyone else.',
+      tech: 'Git on ext4/XFS, pack bitmaps, `git repack` / `gc` in the background (GitHub calls its system Spokes)', scale: 'Shard by repo; move hot or huge repos to their own nodes.', fails: 'One replica down → quorum of 2 continues; repair re-syncs it later.',
+    },
+    st2: {
+      name: 'Storage B',
+      what: 'Second replica of repo-42. Takes part in every ref-update vote and can serve reads.',
+      why: 'Reads (clone / fetch) spread across up-to-date replicas.',
+      without: '—',
+      tech: 'Same', scale: 'Same', fails: 'Same',
+    },
+    st3: {
+      name: 'Storage C',
+      what: 'Third replica. In the replica flow it lags behind and is repaired.',
+      why: 'Three replicas = survive one failure and still have a majority.',
+      without: '—',
+      tech: 'Same', scale: 'Same', fails: 'Same',
+    },
+    kafka: {
+      name: 'Kafka · push events',
+      what: '`{ repo, ref, before, after, pusher }` published **after** the ref update commits, keyed by repo id.',
+      why: 'One push triggers PR updates, checks, webhooks, code search indexing, notifications: none of that may slow the push.',
+      without: 'The push waits for every webhook and CI system.',
+      tech: 'Kafka topic `repo-pushes`, key = repoId', scale: 'Partitions + consumer groups per feature.', fails: 'At-least-once → consumers dedupe by `(repo, ref, after)`.',
+      core: ['kafka', 'Queue · Kafka'],
+    },
+    hooks: {
+      name: 'Pull requests & webhooks',
+      what: 'Updates PR #12 with the new head, recomputes mergeability (a test merge), delivers signed webhooks, collects check statuses, and performs the **merge button** as a server-side merge + ref CAS.',
+      why: 'Code review and CI live around Git, not inside it.',
+      without: 'CI polls every repo for changes.',
+      tech: 'Kafka consumer, PR table in a DB, webhook delivery with HMAC-SHA256 signature and retries', scale: 'Async; webhook delivery isolated per customer endpoint.', fails: 'Retries with backoff; failed deliveries visible and re-sendable.',
+    },
+    ci: {
+      name: 'CI system',
+      what: 'Receives the webhook, fetches the commit by SHA, builds, and posts a status back to the PR.',
+      why: 'Branch protection: main only moves after checks pass.',
+      without: '—',
+      tech: 'GitHub Actions / Jenkins', scale: 'Its own system.', fails: 'Webhook retried; status stays "pending".',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Hash the content, point a branch at it, send only what is missing, move the pointer with a compare-and-set.',
+    points: [
+      { t: 'Store', color: BLUE, d: 'File → **blob**, folder → **tree**, snapshot → **commit**; each named by the **SHA** of its content.' },
+      { t: 'Point', color: AMBER, d: 'A **branch** is a 41-byte file holding one commit id; committing just moves it.' },
+      { t: 'Push', color: TEAL, d: 'Send missing objects in a **packfile**; write to **3 replicas**; move `main` only if it still points where we expect.' },
+      { t: 'React', color: PURPLE, d: 'A **push event** updates PRs, fires webhooks and starts CI.' },
+    ],
+    stats: [['100 M+', 'repositories'], ['3', 'replicas per repo'], ['40 hex', 'SHA-1 object id'], ['1', 'winner per ref update']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v); v.ready = true; }
+    await reset(s, v);
+    who(s, v, 'a', 'local repo'); who(s, v, 'b', 'local repo'); who(s, v, 'pr', 'no PR');
+    for (const k of ['ra', 'rb', 'rc']) who(s, v, k, 'main → c1a0');
+    drawCommit(s, v, 'c1', X[0], MAIN, [], PURPLE); branchAt(s, v, 'main', X[0], MAIN, AMBER);
+
+    ui.say(0); ui.cap('**Store** · Asha commits: blob, tree and commit, each named by its hash');
+    await obj(s, v, 'blob', O('5d2b', 'blob', '"fix typo"'), 'BLOB');
+    await obj(s, v, 'tree', O('7a41', 'tree', 'README → 5d2b'), 'TREE');
+    await obj(s, v, 'c2', O('c2b7', 'commit', 'tree 7a41 ← c1a0'), 'COMMIT');
+    await commit(s, v, 'c2', MAIN, 1, ['c1'], PURPLE);
+    ui.say(1); ui.cap('**Point** · the branch moves to the new commit; nothing is copied');
+    await moveBranch(s, v, 'main', 1, MAIN);
+    await ref(s, v, 'main', R('main', '→ c2b7'));
+    ui.say(2); ui.cap('**Push** · only the 3 new objects travel; all replicas store them; main moves by CAS');
+    await s.send(['devA', 'edge'], 'pack · 3 obj', TEAL, { ms: 400 });
+    await s.send(['edge', 'router'], 'where repo-42?', GREY, { ms: 320 });
+    await s.send(['edge', 'st1'], 'pack', TEAL, { ms: 360 });
+    await Promise.all([s.send(['st1', 'st2'], 'pack', TEAL, { ms: 360 }), s.send(['st1', 'st3'], 'pack', TEAL, { ms: 360, pulse: false })]);
+    for (const k of ['ra', 'rb', 'rc']) who(s, v, k, 'main → c2b7', GREEN);
+    who(s, v, 'a', 'pushed ✓', GREEN);
+    ui.say(3); ui.cap('**React** · the push event updates the PR and starts CI');
+    await s.send(['st1', 'kafka', 'hooks'], 'push main', PURPLE, { ms: 360 });
+    who(s, v, 'pr', 'PR #12 · checks running', PURPLE);
+    await s.send(['hooks', 'ci'], 'webhook', PURPLE, { ms: 360 });
+    await s.send(['devB', 'edge'], 'fetch', BLUE, { ms: 360 });
+    who(s, v, 'b', 'fetched c2b7', BLUE);
+    await s.wait(1800);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'objects', title: 'Objects and hashes', sub: 'blob · tree · commit · dedup', color: BLUE,
+      build: (s, v) => setup(s, v, { objTitle: 'OBJECTS · Asha .git', refTitle: 'REFS · Asha .git', a: 'empty repo', b: '—', rt: '—', ra: '—', rb: '—', rc: '—' }),
+      takeaway: 'Git is a **content-addressed** object store. A blob\'s id is the SHA of its content, a tree lists names → ids, a commit points to a tree and its parents. Same content = same id (**dedup** for free), and every id covers everything below it: a **Merkle DAG**, so one hash verifies a whole history.',
+      steps: [
+        {
+          title: 'git add: the file becomes a blob',
+          text: 'Git hashes `"blob 6\\0hello\\n"` with SHA-1 → `ce0136…` and stores the zlib-compressed bytes at `.git/objects/ce/0136…`. The **name of the object is the hash of its content**. No file name, no date: just bytes.',
+          observe: 'Blob ce01 appears.',
+          say: 'Git stores content under the hash of that content.',
+          focus: v => [v.obj],
+          async run(s, v) {
+            await s.flash(95, 40, 'git add hello.txt', { mono: true, color: BLUE, stroke: BLUE, fill: '#fff' }, 500);
+            await obj(s, v, 'b1', O('ce01', 'blob', '"hello\\n"'), 'BLOB');
+            who(s, v, 'a', 'staged hello.txt', BLUE);
+          },
+        },
+        {
+          title: 'git commit: a tree and a commit',
+          text: 'The **tree** is a listing: `100644 hello.txt → ce01`. Its id is the hash of that listing. The **commit** records `tree 9f3e`, author, time, message and **no parent** (first commit). Its id `c1a0` is the hash of all that.',
+          observe: 'Tree 9f3e and commit c1a0.',
+          focus: v => [v.rows['t1'], v.rows['c1']],
+          async run(s, v) {
+            await obj(s, v, 't1', O('9f3e', 'tree', 'hello.txt → ce01'), 'TREE');
+            await obj(s, v, 'c1', O('c1a0', 'commit', 'tree 9f3e · root'), 'COMMIT');
+            await commit(s, v, 'c1', MAIN, 0, [], PURPLE);
+          },
+        },
+        {
+          title: 'A branch is just a pointer',
+          text: '`.git/refs/heads/main` is a 41-byte text file containing `c1a0…`, and `HEAD` says `ref: refs/heads/main`. Creating a branch writes one tiny file, which is why branches in Git are instant.',
+          observe: 'main → c1a0; HEAD → main.',
+          say: 'A branch is a named pointer to one commit.',
+          focus: v => [v.ref, v.br.main],
+          async run(s, v) {
+            branchAt(s, v, 'main', X[0], MAIN, AMBER); await s.pop(v.br.main, 260);
+            await ref(s, v, 'main', R('main', '→ c1a0'));
+            await ref(s, v, 'HEAD', R('HEAD', '→ refs/heads/main'), 'LOG');
+          },
+        },
+        {
+          title: 'Change one file: everything else is reused',
+          text: 'Asha adds `README` and commits. New blob `5d2b`, new tree `7a41` = `{ README → 5d2b, hello.txt → ce01 }`, new commit `c2b7` with **parent c1a0**. `hello.txt` did not change, so the new tree points to the **same blob ce01**: unchanged files cost nothing.',
+          observe: 'Tree 7a41 reuses blob ce01; main moves to c2b7.',
+          say: 'Unchanged content keeps its id, so every snapshot shares it: deduplication by design.',
+          focus: v => [v.rows['t2'], v.br.main],
+          async run(s, v) {
+            await obj(s, v, 'b2', O('5d2b', 'blob', '"# Demo"'), 'BLOB');
+            await obj(s, v, 't2', O('7a41', 'tree', 'ce01 + 5d2b'), 'TREE');
+            await obj(s, v, 'c2', O('c2b7', 'commit', 'tree 7a41 ← c1a0'), 'COMMIT');
+            await commit(s, v, 'c2', MAIN, 1, ['c1'], PURPLE);
+            await moveBranch(s, v, 'main', 1, MAIN);
+            await ref(s, v, 'main', R('main', '→ c2b7'));
+          },
+        },
+        {
+          title: 'Integrity: one hash covers all history',
+          text: 'If one bit of `ce01` flips on disk, its hash no longer matches its name: `git fsck` and every fetch detect it. Because the tree contains blob ids and the commit contains the tree id and parent id, **c2b7 vouches for the entire history**. Git is moving from SHA-1 to SHA-256; today\'s SHA-1 is collision-hardened.',
+          observe: 'A corrupted blob is caught by its own hash.',
+          focus: v => [v.rows['t2'], v.rows['c2']],
+          async run(s, v) {
+            const r = v.rows['t2'];
+            s.paintRow(r, ST.BAD); r.label.textContent = O('7a41', 'tree', 'bit flipped ✕');
+            await s.shake(r);
+            await s.flash(95, 40, 'fsck: hash mismatch 7a41', bad, 800);
+            s.paintRow(r, ST.TREE); r.label.textContent = O('7a41', 'tree', 'ce01 + 5d2b');
+            who(s, v, 'a', 'c2b7 verifies all', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'merge', title: 'Branch and merge', sub: 'merge base · 3-way merge', color: PURPLE,
+      build: (s, v) => setup(s, v, { objTitle: 'OBJECTS · Ben .git', refTitle: 'REFS · Ben .git', objs: [['c2', O('c2b7', 'commit', 'tree 7a41 ← c1a0'), 'COMMIT']], refs: [['main', R('main', '→ c2b7')]], graph: SERVER.graph, branches: SERVER.branches, a: 'on main', b: 'on main', rt: '—', ra: '—', rb: '—', rc: '—' }),
+      takeaway: 'Branches diverge because commits only point **backwards** to parents. To merge, Git finds the **merge base** (best common ancestor) by walking parents, then does a **3-way merge** per file: base vs ours vs theirs. A side that changed wins; both sides changing the same lines is a **conflict**. The result is a commit with **two parents**.',
+      steps: [
+        {
+          title: 'git switch -c feature',
+          text: 'Creates `refs/heads/feature → c2b7`. No files are copied: it is a second pointer at the same commit.',
+          observe: 'Two labels on c2.',
+          focus: v => [v.br.feature, v.ref],
+          async run(s, v) {
+            branchAt(s, v, 'feature', X[1], FEAT, BLUE); await s.pop(v.br.feature, 260);
+            await ref(s, v, 'feature', R('feature', '→ c2b7'));
+          },
+        },
+        {
+          title: 'Both branches move on',
+          text: 'Asha commits `f1` on **feature** (changes `pay.java`); meanwhile `main` gets `m3` (changes `README`). Each new commit points back to c2. The history is now a **fork**, not a line.',
+          observe: 'f1 on feature, m3 on main.',
+          focus: v => [v.dag.f1, v.dag.m3],
+          async run(s, v) {
+            await commit(s, v, 'f1', FEAT, 2, ['c2'], BLUE);
+            await moveBranch(s, v, 'feature', 2, FEAT);
+            await ref(s, v, 'feature', R('feature', '→ f1d3'));
+            await commit(s, v, 'm3', MAIN, 2, ['c2'], PURPLE);
+            await moveBranch(s, v, 'main', 2, MAIN);
+            await ref(s, v, 'main', R('main', '→ m3e9'));
+          },
+        },
+        {
+          title: 'Find the merge base',
+          text: '`git merge-base main feature` walks parents from both tips until they meet: **c2b7**. That is the snapshot both sides started from, and the reference for "who changed what".',
+          observe: 'c2 is highlighted as the base.',
+          say: 'Git merges against the merge base, the best common ancestor of both branches.',
+          focus: v => [v.dag.c2],
+          async run(s, v) {
+            v.dag.c2.circle.setAttribute('fill', '#fdf6ea'); v.dag.c2.circle.setAttribute('stroke', AMBER);
+            await s.pulse(v.dag.c2, 2, 1.3);
+            await s.flash(150, 350, 'base = c2b7', warn, 700);
+          },
+        },
+        {
+          title: '3-way merge, file by file',
+          text: '`README`: base ≠ ours, base = theirs → take **ours**. `pay.java`: base = ours, base ≠ theirs → take **theirs**. Only when **both** sides changed the same lines differently does Git stop with a **conflict** and markers `<<<<<<<` for a human.',
+          observe: 'Both changes are combined without a conflict.',
+          focus: v => [v.obj],
+          async run(s, v) {
+            await obj(s, v, 'tm', O('8c40', 'tree', 'merged tree'), 'TREE');
+            await s.flash(230, 40, 'README ← ours · pay.java ← theirs', ok, 800);
+          },
+        },
+        {
+          title: 'The merge commit has two parents',
+          text: '`m4` points to **m3 and f1**; main moves to m4. If main had not moved, Git would simply **fast-forward** the pointer (no merge commit). `rebase` instead re-creates f1 on top of m3 as a **new commit with a new id**, which is why you never rebase commits others already pulled.',
+          observe: 'm4 joins the two lines.',
+          say: 'A merge commit records both parents; a rebase rewrites commits with new hashes.',
+          focus: v => [v.dag.m4, v.br.main],
+          async run(s, v) {
+            await obj(s, v, 'm4', O('m4a2', 'commit', '← m3e9, f1d3'), 'COMMIT');
+            await commit(s, v, 'm4', MAIN, 3, ['m3', 'f1'], PURPLE);
+            await moveBranch(s, v, 'main', 3, MAIN);
+            await ref(s, v, 'main', R('main', '→ m4a2'));
+            who(s, v, 'b', 'merged feature ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'push', title: 'Push and fetch', sub: 'negotiation · packfile · verify', color: TEAL,
+      build: (s, v) => setup(s, v, { ...SERVER, objTitle: 'OBJECTS · server repo-42', refTitle: 'REFS · server repo-42', a: 'main → m4a2 (local)', b: 'main → c2b7 (local)' }),
+      takeaway: 'Push and fetch first **negotiate**: the server advertises its refs, the client works out which objects the other side lacks by walking the graph, and only those travel, **delta-compressed in one packfile**. The receiver re-hashes every object, checks connectivity, and only then considers moving the ref.',
+      steps: [
+        {
+          title: 'git push: find the repository',
+          text: 'Asha\'s client opens SSH to the **front end**, which checks her key and her write access, then asks the **repo router**: `repo-42 → A, B, C`. All storage nodes are plain Git repos on disk.',
+          observe: 'The front end knows repo-42 lives on A, B, C.',
+          focus: v => [v.n.router, v.rt],
+          async run(s, v) {
+            await s.send(['devA', 'edge'], 'git push origin main', TEAL);
+            await s.send(['edge', 'router'], 'where repo-42?', GREY);
+            await s.send(['router', 'edge'], 'A · B · C', GREEN);
+            who(s, v, 'rt', 'repo-42 → A · B · C', GREEN);
+          },
+        },
+        {
+          title: 'The server advertises its refs',
+          text: 'Storage A answers with its refs: `main c2b7`. Asha\'s main is `m4a2`. Her client walks back from m4a2 until it reaches c2b7: commits **m3, f1, m4** plus their new trees and blobs are what the server lacks.',
+          observe: 'Client computes: 7 objects missing.',
+          say: 'The client compares refs and sends only the objects the server does not have.',
+          focus: v => [v.ra, v.ua],
+          async run(s, v) {
+            await s.send(['st1', 'edge', 'devA'], 'main c2b7', AMBER);
+            await s.flash(95, 40, 'have c2b7 → send 7 objects', ok, 800);
+          },
+        },
+        {
+          title: 'One packfile, delta-compressed',
+          text: 'The 7 objects are packed into one stream: similar objects are stored as **deltas** against each other and zlib-compressed. A typical push of a few commits is a few KB, not the whole repository.',
+          observe: 'A small pack travels to storage A.',
+          focus: v => [v.n.st1],
+          async run(s, v) {
+            await s.send(['devA', 'edge', 'st1'], 'pack · 7 obj · 3 KB', TEAL);
+            await obj(s, v, 'm3', O('m3e9', 'commit', '← c2b7'), 'COMMIT');
+            await obj(s, v, 'f1', O('f1d3', 'commit', '← c2b7'), 'COMMIT');
+            await obj(s, v, 'm4', O('m4a2', 'commit', '← m3e9, f1d3'), 'COMMIT');
+          },
+        },
+        {
+          title: 'Verify before anything is visible',
+          text: '`index-pack` re-hashes every object (a corrupted or forged object fails), then a **connectivity check** confirms m4a2 reaches existing history. Until the ref moves, these objects are unreferenced and invisible; a dropped connection leaves only garbage for `gc`.',
+          observe: 'Objects verified; main has not moved yet.',
+          focus: v => [v.ra, v.obj],
+          async run(s, v) {
+            await s.flash(555, 40, 'index-pack ✓ · connected ✓', ok, 800);
+            who(s, v, 'ra', 'main → c2b7 (objects in)', AMBER);
+          },
+        },
+        {
+          title: 'Ben fetches: "want m4a2, have c2b7"',
+          text: 'After the ref moves (next flow), Ben\'s `git fetch` sends `want m4a2` and `have c2b7`; the server packs only the difference. Big CI clones use **shallow** (`--depth 1`) or **partial** clones (`--filter=blob:none`), and **pack bitmaps** make counting objects fast.',
+          observe: 'Ben receives just the 7 new objects.',
+          say: 'Fetch negotiates with want and have lines, and the server sends one pack of the difference.',
+          focus: v => [v.n.devB, v.ub],
+          async run(s, v) {
+            await ref(s, v, 'main', R('main', '→ m4a2'), 'OK'); who(s, v, 'ra', 'main → m4a2', GREEN);
+            await s.send(['devB', 'edge', 'st1'], 'want m4a2 · have c2b7', BLUE);
+            await s.send(['st1', 'edge', 'devB'], 'pack · 7 obj', TEAL);
+            who(s, v, 'b', 'main → m4a2 ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'race', title: 'Two pushes, one branch', sub: 'ref CAS · non-fast-forward', color: AMBER,
+      build: (s, v) => setup(s, v, { ...SERVER, objTitle: 'OBJECTS · server repo-42', refTitle: 'REFS · server repo-42', a: 'a1 on top of c2b7', b: 'b1 on top of c2b7' }),
+      takeaway: 'Objects never conflict: they are immutable and named by content, so both packs can be stored. The only mutable thing is the **ref**, and it moves with a **compare-and-set**: "set main to a1 **if it is still c2**". The loser\'s push is rejected as **non-fast-forward**; it must fetch, merge or rebase, and push again. `--force-with-lease` is the client-side version of the same check.',
+      steps: [
+        {
+          title: 'Asha and Ben push at the same moment',
+          text: 'Both started from main = c2b7. Asha has commit **a1**, Ben has **b1**. Both packs upload and are verified; storing both is harmless, because `a1` and `b1` are different objects with different names.',
+          observe: 'Both packs are stored.',
+          focus: v => [v.obj],
+          async run(s, v) {
+            await Promise.all([s.send(['devA', 'edge'], 'push a1', TEAL), s.send(['devB', 'edge'], 'push b1', BLUE, { pulse: false })]);
+            await s.send(['edge', 'st1'], 'pack a1 + pack b1', TEAL);
+            await obj(s, v, 'a1', O('a1f0', 'commit', '← c2b7 (Asha)'), 'COMMIT');
+            await obj(s, v, 'b1', O('b1c4', 'commit', '← c2b7 (Ben)'), 'COMMIT');
+          },
+        },
+        {
+          title: '❌ Blind ref write: last writer wins',
+          text: 'If the server just wrote `main = <new>`, Asha\'s write lands, then Ben\'s overwrites it. main → b1c4, and **a1 is no longer reachable**: her commit silently disappears from the branch.',
+          observe: 'a1 is lost from main.',
+          say: 'Blindly overwriting a ref loses commits.',
+          focus: v => [v.rows['main'], v.rows['a1']],
+          async run(s, v) {
+            await ref(s, v, 'main', R('main', '→ a1f0'), 'REF');
+            await ref(s, v, 'main', R('main', '→ b1c4 a1 lost!'), 'BAD');
+            s.paintRow(v.rows['a1'], ST.BAD);
+            who(s, v, 'a', 'a1 vanished ✕', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: compare-and-set on the ref',
+          text: 'Each push carries `old → new` per ref: Asha sends `main c2b7 → a1f0`. The server takes `main.lock` (an exclusive create), checks the current value **is c2b7**, writes a1f0 and renames the lock into place. Atomic, like `git update-ref refs/heads/main a1f0 c2b7`.',
+          observe: 'main → a1f0.',
+          say: 'A ref update is a compare-and-set: only if the branch still points where the pusher expects.',
+          focus: v => [v.rows['main']],
+          async run(s, v) {
+            s.paintRow(v.rows['a1'], ST.COMMIT);
+            await ref(s, v, 'main', R('main', '→ c2b7'));
+            who(s, v, 'a', 'a1 on top of c2b7');
+            await s.send(['edge', 'st1'], 'main c2b7 → a1f0', GREEN);
+            await ref(s, v, 'main', R('main', '→ a1f0'), 'OK');
+            await s.send(['st1', 'edge', 'devA'], 'ok main', GREEN);
+            who(s, v, 'a', 'pushed ✓', GREEN); who(s, v, 'ra', 'main → a1f0', GREEN);
+          },
+        },
+        {
+          title: 'Ben\'s CAS fails: non-fast-forward',
+          text: 'Ben sends `main c2b7 → b1c4`, but main is now a1f0 → **rejected**. Even without the race, the server refuses a ref update whose new commit does **not contain** the old one: `! [rejected] main -> main (fetch first)`. Branch protection can also demand passing checks or a PR.',
+          observe: 'Ben is told to fetch first.',
+          focus: v => [v.ub, v.n.devB],
+          async run(s, v) {
+            await s.bounce('edge', 'st1', 'main c2b7 → b1c4', AMBER);
+            await s.send(['edge', 'devB'], 'rejected · fetch first', RED);
+            who(s, v, 'b', 'rejected: non-fast-forward', RED);
+          },
+        },
+        {
+          title: 'Fetch, rebase, push again',
+          text: 'Ben fetches a1, runs `git pull --rebase`: his change becomes **b1′** with parent a1f0 (a new hash). Now `main a1f0 → b1e2` is a fast-forward and the CAS succeeds. `git push --force` skips this check; `--force-with-lease` keeps it.',
+          observe: 'main → b1e2, with a1 still in history.',
+          focus: v => [v.rows['main'], v.ub],
+          async run(s, v) {
+            await s.send(['devB', 'edge'], 'fetch', BLUE);
+            await s.send(['edge', 'devB'], 'a1f0', BLUE);
+            who(s, v, 'b', 'rebased: b1′ ← a1f0', BLUE);
+            await s.send(['devB', 'edge', 'st1'], 'main a1f0 → b1e2', GREEN);
+            await obj(s, v, 'b1p', O('b1e2', 'commit', '← a1f0 (rebased)'), 'COMMIT');
+            await ref(s, v, 'main', R('main', '→ b1e2'), 'OK');
+            who(s, v, 'b', 'pushed ✓', GREEN); who(s, v, 'ra', 'main → b1e2', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'replicas', title: 'Hosted: shards and replicas', sub: 'quorum ref update · repair', color: GREEN,
+      build: (s, v) => setup(s, v, { ...SERVER, objTitle: 'OBJECTS · repo-42 (A)', refTitle: 'REFS · repo-42 (A)', a: 'pushing a1f0', b: 'cloning' }),
+      takeaway: 'Hosted Git shards **whole repositories** across storage nodes and keeps **3 replicas** of each. A push writes objects to every replica, then moves the ref with a **vote**: commit when a **majority** agrees on `old → new`. A lagging replica is marked stale, skipped for reads and **repaired** from a healthy one by comparing ref checksums.',
+      steps: [
+        {
+          title: 'Repos are sharded, not split',
+          text: 'Git needs a repository on one filesystem, so the unit of sharding is the **repo**: the router maps `repo-42 → A, B, C` on different racks. Forks share an **object pool** (Git alternates), so 10,000 forks of a project do not store 10,000 copies.',
+          observe: 'Three replicas of repo-42.',
+          focus: v => [v.rt, v.n.st1, v.n.st2, v.n.st3],
+          async run(s, v) {
+            await s.send(['edge', 'router'], 'repo-42?', GREY);
+            await s.pulse(v.rt, 1, 1.1);
+            for (const n of ['st1', 'st2', 'st3']) await s.pulse(v.n[n], 1, 1.06);
+          },
+        },
+        {
+          title: 'The pack goes to every replica',
+          text: 'Asha\'s push streams through the front end to **A**, which forwards it to **B and C** (or the front end fans it out). Objects are immutable, so writing them everywhere first is safe even if the push later fails.',
+          observe: 'A, B and C hold a1f0.',
+          focus: v => [v.n.st2, v.n.st3],
+          async run(s, v) {
+            await s.send(['devA', 'edge', 'st1'], 'pack a1f0', TEAL);
+            await obj(s, v, 'a1', O('a1f0', 'commit', '← c2b7'), 'COMMIT');
+            await Promise.all([s.send(['st1', 'st2'], 'pack', TEAL), s.send(['st1', 'st3'], 'pack', TEAL, { pulse: false })]);
+          },
+        },
+        {
+          title: 'Ref update by majority vote',
+          text: 'Each replica locks `main` and votes **yes if its main is still c2b7**. With 2 of 3 yes votes the transaction commits everywhere (a two-phase commit over the replicas; GitHub\'s Spokes works like this). The push is acknowledged only now.',
+          observe: 'A and B vote yes; main → a1f0.',
+          say: 'The ref update is replicated with a quorum: a majority must agree on old to new.',
+          focus: v => [v.ra, v.rb, v.rc],
+          async run(s, v) {
+            await Promise.all([s.send(['st1', 'st2'], 'vote c2→a1?', AMBER), s.send(['st1', 'st3'], 'vote c2→a1?', AMBER, { pulse: false })]);
+            who(s, v, 'ra', 'yes · main → a1f0', GREEN); who(s, v, 'rb', 'yes · main → a1f0', GREEN);
+            s.tone(v.n.st3, 'warn'); s.setSub(v.n.st3, 'slow disk…', AMBER);
+            who(s, v, 'rc', 'no answer · c2b7', AMBER);
+            await ref(s, v, 'main', R('main', '→ a1f0 (2/3)'), 'OK');
+            await s.send(['st1', 'edge', 'devA'], 'ok main', GREEN);
+            who(s, v, 'a', 'pushed ✓', GREEN);
+          },
+        },
+        {
+          title: 'The stale replica is skipped, then repaired',
+          text: 'C is marked **out of date** in the router (its ref checksum differs). Reads avoid it. A repair job copies missing objects and refs from A until C\'s checksum matches, then C serves reads again.',
+          observe: 'C catches up to a1f0.',
+          focus: v => [v.n.st3, v.rc, v.rt],
+          async run(s, v) {
+            who(s, v, 'rt', 'repo-42 → A · B · (C stale)', AMBER);
+            await s.wait(400);
+            s.tone(v.n.st3, null); s.setSub(v.n.st3, 'replica · disk');
+            await s.send(['st1', 'st3'], 'repair: refs + objects', GREEN);
+            who(s, v, 'rc', 'main → a1f0 ✓', GREEN);
+            who(s, v, 'rt', 'repo-42 → A · B · C', GREEN);
+          },
+        },
+        {
+          title: 'Reads spread over replicas',
+          text: 'Ben\'s clone goes to any up-to-date replica, here **B**. For hot repositories (a popular open-source project before a release), the service caches ready-made clone packs, uses **pack bitmaps**, and can add replicas for that repo only.',
+          observe: 'Ben clones from B.',
+          focus: v => [v.n.devB, v.n.st2],
+          async run(s, v) {
+            await s.send(['devB', 'edge', 'st2'], 'clone', BLUE);
+            await s.send(['st2', 'edge', 'devB'], 'pack (from B)', TEAL);
+            who(s, v, 'b', 'cloned from B ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'lfs', title: 'Big files and PR events', sub: 'Git LFS · push event · webhook · merge', color: RED,
+      build: (s, v) => setup(s, v, { ...SERVER, objTitle: 'OBJECTS · repo-42', refTitle: 'REFS · repo-42', a: 'adds demo.mp4 (2 GB)', b: 'reviewing PR #12', pr: 'PR #12 feature → main' }),
+      takeaway: 'Big binaries go to **Git LFS**: Git stores a ~130-byte **pointer** and the content lives in **S3**, downloaded only for the versions you check out. After the ref update commits, a **push event** flows through Kafka to PRs, webhooks and CI; the **merge button** is a server-side merge plus the same **ref compare-and-set**.',
+      steps: [
+        {
+          title: '❌ A 2 GB video committed into Git',
+          text: 'The blob is 2 GB, binary deltas barely help, and **every clone downloads every version forever**. Ten edits = 20 GB of history that nobody can remove without rewriting all commit ids.',
+          observe: 'The repo history explodes.',
+          focus: v => [v.obj],
+          async run(s, v) {
+            await obj(s, v, 'big', O('9b77', 'blob', 'mp4 · 2 GB ✕'), 'BAD');
+            await s.flash(555, 40, 'clone: 20 GB', bad, 800);
+          },
+        },
+        {
+          title: '✅ Rewind: Git LFS stores a pointer',
+          text: 'With `.gitattributes: *.mp4 filter=lfs`, the **clean filter** replaces the file with a pointer `oid sha256:4d7a…, size 2147483648`. On push, the pre-push hook calls the LFS batch API, gets a **presigned S3 URL** and uploads the content straight to S3.',
+          observe: 'Git stores 130 bytes; S3 stores the video.',
+          say: 'Git LFS keeps a small pointer in Git and the large content in object storage.',
+          focus: v => [v.n.lfs, v.rows['big']],
+          async run(s, v) {
+            await obj(s, v, 'big', O('7e1c', 'blob', 'pointer · 130 B'), 'OK');
+            await s.send(['devA', 'lfs'], 'PUT 2 GB (presigned)', TEAL);
+            who(s, v, 'a', 'video in LFS ✓', GREEN);
+            await s.send(['devA', 'edge', 'st1'], 'push · pointer only', TEAL);
+          },
+        },
+        {
+          title: 'The ref moves, then the event is published',
+          text: 'The push updates `refs/heads/feature` (CAS + quorum as before). **Only after** it commits, storage publishes `{ repo-42, feature, before, after }` to Kafka, keyed by repo. Publishing before the commit could announce a push that was then rejected.',
+          observe: 'A push event reaches the PR service.',
+          say: 'Push events are published after the ref update commits, and consumers react asynchronously.',
+          focus: v => [v.n.kafka, v.n.hooks],
+          async run(s, v) {
+            await ref(s, v, 'feature', R('feature', '→ f2a8'), 'OK');
+            await s.send(['st1', 'kafka', 'hooks'], 'push feature', PURPLE);
+            who(s, v, 'pr', 'PR #12 · head f2a8', PURPLE);
+          },
+        },
+        {
+          title: 'PR updated, webhook to CI',
+          text: 'The PR service records the new head, runs a **test merge** in the background to show "can be merged", and delivers a webhook signed with **HMAC-SHA256** (`X-Hub-Signature-256`). CI fetches `f2a8` by SHA, builds, and posts a status. Failed deliveries are retried with backoff.',
+          observe: 'CI reports ✓ on f2a8.',
+          focus: v => [v.n.ci, v.pr],
+          async run(s, v) {
+            await s.send(['hooks', 'ci'], 'webhook · signed', PURPLE);
+            await s.send(['ci', 'hooks'], 'status ✓ f2a8', GREEN);
+            who(s, v, 'pr', 'PR #12 · checks ✓', GREEN);
+          },
+        },
+        {
+          title: 'Merge button: server-side merge + ref CAS',
+          text: 'Ben clicks **Merge**. The service builds the merge commit on storage (3-way merge against the merge base, as in flow 2) and moves `main c2b7 → mg91` with the same compare-and-set. If someone pushed to main a second earlier, the CAS fails and the PR shows "update branch".',
+          observe: 'main → mg91; PR #12 merged.',
+          focus: v => [v.rows['main'], v.pr],
+          async run(s, v) {
+            await s.send(['devB', 'edge'], 'Merge PR #12', BLUE);
+            await s.send(['hooks', 'st1'], 'merge + CAS main', GREEN);
+            await obj(s, v, 'mg', O('mg91', 'commit', '← c2b7, f2a8'), 'COMMIT');
+            await ref(s, v, 'main', R('main', '→ mg91'), 'OK');
+            who(s, v, 'ra', 'main → mg91', GREEN); who(s, v, 'pr', 'PR #12 merged ✓', GREEN);
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Git internals, the hosted service, or both?',
+      lines: [
+        ['I', 'Design Git, or something like GitHub.'],
+        ['C', 'Should I cover how Git itself stores history, the hosted service that stores millions of repositories, or both?'],
+        ['I', 'Both: start with the core idea, then the service.'],
+        ['C', 'For the service: push, fetch and clone, branches, pull requests with webhooks, and large files?'],
+        ['I', 'Yes. Pushes must never lose commits.'],
+        ['P', 'Write: content-addressed objects · refs · merge · push/fetch · repo sharding + replicas · atomic ref updates · LFS · PR events.'],
+      ],
+      avoid: 'Designing a file-sync service: Git stores snapshots as immutable objects, not diffs of files.',
+    },
+    {
+      t: 'Estimate the scale', min: 3, goal: 'Many repos, mostly small, a few huge and hot.',
+      lines: [
+        ['C', '100 M+ repositories, median a few MB, a few above 10 GB; total in the petabytes.'],
+        ['C', 'Reads dominate: clones and fetches (CI!) are 10–100× pushes.'],
+        ['C', 'A push is usually KB to MB thanks to negotiation and packfiles.'],
+        ['P', 'Storage is sharded by repo; the hard part is correct ref updates and hot repos.'],
+      ],
+    },
+    {
+      t: 'Core model', min: 6, goal: 'Blob, tree, commit, refs.',
+      lines: [
+        ['C', 'Blob = file content, tree = directory listing, commit = tree + parents + metadata. Each named by the SHA of its content.'],
+        ['C', 'That makes the history a Merkle DAG: one commit id verifies everything below it, and identical content is stored once.'],
+        ['C', 'A branch is a ref: a name pointing to one commit. Objects are immutable; refs are the only mutable state.'],
+        ['C', 'Merge finds the merge base and does a 3-way merge; a merge commit has two parents.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Front end, router, replicated storage, events.',
+      lines: [
+        ['P', 'Draw: developers → Git front end (SSH/HTTPS) → repo router → storage nodes (3 replicas) → push events → PRs, webhooks, CI; LFS → S3.'],
+        ['C', 'Push: ref advertisement, client computes missing objects, sends one packfile; server verifies, writes to all replicas, then moves the ref by compare-and-set with a quorum.'],
+        ['C', 'Fetch: want/have negotiation, one pack of the difference; shallow and partial clones for CI.'],
+        ['I', 'Why not store objects in S3 or a database?'],
+        ['C', 'Git\'s pack format and tools need fast local random access; whole-repo replicas on local disk keep Git unchanged. LFS uses S3 for the big blobs.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Concurrent pushes, replicas, hot repos, big files.',
+      lines: [
+        ['I', 'Two people push to main at the same time.'],
+        ['C', 'Objects can\'t conflict. The ref update is a CAS on the old value; the loser gets non-fast-forward and must fetch and merge or rebase.'],
+        ['I', 'A replica is down during a push.'],
+        ['C', 'The ref transaction commits with 2 of 3; the stale replica is excluded from reads and repaired by checksum comparison.'],
+        ['I', 'A huge CI fleet clones the same repo constantly.'],
+        ['C', 'Shallow or partial clones, cached clone packs, pack bitmaps, more read replicas for that repo.'],
+        ['I', 'Someone commits a 2 GB video.'],
+        ['C', 'Git LFS: pointer in Git, content in S3 through presigned URLs; size limits and push rejection for huge blobs.'],
+      ],
+      avoid: 'Saying "we lock the repository during a push": only the ref needs atomicity, objects are immutable.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: content-addressed immutable objects, refs as CAS-updated pointers, packfile negotiation, repos sharded with 3 replicas and quorum ref updates, LFS for big files, push events for PRs and CI.'],
+        ['C', 'Next: SHA-256 migration, background repack and gc, code search indexing from push events, geo-replicas for reads, per-repo rate limits.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): 1–2 minutes, pause between paragraphs
+    summary: [
+      "At its core, Git is a **content-addressed object store**. A file's content becomes a **blob**, a directory becomes a **tree** listing names to blob ids, and a **commit** points to a tree and to its parent commits. Every object is named by the SHA hash of its content. So identical content is stored once, and because each id covers everything beneath it, the history is a **Merkle DAG**: one commit hash verifies the whole history, and any corruption is detected.",
+      "Objects never change. The only mutable state is **refs**: a branch is just a name pointing to one commit, so creating a branch is writing a tiny file. Merging finds the **merge base**, the common ancestor, and does a **3-way merge** per file; if only one side changed, take it, if both changed the same lines, it's a conflict. The merge commit simply has two parents.",
+      "On push, the server first advertises its refs, the client works out which objects the server is missing by walking the graph, and sends only those in one delta-compressed **packfile**. The server re-hashes and checks connectivity, and then the important part: the branch update is a **compare-and-set**, \"move main from c2 to a1 only if it's still c2\". If someone pushed in between, you get the non-fast-forward rejection and have to fetch and merge or rebase. That's exactly how JGit's `RefUpdate` with an expected old id behaves.",
+      "For a GitHub-like service I'd **shard by repository**, because Git wants a repo on one local filesystem, and keep **three replicas** on different racks. A push writes the pack to all replicas and moves the ref with a **majority vote**; a lagging replica is marked stale and repaired by comparing checksums. Large binaries go to **Git LFS**, a pointer in Git and the content in S3 via presigned URLs. And after the ref commits, a **push event** goes to Kafka so pull requests, signed webhooks and CI react without slowing the push down.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Git core:</b> snapshots as immutable objects, cheap branches, merge with conflict detection, integrity of history.</li>
+        <li><b>Hosted service:</b> push / fetch / clone over SSH and HTTPS, permissions and branch protection, PRs, webhooks, CI checks, large files.</li>
+        <li><b>Non-functional:</b> never lose a pushed commit, survive a storage node failure, fast clones for hot repos, petabytes total.</li>
+        <li><b>Related:</b> push events fan out like <a href="04_Notification_System.html">4 · Notification System</a>; code search would reuse <a href="10_Search_System.html">10 · Search System</a>.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Repositories</td><td class="m">100 M+</td><td>median MBs, tail &gt; 10 GB</td></tr>
+        <tr><td>Storage</td><td class="m">× 3 replicas</td><td>petabytes on local SSD</td></tr>
+        <tr><td>Traffic</td><td class="m">fetch ≫ push</td><td>CI clones dominate</td></tr>
+        <tr><td>Push size</td><td class="m">packfile</td><td>KB–MB, only missing objects</td></tr></table>` },
+      { h: '3 · Protocol', color: '#c47d1e', html: `<table>
+        <tr><td class="m">ref advertisement</td><td>server: <code>main c2b7</code>, <code>feature f1d3</code> …</td></tr>
+        <tr><td class="m">push</td><td><code>c2b7 → a1f0 refs/heads/main</code> + packfile</td></tr>
+        <tr><td class="m">fetch</td><td><code>want m4a2</code> / <code>have c2b7</code> → packfile</td></tr>
+        <tr><td class="m">LFS batch API</td><td>oids → presigned S3 upload / download URLs</td></tr>
+        <tr><td class="m">push event</td><td><code>{ repo, ref, before, after, pusher }</code> → Kafka</td></tr></table>` },
+      { h: '4 · Objects & refs', color: '#8f4fc4', html: `<pre>blob   ce01…  "hello\\n"
+tree   7a41…  100644 README    → 5d2b…
+              100644 hello.txt → ce01…
+commit c2b7…  tree 7a41…
+              parent c1a0…
+              author Asha 1763560000 +0530
+              "Add README"
+
+refs/heads/main     → c2b7…
+refs/heads/feature  → f1d3…
+HEAD                → ref: refs/heads/main
+
+// LFS pointer stored as the blob
+version https://git-lfs.github.com/spec/v1
+oid sha256:4d7a…   size 2147483648</pre>` },
+      { h: '5 · Push, step by step', color: '#2f6fe0', html: `<ol>
+        <li>Auth + permission check at the front end; router → replicas A, B, C.</li>
+        <li>Ref advertisement → client computes missing objects → one packfile.</li>
+        <li><code>index-pack</code> verifies hashes; connectivity check.</li>
+        <li>Pack written to all replicas (objects are immutable: safe).</li>
+        <li>Ref transaction: each replica checks <code>old</code>, majority commits <code>old → new</code>.</li>
+        <li>Ack the client; publish the push event.</li></ol>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>Only refs are mutable, and every ref change is a CAS: no lost commits.</li>
+        <li>3 replicas per repo, quorum ref updates, checksum-based repair.</li>
+        <li>Hashes verify every transferred object; history cannot be silently altered.</li>
+        <li>Unreferenced objects from failed pushes are removed by <code>gc</code>.</li>
+        <li>Events after commit; consumers dedupe by <code>(repo, ref, after)</code>.</li></ul>` },
+    ],
+    decisions: [
+      ['Content-addressed immutable objects', 'Dedup, integrity, no write conflicts on objects.', 'Rewriting history changes every later id.'],
+      ['Refs as compare-and-set pointers', 'Concurrent pushes can never lose commits.', 'Losers must fetch and merge / rebase.'],
+      ['Packfiles + want/have negotiation', 'Pushes and fetches move only the difference.', 'Server CPU to compute packs; mitigated by bitmaps and caches.'],
+      ['Shard by repository, 3 local replicas', 'Git works unchanged on local disk; one repo = one unit to move.', 'Huge monorepos need their own nodes.'],
+      ['Quorum ref transactions', 'Survive one replica failure without losing a push.', 'Extra round trip; stale replicas need repair.'],
+      ['Git LFS on S3', 'Clones stay small; binaries scale in object storage.', 'Two systems; LFS must be set up per file type.'],
+      ['Push events via Kafka', 'PRs, webhooks, CI never slow a push.', 'Event delivery is async and at-least-once.'],
+    ],
+    code: [
+      { t: 'How an object id is computed', code: `// Same bytes → same id, anywhere: that is content addressing.
+String objectId(String type, byte[] content) throws Exception {
+  MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
+  sha1.update((type + " " + content.length + "\\0").getBytes(UTF_8));  // header, e.g. "blob 6\\0"
+  sha1.update(content);
+  return HexFormat.of().formatHex(sha1.digest());                      // "ce013625…" for "hello\\n"
+}
+// stored zlib-compressed at .git/objects/ce/013625…` },
+      { t: 'Server side: ref update as compare-and-set (JGit)', code: `RefUpdate.Result moveBranch(Repository repo, String branch, ObjectId expectedOld, ObjectId newId) throws IOException {
+  try (RevWalk walk = new RevWalk(repo)) {
+    boolean fastForward = walk.isMergedInto(walk.parseCommit(expectedOld), walk.parseCommit(newId));
+    if (!fastForward) return RefUpdate.Result.REJECTED;              // "non-fast-forward: fetch first"
+  }
+  RefUpdate ru = repo.updateRef("refs/heads/" + branch);
+  ru.setExpectedOldObjectId(expectedOld);                             // CAS: only if main is still c2b7
+  ru.setNewObjectId(newId);
+  return ru.update();                                                 // FAST_FORWARD, or LOCK_FAILURE if it moved
+}` },
+      { t: 'Merge base and 3-way merge (JGit)', code: `RevCommit mergeBase(Repository repo, ObjectId a, ObjectId b) throws IOException {
+  try (RevWalk walk = new RevWalk(repo)) {
+    walk.setRevFilter(RevFilter.MERGE_BASE);                         // walk parents until both sides meet
+    walk.markStart(walk.parseCommit(a));
+    walk.markStart(walk.parseCommit(b));
+    return walk.next();                                              // c2b7
+  }
+}
+
+boolean tryMerge(Repository repo, ObjectId ours, ObjectId theirs) throws IOException {
+  ResolveMerger merger = (ResolveMerger) MergeStrategy.RECURSIVE.newMerger(repo, true);  // in memory
+  return merger.merge(ours, theirs);                                 // false → conflicts: merger.getUnmergedPaths()
+}` },
+      { t: 'Push event after commit + signed webhook', code: `void afterRefCommitted(String repo, String ref, String before, String after, String pusher) {
+  kafka.send("repo-pushes", repo, new PushEvent(repo, ref, before, after, pusher));   // key = repo id
+}
+
+@KafkaListener(topics = "repo-pushes", groupId = "webhooks")
+void deliver(PushEvent e) throws Exception {
+  for (Hook hook : hooks.forRepo(e.repo())) {
+    byte[] body = json.writeValueAsBytes(e);
+    Mac mac = Mac.getInstance("HmacSHA256");
+    mac.init(new SecretKeySpec(hook.secret(), "HmacSHA256"));
+    String sig = "sha256=" + HexFormat.of().formatHex(mac.doFinal(body));
+    http.post(hook.url(), body, Map.of("X-Hub-Signature-256", sig,
+                                       "X-Delivery-Id", e.repo() + ":" + e.after()));  // receiver dedupes
+  }                                                                                // failures → retry topic
+}` },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    core: { name: 'Git core', color: '#2f6fe0' },
+    cc: { name: 'Concurrency', color: '#c47d1e' },
+    st: { name: 'Storage & scale', color: '#13968a' },
+    ev: { name: 'PRs & events', color: '#8f4fc4' },
+    tt: { name: 'Alternatives', color: '#ce3434' },
+  },
+  followups: [
+    { g: 'core', q: 'What exactly is a commit?', what: 'An immutable object: tree id, parent ids, author, committer, message.', why: 'The tree is the full snapshot; parents link history.', how: 'Its id is the SHA of those bytes, so it covers the whole snapshot and all history behind it (Merkle DAG).', trade: 'Changing anything, even an old message, changes every later id.', flow: 'objects' },
+    { g: 'core', q: 'Does Git store diffs or snapshots?', what: 'Logically snapshots; physically packfiles store many objects as deltas.', why: 'Snapshots make checkout and branching simple; deltas save space.', how: 'Unchanged files keep their blob id and are shared; `git gc` / `repack` delta-compresses similar objects.', trade: 'Repacking costs CPU in the background.', flow: 'objects' },
+    { g: 'core', q: 'Why are Git branches so cheap?', what: 'A branch is a ref: a file holding one commit id.', why: 'Commits already contain everything; the branch only names a tip.', how: 'Create = write 41 bytes; commit = move the pointer.', trade: 'Branch names are just pointers: deleting one can orphan commits until reflog expiry.', flow: 'objects' },
+    { g: 'core', q: 'How does a 3-way merge decide?', what: 'Compares base, ours and theirs per file and per hunk.', why: 'Two-way comparison cannot tell who changed what.', how: 'Find the merge base; take the side that changed; both changed the same lines differently → conflict.', trade: 'Criss-cross histories have several bases (recursive / ort strategy merges them).', flow: 'merge' },
+    { g: 'core', q: 'Merge or rebase?', what: 'Merge keeps both lines with a two-parent commit; rebase replays commits on top with new ids.', why: 'Linear history vs true history.', how: 'Rebase local, unpublished work; merge shared branches; never rebase commits others have pulled.', trade: 'Rebase rewrites ids; merge adds merge commits.', flow: 'merge' },
+    { g: 'cc', q: 'Two developers push to main at the same time.', what: 'Both packs can be stored; only one ref update may win.', why: 'Objects are immutable, refs are mutable.', how: 'Ref update is a CAS on the old value (lock file + compare); the loser gets non-fast-forward and fetches.', trade: 'Busy branches see retries; merge queues serialize them.', flow: 'race' },
+    { g: 'cc', q: 'What is a non-fast-forward rejection?', what: 'The new commit does not contain the current tip.', why: 'Accepting it would drop commits from the branch.', how: 'Server checks the old tip is an ancestor of the new one; client must fetch and merge / rebase.', trade: '`--force` bypasses it; `--force-with-lease` keeps the CAS.', flow: 'race' },
+    { g: 'cc', q: 'How do you update several refs atomically?', what: 'A push can update main and a tag together.', why: 'Half-applied updates confuse CI and releases.', how: '`git push --atomic`: the server applies all ref updates in one transaction or none.', trade: 'One stale ref fails the whole push.' },
+    { g: 'st', q: 'How do you store 100 million repositories?', what: 'Too many for one machine; each repo needs a local filesystem.', why: 'Git tools rely on fast random access to packs.', how: 'Shard by repo id, router table repo → replicas, move repos between nodes when they grow.', trade: 'One huge monorepo can need a dedicated node.', flow: 'replicas' },
+    { g: 'st', q: 'A storage node dies during a push.', what: 'The push must not be lost or half-applied.', why: 'Replicas can disagree.', how: 'Objects to all replicas first, ref update with majority vote; the failed one is marked stale and repaired by checksum.', trade: 'Extra latency per push; repair traffic later.', flow: 'replicas' },
+    { g: 'st', q: 'How do forks avoid copying everything?', what: '10,000 forks of a big project.', why: 'Objects are identical across forks.', how: 'Shared object pool (Git alternates) per fork network; each fork has its own refs.', trade: 'Deleting data from a pool is harder; access checks per fork.' },
+    { g: 'st', q: 'A hot repository is cloned by thousands of CI jobs.', what: 'Pack generation burns CPU and bandwidth.', why: 'Every clone computes a pack of the whole repo.', how: 'Pack bitmaps, cached clone packs (on a CDN), shallow and partial clones, extra read replicas.', trade: 'Caches must be refreshed as main moves.', flow: 'replicas' },
+    { g: 'st', q: 'How do you handle huge files?', what: 'Binaries bloat every clone forever.', why: 'Git keeps all versions and binaries delta badly.', how: 'Git LFS: pointer in Git, content in S3 via presigned URLs; push size limits; reject blobs over N MB.', trade: 'Extra system; LFS must be configured per file pattern.', flow: 'lfs' },
+    { g: 'ev', q: 'How do pull requests and CI learn about a push?', what: 'They need every ref change.', why: 'They must not slow the push.', how: 'Publish `{repo, ref, before, after}` to Kafka after the ref commits; PR, webhook and search consumers react.', trade: 'Async: a PR updates a moment after the push.', flow: 'lfs' },
+    { g: 'ev', q: 'How are webhooks made safe and reliable?', what: 'Customer endpoints are slow, down or fake.', why: 'At-least-once delivery over the internet.', how: 'HMAC-SHA256 signature, delivery id for dedupe, retries with backoff, per-endpoint isolation, redeliver button.', trade: 'Receivers must verify signatures and be idempotent.', flow: 'lfs' },
+    { g: 'ev', q: 'What does the merge button do?', what: 'A merge on the server.', why: 'Users should not need a local clone to merge.', how: 'Test merge for mergeability, then a real merge commit and a CAS on main; on CAS failure ask to update the branch.', trade: 'Busy repos need a merge queue.', flow: 'lfs' },
+    { g: 'tt', q: 'Why not store objects in S3 or a database?', what: 'Tempting for durability.', why: 'Git reads packs with many small random reads; network storage makes that slow.', how: 'Local SSD replicas for Git data; S3 only for LFS and backups.', trade: 'Operating your own replicated storage tier.' },
+    { g: 'tt', q: 'SHA-1 is broken: is Git unsafe?', what: 'Practical SHA-1 collisions exist (SHAttered).', why: 'Content addressing assumes no collisions.', how: 'Git uses collision-detecting SHA-1 and supports SHA-256 repositories; migration is ongoing.', trade: 'SHA-256 repos do not interoperate easily with SHA-1 ones yet.', flow: 'objects' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>

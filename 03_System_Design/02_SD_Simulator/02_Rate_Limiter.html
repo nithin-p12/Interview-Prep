@@ -1,0 +1,1309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-rate-limiter">
+<meta name="doc-version" content="v3.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rate Limiter · System Design · v3.0</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:#ffffff;color:#0f172a}
+
+/* ---------- header ---------- */
+header{height:64px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.brand .logo{flex-shrink:0}
+.brand .txt{min-width:0}
+.brand .t{font-size:16px;font-weight:800;white-space:nowrap;display:flex;align-items:baseline;gap:10px}
+.brand .t a{font-size:11.5px;font-weight:600;color:#0b5cff;text-decoration:none}
+.brand .t a:hover{text-decoration:underline}
+.brand .s{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrls{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.seg{display:flex;align-items:center;background:#f1f5f9;border-radius:10px;padding:3px;gap:2px}
+.seg .lbl{font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;padding:0 6px 0 7px}
+.seg button{border:0;background:transparent;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#475569;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.seg button:hover{color:#0f172a}
+.seg button.on{background:#fff;color:#0b5cff;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.btn{border:1px solid #e2e8f0;background:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#334155;padding:7px 12px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f8fafc}
+
+/* ---------- main / svg ---------- */
+main{position:relative;height:calc(100vh - 64px - 78px)}
+#dia{display:block;width:100%;height:100%;user-select:none}
+.hint{position:absolute;left:12px;bottom:8px;font-size:11px;color:#64748b;background:rgba(255,255,255,.85);padding:3px 8px;border-radius:6px;pointer-events:none}
+.zl{font-size:13px;font-weight:800;letter-spacing:1.2px;fill:#334155}
+.nl{font:11px ui-monospace,Consolas,monospace;fill:#64748b}
+.edge{fill:none;stroke:#94a3b8;stroke-width:2;stroke-dasharray:6 7}
+.edge.hot{stroke-dasharray:none;stroke-width:3}
+.elbl{font-size:11px;font-weight:600;fill:#64748b;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.node{cursor:pointer}
+.node .card{transition:filter .2s,stroke-width .2s;filter:drop-shadow(0 1px 3px rgba(15,23,42,.08))}
+.node:hover .card{filter:drop-shadow(0 4px 10px rgba(15,23,42,.18))}
+.node.active .card{stroke-width:3.5;filter:drop-shadow(0 0 14px rgba(11,92,255,.55))}
+.nlab{font-size:14px;font-weight:700;fill:#0f172a;text-anchor:middle}
+.nsub{font-size:11px;fill:#64748b;text-anchor:middle}
+.tag text{font-size:10.5px;font-weight:700;fill:#fff;text-anchor:middle}
+.ptag{font-size:10.5px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3.5px;stroke-linejoin:round;text-anchor:middle}
+
+/* ---------- legend popover ---------- */
+.ibtn{width:34px;padding:7px 0;text-align:center;font-size:14px;line-height:1}
+.ibtn.on{background:#eef4ff;border-color:#cfe0ff;color:#0b5cff}
+#legendPop{position:fixed;top:70px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 44px rgba(15,23,42,.2),0 3px 10px rgba(15,23,42,.08);padding:12px 14px;z-index:7;display:none}
+#legendPop.open{display:block}
+#legendPop:before{content:"";position:absolute;top:-6px;right:var(--arrow,20px);width:10px;height:10px;background:#fff;border-left:1px solid #e5e7eb;border-top:1px solid #e5e7eb;transform:rotate(45deg)}
+.lgh{font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8;margin:2px 0 8px}
+.lgk{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+.lgk span{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569}
+.lgk i{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.06),0 0 7px var(--c);background:var(--c)}
+.lgs{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:10px}
+.lgs b{display:block;font-size:16px;font-weight:800;color:#0f172a;line-height:1.15}
+.lgs span{font-size:11px;color:#475569}
+.lgn{font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:8px}
+
+/* ---------- footer ---------- */
+footer{height:78px;background:#fff;border-top:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+#badge{flex-shrink:0;min-width:52px;height:44px;padding:0 8px;border-radius:12px;background:#0b5cff;color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+#badge.live{background:#16a34a;letter-spacing:1px}
+.fmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.frow{display:flex;align-items:center;gap:8px;min-width:0}
+#ftitle{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{flex-shrink:0;font:600 11px ui-monospace,Consolas,monospace;color:#0b5cff;background:#eef4ff;border:1px solid #cfe0ff;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill:empty{display:none}
+.grow{flex:1}
+#dots{display:flex;gap:3px;flex-shrink:0}
+#dots i{display:block;width:18px;height:4px;border-radius:2px;background:#e2e8f0}
+#dots i.on{background:#0b5cff}
+#ftext{font-size:12.5px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{display:flex;gap:8px;flex-shrink:0}
+.stat{width:78px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:6px 8px}
+.stat b{display:block;font-size:18px;line-height:1.1}
+.stat span{font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#64748b;white-space:nowrap}
+
+/* ---------- drawer ---------- */
+#drawer{position:fixed;right:14px;top:76px;bottom:90px;width:380px;max-width:calc(100vw - 28px);background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.22),0 4px 14px rgba(15,23,42,.08);transform:translateX(420px);transition:transform .35s ease;display:flex;flex-direction:column;overflow:hidden;z-index:5}
+#drawer.open{transform:translateX(0)}
+.dh{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #e5e7eb}
+.dh .dl{width:52px;height:52px;border-radius:12px;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dh h3{margin:0;font-size:16px}
+.dh p{margin:2px 0 0;font-size:12px;color:#475569}
+.dh button{margin-left:auto;align-self:flex-start;border:0;background:rgba(255,255,255,.7);border-radius:8px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#334155}
+.db{padding:14px 16px 18px;overflow:auto;font-size:13px;line-height:1.5;color:#334155}
+.db h4{margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.db ul{margin:0;padding-left:18px}
+.db li{margin:3px 0}
+.db pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.db code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px}
+.core-link{display:inline-block;margin-top:14px;font-size:12.5px;font-weight:600;color:#0b5cff;text-decoration:none;background:#eef4ff;border:1px solid #cfe0ff;padding:6px 10px;border-radius:9px}
+.core-link:hover{text-decoration:underline}
+
+/* ---------- header nav + view tabs ---------- */
+.brand .s{display:flex;align-items:center;gap:6px}
+.brand .s .sub{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.brand .nav{display:flex;align-items:center;gap:1px;flex-shrink:0}
+.brand .nav a,.brand .nav span{font-size:11.5px;font-weight:700;color:#0b5cff;text-decoration:none;padding:0 4px;border-radius:5px;line-height:16px}
+.brand .nav a:hover{background:#eef4ff}
+.brand .nav span.off{color:#cbd5e1;cursor:default}
+.brand .nav a.hub{color:#64748b;font-weight:600}
+body:not(.v-flow) .flowonly{display:none}
+body:not(.v-flow) main,body:not(.v-flow) footer,body:not(.v-flow) #drawer,body:not(.v-flow) #legendPop{display:none}
+body.v-flow #reader{display:none}
+
+/* ---------- reading panel (tabs 2-4) ---------- */
+#reader{position:relative;height:calc(100vh - 64px);overflow:auto;background:#f8fafc;scroll-behavior:smooth}
+.rd{max-width:1120px;margin:0 auto;padding:18px 20px 40px}
+.rd-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:12px}
+.rd-head h2{margin:0;font-size:20px;font-weight:800}
+.rd-head p{margin:4px 0 0;font-size:13px;color:#64748b;max-width:760px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.rcard{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.05);padding:14px 16px;margin-bottom:12px;font-size:13.5px;line-height:1.55;color:#334155}
+.rcard code,.fu code,.rd td code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px;color:#0f172a}
+.rcard h3{margin:0 0 6px;font-size:15px;color:#0f172a}
+/* explain */
+.timebar{position:sticky;top:0;z-index:2;display:flex;gap:4px;background:#f8fafc;padding:6px 0 10px}
+.timebar button{min-width:126px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:6px 8px;text-align:left;cursor:pointer;font:inherit;border-top:3px solid var(--c)}
+.timebar button:hover{background:#f1f5f9}
+.timebar b{display:block;font-size:12px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timebar span{font-size:11px;color:#64748b}
+.stage{border-left:4px solid var(--c);scroll-margin-top:70px}
+.stage-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.stage-h .sn{width:24px;height:24px;border-radius:50%;background:var(--c);color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center}
+.stage-h .mn{font-size:11px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:999px;padding:1px 8px}
+.goal{margin:2px 0 10px;color:#64748b}
+.msg{display:flex;gap:10px;margin:6px 0;align-items:flex-start}
+.msg .who{flex-shrink:0;width:88px;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding-top:3px}
+.msg p{margin:0;flex:1;padding:6px 10px;border-radius:10px}
+.msg.iv .who{color:#7c3aed}.msg.iv p{background:#f5f3ff}
+.msg.you .who{color:#0b5cff}.msg.you p{background:#eef4ff}
+.msg.tip .who{color:#a16207}.msg.tip p{background:#fefce8;font-style:italic}
+.avoid{margin:10px 0 0;padding:8px 12px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+/* answer */
+.jump{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.jump button,.chips button{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:4px 11px;font:600 12px "Segoe UI",system-ui,sans-serif;color:#475569;cursor:pointer}
+.jump button:hover,.chips button:hover{border-color:#cbd5e1;color:#0f172a}
+.pitch{border-left:4px solid #0b5cff;scroll-margin-top:56px}
+.pitch p{margin:0 0 8px}.pitch p:last-child{margin:0}
+.ans-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.ans-grid .rcard{margin:0}
+.ans{border-top:4px solid var(--c);scroll-margin-top:56px}
+.ans ul,.ans ol{margin:0;padding-left:20px}.ans li{margin:3px 0}
+.ans table{border-collapse:collapse;width:100%;font-size:13px}
+.ans td,.ans th{border-bottom:1px solid #f1f5f9;padding:5px 8px;text-align:left;vertical-align:top}
+.ans th{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8}
+.ans .m{font:12px ui-monospace,Consolas,monospace;white-space:nowrap;color:#0f172a}
+.ans pre,.codeblk pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.code-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;scroll-margin-top:56px}
+.codeblk{margin:0}
+.codeblk h3{font-size:13px}
+/* follow-ups */
+.chips{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.chips button small{color:#94a3b8;font-weight:700;margin-left:2px}
+.chips button.on{background:var(--c,#0b5cff);border-color:var(--c,#0b5cff);color:#fff}
+.chips button.on small{color:rgba(255,255,255,.8)}
+.fu{padding:0;border-left:4px solid var(--c)}
+.fu summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px}
+.fu summary::-webkit-details-marker{display:none}
+.fu summary:after{content:"▸";margin-left:auto;color:#94a3b8;transition:transform .2s}
+.fu[open] summary:after{transform:rotate(90deg)}
+.fu-g{flex-shrink:0;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border-radius:999px;padding:2px 9px}
+.fu-q{font-size:14px;font-weight:700;color:#0f172a}
+.fu-body{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:0 16px 14px}
+.fu-body > div > b{display:block;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8;margin-bottom:2px}
+.fu-body p{margin:0}
+.fu-body .say{grid-column:1/-1;background:#eef4ff;border-radius:10px;padding:8px 12px}
+.fu-body .say > b{color:#0b5cff}
+.watch{grid-column:1/-1;justify-self:start;border:0;background:#0b5cff;color:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;padding:7px 14px;border-radius:9px;cursor:pointer}
+.watch:hover{background:#0a4fe0}
+</style>
+</head>
+<body class="v-flow">
+<header>
+  <div class="brand">
+    <svg class="logo" width="34" height="34" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#0b5cff"/><circle cx="24" cy="26" r="13" fill="none" stroke="#fff" stroke-width="3.2"/><path d="M24 26l6-6" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/><path d="M20 9h8" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/><circle cx="24" cy="26" r="2.4" fill="#fff"/></svg>
+    <div class="txt">
+      <div class="t">Rate Limiter</div>
+      <div class="s"><span class="nav" id="dNav"></span><span class="sub">Token bucket in Redis · one atomic Lua script per request, shared by every gateway pod · 429 + Retry-After · fixed vs sliding window · fail open / closed</span></div>
+    </div>
+  </div>
+  <div class="ctrls">
+    <div class="seg" id="viewSeg">
+      <button data-view="flow" class="on" title="Animated data flow">Data flow</button>
+      <button data-view="explain" title="How to explain it, stage by stage">Explain</button>
+      <button data-view="answer" title="Interview-ready answer">Answer</button>
+      <button data-view="followups" title="Follow-up questions">Follow-ups</button>
+    </div>
+    <div class="seg flowonly" id="scSeg"><span class="lbl">Scenario</span>
+      <button data-sc="happy" title="Allowed: one bucket, any pod (token bucket shared in Redis)">Allowed</button>
+      <button data-sc="burst" title="Burst: 429 with Retry-After (per-key buckets, backend untouched)">Burst</button>
+      <button data-sc="race" title="Race on the last token: GET + SET vs one Lua script">Race</button>
+      <button data-sc="window" title="Fixed vs sliding window: the boundary burst, 5 per minute">Window</button>
+      <button data-sc="fail" title="Redis goes down: fail open vs fail closed, replica failover">Failover</button>
+      <button data-sc="live" title="Live mixed traffic">Live</button>
+    </div>
+    <div class="seg flowonly" id="spSeg"><span class="lbl">Speed</span>
+      <button data-sp="0.5">0.5x</button><button data-sp="1" class="on">1x</button><button data-sp="2">2x</button>
+    </div>
+    <button class="btn flowonly" id="pauseBtn">⏸ Pause</button>
+    <button class="btn flowonly" id="replayBtn">↻ Replay</button>
+    <button class="btn ibtn flowonly" id="legendBtn" title="Legend &amp; scale (L)" aria-haspopup="dialog" aria-expanded="false">ⓘ</button>
+  </div>
+</header>
+
+<main>
+  <svg id="dia" viewBox="0 0 1600 600" preserveAspectRatio="xMidYMid meet"></svg>
+  <div class="hint">Click any component for details · Space pause · 1 2 3 speed · R replay · L legend</div>
+</main>
+
+<footer>
+  <div id="badge">1/1</div>
+  <div class="fmid">
+    <div class="frow"><span id="ftitle"></span><span id="fproto" class="pill"></span><span class="grow"></span><div id="dots"></div></div>
+    <div id="ftext"></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="stReq">0</b><span>Requests</span></div>
+    <div class="stat"><b id="stHit">0</b><span>Forwarded</span></div>
+    <div class="stat"><b id="stEvt">0</b><span>Rejected</span></div>
+    <div class="stat"><b id="stRes">0</b><span>Responses</span></div>
+  </div>
+</footer>
+
+<section id="reader" aria-live="polite"></section>
+
+<div id="legendPop" role="dialog" aria-label="Legend and scale">
+  <div class="lgh">PACKETS</div>
+  <div class="lgk" id="lgKinds"></div>
+  <div class="lgh">SCALE (FROM THE FULL DESIGN)</div>
+  <div class="lgs">
+    <div><b>50 k/s</b><span>requests at peak</span></div>
+    <div><b>20</b><span>gateway pods</span></div>
+    <div><b>1</b><span>Redis call per request</span></div>
+    <div><b>&lt; 1 ms</b><span>added latency</span></div>
+  </div>
+  <div class="lgn">Dashed edges crawl in the request direction · solid = packet in transit</div>
+</div>
+
+<aside id="drawer" aria-hidden="true">
+  <div class="dh" id="dHead"><div class="dl" id="dLogo"></div><div><h3 id="dTitle"></h3><p id="dTag"></p></div><button id="dClose" title="Close (Esc)">×</button></div>
+  <div class="db" id="dBody"></div>
+</aside>
+
+<script src="engine/catalog.js"></script>
+<script>
+'use strict';
+// =====================================================================
+// Rate Limiter · Data Flow: nodes grouped by app role (client · entry · data · async replication · app services);
+// no infra containers, no CDN (every request must pass the limiter). Self-contained: no engine/ except catalog.js for prev/next.
+// Content comes from 02_Rate_Limiter.html (v2.0): token bucket per key in Redis (one Lua script = atomic refill + take),
+// counters shared by all gateway pods, cached rules, 429 + Retry-After, fixed vs sliding window, fail open / fail closed.
+// The limiter itself (Lua atomicity, algorithms, failure policy) is taught HERE; LB, gateway and Redis basics in Core Components.
+// =====================================================================
+const NS = 'http://www.w3.org/2000/svg';
+const KIND = { request: '#2563eb', response: '#16a34a', event: '#f97316', error: '#dc2626' };
+const CLIENTS = new Set(['userA', 'bot']);
+const PAL = {
+  userA: ['#eef0ff', '#818cf8'], bot: ['#f1f5f9', '#475569'],
+  lb: ['#ffffff', '#7c3aed'], gw1: ['#e6fffa', '#0d9488'], gw2: ['#e6fffa', '#0d9488'],
+  redis: ['#fff1f2', '#dc2626'], rules: ['#fff7e6', '#d97706'],
+  replica: ['#ffffff', '#dc2626'],
+  api: ['#fff9db', '#e0b400'],
+};
+// zone tints: [fill, stroke, label] (same palette as 01_URL_Shortener.html)
+const ZT = {
+  client: ['#fed7aa', '#fb923c', '#9a3412'], entry: ['#ddd6fe', '#8b5cf6', '#5b21b6'], app: ['#bfdbfe', '#3b82f6', '#1e3a8a'],
+  data: ['#e5e7eb', '#9ca3af', '#374151'], async: ['#ffe4e6', '#fb7185', '#9f1239'],
+};
+
+// ---------------- logos (48x48 inline SVG) ----------------
+const cube = (badge) => `<path d="M24 5l17 9.5v19L24 43 7 33.5v-19z" fill="#326ce5"/><path d="M24 24l17-9.5v19L24 43z" fill="#2557c4"/><path d="M24 5l17 9.5L24 24 7 14.5z" fill="#6f9cf0"/>${badge}`;
+const person = c => `<circle cx="24" cy="15" r="8.5" fill="${c}"/><path d="M7 43c0-10 7.6-16 17-16s17 6 17 16z" fill="${c}"/>`;
+const redisMark = `<path d="M5 31l19 8 19-8-19-8z" fill="#a41e11"/><path d="M5 24l19 8 19-8-19-8z" fill="#d82c20"/><path d="M5 17l19 8 19-8-19-8z" fill="#ff4438"/><path d="M24 12.5l1.6 3.1 3.4.4-2.5 2.2.7 3.3-3.2-1.7-3 1.7.6-3.3-2.5-2.2 3.4-.4z" fill="#fff"/>`;
+// gateway pod: Spring Cloud Gateway arch with a token-bucket gauge badge
+const gwMark = n => `<rect x="4" y="5" width="36" height="36" rx="10" fill="#0d9488"/><path d="M13 36V22a9 9 0 0 1 18 0v14" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/><path d="M9 36h26" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="37" cy="37" r="9" fill="#134e4a" stroke="#fff" stroke-width="2"/><text x="37" y="41.3" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Segoe UI,Arial,sans-serif">${n}</text>`;
+const LOGO = {
+  userA: person('#6366f1'),
+  bot: `<rect x="9" y="14" width="30" height="24" rx="7" fill="#475569"/><path d="M24 14V8" stroke="#475569" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="6.5" r="3" fill="#ef4444"/><circle cx="18" cy="25" r="3.6" fill="#fff"/><circle cx="30" cy="25" r="3.6" fill="#fff"/><circle cx="18" cy="25" r="1.6" fill="#ef4444"/><circle cx="30" cy="25" r="1.6" fill="#ef4444"/><path d="M18 32.5h12" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><rect x="4" y="21" width="5" height="9" rx="2" fill="#64748b"/><rect x="39" y="21" width="5" height="9" rx="2" fill="#64748b"/><path d="M14 38v5M34 38v5" stroke="#475569" stroke-width="3" stroke-linecap="round"/>`,
+  lb: `<path d="M24 3l21 21-21 21L3 24z" fill="#8b5cf6"/><path d="M12 24h9l8-7h5M21 24l8 7h5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M32 14l3 3-3 3M32 28l3 3-3 3" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  gw1: gwMark(1),
+  gw2: gwMark(2),
+  redis: `${redisMark}<circle cx="38" cy="38" r="8.5" fill="#fff" stroke="#a41e11" stroke-width="2"/><path d="M38 33v5l3.2 2" fill="none" stroke="#a41e11" stroke-width="2.2" stroke-linecap="round"/>`,
+  rules: `<rect x="8" y="7" width="30" height="36" rx="5" fill="#d97706"/><rect x="16" y="3.5" width="14" height="7" rx="3" fill="#92400e"/><g stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M14 19h18M14 27h18M14 35h18"/></g><g fill="#fff" stroke="#92400e" stroke-width="1.6"><circle cx="27" cy="19" r="3"/><circle cx="18" cy="27" r="3"/><circle cx="24" cy="35" r="3"/></g>`,
+  replica: `${redisMark}<rect x="29" y="29" width="15" height="15" rx="4" fill="#fff" stroke="#a41e11" stroke-width="2"/><path d="M33 36.5l2.5 2.5 5-5" fill="none" stroke="#a41e11" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  api: cube(`<circle cx="37" cy="37" r="9" fill="#e0b400" stroke="#fff" stroke-width="2"/><path d="M31.5 33h2l1.6 6.5h5.5l1.4-4.5H34" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="35.6" cy="41.6" r="1.1" fill="#fff"/><circle cx="39.8" cy="41.6" r="1.1" fill="#fff"/>`),
+};
+
+// ---------------- topology ----------------
+const NODES = {
+  userA: { x: 98, y: 190, label: 'User A', sub: 'free plan · JWT' },
+  bot: { x: 98, y: 410, label: 'Bot C', sub: 'scraper · API key' },
+  lb: { x: 300, y: 300, label: 'Load Balancer', sub: 'round robin', replicas: 2 },
+  gw1: { x: 590, y: 110, label: 'Gateway pod 1', sub: 'rate-limit filter', replicas: 1 },
+  gw2: { x: 590, y: 490, label: 'Gateway pod 2', sub: 'rate-limit filter', replicas: 1 },
+  redis: { x: 900, y: 300, label: 'Redis primary', sub: 'counters · Lua script' },
+  rules: { x: 990, y: 528, label: 'Limit Rules', sub: 'per plan · route' },
+  replica: { x: 1400, y: 98, label: 'Redis replica', sub: 'async copy · Sentinel' },
+  api: { x: 1400, y: 330, label: 'Orders API', sub: 'protected backend', replicas: 3 },
+};
+// grouped by developer role, not by infrastructure
+const ZONES = [
+  { x: 8, y: 8, w: 180, h: 584, t: 'client', label: 'CLIENT', cap: 'users · partners · bots' },
+  { x: 200, y: 8, w: 500, h: 584, t: 'entry', label: 'ENTRY', cap: 'LB + gateway pods · the check' },
+  { x: 712, y: 8, w: 388, h: 584, t: 'data', label: 'DATA', cap: 'counters · rules', dash: true },
+  { x: 1112, y: 8, w: 480, h: 196, t: 'async', label: 'ASYNC REPLICATION', cap: 'replica · Sentinel failover', dash: true },
+  { x: 1112, y: 216, w: 480, h: 376, t: 'app', label: 'APP SERVICES', cap: 'protected backend', dash: true },
+];
+// [from, to, protocol label]; the path direction is the request direction (dashes crawl that way).
+const EDGE_DEFS = [
+  ['userA', 'lb', 'HTTPS'], ['bot', 'lb', 'HTTPS'],
+  ['lb', 'gw1', 'round robin'], ['lb', 'gw2', ''],
+  ['gw1', 'redis', 'EVALSHA'], ['gw2', 'redis', 'EVALSHA'],
+  ['gw1', 'api', 'forward'], ['gw2', 'api', ''],
+  ['gw2', 'rules', 'refresh 5 s'],
+  ['redis', 'replica', 'async replication'],
+  ['gw1', 'replica', 'after failover'],
+];
+
+// ---------------- drawer content ----------------
+const INFO = {
+  userA: {
+    tag: 'Users and partners calling the public API',
+    desc: 'Each caller is identified by a <b>key</b>: the user id from the JWT, an API key for partners, the IP only as a last resort. Limits are <b>per key</b>, so one heavy caller cannot use up everybody else\'s capacity.',
+    points: ['Free plan: bucket of 5 tokens, refill 0.5 token/s (burst 5, steady 1 request every 2 s)', 'Limiting by IP alone punishes thousands of users behind one office or mobile NAT', 'Well-behaved clients read <code>X-RateLimit-Remaining</code> and pace themselves', 'After a 429: honour <code>Retry-After</code>, exponential backoff with <b>jitter</b>, idempotency keys for retried writes'],
+    code: `# allowed
+curl -i https://api.shop.ex/orders -H 'Authorization: Bearer eyJ...'
+# HTTP/2 200
+# x-ratelimit-limit: 5
+# x-ratelimit-remaining: 4
+
+# throttled
+# HTTP/2 429
+# retry-after: 2
+
+// Spring WebClient: back off on 429 with jitter
+webClient.get().uri("/orders").retrieve().bodyToMono(String.class)
+    .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)).jitter(0.5)
+        .filter(e -> e instanceof WebClientResponseException.TooManyRequests));`,
+  },
+  bot: {
+    tag: 'Abusive client · the reason the limiter exists',
+    desc: 'A scraper or buggy script sending far more than its plan allows. Without a limiter it gets every request it asks for and the backend slows down or falls over <b>for everyone</b>.',
+    points: ['Often rotates IPs → key by API key / account, plus WAF rules for anonymous floods', 'Rejecting costs one Redis call, so even huge floods are cheap to refuse', 'A client that ignores 429 just keeps getting cheap 429s', 'Volumetric DDoS is a network-layer problem (CDN / cloud shield), not the job of this limiter'],
+    code: `# the bot keeps going after X-RateLimit-Remaining: 0
+for i in $(seq 1 100); do
+  curl -s -o /dev/null -w '%{http_code}\\n' \\
+       -H 'X-API-Key: k-77' https://api.shop.ex/products
+done
+# 200 200 200 200 200 429 429 429 ...
+
+# Redis key for this caller (one per key + route)
+HGETALL rl:k-77:/products
+# 1) "tokens"  2) "0.15"
+# 3) "ts"      4) "1761213900300"`,
+  },
+  lb: {
+    tag: 'L7 load balancer · round robin + health checks',
+    desc: 'Spreads requests across the gateway pods (round robin / least connections) and removes unhealthy ones. It lets the gateway <b>scale out</b>, which is exactly why counters cannot stay in pod memory: the same user lands on different pods.',
+    points: ['Round robin: consecutive calls of one user hit different pods', '20 pods × 5 tokens in pod memory = 100 requests where the plan allows 5', 'Only pods passing <code>/actuator/health/readiness</code> receive traffic', 'AWS ALB / NGINX / Envoy: horizontal and managed'],
+    code: `# NGINX upstream in front of the gateway pods
+upstream gateway {
+  least_conn;
+  server gw-1:8080 max_fails=3 fail_timeout=10s;
+  server gw-2:8080 max_fails=3 fail_timeout=10s;
+}
+server {
+  listen 443 ssl http2;
+  location / {
+    proxy_pass http://gateway;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;  # real client IP for IP keys
+  }
+}`,
+  },
+  gw1: {
+    tag: 'Spring Cloud Gateway · RequestRateLimiter filter',
+    desc: 'For every request: resolve the <b>key</b> (user + route), look up the <b>rule</b> (cached), run <b>one Lua script</b> in Redis, then forward with <code>X-RateLimit-Remaining</code> or answer <b>429 + Retry-After</b>. One place in front of every service, before any business code runs.',
+    points: ['Stateless pods: rules are cached, counters live in Redis', 'One Redis round trip per request (<code>EVALSHA</code>, ~0.3–1 ms same-zone)', 'Redis call: ~20 ms timeout + circuit breaker', 'Redis down → <b>fail open</b> with a local bucket (limit ÷ pods) or <b>fail closed</b> per route'],
+    code: `spring:
+  cloud:
+    gateway:
+      routes:
+        - id: orders
+          uri: lb://orders-api
+          predicates: [ Path=/orders/** ]
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 1
+                redis-rate-limiter.burstCapacity: 10
+                redis-rate-limiter.requestedTokens: 2   # 0.5 req/s, burst 5
+                key-resolver: "#{@userKeyResolver}"
+
+@Bean KeyResolver userKeyResolver() {      // user from the JWT, IP for anonymous
+  return ex -> ex.getPrincipal().map(Principal::getName)
+      .switchIfEmpty(Mono.just(ex.getRequest().getRemoteAddress()
+          .getAddress().getHostAddress()));
+}`,
+  },
+  gw2: {
+    tag: 'Identical to pod 1 · same filter, same Redis',
+    desc: 'The next request of the same user may land here. That is why the bucket must be <b>shared</b>: with counters in pod memory a user would get the limit once <b>per pod</b>. Pod 2 runs the same script on the same key, so the limit is global.',
+    points: ['Any number of pods share one bucket per key', 'Refreshes the limit rules in the background (every few seconds)', 'Same fail-open / fail-closed policy as pod 1', 'Add pods behind the LB: the limit does not change'],
+    code: `// what the filter does, written by hand (Spring Data Redis, reactive)
+Mono<Decision> check(String key, Rule rule) {
+  return redis.execute(tokenBucket,                 // EVALSHA, script cached by SHA
+          List.of("rl:" + key + ":" + rule.route()),
+          List.of(String.valueOf(rule.capacity()), String.valueOf(rule.refillPerSec())))
+      .next()
+      .map(r -> {
+        boolean allowed = ((Long) r.get(0)) == 1L;
+        double tokens = Double.parseDouble((String) r.get(1));
+        long retry = allowed ? 0 : (long) Math.ceil((1 - tokens) / rule.refillPerSec());
+        return new Decision(allowed, (long) tokens, retry);
+      })
+      .timeout(Duration.ofMillis(20));              // the limiter is on every request
+}`,
+  },
+  redis: {
+    tag: 'Shared counters · one Lua script per check',
+    desc: 'One small hash per key, <code>rl:{user}:{route} → { tokens, ts }</code>, with an expiry. The <b>Lua script</b> reads, refills, takes a token and writes back <b>atomically</b>: Redis runs one script at a time, so two pods can never both spend the last token.',
+    points: ['In memory, sub-millisecond, shared by all pods', '~100 B per key: 1 M users × 2 routes ≈ 200 MB, idle keys expire', '~50k scripts/s per primary; Redis Cluster beyond that (keys of one script in one hash slot)', '<code>redis.call("TIME")</code> inside the script: no pod clock skew', 'Counters are disposable: losing them only resets limits'],
+    code: `-- KEYS[1] = rl:{user}:{route}  ARGV[1] = capacity  ARGV[2] = refill/s
+local cap, rate = tonumber(ARGV[1]), tonumber(ARGV[2])
+local t = redis.call("TIME")
+local now = t[1] * 1000 + math.floor(t[2] / 1000)
+local b = redis.call("HMGET", KEYS[1], "tokens", "ts")
+local tokens = tonumber(b[1]) or cap          -- new key starts full
+local ts = tonumber(b[2]) or now
+tokens = math.min(cap, tokens + (now - ts) / 1000 * rate)
+local allowed = 0
+if tokens >= 1 then tokens = tokens - 1; allowed = 1 end
+redis.call("HSET", KEYS[1], "tokens", tokens, "ts", now)
+redis.call("PEXPIRE", KEYS[1], math.ceil(cap / rate * 1000))
+return { allowed, tostring(tokens) }`,
+  },
+  rules: {
+    tag: 'Limits per plan and route · config, cached in every pod',
+    desc: 'How much each plan and route may do, e.g. free = bucket of 5, refill 0.5/s; <code>/login</code> = 5 per minute <b>per IP</b>, fail closed. Limits change with plans and abuse patterns, so they change <b>without a deploy</b>.',
+    points: ['Config service or DB, cached in each pod and refreshed every few seconds', 'Never read per request: the pod answers from memory', 'Pods keep the last known rules if the config service is down', 'Versioned with an audit log; for a few seconds pods may disagree about a new rule'],
+    code: `// rate_limits collection (MongoDB) behind PUT /admin/limits/{plan}
+{ plan: "free", route: "/orders/**", key: "user",
+  capacity: 5, refillPerSec: 0.5, onLimiterDown: "FAIL_OPEN" }
+{ plan: "*", route: "/login", key: "ip",
+  limit: 5, window: "1m", onLimiterDown: "FAIL_CLOSED" }
+
+// gateway pod: refresh the in-memory copy off the request path
+@Scheduled(fixedDelay = 5000)
+void refresh() {
+  List<Rule> fresh = rulesClient.since(version);   // GET /limits?since=v41
+  fresh.forEach(r -> cache.put(r.plan() + r.route(), r));
+}`,
+  },
+  replica: {
+    tag: 'Asynchronous copy · promoted by Sentinel',
+    desc: 'Receives every counter write over the replication stream, <b>asynchronously</b>. If the primary dies, Redis Sentinel (or Redis Cluster) reaches quorum and promotes it, so the limiter is available again in about 15 s.',
+    points: ['Not used for reads: a limiter needs the latest count', 'Async replication: after failover a few recent updates may be missing, so a few extra requests pass', 'Acceptable for rate limiting; use <code>WAIT</code> for critical keys (adds latency)', 'Sentinel-aware clients (Lettuce) reconnect to the new primary by themselves'],
+    code: `# sentinel.conf
+sentinel monitor limiter 10.0.1.10 6379 2      # quorum 2 of 3 sentinels
+sentinel down-after-milliseconds limiter 5000
+sentinel failover-timeout limiter 15000
+
+# Spring Boot: Lettuce follows the promotion
+spring:
+  data:
+    redis:
+      sentinel:
+        master: limiter
+        nodes: sentinel-1:26379,sentinel-2:26379,sentinel-3:26379
+      timeout: 20ms`,
+  },
+  api: {
+    tag: 'The business service being protected',
+    desc: 'It only ever sees requests the limiter <b>allowed</b>, so its capacity is planned for the allowed rate (plan limits × users), not for abuse. A rejected request costs one Redis call at the gateway and never reaches it.',
+    points: ['Spring Boot service, 3 instances', 'Sized for plan limits × users', 'If the limiter fails open during an attack, it still needs timeouts and bulkheads', 'Resilience4j <code>RateLimiter</code> here protects calls to fragile dependencies (per JVM, not global)'],
+    code: `@RestController
+class OrdersController {
+  @GetMapping("/orders")
+  List<Order> mine(@AuthenticationPrincipal Jwt jwt) {
+    return orders.findByUserId(jwt.getSubject());   // only allowed requests get here
+  }
+}
+
+// protecting a fragile downstream call (per instance, not global)
+@RateLimiter(name = "payments")     // resilience4j.ratelimiter.instances.payments.limit-for-period=50
+Receipt charge(Order o) { return payments.charge(o); }`,
+  },
+};
+
+// building blocks taught once in 00_Core_Components.html (same "#id/what" links as the engine pages)
+const CORE = {
+  lb: ['lb', 'Load balancer'], gw1: ['gw', 'API gateway'], gw2: ['gw', 'API gateway'],
+  redis: ['cache', 'Cache · Redis'], replica: ['cache', 'Cache · Redis'],
+};
+
+// ---------------- scenarios ----------------
+const hop = (from, to, kind, tag, title, proto, text, extra) => Object.assign({ type: 'hop', from, to, kind, tag, title, proto, text }, extra || {});
+const node = (id, tag, title, proto, text, extra) => Object.assign({ type: 'node', id, tag, title, proto, text }, extra || {});
+const GREEN = '#16a34a', RED = '#dc2626', AMBER = '#d97706', PURPLE = '#7c3aed';
+const GWS = ['gw1', 'gw2'];
+
+// short paths for forks and the live mix: one caller, one pod, allowed or throttled
+function allowPath(c, gw, key, path) {
+  return [
+    hop(c, 'lb', 'request', path, 'Request', 'HTTPS · 443', ''),
+    hop('lb', gw, 'request', path, 'Routed', 'round robin', ''),
+    hop(gw, 'redis', 'request', 'EVALSHA ' + key, 'Token bucket', 'EVALSHA', ''),
+    node('redis', 'take 1 ✓', 'Allowed', 'Lua', '', { tagColor: GREEN, dur: 0.6 }),
+    hop('redis', gw, 'response', 'allowed', 'Allowed', 'RESP', ''),
+    hop(gw, 'api', 'request', 'forward', 'Forward', 'HTTP', ''),
+    hop('api', gw, 'response', '200', '200', 'HTTP 200', ''),
+    hop(gw, 'lb', 'response', '200', '200', 'HTTP 200', ''),
+    hop('lb', c, 'response', '200 OK', '200', 'HTTPS', ''),
+  ];
+}
+function denyPath(c, gw, key, path) {
+  return [
+    hop(c, 'lb', 'request', path, 'Request', 'HTTPS · 443', ''),
+    hop('lb', gw, 'request', path, 'Routed', 'round robin', ''),
+    hop(gw, 'redis', 'request', 'EVALSHA ' + key, 'Token bucket', 'EVALSHA', ''),
+    node('redis', 'empty ✕', 'Denied', 'Lua', '', { tagColor: RED, dur: 0.6 }),
+    hop('redis', gw, 'error', 'denied', 'Denied', 'RESP', ''),
+    hop(gw, 'lb', 'error', '429', '429', 'HTTP 429', ''),
+    hop('lb', c, 'error', '429', '429', 'HTTPS', ''),
+  ];
+}
+const replicate = (key) => [
+  hop('redis', 'replica', 'event', 'HSET ' + key, 'Replicate', 'replication stream', ''),
+  node('replica', 'offset++', 'Applied', 'async', '', { dur: 0.6 }),
+];
+
+const SCEN = {
+  happy: {
+    name: 'Allowed: one bucket, any pod',
+    steps: [
+      hop('gw2', 'rules', 'event', 'GET ?since=v41', 'Pods refresh the rules in the background', 'HTTP · GET /limits?since=v41 · every 5 s', 'Every gateway pod polls the rules every few seconds, off the request path: free plan + /orders/** → bucket of 5 tokens, refill 0.5 token/s, FAIL_OPEN.'),
+      hop('rules', 'gw2', 'event', 'free: 5 · 0.5/s', 'Rules cached in pod memory', '200 OK · rules v42', 'The pod keeps the rule set in a ConcurrentHashMap; no database or config read ever happens per request, and a config outage just keeps the last version.'),
+      hop('userA', 'lb', 'request', 'GET /orders', 'User A calls GET /orders', 'HTTPS · 443 · Authorization: Bearer', 'User A (free plan) sends a JWT; the limiter key is the user id from the token, not the IP, because many users share one IP behind NAT.'),
+      hop('lb', 'gw1', 'request', 'GET /orders', 'Round robin picks pod 1', 'L7 · round robin · :8080', 'The load balancer spreads requests over the gateway pods; this is exactly why the limit cannot live in one pod\'s memory.'),
+      node('gw1', 'key rl:A:/orders', 'Build the key, look up the cached rule', 'KeyResolver · JWT sub', 'The KeyResolver returns principal "A"; the cached rule for free + /orders/** says capacity 5, refill 0.5/s, so the Redis key is rl:A:/orders.'),
+      hop('gw1', 'redis', 'request', 'EVALSHA rl:A', 'One atomic Lua script', 'RESP · TCP 6379 · EVALSHA', 'EVALSHA tokenBucket 1 rl:A:/orders 5 0.5: the script is cached by its SHA, so only the key and two numbers travel.'),
+      node('redis', 'tokens 5 → 4', 'Inside Redis: refill, take one, write back', 'HMGET · HSET · PEXPIRE · atomic', 'A new key starts full: min(5, 5 + elapsed × 0.5) = 5, take one → 4, HSET tokens + ts, PEXPIRE 10 s; no other command can run in between.', { tagColor: GREEN }),
+      { type: 'fork', title: 'Async: replicate the counter', proto: 'replication stream · no ack', text: 'In parallel the HSET streams to the replica; the script does not wait for it, so the check stays sub-millisecond.', steps: replicate('rl:A') },
+      hop('redis', 'gw1', 'response', 'allowed · 4', 'Script returns { 1, "4" }', 'RESP array · ~0.3 ms', 'allowed = 1, tokens = 4: the pod will add X-RateLimit-Limit: 5 and X-RateLimit-Remaining: 4 to the response.'),
+      hop('gw1', 'api', 'request', 'forward', 'Forward to the backend', 'HTTP · lb://orders-api', 'Only allowed requests are routed; the Orders API is sized for the allowed rate, not for abuse.'),
+      hop('api', 'gw1', 'response', '200 · orders', 'Orders API answers', 'HTTP 200 · JSON', 'GET /orders returns A\'s orders; the business code never knew a limiter was involved.'),
+      hop('gw1', 'lb', 'response', '200 · remaining 4', 'Limit headers added', 'X-RateLimit-Remaining: 4', 'The pod adds X-RateLimit-Limit: 5 and X-RateLimit-Remaining: 4, so well-behaved clients can pace themselves.'),
+      hop('lb', 'userA', 'response', '200 · remaining 4', 'A gets the orders', 'HTTPS · 200', 'Total limiter cost: one Redis round trip, well under a millisecond in the same zone.'),
+      hop('userA', 'lb', 'request', 'GET /orders/42', 'One second later: GET /orders/42', 'HTTPS · 443 · 10:00:01', 'A opens an order a second later; round robin now sends it to the other pod.'),
+      hop('lb', 'gw2', 'request', 'GET /orders/42', 'This time it lands on pod 2', 'L7 · round robin', 'With counters in pod memory pod 2 would start A with a fresh 5 tokens: 20 pods × 5 = 100 requests where the plan allows 5.'),
+      hop('gw2', 'redis', 'request', 'EVALSHA rl:A', 'Pod 2 uses the SAME key', 'RESP · EVALSHA rl:A:/orders', 'Same user, same route, same key: every pod works on the one shared bucket in Redis, so the limit is global, not per pod.'),
+      node('redis', 'tokens 4 → 3.5', 'Refill 1 s × 0.5 = +0.5, take one', 'Lua · TIME inside the script', 'The script reads the Redis clock: 4 + 1 s × 0.5 = 4.5 tokens, take one → 3.5; pod clocks never matter.', { tagColor: GREEN }),
+      hop('redis', 'gw2', 'response', 'allowed · 3.5', 'Allowed again', 'RESP array', 'allowed = 1, tokens = 3.5: X-RateLimit-Remaining: 3 (rounded down).'),
+      hop('gw2', 'api', 'request', 'forward', 'Forward to the backend', 'HTTP · lb://orders-api', 'A could keep going at 0.5 requests per second forever, or burst up to 5 after being idle for 10 seconds.'),
+      hop('api', 'gw2', 'response', '200 · order 42', 'Orders API answers', 'HTTP 200', 'Order 42 comes back through pod 2.'),
+      hop('gw2', 'userA', 'response', '200 · remaining 3', 'Same answer from any pod', 'HTTPS · 200', 'Whichever pod a request lands on, it uses the same bucket in Redis: one atomic script per request, shared by every pod.', { via: 'lb' }),
+    ],
+  },
+  burst: {
+    name: 'Burst: 429 with Retry-After',
+    steps: [
+      hop('bot', 'lb', 'request', 'GET #5', 'Bot C keeps scraping /products', 'HTTPS · X-API-Key: k-77', 'Bot C (free plan) sends request #5 of its burst at 10:05:00.000; its bucket rl:C:/products has 1 token left.'),
+      hop('lb', 'gw1', 'request', 'GET #5', 'Routed to pod 1', 'L7 · round robin', 'The key is the API key k-77, not the IP: the bot rotates IPs, its key stays the same.'),
+      hop('gw1', 'redis', 'request', 'EVALSHA rl:C', 'Token bucket for rl:C', 'RESP · EVALSHA', 'EVALSHA tokenBucket 1 rl:C:/products 5 0.5.'),
+      node('redis', 'tokens 1 → 0', 'C spends its last token', 'Lua · 1 ≥ 1 → take', 'Refill since the last call is negligible; 1 ≥ 1, so the script takes it: tokens = 0, allowed = 1.', { tagColor: AMBER }),
+      hop('redis', 'gw1', 'response', 'allowed · 0', 'Allowed, bucket now empty', 'RESP { 1, "0" }', 'The pod will answer with X-RateLimit-Remaining: 0, a clear signal to stop.'),
+      hop('gw1', 'api', 'request', 'forward #5', 'Request #5 is served', 'HTTP · lb://orders-api', 'The fifth request of the burst still fits the plan, so it reaches the backend.'),
+      hop('api', 'gw1', 'response', '200', 'Backend answers', 'HTTP 200', 'Product list for page 5.'),
+      hop('gw1', 'bot', 'response', '200 · remaining 0', 'X-RateLimit-Remaining: 0', 'HTTPS · 200', 'A polite client would slow down here; the bot does not.', { via: 'lb' }),
+      { type: 'fork', title: 'Meanwhile User A browses', proto: 'own key rl:A · full bucket', text: 'At the same moment User A calls GET /products: A has its own bucket, so the bot\'s burst changes nothing for A (5 → 4, allowed).', steps: allowPath('userA', 'gw1', 'rl:A', 'GET /products') },
+      hop('bot', 'lb', 'request', 'GET #6', 'Request #6, 300 ms later', 'HTTPS · 10:05:00.300', 'The bot fires again 300 ms later.'),
+      hop('lb', 'gw2', 'request', 'GET #6', 'Lands on pod 2', 'L7 · round robin', 'A different pod, the same shared bucket.'),
+      hop('gw2', 'redis', 'request', 'EVALSHA rl:C', 'Token bucket for rl:C', 'RESP · EVALSHA', 'Pod 2 runs the same script on the same key rl:C:/products.'),
+      node('redis', '0.15 < 1 → deny', 'Refill 0.3 s × 0.5 = 0.15 token', 'Lua · deny · store 0.15', '0.15 < 1, so the script denies, stores tokens 0.15 with the new timestamp and returns { 0, "0.15" }.', { tagColor: RED }),
+      hop('redis', 'gw2', 'error', 'denied', 'Script returns { 0, "0.15" }', 'RESP array', 'Denied inside Redis: the decision took one round trip.'),
+      node('gw2', 'Retry-After 2', 'Compute Retry-After, do not forward', 'ceil((1 − 0.15) / 0.5) = 2 s', 'C needs 0.85 more token at 0.5/s = 1.7 s, rounded up to whole seconds; the Orders API never sees request #6.', { tagColor: RED }),
+      hop('gw2', 'lb', 'error', '429', '429 Too Many Requests', 'HTTP 429 · Retry-After: 2', 'Status 429 with Retry-After: 2 and X-RateLimit-Remaining: 0.'),
+      hop('lb', 'bot', 'error', '429 · Retry-After 2', 'Bot C is throttled', 'HTTPS · 429', 'Rejecting cost one Redis call and no backend work, so even a huge flood is cheap to refuse.'),
+      node('api', 'not touched', 'The backend never saw #6', 'sized for the allowed rate', 'Buckets are per key: one abusive client cannot use up anyone else\'s quota, and the backend only carries allowed traffic.', { tagColor: GREEN }),
+    ],
+  },
+  race: {
+    name: 'Race on the last token',
+    steps: [
+      node('redis', 'rl:A tokens 1', 'A has exactly 1 token left', 'rl:A:/orders · tokens 1', 'Exactly one more request may pass. Watch what happens when two arrive in the same millisecond.', { tagColor: AMBER }),
+      hop('userA', 'lb', 'request', null, 'Two tabs fire at once', 'HTTPS · 2 × GET /orders', 'A\'s two browser tabs refresh together: two requests, same key, same millisecond.', { count: 2, tags: ['GET #1', 'GET #2'] }),
+      hop('lb', GWS, 'request', null, 'One request per pod', 'L7 · round robin', 'Round robin sends #1 to pod 1 and #2 to pod 2: no shared memory, so a JVM lock cannot help.', { tags: ['#1', '#2'] }),
+      node(GWS, null, '❌ Naive filter: read, decide in Java, write', 'HGETALL → if → HSET', 'Suppose the filter does HGETALL rl:A, decides in Java, then HSET: three separate commands with network gaps between them.', { tags: ['read → decide → write', 'read → decide → write'], tagColor: RED }),
+      hop(GWS, 'redis', 'request', null, 'Both pods read before either writes', 'RESP · HGETALL rl:A', 'Each command is atomic on its own, but nothing stops the other pod\'s read from landing between this pod\'s read and write.', { tags: ['HGETALL', 'HGETALL'] }),
+      hop('redis', GWS, 'response', null, 'Both see 1 token', 'RESP · tokens 1', 'Both reads come back with tokens = 1.', { tags: ['tokens 1', 'tokens 1'] }),
+      node(GWS, null, 'Both decide "allowed"', 'check-then-act', 'Each pod checks 1 ≥ 1 and decides to allow: the classic check-then-act race.', { tags: ['1 ≥ 1 ✓', '1 ≥ 1 ✓'], tagColor: AMBER }),
+      hop(GWS, 'redis', 'request', null, 'Both write tokens 0', 'RESP · HSET rl:A tokens 0', 'Same value written twice, so nobody notices, but two requests just spent one token.', { tags: ['HSET 0', 'HSET 0'] }),
+      hop(GWS, 'api', 'error', null, 'Both forward', 'HTTP · 2 requests', 'Under a burst of N parallel requests, up to N slip through: the limit breaks exactly when it matters.', { tags: ['forward ✕', 'forward ✕'] }),
+      node('api', '2 served · 1 token', 'Overshoot', 'GET + SET from Java', 'A GET then SET from the gateway is check-then-act: parallel requests can all pass.', { tagColor: RED }),
+      node('redis', 'rewind · tokens 1', '✅ Rewind: one Lua script per request', 'EVALSHA tokenBucket', 'Back to 1 token. Now each pod sends EVALSHA tokenBucket rl:A: read, decide and write happen inside Redis, in one step.', { tagColor: AMBER }),
+      hop(GWS, 'redis', 'request', null, 'Both pods send the script', 'RESP · EVALSHA rl:A', 'The two scripts arrive at the same moment.', { tags: ['EVALSHA (1)', 'EVALSHA (2)'] }),
+      node('redis', 'script 1 → script 2', 'Redis runs one script at a time', 'single-threaded execution', 'Script 1 takes the last token (→ 0); script 2 runs after it and sees 0. MULTI/EXEC would not be enough: it cannot branch on a value read inside the transaction.', { tagColor: GREEN }),
+      hop('redis', GWS, null, null, 'Exactly one allowed', 'RESP { 1 } · { 0 }', 'Script 1 returns allowed: 1, script 2 returns allowed: 0.', { kinds: ['response', 'error'], tags: ['allowed', 'denied'] }),
+      hop('gw1', 'api', 'request', 'forward #1', 'Pod 1 forwards #1', 'HTTP · lb://orders-api', 'Only the request that won the token reaches the backend.'),
+      hop('api', 'gw1', 'response', '200', 'Backend answers #1', 'HTTP 200', 'Orders for tab 1.'),
+      hop(GWS, 'lb', null, null, '200 for #1, 429 for #2', 'HTTP 200 · HTTP 429', 'Pod 1 returns 200 with X-RateLimit-Remaining: 0; pod 2 returns 429 with Retry-After: 2.', { kinds: ['response', 'error'], tags: ['200', '429'] }),
+      hop('lb', 'userA', null, null, 'One 200, one 429', 'HTTPS · 200 / 429', 'Tab 1 shows the orders, tab 2 retries after 2 s.', { count: 2, kinds: ['response', 'error'], tags: ['200 #1', '429 #2'] }),
+      node('userA', '1 × 200 · 1 × 429 ✓', 'Correct under concurrency', 'one Lua script = atomic', 'Redis executes one script at a time, so read, decide and write can never interleave across pods.', { tagColor: GREEN }),
+    ],
+  },
+  window: {
+    name: 'Fixed vs sliding window',
+    steps: [
+      node('redis', 'fx:A:10:00 = 5', 'The limit is 5 per minute', 'route rule · 5 / 1 min', 'Some routes are specified as "N per minute". A sent 5 requests at 10:00:59, so the minute 10:00 is used up.', { tagColor: AMBER }),
+      hop('userA', 'lb', 'request', 'GET #6', 'Request #6 at 10:01:00.1', 'HTTPS · 443', 'A fraction of a second later, but in a new minute.'),
+      hop('lb', 'gw1', 'request', 'GET #6', 'Routed to pod 1', 'L7 · round robin', 'Any pod would do: all of them use the same Redis keys.'),
+      hop('gw1', 'redis', 'request', 'INCR fx:A:10:01', 'Fixed window: INCR this minute\'s counter', 'INCR + EXPIRE 60 NX', 'The key is user + minute, fx:A:10:01; each command is atomic on its own.'),
+      node('redis', '1 ≤ 5 ✓', 'New minute, new counter', 'fx:A:10:01 = 1', 'The fresh key starts at 1 ≤ 5, so #6 is allowed although A sent 5 a moment ago.', { tagColor: AMBER }),
+      hop('redis', 'gw1', 'response', '1 ≤ 5', 'Allowed', 'RESP integer 1', 'The pod forwards #6.'),
+      hop('userA', 'lb', 'request', null, 'The boundary burst', 'HTTPS · 4 more in the same second', 'A fires #7–#10 before 10:01:01.', { count: 4, tags: ['#7', '#8', '#9', '#10'] }),
+      hop('lb', 'gw1', 'request', null, 'All routed', 'L7 · round robin', 'Four more requests reach the filter.', { count: 4, tags: ['#7', '', '', ''] }),
+      hop('gw1', 'redis', 'request', null, 'INCR, INCR, INCR, INCR', 'INCR fx:A:10:01', 'Counts 2, 3, 4 and 5: all ≤ 5.', { count: 4, tags: ['INCR → 2', '→ 3', '→ 4', '→ 5'] }),
+      node('redis', 'count 5 · 10 in ~1 s', 'Fixed window: 2× the limit', 'boundary burst', 'That is 10 requests in about one second while the limit says 5 per minute: fixed windows are cheap but allow up to 2× the limit at every boundary.', { tagColor: RED }),
+      hop('gw1', 'api', 'request', null, 'The backend serves all of them', 'HTTP · 5 forwards', 'The backend serves 10 requests in ~1 s for a 5-per-minute route.', { count: 5, tags: ['#6', '#7', '#8', '#9', '#10'] }),
+      node('api', '2× the limit', 'Fixed window overshoot', 'cheap but imprecise', 'A fixed window is cheap but lets twice the limit through across a window boundary.', { tagColor: RED }),
+      hop('userA', 'lb', 'request', 'GET #6', '✅ Sliding log: replay #6', 'HTTPS · 10:01:00.1', 'Same moment, but this route uses a sliding log: a sorted set zs:A with one timestamp per request.'),
+      hop('lb', 'gw1', 'request', 'GET #6', 'Routed to pod 1', 'L7 · round robin', 'The filter runs a different Lua script for this route.'),
+      hop('gw1', 'redis', 'request', 'trim · ZCARD zs:A', 'Count the real last 60 s', 'Lua · ZREMRANGEBYSCORE · ZCARD · ZADD', 'One script: ZREMRANGEBYSCORE drops entries older than now − 60 s, ZCARD counts the rest, and only if fewer than 5 does it ZADD.'),
+      node('redis', '5 in last 60 s', 'Sliding log: deny', 'ZCARD zs:A = 5', 'The five requests from 10:00:59 are still inside the last 60 s, so #6 is denied: exact, but one entry per request.', { tagColor: RED }),
+      hop('redis', 'gw1', 'error', 'denied', 'Denied', 'RESP { 0 }', 'The oldest entry is 10:00:59.0.'),
+      hop('gw1', 'userA', 'error', '429 · retry 59 s', '429 with Retry-After: 59', 'HTTP 429 · Retry-After: 59', 'A may retry when the oldest entry (10:00:59.0) leaves the window.', { via: 'lb' }),
+      node('redis', 'prev 5 · curr 0 ≈ 5', 'Middle ground: sliding-window counter', 'prev × (60 − t)/60 + curr', 'Exact logs cost one entry per request. A sliding-window counter keeps two counters: 5 × 59.9/60 + 0 ≈ 5 → deny, nearly exact and as cheap as a fixed window. The token bucket is the other common choice when short bursts are fine.', { tagColor: PURPLE, dur: 3.2 }),
+    ],
+  },
+  fail: {
+    name: 'Redis goes down',
+    steps: [
+      node('redis', '✕ unreachable', 'The Redis primary disappears', 'node failure / network partition', 'The primary dies (or a partition cuts it off). Every request still needs a decision from the limiter.', { tagColor: RED }),
+      hop('userA', 'lb', 'request', 'GET /orders', 'A calls GET /orders', 'HTTPS · 443 · 10:20:00', 'A normal API call, FAIL_OPEN route.'),
+      hop('lb', 'gw1', 'request', 'GET /orders', 'Routed to pod 1', 'L7 · round robin', 'The filter starts its usual Redis call.'),
+      hop('gw1', 'redis', 'request', 'EVALSHA', 'The script call goes out', 'RESP · EVALSHA · timeout 20 ms', 'The limiter sits on the critical path of every request, so the client timeout is tiny.'),
+      hop('redis', 'gw1', 'error', 'timeout 20 ms', 'It times out fast', 'RedisCommandTimeoutException', 'No answer within 20 ms; after a few failures the Resilience4j circuit breaker opens, so pods stop waiting on a dead Redis.'),
+      node('gw1', 'breaker OPEN · local bucket', 'Normal route: fail open with a local bucket', 'FAIL_OPEN · limit ÷ pods', 'For normal APIs availability beats precision: pod 1 switches to an in-memory bucket with its share of the limit (5 tokens ÷ 2 pods ≈ 2–3 per pod).', { tagColor: AMBER }),
+      hop('gw1', 'api', 'request', 'forward', 'A is still served', 'HTTP · lb://orders-api', 'Limits are approximate during the outage, but users keep working.'),
+      hop('api', 'gw1', 'response', '200', 'Backend answers', 'HTTP 200', 'Orders for A.'),
+      hop('gw1', 'userA', 'response', '200 OK', 'Still served ✓', 'HTTPS · 200', 'A Redis outage does not take the API down.', { via: 'lb' }),
+      hop('userA', 'lb', 'request', 'POST /login', 'A login attempt arrives', 'HTTPS · POST /login', 'Login is limited per IP: 5 per minute, rule onLimiterDown = FAIL_CLOSED.'),
+      hop('lb', 'gw2', 'request', 'POST /login', 'Routed to pod 2', 'L7 · round robin', 'Pod 2\'s breaker is open too: Redis is gone for everyone.'),
+      node('gw2', 'FAIL_CLOSED → 503', 'Sensitive route: fail closed', 'rule: FAIL_CLOSED', 'For /login, OTP and money movement brute-force protection matters more than availability: without a reliable counter, no request.', { tagColor: RED }),
+      hop('gw2', 'lb', 'error', '503', '503 Service Unavailable', 'HTTP 503 · Retry-After: 15', 'The login is rejected at the gateway; the backend never sees it.'),
+      hop('lb', 'userA', 'error', '503', 'Login blocked while the limiter is down', 'HTTPS · 503', 'Login, OTP and payments fail closed: no counter, no request.'),
+      node('replica', 'promoted ✓', 'Sentinel promotes the replica', 'quorum 2/3 · REPLICAOF NO ONE', 'After ~15 s the Sentinels agree the primary is down (+odown), elect a leader and promote the replica; Lettuce learns the new address.', { tagColor: GREEN }),
+      node('replica', 'rl:A may lag', 'A few updates may be missing', 'async replication', 'Replication is asynchronous, so the last few counter updates may be missing: a few extra requests can slip through. For rate limiting that is acceptable.', { tagColor: AMBER }),
+      hop('userA', 'lb', 'request', 'GET /orders', 'A calls again at 10:20:30', 'HTTPS · 443', 'Same route, after the promotion.'),
+      hop('lb', 'gw1', 'request', 'GET /orders', 'Routed to pod 1', 'L7 · round robin', 'Pod 1 is still on its local fallback, breaker open.'),
+      hop('gw1', 'replica', 'request', 'EVALSHA rl:A', 'Breaker half-open: trial call to the new primary', 'RESP · EVALSHA · new primary', 'The circuit breaker lets a trial call through to the promoted replica.'),
+      hop('replica', 'gw1', 'response', 'allowed · 4', 'It succeeds: breaker closes', 'RESP { 1, "4" }', 'Pods go back to the shared buckets and pod 1 drops its local fallback: limits are global again.'),
+      hop('gw1', 'api', 'request', 'forward', 'Back to normal ✓', 'HTTP · lb://orders-api', 'Tiny timeout + circuit breaker, fail open or closed per route, async failover: the limiter stays available and approximately right.'),
+    ],
+  },
+  // live-mix building blocks (no buttons)
+  allow1: { name: 'Allowed via pod 1', steps: allowPath('userA', 'gw1', 'rl:A', 'GET /orders') },
+  allow2: { name: 'Allowed via pod 2', steps: allowPath('userA', 'gw2', 'rl:A', 'GET /orders') },
+  deny1: { name: 'Bot throttled via pod 1', steps: denyPath('bot', 'gw1', 'rl:C', 'GET /products') },
+  deny2: { name: 'Bot throttled via pod 2', steps: denyPath('bot', 'gw2', 'rl:C', 'GET /products') },
+  botok: { name: 'Bot within its plan', steps: allowPath('bot', 'gw2', 'rl:C', 'GET /products') },
+  sync: { name: 'Background work', steps: [hop('gw2', 'rules', 'event', '', 'Refresh', 'rules', ''), hop('rules', 'gw2', 'event', '', 'Rules', 'rules', ''), ...replicate('rl:A')] },
+};
+const LIVE_MIX = [['allow1', 0.25], ['allow2', 0.25], ['deny1', 0.17], ['deny2', 0.17], ['botok', 0.08], ['sync', 0.08]];
+
+// =====================================================================
+// rendering
+// =====================================================================
+const svg = document.getElementById('dia');
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const box = id => { const n = NODES[id]; return { l: n.x - 75, r: n.x + 75, t: n.y - 56, b: n.y + 56 }; };
+
+function edgePath(a, b) {
+  const A = NODES[a], B = NODES[b], dx = B.x - A.x, dy = B.y - A.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const s = Math.sign(dx) || 1, x1 = A.x + 75 * s, x2 = B.x - 75 * s, mx = (x1 + x2) / 2;
+    return { d: `M${x1} ${A.y} C${mx} ${A.y} ${mx} ${B.y} ${x2} ${B.y}`, horiz: true };
+  }
+  const s = Math.sign(dy) || 1, y1 = A.y + 56 * s, y2 = B.y - 56 * s, my = (y1 + y2) / 2;
+  return { d: `M${A.x} ${y1} C${A.x} ${my} ${B.x} ${my} ${B.x} ${y2}`, horiz: false };
+}
+
+function buildSvg() {
+  let s = `<defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#eef1f5"/></pattern>
+    <filter id="glow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect id="bg" x="-2000" y="-1200" width="5600" height="3000" fill="url(#grid)"/>`;
+  // zones: grouped by developer role (solid = outside our code, dashed = our backend)
+  for (const z of ZONES) {
+    const [f, st, lc] = ZT[z.t];
+    s += `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="18" fill="${f}" stroke="${st}" stroke-width="1.6"${z.dash ? ' stroke-dasharray="7 5"' : ''}/>`;
+    s += `<text class="zl" x="${z.x + 16}" y="${z.y + 24}" style="fill:${lc}">${esc(z.label)}</text>`;
+    if (z.cap) s += `<text class="nl" x="${z.x + 16}" y="${z.y + 41}" style="fill:${lc};opacity:.75">${esc(z.cap)}</text>`;
+  }
+  // edges + labels
+  s += '<g id="edges">';
+  EDGE_DEFS.forEach(([a, b], i) => { s += `<path class="edge" id="e${i}" d="${edgePath(a, b).d}"/>`; });
+  s += '</g><g id="elabels"></g><g id="ripples"></g><g id="nodes">';
+  // nodes
+  for (const [id, n] of Object.entries(NODES)) {
+    const [bg, st] = PAL[id];
+    let dots = '';
+    const r = n.replicas || 0;
+    for (let k = 0; k < r; k++) dots += `<circle cx="${75 + (k - (r - 1) / 2) * 10}" cy="104" r="3.2" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>`;
+    s += `<g class="node" data-id="${id}" transform="translate(${n.x - 75},${n.y - 56})">
+      <rect class="sel" x="-6" y="-6" width="162" height="124" rx="18" fill="none" stroke="#0b5cff" stroke-width="2" stroke-dasharray="6 5" opacity="0"/>
+      <rect class="card" width="150" height="112" rx="14" fill="${bg}" stroke="${st}" stroke-width="1.6"/>
+      <rect x="49" y="8" width="52" height="52" rx="12" fill="#fff" opacity=".85"/>
+      <g transform="translate(52.9,11.9) scale(.92)">${LOGO[id]}</g>
+      <text class="nlab" x="75" y="78">${esc(n.label)}</text>
+      <text class="nsub" x="75" y="95">${esc(n.sub)}</text>${dots}
+      <g class="tag" style="display:none"><rect y="-11" height="20" rx="10"/><text y="3.5"></text></g>
+    </g>`;
+  }
+  s += '</g><g id="packets"></g>';
+  svg.innerHTML = s;
+}
+buildSvg();
+
+const EDGES = EDGE_DEFS.map(([a, b, label], i) => {
+  const el = document.getElementById('e' + i);
+  return { a, b, label, el, len: el.getTotalLength(), hot: 0, horiz: edgePath(a, b).horiz };
+});
+// protocol labels at the path midpoint: above horizontal edges, right of vertical ones
+(function labels() {
+  const g = document.getElementById('elabels');
+  for (const e of EDGES) {
+    const p = e.el.getPointAtLength(e.len / 2);
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('class', 'elbl');
+    if (e.horiz) { t.setAttribute('x', p.x); t.setAttribute('y', p.y - 8); t.setAttribute('text-anchor', 'middle'); }
+    else { t.setAttribute('x', p.x + 8); t.setAttribute('y', p.y + 4); }
+    t.textContent = e.label;
+    g.appendChild(t);
+  }
+})();
+const NODE_EL = {};
+document.querySelectorAll('.node').forEach(g => { NODE_EL[g.dataset.id] = { g, act: 0, tagTok: 0 }; });
+
+// =====================================================================
+// engine: one rAF loop, own timer queue, everything scaled by speed
+// =====================================================================
+let speed = 1, paused = false, GEN = 0, current = 'happy', view = 'flow';
+let timers = [], packets = [], ripples = [], dashOffset = 0, flows = 0;
+const stats = { req: 0, hit: 0, evt: 0, res: 0 };
+const STAT_EL = { req: document.getElementById('stReq'), hit: document.getElementById('stHit'), evt: document.getElementById('stEvt'), res: document.getElementById('stRes') };
+
+function wait(sec, cb) { timers.push({ t: sec, cb, gen: GEN }); }
+const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function bump(k, n = 1) { stats[k] += n; STAT_EL[k].textContent = stats[k]; }
+
+function findEdge(from, to) {
+  for (const e of EDGES) {
+    if (e.a === from && e.b === to) return { e, rev: false };
+    if (e.a === to && e.b === from) return { e, rev: true };
+  }
+  throw new Error('no edge ' + from + ' -> ' + to);
+}
+function heat(e, color) { e.hot++; e.el.classList.add('hot'); e.el.style.stroke = color; }
+function cool(e) { e.hot = Math.max(0, e.hot - 1); if (!e.hot) { e.el.classList.remove('hot'); e.el.style.stroke = ''; } }
+
+function activate(id, sec) {
+  const n = NODE_EL[id]; n.act++; n.g.classList.add('active');
+  wait(sec, () => { n.act = Math.max(0, n.act - 1); if (!n.act) n.g.classList.remove('active'); });
+}
+function ripple(id) {
+  const b = box(id), el = document.createElementNS(NS, 'rect');
+  el.setAttribute('rx', 16); el.setAttribute('fill', 'none'); el.setAttribute('stroke', PAL[id][1]); el.setAttribute('stroke-width', 2.5);
+  document.getElementById('ripples').appendChild(el);
+  ripples.push({ el, b, age: 0 });
+}
+function showTag(id, text, color, sec) {
+  const n = NODE_EL[id], tag = n.g.querySelector('.tag'), r = tag.querySelector('rect'), t = tag.querySelector('text');
+  const w = Math.max(34, text.length * 6.3 + 16);
+  t.textContent = text; r.setAttribute('width', w); r.setAttribute('x', 152 - w); r.setAttribute('fill', color);
+  t.setAttribute('x', 152 - w / 2); tag.setAttribute('transform', 'translate(0,0)');
+  tag.style.display = '';
+  const tok = ++n.tagTok;
+  wait(sec, () => { if (n.tagTok === tok) tag.style.display = 'none'; });
+}
+
+function spawn(from, to, kind, tag, onArrive) {
+  const { e, rev } = findEdge(from, to), color = KIND[kind];
+  const g = document.createElementNS(NS, 'g');
+  const trail = [];
+  for (let i = 0; i < 6; i++) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('r', 6 - i * 0.8); c.setAttribute('fill', color); c.setAttribute('opacity', (0.35 - i * 0.05).toFixed(2));
+    c.style.display = 'none'; g.appendChild(c); trail.push(c);
+  }
+  const head = document.createElementNS(NS, 'circle');
+  head.setAttribute('r', 7.5); head.setAttribute('fill', color); head.setAttribute('stroke', '#fff'); head.setAttribute('stroke-width', 2); head.setAttribute('filter', 'url(#glow)');
+  g.appendChild(head);
+  let txt = null;
+  if (tag) { txt = document.createElementNS(NS, 'text'); txt.setAttribute('class', 'ptag'); txt.setAttribute('fill', color); txt.textContent = tag; g.appendChild(txt); }
+  document.getElementById('packets').appendChild(g);
+  heat(e, color);
+  if (CLIENTS.has(from) && kind === 'request') bump('req');
+  const p = { e, rev, kind, to, dist: 0, hist: [], g, head, trail, txt, onArrive };
+  packets.push(p);
+  place(p, 0);
+}
+function place(p, t) {
+  const { e } = p, len = e.len;
+  let s = ease(t) * len; if (p.rev) s = len - s;
+  const a = e.el.getPointAtLength(s);
+  const b = s + 1 <= len ? e.el.getPointAtLength(s + 1) : e.el.getPointAtLength(s - 1);
+  let tx = b.x - a.x, ty = b.y - a.y; if (s + 1 > len) { tx = -tx; ty = -ty; }
+  const m = Math.hypot(tx, ty) || 1, off = p.rev ? -6 : 6;
+  const x = a.x + (-ty / m) * off, y = a.y + (tx / m) * off;
+  p.hist.unshift([x, y]); if (p.hist.length > 24) p.hist.pop();
+  p.head.setAttribute('cx', x); p.head.setAttribute('cy', y);
+  p.trail.forEach((c, i) => {
+    const h = p.hist[(i + 1) * 3];
+    if (h) { c.style.display = ''; c.setAttribute('cx', h[0]); c.setAttribute('cy', h[1]); } else c.style.display = 'none';
+  });
+  if (p.txt) { p.txt.setAttribute('x', x); p.txt.setAttribute('y', y - 13); }
+}
+function arrive(p) {
+  p.g.remove(); cool(p.e);
+  activate(p.to, 0.45); ripple(p.to);
+  if (p.to === 'api' && p.kind === 'request') bump('hit');     // forwarded = allowed by the limiter
+  if (CLIENTS.has(p.to) && p.kind === 'error') bump('evt');   // rejected: 429 / 503 back to a client
+  if (CLIENTS.has(p.to) && (p.kind === 'response' || p.kind === 'error')) bump('res');
+  p.onArrive && p.onArrive();
+}
+
+function update(k) {
+  dashOffset -= 40 * k;
+  for (const e of EDGES) if (!e.hot) e.el.style.strokeDashoffset = dashOffset;
+  // timers
+  for (const tm of timers) tm.t -= k;
+  const due = timers.filter(tm => tm.t <= 0);
+  if (due.length) { timers = timers.filter(tm => tm.t > 0); due.forEach(tm => { if (tm.gen === GEN) tm.cb(); }); }
+  // packets
+  const done = [];
+  for (const p of packets) {
+    p.dist += 260 * k;
+    const t = Math.min(1, p.dist / p.e.len);
+    place(p, t);
+    if (t >= 1) done.push(p);
+  }
+  if (done.length) { packets = packets.filter(p => !done.includes(p)); done.forEach(arrive); }
+  // ripples: grow ~14px and fade over 0.5s
+  ripples = ripples.filter(r => {
+    r.age += k;
+    const q = r.age / 0.5;
+    if (q >= 1) { r.el.remove(); return false; }
+    const g = 14 * q;
+    r.el.setAttribute('x', r.b.l - g); r.el.setAttribute('y', r.b.t - g);
+    r.el.setAttribute('width', 150 + 2 * g); r.el.setAttribute('height', 112 + 2 * g);
+    r.el.setAttribute('opacity', (1 - q).toFixed(3));
+    return true;
+  });
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused && view === 'flow') update(dt * speed);
+  requestAnimationFrame(frame);
+}
+
+// ---------------- step runner ----------------
+// o.footer: top-level scenario (updates footer, reading pauses); o.fast: live mode (short pauses, no packet tags)
+function runFlow(steps, o) {
+  let i = 0;
+  const next = () => {
+    if (i >= steps.length) { o.done && o.done(); return; }
+    const st = steps[i];
+    if (o.footer) showStep(i, steps.length, st);
+    i++;
+    exec(st, o, next);
+  };
+  next();
+}
+function exec(st, o, next) {
+  if (st.type === 'hop' && st.via) {
+    // two-leg hop through a pass-through node (e.g. gateway -> LB -> client): one step, one packet per leg
+    const tag = o.fast ? null : st.tag;
+    spawn(st.from, st.via, st.kind, tag, () => spawn(st.via, st.to, st.kind, tag, () => wait(o.footer ? 1.1 : 0.08, next)));
+  } else if (st.type === 'hop') {
+    // fan-out / fan-in: an array on one side = one packet per pair, all at once; otherwise `count` packets 0.25 s apart
+    const fan = Array.isArray(st.to) ? st.to.map(t => [st.from, t]) : Array.isArray(st.from) ? st.from.map(f => [f, st.to]) : null;
+    const pairs = fan || Array.from({ length: st.count || 1 }, () => [st.from, st.to]);
+    const n = pairs.length; let got = 0;
+    pairs.forEach(([from, to], k) => {
+      const kind = st.kinds ? st.kinds[k] : st.kind;
+      const tag = o.fast ? null : (st.tags ? st.tags[k] : st.tag);
+      const fire = () => spawn(from, to, kind, tag, () => { if (++got === n) wait(o.footer ? 1.1 : 0.08, next); });
+      if (k && !fan) wait(k * 0.25, fire); else fire();
+    });
+  } else if (st.type === 'node') {
+    const d = o.fast ? Math.max(0.25, (st.dur || 2.2) * 0.3) : (o.footer ? (st.dur || 2.4) : (st.dur || 1));
+    [].concat(st.id).forEach((id, k) => {
+      activate(id, d); ripple(id);
+      const tag = st.tags ? st.tags[k] : st.tag;
+      if (tag) showTag(id, tag, st.tagColor || '#0b5cff', d + (o.fast ? 0.15 : 0.6));
+    });
+    if (st.stat === 'hit') bump('hit');
+    wait(d, next);
+  } else if (st.type === 'fork') {
+    runFlow(st.steps, { fast: o.fast });
+    wait(o.footer ? 2.0 : 0.05, next);
+  }
+}
+
+// ---------------- footer ----------------
+const badge = document.getElementById('badge'), fTitle = document.getElementById('ftitle'), fProto = document.getElementById('fproto'), fText = document.getElementById('ftext'), dotsEl = document.getElementById('dots');
+function buildDots(n) { dotsEl.innerHTML = '<i></i>'.repeat(n); }
+function showStep(i, total, st) {
+  badge.className = ''; badge.textContent = `${i + 1}/${total}`;
+  fTitle.textContent = st.title; fProto.textContent = st.proto || '';
+  fText.textContent = st.text || ''; fText.title = st.text || '';
+  [...dotsEl.children].forEach((d, k) => d.classList.toggle('on', k <= i));
+}
+
+// ---------------- scenarios / live ----------------
+function reset() {
+  GEN++;
+  timers = [];
+  packets.forEach(p => p.g.remove()); packets = [];
+  ripples.forEach(r => r.el.remove()); ripples = [];
+  EDGES.forEach(e => { e.hot = 0; e.el.classList.remove('hot'); e.el.style.stroke = ''; });
+  Object.values(NODE_EL).forEach(n => { n.act = 0; n.g.classList.remove('active'); n.g.querySelector('.tag').style.display = 'none'; });
+  flows = 0;
+  for (const k in stats) { stats[k] = 0; STAT_EL[k].textContent = 0; }
+}
+function start(id) {
+  current = id;
+  document.querySelectorAll('#scSeg button').forEach(b => b.classList.toggle('on', b.dataset.sc === id));
+  reset();
+  if (id === 'live') startLive(); else runMain(id);
+}
+function runMain(id) {
+  const steps = SCEN[id].steps;
+  buildDots(steps.length);
+  runFlow(steps, {
+    footer: true,
+    done: () => {
+      badge.className = ''; badge.textContent = '✓';
+      fTitle.textContent = '✓ Journey complete'; fProto.textContent = SCEN[id].name;
+      fText.textContent = 'Looping in 2.5 s · press R to replay now, or pick another scenario.'; fText.title = '';
+      wait(2.5, () => runMain(id));
+    },
+  });
+}
+function pickMix() {
+  let r = Math.random();
+  for (const [id, w] of LIVE_MIX) { if ((r -= w) <= 0) return id; }
+  return 'allow1';
+}
+function startLive() {
+  dotsEl.innerHTML = '';
+  badge.className = 'live'; badge.textContent = 'LIVE';
+  fTitle.textContent = 'Live mixed traffic'; fProto.textContent = '50% allowed · 34% throttled bot · 8% bot within plan · 8% rule refresh + replication';
+  const tick = () => {
+    if (flows < 14) {
+      const id = pickMix(); flows++;
+      runFlow(SCEN[id].steps, { fast: true, done: () => { flows--; } });
+    }
+    wait(0.55 + Math.random() * 0.6, tick);
+  };
+  const info = () => {
+    const rr = Math.round(100 * stats.evt / Math.max(1, stats.req));
+    fText.textContent = `${flows} flows and ${packets.length} packets in flight · every request runs one Lua script on the shared bucket, whichever pod it lands on · rejected/requests ≈ ${rr}%`;
+    fText.title = '';
+    wait(0.5, info);
+  };
+  tick(); info();
+}
+
+// ---------------- drawer ----------------
+const drawer = document.getElementById('drawer');
+let selected = null;
+function openDrawer(id) {
+  const n = NODES[id], inf = INFO[id], [bg, st] = PAL[id];
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = id; NODE_EL[id].g.querySelector('.sel').setAttribute('opacity', 1);
+  document.getElementById('dHead').style.background = bg;
+  document.getElementById('dHead').style.borderBottomColor = st;
+  document.getElementById('dLogo').innerHTML = `<svg width="44" height="44" viewBox="0 0 48 48">${LOGO[id]}</svg>`;
+  document.getElementById('dTitle').textContent = n.label;
+  document.getElementById('dTag').textContent = inf.tag;
+  const body = document.getElementById('dBody');
+  const core = CORE[id];
+  body.innerHTML = `<div>${inf.desc}</div><h4>Key points</h4><ul>${inf.points.map(p => `<li>${p}</li>`).join('')}</ul><h4>Example</h4><pre></pre>`
+    + (core ? `<a class="core-link" href="00_Core_Components.html#${core[0]}/what">🧩 Basics: ${esc(core[1])} in Core Components →</a>` : '');
+  body.querySelector('pre').textContent = inf.code;
+  body.scrollTop = 0;
+  drawer.classList.add('open'); drawer.setAttribute('aria-hidden', 'false');
+}
+function closeDrawer() {
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = null; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true');
+}
+svg.addEventListener('click', ev => {
+  const g = ev.target.closest('.node');
+  if (g) openDrawer(g.dataset.id); else closeDrawer();
+});
+document.getElementById('dClose').onclick = closeDrawer;
+
+// ---------------- legend popover ----------------
+const legendPop = document.getElementById('legendPop'), legendBtn = document.getElementById('legendBtn');
+document.getElementById('lgKinds').innerHTML = Object.entries(KIND).map(([k, c]) => `<span><i style="--c:${c}"></i>${k}</span>`).join('');
+const legendOpen = () => legendPop.classList.contains('open');
+function setLegend(open) {
+  if (open) {   // point the little arrow at the button
+    const r = legendBtn.getBoundingClientRect();
+    legendPop.style.setProperty('--arrow', Math.max(12, window.innerWidth - 16 - (r.left + r.width / 2) - 6) + 'px');
+  }
+  legendPop.classList.toggle('open', open);
+  legendBtn.classList.toggle('on', open);
+  legendBtn.setAttribute('aria-expanded', open);
+}
+legendBtn.addEventListener('click', () => setLegend(!legendOpen()));
+document.addEventListener('mousedown', ev => {
+  if (legendOpen() && !legendPop.contains(ev.target) && !legendBtn.contains(ev.target)) setLegend(false);
+});
+
+// ---------------- controls ----------------
+function setSpeed(v) { speed = v; document.querySelectorAll('#spSeg button').forEach(b => b.classList.toggle('on', +b.dataset.sp === v)); }
+function togglePause() { paused = !paused; document.getElementById('pauseBtn').textContent = paused ? '▶ Play' : '⏸ Pause'; }
+document.querySelectorAll('header button').forEach(b => b.addEventListener('click', () => b.blur()));
+document.querySelectorAll('#scSeg button').forEach(b => b.onclick = () => start(b.dataset.sc));
+document.querySelectorAll('#spSeg button').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp));
+document.getElementById('pauseBtn').onclick = togglePause;
+document.getElementById('replayBtn').onclick = () => start(current);
+document.addEventListener('keydown', ev => {
+  if (ev.target.closest && ev.target.closest('input,textarea')) return;
+  if (view !== 'flow' || ev.ctrlKey || ev.metaKey || ev.altKey) return;   // shortcuts drive the Data flow tab only
+  if (ev.code === 'Space') { ev.preventDefault(); togglePause(); }
+  else if (ev.key === '1') setSpeed(0.5);
+  else if (ev.key === '2') setSpeed(1);
+  else if (ev.key === '3') setSpeed(2);
+  else if (ev.key === 'r' || ev.key === 'R') start(current);
+  else if (ev.key === 'l' || ev.key === 'L') setLegend(!legendOpen());
+  else if (ev.key === 'Escape') { if (legendOpen()) setLegend(false); else closeDrawer(); }
+});
+
+// ====================================================================
+// interview content: copied verbatim from 02_Rate_Limiter.html (v2.0)
+// ====================================================================
+const CONTENT = {
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Pin down what is limited, by which key, and how strict it must be.',
+      lines: [
+        ['I', 'Design a rate limiter for our public API.'],
+        ['C', 'Server-side, protecting our APIs, rather than a client-side throttle?'],
+        ['I', 'Server-side.'],
+        ['C', 'What do we limit by: user id, API key, IP? Different limits per plan or per endpoint?'],
+        ['I', 'Per user or API key, different per plan. Login should be limited per IP.'],
+        ['C', 'How much traffic, and how many gateway instances?'],
+        ['I', 'About 50,000 requests per second at peak, around 20 gateway pods.'],
+        ['C', 'Must limits be exact, or is a small overshoot fine? And if the limiter itself is down?'],
+        ['I', 'A small overshoot is fine. Availability matters more for normal APIs.'],
+        ['P', 'Write: server-side · per user / plan · login per IP · 50k rps · 20 pods · approximate OK.'],
+      ],
+      avoid: 'Jumping to "token bucket in Redis" before you know the key, the limits and the failure policy.',
+    },
+    {
+      t: 'Estimate the scale', min: 4, goal: 'Show the state is small and must be in memory.',
+      lines: [
+        ['C', '50k req/s → **50k limiter checks per second**, each on the critical path, so the check must cost **well under a millisecond**: in-memory, one round trip.'],
+        ['C', 'State: one small hash per active key, about **100 bytes**. 1 M active users × 2 routes ≈ **200 MB** in Redis, with expiry so idle keys disappear.'],
+        ['C', 'One Redis primary handles 50k short scripts per second; I would still use a **small Redis Cluster** for headroom and failover.'],
+        ['P', 'Each number decides something: latency → in-memory; size → Redis is plenty; rps → one cluster, sharded by key.'],
+      ],
+    },
+    {
+      t: 'API & behaviour', min: 4, goal: 'Agree on what clients see.',
+      lines: [
+        ['C', 'Allowed: forward, add `X-RateLimit-Limit`, `X-RateLimit-Remaining` (or the IETF `RateLimit` headers).'],
+        ['C', 'Limited: **429 Too Many Requests** with `Retry-After` in seconds. The request never reaches the backend.'],
+        ['C', 'Rules: `{ plan, route, capacity, refillPerSec, key: user | apiKey | ip, onLimiterDown: FAIL_OPEN | FAIL_CLOSED }`, editable via an admin API without a deploy.'],
+        ['I', 'Why not queue the request instead of a 429?'],
+        ['C', 'A limit says "slow down". Queuing holds connections and grows latency; clients should back off with `Retry-After`.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Draw where the check runs and where the state lives.',
+      lines: [
+        ['P', 'Draw: Clients → Load Balancer → Gateway pods → Backend, with Redis (primary + replica) and Rules beside the gateways.'],
+        ['C', 'The check lives in the **API gateway**, so every service is protected in one place, before any business code runs.'],
+        ['C', 'Each pod builds the key (user + route), looks up the cached rule and runs **one Lua token-bucket script** in Redis: refill for elapsed time, take a token, write back, set an expiry.'],
+        ['I', 'Why not keep the counters in each pod?'],
+        ['C', 'The load balancer spreads a user over all pods; with 20 pods a user would get the limit 20 times.'],
+        ['P', 'Walk one real request: rl:A with 5 tokens → 4, next call on another pod → 3.5.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Concurrency, algorithms and failures.',
+      lines: [
+        ['I', 'Two pods check the same user at the same moment on the last token.'],
+        ['C', 'With GET then SET from Java both could pass. The Lua script is atomic: Redis runs one script at a time, so the second sees zero.'],
+        ['I', 'Fixed window or sliding?'],
+        ['C', 'A fixed window allows twice the limit across a boundary. A sliding log is exact but stores every request. Token bucket or a sliding-window counter is the usual compromise.'],
+        ['I', 'Redis goes down.'],
+        ['C', 'Tiny timeout and a circuit breaker. Normal routes fail open with a local bucket (limit ÷ pods); login and OTP fail closed. After failover a few updates may be lost, which is fine for limits.'],
+        ['I', 'One huge customer creates a hot key.'],
+        ['C', 'Lease tokens to pods in batches, or split the key into sub-buckets, each with a share of the limit.'],
+      ],
+      avoid: 'Claiming the limiter is exact across regions or during failover: say it is approximate by design.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: one atomic Lua token-bucket script per request in Redis, keyed by user and route; cached rules; 429 + Retry-After; tiny timeout with a fail-open / fail-closed policy per route.'],
+        ['C', 'Next: Redis Cluster for scale, per-region limiters for multi-region, and dashboards of 429 rate per plan to tune limits.'],
+        ['P', 'End with the trade-off you chose: availability over exactness for normal routes.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): say it in 1–2 minutes, pause between paragraphs
+    summary: [
+      "A rate limiter controls how many requests a client can make in a period, to protect our services from abuse and keep usage fair. I put it in the **API gateway**, so every service is protected in one place before any business code runs.",
+      "For every request the gateway builds a **key**, usually the user id from the JWT plus the route, and checks a **token bucket** for it. Each key has a bucket of, say, 5 tokens that refills at 0.5 per second. A request takes a token, and if the bucket is empty we return **429 Too Many Requests** with a `Retry-After` header, so the backend never sees that request.",
+      "Because we run many gateway pods behind a load balancer, the counters can't live in pod memory, otherwise a user would get the limit once per pod. So the buckets live in **Redis**, and the check is **one Lua script** that refills, takes a token and writes back **atomically**. That matters: with a GET and then a SET from Java, two pods could both spend the last token. In Spring Cloud Gateway this is the built-in Redis `RequestRateLimiter` filter.",
+      "The limiter is on every request, so the Redis call has a **tiny timeout and a circuit breaker**. If Redis is down, normal routes **fail open** with a small local bucket, while login, OTP and payments **fail closed**. After a failover a few extra requests may pass because replication is asynchronous, which is acceptable for rate limiting.",
+      "On algorithms, a fixed window is the cheapest but lets twice the limit through at a window boundary, and a sliding log is exact but stores every request. So a token bucket or a sliding-window counter is the usual choice.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> per-key limits per plan and route; 429 + Retry-After; remaining-quota headers; change limits without a deploy.</li>
+        <li><b>Non-functional:</b> &lt; 1–2 ms added at p99, correct across all pods, highly available, memory proportional to active users.</li>
+        <li><b>Out of scope (say so):</b> network-level DDoS (CDN / shield), billing quotas per month.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Checks</td><td class="m">50k / s</td><td>one Redis script each</td></tr>
+        <tr><td>State</td><td class="m">~100 B × 2 M keys</td><td>≈ 200 MB, with expiry</td></tr>
+        <tr><td>Latency</td><td class="m">same-zone Redis</td><td>≈ 0.3–1 ms</td></tr>
+        <tr><td>Pods</td><td class="m">20</td><td>→ counters must be shared</td></tr></table>` },
+      { h: '3 · Client contract', color: '#c47d1e', html: `<table>
+        <tr><td class="m">200</td><td>X-RateLimit-Limit · X-RateLimit-Remaining</td></tr>
+        <tr><td class="m">429</td><td>Too Many Requests · Retry-After: 2</td></tr>
+        <tr><td class="m">503</td><td>limiter down on a FAIL_CLOSED route (login, OTP)</td></tr>
+        <tr><td class="m">PUT /admin/limits/{plan}</td><td>change rules; pods pick them up in seconds</td></tr></table>` },
+      { h: '4 · Keys & rules', color: '#8f4fc4', html: `<pre>// Redis hash per user + route
+rl:{userId}:{route} → { tokens: "3.5", ts: 1761213600000 }
+PEXPIRE ~ capacity / refill  // idle keys vanish
+
+// rule (config, cached in every pod)
+{ plan: "free", route: "/orders/**", key: "user",
+  capacity: 5, refillPerSec: 0.5, onLimiterDown: "FAIL_OPEN" }
+{ plan: "*", route: "/login", key: "ip",
+  limit: 5, window: "1m", onLimiterDown: "FAIL_CLOSED" }</pre>` },
+      { h: '5 · Request path', color: '#2f6fe0', html: `<ol>
+        <li>LB → gateway pod → resolve key (JWT user / API key / IP) and cached rule.</li>
+        <li><code>EVALSHA tokenBucket rl:{key}</code> → <code>{ allowed, tokens }</code> (atomic in Redis).</li>
+        <li>Allowed → forward + headers. Denied → 429 + Retry-After, backend untouched.</li></ol>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>20 ms timeout + circuit breaker on the Redis call.</li>
+        <li>FAIL_OPEN routes: local bucket (limit ÷ pods). FAIL_CLOSED routes: 503.</li>
+        <li>Redis replica + Sentinel / Cluster; async replication → a few extra requests after failover.</li>
+        <li>Use Redis <code>TIME</code> inside the script so pod clock skew does not matter.</li></ul>` },
+    ],
+    decisions: [
+      ['Limit in the API gateway', 'One place protects every service, before business code runs.', 'The gateway and Redis are now on the critical path.'],
+      ['Counters in Redis, not pod memory', 'Global limit across all pods; sub-millisecond.', 'One more dependency to run and fail over.'],
+      ['One Lua script per check', 'Read-decide-write is atomic: no check-then-act race.', 'Scripts must stay tiny; a slow script blocks Redis.'],
+      ['Token bucket', 'Allows short bursts, steady average, two fields per key.', 'Less intuitive than "N per minute" for API users.'],
+      ['Key by user / API key, IP as fallback', 'Fair per caller; NAT users are not punished together.', 'Anonymous floods need IP or WAF rules.'],
+      ['Fail open (normal) · fail closed (login, OTP)', 'A Redis outage does not take the API down; brute force stays blocked.', 'During an outage normal routes are only approximately limited.'],
+      ['Async replication', 'Fast writes, simple HA.', 'A few extra requests pass after failover.'],
+    ],
+    code: [
+      { t: 'Token bucket in Lua (runs atomically in Redis)', code: '-- KEYS[1] = rl:{user}:{route}   ARGV[1] = capacity   ARGV[2] = refill per second\nlocal cap, rate = tonumber(ARGV[1]), tonumber(ARGV[2])\nlocal t = redis.call("TIME")                       -- Redis clock: no pod clock skew\nlocal now = t[1] * 1000 + math.floor(t[2] / 1000)\n\nlocal b = redis.call("HMGET", KEYS[1], "tokens", "ts")\nlocal tokens = tonumber(b[1]) or cap              -- new key starts full\nlocal ts = tonumber(b[2]) or now\ntokens = math.min(cap, tokens + (now - ts) / 1000 * rate)\n\nlocal allowed = 0\nif tokens >= 1 then tokens = tokens - 1; allowed = 1 end\nredis.call("HSET", KEYS[1], "tokens", tokens, "ts", now)\nredis.call("PEXPIRE", KEYS[1], math.ceil(cap / rate * 1000))\nreturn { allowed, tostring(tokens) }' },
+      { t: 'Spring Cloud Gateway: built-in Redis limiter', code: 'spring:\n  cloud:\n    gateway:\n      routes:\n        - id: orders\n          uri: lb://orders-api\n          predicates: [ Path=/orders/** ]\n          filters:\n            - name: RequestRateLimiter\n              args:\n                redis-rate-limiter.replenishRate: 1    # tokens per second\n                redis-rate-limiter.burstCapacity: 10\n                redis-rate-limiter.requestedTokens: 2  # each request costs 2 → 0.5 req/s, burst 5\n                key-resolver: "#{@userKeyResolver}"\n\n// key = authenticated user, IP only for anonymous calls\n@Bean KeyResolver userKeyResolver() {\n  return ex -> ex.getPrincipal().map(Principal::getName)\n      .switchIfEmpty(Mono.just(ex.getRequest().getRemoteAddress().getAddress().getHostAddress()));\n}' },
+      { t: 'Calling the script yourself (Spring Data Redis)', code: 'RedisScript<List> bucket = RedisScript.of(new ClassPathResource("token_bucket.lua"), List.class);\n\nDecision check(String user, Rule rule) {\n  String key = "rl:" + user + ":" + rule.route();\n  List<Object> r = redis.execute(bucket, List.of(key),\n      String.valueOf(rule.capacity()), String.valueOf(rule.refillPerSec()));   // EVALSHA, cached script\n  boolean allowed = ((Long) r.get(0)) == 1L;\n  double tokens = Double.parseDouble((String) r.get(1));\n  long retryAfter = allowed ? 0 : (long) Math.ceil((1 - tokens) / rule.refillPerSec());\n  return new Decision(allowed, (long) tokens, retryAfter);   // → headers or 429 + Retry-After\n}' },
+      { t: 'Fail open or closed when Redis is down', code: 'Decision decide(String user, Rule rule) {\n  try {\n    // client timeout ~20 ms; the breaker opens after repeated failures\n    return breaker.executeSupplier(() -> check(user, rule));\n  } catch (Exception redisDown) {\n    if (rule.onLimiterDown() == FAIL_CLOSED) return Decision.unavailable();   // login, OTP → 503\n    return localBuckets                                                   // approximate\n        .computeIfAbsent(user, k -> new LocalBucket(rule.capacity() / pods(), rule.refillPerSec() / pods()))\n        .tryTake();\n  }\n}' },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    cc: { name: 'Concurrency', color: '#c47d1e' },
+    al: { name: 'Algorithms', color: '#8f4fc4' },
+    fa: { name: 'Failures', color: '#ce3434' },
+    sc: { name: 'Scale', color: '#2f6fe0' },
+    cl: { name: 'Clients', color: '#13968a' },
+    tc: { name: 'Tech choices', color: '#65727a' },
+  },
+  followups: [
+    { g: 'cc', q: 'Two gateway pods use the last token at the same time. Can both pass?', what: 'With GET then SET from Java, yes: both read 1 token and both forward.', why: 'Separate read and write commands leave a gap for the other pod (check-then-act).', how: 'Do read-decide-write in **one Lua script** (or a single `INCR` for counters). Redis executes one script at a time.', trade: 'Scripts must be short: a slow script blocks every other Redis command.', flow: 'race' },
+    { g: 'cc', q: 'Why not MULTI/EXEC instead of Lua?', what: 'MULTI/EXEC queues commands and runs them together.', why: 'You cannot branch on a value read inside the transaction, and the bucket needs "if tokens ≥ 1 then take".', how: 'Lua (`EVALSHA`) or Redis Functions. `WATCH` + MULTI works but retries under contention.', trade: 'Lua logic lives in Redis: version and test the script like code.', flow: 'race' },
+    { g: 'cc', q: 'Pods have different clocks. Does that break the bucket?', what: 'If each pod passes its own "now", skew makes refills wrong (even negative).', why: 'The refill depends on elapsed time between calls from different pods.', how: 'Read the time **inside the script** with `redis.call("TIME")`, so one clock is used for every key.', trade: 'Ties the limiter to the Redis node\'s clock (fine; it is one node per key).' },
+    { g: 'al', q: 'Token bucket vs fixed vs sliding window?', what: 'Fixed window allows 2× bursts at the boundary; sliding log is exact but stores each request.', why: 'Trade precision against memory and CPU.', how: '**Token bucket** for burst-friendly APIs; **sliding-window counter** for "N per minute" with low memory.', trade: 'None is perfect; document the behaviour for API users.', flow: 'window' },
+    { g: 'al', q: 'What about the leaky bucket?', what: 'Requests enter a queue that drains at a fixed rate.', why: 'It smooths output to a constant rate.', how: 'Good for **your own outbound calls** to a third-party API with a strict rate; for incoming APIs a 429 is better than queueing.', trade: 'Adds latency; a full queue still has to reject.' },
+    { g: 'al', q: 'Should rejected requests be queued instead of getting 429?', what: 'Queuing hides overload but holds connections and grows latency.', why: 'A rate limit says "slow down", not "wait here".', how: 'Return **429 + Retry-After** for APIs; use queues (leaky bucket) for outbound calls.', trade: 'Clients must implement backoff.', flow: 'burst' },
+    { g: 'fa', q: 'Redis is down. What does the gateway do?', what: 'Every limiter call fails or times out.', why: 'The limiter sits on the critical path.', how: 'Tight timeout + circuit breaker. **Fail open** with a local bucket (limit ÷ pods) for normal routes; **fail closed** for login / OTP.', trade: 'Fail open lets attackers through during the outage; fail closed means an outage for users.', flow: 'fail' },
+    { g: 'fa', q: 'After a Redis failover, are limits still exact?', what: 'A few requests beyond the limit may be allowed.', why: 'Replication is asynchronous; the promoted replica may miss recent updates.', how: 'Accept it (rate limiting is approximate), or use `WAIT` for critical keys.', trade: '`WAIT` adds latency to every check.', flow: 'fail' },
+    { g: 'fa', q: 'Should limiter counters go in a database?', what: 'A DB write per request adds latency and load to every API call.', why: '50k checks per second need sub-millisecond in-memory state.', how: 'Counters in Redis with expiry; only the **rules** in a DB / config.', trade: 'A total Redis loss resets counters: limits simply restart.' },
+    { g: 'sc', q: 'How do you scale to 1 million requests per second?', what: 'One Redis primary becomes the bottleneck.', why: 'Every request is one Redis round trip.', how: '**Redis Cluster** sharded by key (a script must touch keys in one hash slot), token leasing for heavy users, per-region limiters.', trade: 'Global limits across regions become approximate.' },
+    { g: 'sc', q: 'A single huge customer is a hot key. What now?', what: 'All their requests hit one Redis shard.', why: 'One key lives in one slot on one node.', how: '**Lease** tokens to pods in batches (one script call gives a pod 50 tokens), or split the key into N sub-buckets with limit ÷ N each.', trade: 'Leased-but-unused tokens and sub-buckets make bursts less precise.' },
+    { g: 'sc', q: 'How much latency does the limiter add?', what: 'One Redis round trip per request.', why: 'Same-zone Redis is well under a millisecond; the script is microseconds of CPU.', how: '`EVALSHA` (script cached), connection pooling, Redis in the same zone as the pods.', trade: 'Cross-zone Redis adds about a millisecond.' },
+    { g: 'cl', q: 'How should clients behave after a 429?', what: 'Retrying immediately makes it worse.', why: 'Synchronised retries create new bursts.', how: 'Honour `Retry-After`; exponential backoff with **jitter**; idempotency keys for retried writes.', trade: 'You cannot force bad clients, so the limiter must reject them cheaply.', flow: 'burst' },
+    { g: 'cl', q: 'Limit by IP, user or API key?', what: 'IP is the only key for anonymous traffic, but many users share one IP behind NAT.', why: 'A per-IP limit punishes a whole office; bots rotate IPs.', how: '**User id / API key** for authenticated calls; IP (plus WAF / CAPTCHA) for anonymous and login routes.', trade: 'Anonymous limits stay coarse.', flow: 'burst' },
+    { g: 'tc', q: 'Gateway limiter or a library in each service?', what: 'Both exist: Spring Cloud Gateway `RequestRateLimiter`, Resilience4j `RateLimiter`, Bucket4j.', why: 'The gateway is one place for user-facing limits; Resilience4j limits are per JVM instance.', how: 'Gateway + Redis for user-facing limits; Resilience4j to protect calls to fragile dependencies.', trade: 'Per-instance limiters are not global.' },
+    { g: 'tc', q: 'How do you change limits without a deploy?', what: 'Limits in code need a release for every change.', why: 'Plans and abuse patterns change often.', how: 'Rules in a config service, cached per pod and refreshed every few seconds; versioned with an audit log.', trade: 'For a few seconds pods may disagree about a new rule.' },
+  ],
+};
+
+// =====================================================================
+// reading tabs: How to explain · Interview answer · Follow-ups (self-contained renderers)
+// =====================================================================
+const reader = document.getElementById('reader');
+// **bold** and `code` in plain-text content (same rules as engine/app.js)
+const rich = s => esc(s).replace(/"/g, '&quot;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+// old flow ids -> scenarios on the Data flow tab
+const FLOW_TO_SC = { happy: 'happy', burst: 'burst', race: 'race', window: 'window', fail: 'fail' };
+const STAGE_C = ['#fb923c', '#8b5cf6', '#3b82f6', '#0d9488', '#db2777', '#16a34a'];
+
+function renderExplain() {
+  const E = CONTENT.explain, total = E.reduce((a, s) => a + s.min, 0);
+  const who = { I: ['Interviewer', 'iv'], C: ['You', 'you'], P: ['Tip', 'tip'] };
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">How to explain it</span><h2>Drive the ${total}-minute interview, stage by stage</h2>
+    <p>Interviewers grade the <b>structure</b> as much as the design. Follow the stages in order and say out loud which stage you are in.</p></div></div>
+    <div class="timebar">${E.map((s, k) => `<button data-to="ex${k}" style="flex:${s.min};--c:${STAGE_C[k % STAGE_C.length]}"><b>${k + 1}. ${esc(s.t)}</b><span>${s.min} min</span></button>`).join('')}</div>
+    ${E.map((s, k) => `<section class="rcard stage" id="ex${k}" style="--c:${STAGE_C[k % STAGE_C.length]}">
+      <div class="stage-h"><span class="sn">${k + 1}</span><h3>${esc(s.t)}</h3><span class="mn">~${s.min} min</span></div>
+      <p class="goal"><b>Goal:</b> ${rich(s.goal)}</p>
+      ${s.lines.map(([w, t]) => `<div class="msg ${who[w][1]}"><span class="who">${who[w][0]}</span><p>${rich(t)}</p></div>`).join('')}
+      ${s.avoid ? `<p class="avoid"><b>⚠ Avoid</b> ${rich(s.avoid)}</p>` : ''}
+    </section>`).join('')}
+  </div>`;
+}
+
+function renderAnswer() {
+  const A = CONTENT.answer;
+  const jumps = [['a-pitch', '⏱ 60-second answer'], ...A.sections.map((s, k) => [`a-sec${k}`, s.h]), ['a-dec', '⚖ Trade-offs'], ['a-code', '{ } Code']];
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Interview-ready answer</span><h2>What to actually say</h2>
+    <p>Start with the 60-second version, then expand any section the interviewer picks.</p></div></div>
+    <nav class="jump">${jumps.map(([id, t]) => `<button data-to="${id}">${esc(t)}</button>`).join('')}</nav>
+    <section class="rcard pitch" id="a-pitch"><h3>⏱ The 60-second answer</h3>${[].concat(A.summary).map(p => `<p>${rich(p)}</p>`).join('')}</section>
+    <div class="ans-grid">${A.sections.map((s, k) => `<section class="rcard ans" id="a-sec${k}" style="--c:${s.color || '#0b5cff'}"><h3>${esc(s.h)}</h3>${s.html}</section>`).join('')}</div>
+    <section class="rcard ans" id="a-dec" style="--c:#7c3aed"><h3>⚖ Key decisions &amp; trade-offs</h3>
+      <table><thead><tr><th>Decision</th><th>Why</th><th>Trade-off</th></tr></thead><tbody>${A.decisions.map(r => `<tr>${r.map(c => `<td>${rich(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>
+    <div class="code-grid" id="a-code">${A.code.map(c => `<section class="rcard codeblk"><h3>${esc(c.t)}</h3><pre>${esc(c.code)}</pre></section>`).join('')}</div>
+  </div>`;
+}
+
+let fuGroup = 'all';
+function renderFollowups() {
+  const G = CONTENT.followGroups, F = CONTENT.followups, list = F.filter(f => fuGroup === 'all' || f.g === fuGroup);
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Follow-up questions</span><h2>What they ask next, and what to answer</h2>
+    <p>Each answer has the same shape: <b>what happens</b> → <b>why</b> → <b>how you handle it</b> → <b>the trade-off</b>. Saying the trade-off unprompted is what separates senior answers.</p></div></div>
+    <div class="chips"><button data-g="all" class="${fuGroup === 'all' ? 'on' : ''}">All <small>${F.length}</small></button>${Object.entries(G).map(([k, g]) => `<button data-g="${k}" class="${fuGroup === k ? 'on' : ''}" style="--c:${g.color}">${esc(g.name)} <small>${F.filter(f => f.g === k).length}</small></button>`).join('')}</div>
+    ${list.map((f, k) => `<details class="rcard fu" style="--c:${G[f.g].color}"${k === 0 ? ' open' : ''}>
+      <summary><span class="fu-g">${esc(G[f.g].name)}</span><span class="fu-q">${esc(f.q)}</span></summary>
+      <div class="fu-body">
+        <div><b>What happens</b><p>${rich(f.what)}</p></div>
+        <div><b>Why</b><p>${rich(f.why)}</p></div>
+        <div class="say"><b>🎤 Say this</b><p>${rich(f.how)}</p></div>
+        <div style="grid-column:1/-1"><b>Trade-off</b><p>${rich(f.trade)}</p></div>
+        ${f.flow ? `<button class="watch" data-sc="${FLOW_TO_SC[f.flow]}">▶ Watch flow: ${esc(SCEN[FLOW_TO_SC[f.flow]].name)}</button>` : ''}
+      </div></details>`).join('')}
+  </div>`;
+  reader.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { fuGroup = b.dataset.g; renderFollowups(); });
+  reader.querySelectorAll('.watch').forEach(b => b.onclick = () => { setView('flow'); start(b.dataset.sc); });
+}
+// sticky jump bars scroll inside the reading panel
+reader.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-to]');
+  if (!b) return;
+  const el = document.getElementById(b.dataset.to), bar = b.parentElement;
+  reader.scrollTo({ top: el.offsetTop - bar.offsetHeight - 8 });
+});
+
+function setView(v) {
+  view = v;
+  document.body.className = 'v-' + v;
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  if (v !== 'flow') {
+    closeDrawer(); setLegend(false);
+    if (v === 'explain') renderExplain(); else if (v === 'answer') renderAnswer(); else renderFollowups();
+    reader.scrollTop = 0;
+  }
+  last = performance.now();
+}
+document.querySelectorAll('#viewSeg button').forEach(b => b.onclick = () => { b.blur(); setView(b.dataset.view); });
+
+// ---------------- header: previous / next design + hub (engine/catalog.js) ----------------
+(function designNav() {
+  const cat = (window.SD_CATALOG || []).filter(c => c.file), at = cat.findIndex(c => c.id === 'rate');
+  const link = (d, txt, dir) => d ? `<a href="${d.file}" title="${dir}: ${d.n} · ${esc(d.title)}">${txt}</a>` : `<span class="off" title="No ${dir.toLowerCase()} design">${txt}</span>`;
+  document.getElementById('dNav').innerHTML = link(cat[at - 1], '←', 'Previous') + link(cat[at + 1], '→', 'Next')
+    + `<a class="hub" href="../02_SD_Interview_Simulator.html" title="All designs">All designs</a>`;
+})();
+
+
+start('happy');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

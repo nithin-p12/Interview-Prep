@@ -80,6 +80,8 @@
 .q-why button { margin-left: 8px; padding: 3px 12px; }
 
 @media (max-width: 900px) {
+  .cc-seg { display: flex; flex-wrap: wrap; max-width: 100%; }
+  .cc-seg button { flex: 1 1 auto; white-space: normal; }
   .cc-grid.two, .cc-grid.say { grid-template-columns: 1fr; }
   .cc-answer dl { grid-template-columns: 1fr; gap: 2px; }
   .cc-note { flex-direction: column; gap: 8px; }
@@ -87,10 +89,9 @@
   .cc-ctl small { text-align: left; }
   .cc-doc { overflow: visible; }
 }
-@media (max-width: 1500px) {
-  .cc .tagline { display: none; }
-  /* 7+ pills: keep the header on one row at laptop widths */
-  .cc-pills { gap: 5px; }
-  .cc-pills button { padding: 3px 10px 3px 4px; gap: 5px; font-size: 13px; }
-  .cc-pills .ci { width: 21px; height: 21px; font-size: 12px; }
-}
+/* 8+ pills: compact header so it stays on one row (logo · title · pills) */
+.cc .tagline, .cc .home-t, .cc .head-divider { display: none; }
+.cc .sd-head h1 { font-size: 19px; }
+.cc-pills { gap: 5px; }
+.cc-pills button { padding: 3px 10px 3px 4px; gap: 5px; font-size: 13px; }
+.cc-pills .ci { width: 21px; height: 21px; font-size: 12px; }

@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="doc-id" content="sd-ticket-booking">
-<meta name="doc-version" content="v2.2">
+<meta name="doc-version" content="v2.3">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ticket Booking · System Design · v2.2</title>
+<title>Ticket Booking · System Design · v2.3</title>
 <link rel="stylesheet" href="engine/sd.css">
 </head>
 <body>
@@ -95,6 +95,7 @@ window.DESIGN = {
       why: 'Protects the services from **on-sale spikes** (200k users in minutes) and keeps auth in one place.',
       without: 'Every service re-implements auth; a bot or a stampede of users hits the booking path directly and overloads MongoDB.',
       tech: 'Spring Cloud Gateway / Kong / NGINX, plus a virtual waiting room for hot shows', scale: 'Stateless, horizontal behind a load balancer.', fails: 'Health checks remove bad pods; rate limits shed load.',
+      core: ['gw', 'API Gateway'],
     },
     sweeper: {
       name: 'Expiry Sweeper',
@@ -130,6 +131,7 @@ window.DESIGN = {
       why: 'Seat-map reads are far more frequent than locks, especially during an on-sale. Redis serves them in ~1 ms and shields MongoDB.',
       without: 'Every refresh of the seat map hits MongoDB at the worst possible moment.',
       tech: 'Redis hash + short TTL as a safety net', scale: 'Replicas for read throughput.', fails: 'Stale or missing entries only cause a 409 at lock time; reads fall back to MongoDB.',
+      core: ['cache', 'Cache · Redis'],
     },
     mongo: {
       name: 'MongoDB (source of truth)',
@@ -137,6 +139,7 @@ window.DESIGN = {
       why: 'The **atomic single-document conditional update** is what guarantees one seat, one winner. Transactions keep seat + booking + outbox consistent.',
       without: 'There is no authority: the cache or the services would have to decide, and both can be wrong.',
       tech: 'MongoDB replica set (transactions need one), shard key `showId`', scale: 'Shard by show so one show\'s seats live together.', fails: 'Primary failover takes seconds; retryable writes + idempotent requests cover it.',
+      core: ['db', 'DB scaling'],
     },
     relay: {
       name: 'Outbox Relay',
@@ -151,6 +154,7 @@ window.DESIGN = {
       why: 'Lets several consumers (notification, analytics, loyalty) react to bookings independently and at their own pace.',
       without: 'Booking would call every downstream service itself, and each outage would ripple back into the booking path.',
       tech: 'Kafka, replication factor 3, `min.insync.replicas=2`', scale: 'Partitions + consumers per group.', fails: 'Redelivers from the last committed offset, so duplicates are possible.',
+      core: ['kafka', 'Queue · Kafka'],
     },
     notif: {
       name: 'Notification Service',
@@ -717,7 +721,12 @@ window.DESIGN = {
 
   // ---------------- 5 · interview answer ----------------
   answer: {
-    summary: 'Users go through a gateway to a **Booking Service**; **MongoDB** is the source of truth with **one document per seat**. To hold a seat I run a **conditional update**, only if status is AVAILABLE, so with two concurrent users exactly one gets modifiedCount 1 and a 200, the other a **409**. The hold has a `lockExpiresAt` timestamp: expired holds are reclaimed by the next lock query and tidied by a sweeper (no TTL index, because seat documents are permanent). Payment uses an **idempotency key**. On the signed webhook, **one transaction** re-checks the hold, marks the seat BOOKED, and inserts the booking and an **outbox** event; if the hold expired, I **refund**. A relay publishes the outbox to **Kafka** and the notification consumer **dedupes by eventId**, so delivery is at-least-once. Redis only caches the seat map. For hot shows I add a **waiting room** and shard by showId.',
+    summary: [
+      'For ticket booking, the core problem is two people trying to grab the same seat at the same moment, so I design around that. Users come in through an API gateway to a Booking Service, and MongoDB is the source of truth with **one document per seat**: its status and, while it is held, who holds it and until when.',
+      'To hold a seat I never read and then write. I do one **conditional update**: set the status to HELD only if it is AVAILABLE, or HELD with an expired lockExpiresAt. In Spring that is a `MongoTemplate.updateFirst` with those conditions in the query. If two users click together, MongoDB applies them one at a time, so exactly one gets modifiedCount 1 and a 200, and the other gets a **409** and picks another seat. Expired holds are simply reclaimed by the next query, and a small sweeper tidies them up.',
+      'Payment goes to the provider with an **idempotency key**, so a retry never charges twice. When the signed webhook comes back, I run **one MongoDB transaction** that re-checks the hold is still mine, marks the seat BOOKED, inserts the booking and writes an **outbox** event. If the hold had already expired, I refund instead of booking. A relay publishes the outbox to **Kafka**, and the notification consumer dedupes by eventId, because delivery is at-least-once.',
+      'Redis only caches the seat map for fast reads; it is never the source of truth for who owns a seat. For a hot on-sale, like a big concert, I would put a **virtual waiting room** at the gateway to admit users at a controlled rate, and shard by showId so one show cannot hurt the others.',
+    ],
     sections: [
       { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
         <li><b>Functional:</b> seat map, hold seats (10 min), pay, confirm, release expired holds, send the ticket.</li>

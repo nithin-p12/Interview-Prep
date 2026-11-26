@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-next-greater">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>17. Next Greater Element · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int[] nextGreater(int[] nums) {
+    int n = nums.length;
+    int[] answer = new int[n];
+    Arrays.fill(answer, -1);
+    Deque<Integer> stack = new ArrayDeque<>();
+    for (int i = 0; i < n; i++) {
+        while (!stack.isEmpty() && nums[stack.peek()] < nums[i]) {
+            answer[stack.pop()] = nums[i];
+        }
+        stack.push(i);
+    }
+    return answer;
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(nums){
+ const S=[],n=nums.length,ans=new Array(n).fill(null),st=[];
+ const lab=k=>`[${k}]=${nums[k]}`;
+ function snap(o){const i=o.i,inLoop=i!=null&&i<n,hl={},ahl={};
+  st.forEach(k=>hl[k]='in');if(inLoop)hl[i]='cur';if(o.top!=null)hl[o.top]=o.popd?'hit':'bad';
+  if(o.set!=null)ahl[o.set]='new';
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:nums,hl},
+   vizx:{answer:{vals:ans.map(v=>v===null?'':v),hl:ahl}},
+   ds:{stack:{items:st.map(k=>({id:'k'+k,v:lab(k)})),hl:o.shl||{}}},
+   vars:[{t:'method',note:'whole call',v:[['n',n]]},
+         {t:'loop',note:'new each turn',v:[['i',inLoop?i:undefined],['nums[i]',inLoop?nums[i]:undefined]]}]});}
+
+ snap({line:[2,3],ann:{2:`n = ${n}`,3:'answer = new int[n]'},text:'<b>answer[i]</b> = the first number to the <b>right</b> of nums[i] that is bigger.'});
+ ans.fill(-1);
+ snap({line:[4,5],ann:{4:'all -1',5:'stack = []'},text:'Default <b>−1</b> (no bigger number). The <b>stack</b> holds indices still <b>waiting</b> for their next greater number.'});
+ for(let i=0;i<n;i++){const x=nums[i];
+  snap({i,line:[6],ann:{6:`i = ${i}`},text:`i = ${i}, nums[i] = <b>${x}</b>. Can ${x} be the answer for anyone waiting on the stack?`});
+  while(st.length&&nums[st[st.length-1]]<x){const k=st[st.length-1];
+   snap({i,top:k,shl:{['k'+k]:'hit'},line:[7],ann:{7:'true'},probe:{t:'stack.peek()',r:String(k),ok:true},
+    text:`Top of the stack is index ${k} (value ${nums[k]}). ${nums[k]} &lt; ${x} → <b>${x}</b> is its next greater number.`});
+   st.pop();ans[k]=x;
+   snap({i,top:k,popd:true,set:k,line:[8],ann:{8:`answer[${k}] = ${x}`},tone:'good',probe:{t:'stack.pop()',r:String(k),ok:null},
+    text:`Pop ${k} and write <b>answer[${k}] = ${x}</b>. Check the new top too.`});
+  }
+  const t=st.length?st[st.length-1]:null;
+  snap({i,top:t,line:[7],ann:{7:t==null?'empty':'false'},
+   text:t==null?'Stack is empty → nobody else is waiting.':`Top value ${nums[t]} is not smaller than ${x} → stop (the stack stays <b>decreasing</b>).`});
+  st.push(i);
+  snap({i,shl:{['k'+i]:'new'},line:[10],ann:{10:`push(${i})`},probe:{t:`stack.push(${i})`,r:`size ${st.length}`,ok:null},
+   text:`Now ${x} waits for its own next greater number → push index <b>${i}</b>.`});
+ }
+ snap({line:[12],ann:{12:`[${ans.join(', ')}]`},tone:'good',result:ans.slice(),
+  text:st.length?`Done. Indices still on the stack (${st.join(', ')}) never found a bigger number → they keep <b>−1</b>.`:'Done — every number found a bigger one to its right.'});
+ return S;}
+
+PLAYER.start({
+ title:'17. Next Greater Element',code:CODE,run,
+ problem:{pattern:'Monotonic stack (decreasing)',text:'For each number, return the first <b>bigger</b> number to its right, or −1.',example:'[2, 1, 2, 4, 3] → [4, 2, 4, −1, −1]'},
+ viz:{kind:'array',label:'nums',title:'orange = nums[i] · light blue = waiting on the stack',opts:{cw:44,top:6,ptrs:false},
+  rows:[{id:'answer',label:'answer',kind:'array',opts:{cw:44,top:6,ptrs:false}}]},
+ ds:[{id:'stack',kind:'stack',decl:'Deque&lt;Integer&gt; stack',note:'indices, shown as [i]=value',opts:{sm:true}}],
+ input:{label:'nums =',value:'2,1,2,4,3',presets:['1,3,2,4','3,2,1','5,1,6','3,1,1,2,5'],
+  parse(v){const a=v.match(/-?\d+/g)?.map(Number)||[];if(a.length<1||a.length>6)throw 'nums: 1 to 6 numbers, e.g. 2,1,2,4,3';return a;}},
+ remember:{
+  mnem:{letters:['D','L','P','W'],phrase:'Default · Loop · Pop-smaller · Wait',sub:'The stack keeps indices still waiting; a bigger number answers them all.'},
+  chunks:[
+   {t:'Default',d:'answer filled with −1, an empty Deque',lines:[2,3,4,5]},
+   {t:'Loop',d:'for i = 0..n−1',lines:[6]},
+   {t:'Pop-smaller',d:'while top value &lt; nums[i]: answer[pop()] = nums[i]',lines:[7,8,9]},
+   {t:'Wait',d:'push(i); return answer',lines:[10,12]}],
+  declare:[
+   ['int[] answer = new int[n];','+ Arrays.fill(answer, −1)'],
+   ['Deque&lt;Integer&gt; stack','indices (not values) — we must write answer[index]'],
+   ['nums[stack.peek()] &lt; nums[i]','compare the values behind the indices']],
+  forget:[
+   'Push <b>indices</b>, not values — you need to know where to write.',
+   'It is a <b>while</b> — one big number can answer many waiting ones.',
+   'Fill answer with <b>−1</b> first (or after the loop for what is left).',
+   'Each index is pushed once and popped once → O(n), not O(n²).'],
+  cx:{time:'O(n)',timeWhy:'every index is pushed and popped at most once',space:'O(n)',spaceWhy:'stack + answer array',
+   rows:[['For each i, scan to the right','O(n²)','O(1)','two loops',false],
+    ['Monotonic stack','O(n)','O(n)','one pass ✓',true]],
+   follow:[
+    ['Circular array (II)?','Loop i from 0 to 2n − 1, use <code>i % n</code>; push only while i &lt; n.'],
+    ['Daily Temperatures?','Same stack; write <code>i − index</code> (days to wait) instead of the value.'],
+    ['Next smaller element?','Flip the comparison: pop while top value &gt; nums[i].']]}}
+});
+</script>
+</body></html>

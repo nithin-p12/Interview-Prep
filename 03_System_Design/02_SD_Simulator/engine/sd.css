@@ -416,3 +416,7 @@ button:disabled { opacity: .45; cursor: default; }
 .c-str { color: #ce9178; }
 .c-num { color: #b5cea8; }
 .c-com { color: #6a9955; font-style: italic; }
+
+/* link from a design's component to its lesson in Core Components (taught once there) */
+.core-link { display: inline-block; margin-top: 8px; font-size: 12.5px; font-weight: 600; color: var(--c); text-decoration: none; }
+.core-link:hover { text-decoration: underline; }

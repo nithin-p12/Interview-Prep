@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-two-sum">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1. Two Sum · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../../_shared/design-tokens.css">
+<link rel="stylesheet" href="../../../_shared/deck.css">
+<link rel="stylesheet" href="engine_v1/algo.css">
+</head>
+<body data-topic="code:Two Sum">
+<header class="topbar">
+ <a class="tbrand" href="../../../00_Index.html" title="Home — all subjects"><span class="pm2">NP</span><span><b>Interview Prep</b><small>NITHIN P</small></span></a>
+ <a class="tsubj" href="../../../07_Interview/01_Coding/00_Coding_Practice.html" title="All 22 coding problems" style="color:#4338CA">⌨ Coding</a>
+ <nav class="tabs" id="tabs"></nav>
+ <div class="tools"><button class="tg on" id="t-code" title="Show or hide code">&lt;/&gt; Code</button><button class="tg" id="t-all" title="Slides on = one topic per screen · off = one long scrolling page">▭ Slides: on</button></div>
+</header>
+
+<main class="deck" id="deck">
+<section class="cat" data-name="Contents" data-col="t">
+<h1 class="cat-title">Contents</h1>
+<div class="slide c-t">
+ <div class="sh"><span class="sn">0</span><h2>1. Two Sum</h2><span class="sub">Arrays &amp; Hashing · Easy · the "have I seen my partner?" pattern</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div class="prob" id="prob"></div>
+ <div class="toc" id="toc"></div>
+ <div class="howuse"><span><b>← →</b> keys move between slides</span><span><b>Overview</b> loops by itself · <b>Step by step</b> = you click</span><span>Type your own input on the step slide</span></div>
+</div>
+</section>
+
+<section class="cat" data-name="1. Overview" data-col="b">
+<h1 class="cat-title">1. Overview</h1>
+<div class="slide c-b">
+ <div class="sh"><span class="sn">1.1</span><h2>Watch the whole run</h2><span class="sub">nums = [3, 8, 11, 2, 7, 15], target = 9 — the map fills up until the partner is found</span></div>
+ <div id="ov"></div>
+</div>
+</section>
+
+<section class="cat" data-name="2. Step by step" data-col="p">
+<h1 class="cat-title">2. Step by step</h1>
+<div class="slide c-p">
+ <div class="sh"><span class="sn">2.1</span><h2>Step by step — minimum loop</h2><span class="sub">[2, 7, 11, 15], target 9 → only 2 iterations: one miss, one hit</span></div>
+ <div id="st"></div>
+</div>
+</section>
+
+<section class="cat" data-name="3. Remember" data-col="o">
+<h1 class="cat-title">3. Remember</h1>
+<div class="slide c-o">
+ <div class="sh"><span class="sn">3.1</span><h2>Variables, approach &amp; the 4-chunk shortcut</h2><span class="sub">write it from memory: D · L · C · S</span></div>
+ <div id="rem"></div>
+</div>
+</section>
+
+<section class="cat" data-name="4. Complexity" data-col="g">
+<h1 class="cat-title">4. Complexity</h1>
+<div class="slide c-g">
+ <div class="sh"><span class="sn">4.1</span><h2>Time &amp; space</h2><span class="sub">why one pass with a HashMap beats two loops</span><label class="donebox"><input type="checkbox" class="topic-done"> Completed</label></div>
+ <div id="cx"></div>
+</div>
+</section>
+</main>
+
+<footer class="pager">
+ <button class="nb" id="prev" title="Previous (←)">◀</button>
+ <div class="dots" id="dots"></div>
+ <span class="cnt" id="cnt"></span>
+ <button class="nb" id="next" title="Next (→)">▶</button>
+ <span class="kbd">← → keys</span>
+</footer>
+
+<script src="../../../_shared/deck.js"></script>
+<script src="engine_v1/algo.js"></script>
+<script>
+const CODE=`public int[] twoSum(int[] nums, int target) {
+    Map<Integer, Integer> seen = new HashMap<>();  // value -> index
+    for (int i = 0; i < nums.length; i++) {
+        int need = target - nums[i];
+        if (seen.containsKey(need)) {
+            return new int[]{seen.get(need), i};
+        }
+        seen.put(nums[i], i);
+    }
+    return new int[]{-1, -1};                     // no pair found
+}`;
+
+// the real algorithm, recording a frame at every interesting line
+function run({nums,target}){
+ const F=[],seen=new Map();
+ const arr=(i,extra={})=>{const cls={};nums.forEach((_,j)=>{if(seen.has(nums[j])&&seen.get(nums[j])===j)cls[j]='seen';});
+  if(i!=null)cls[i]='cur';Object.assign(cls,extra);return {name:'nums',vals:nums,ptr:i==null?{}:{i},pcol:{i:'y'},cls};};
+ const map=(hl,probe)=>[{kind:'map',name:'seen',decl:'Map<Integer,Integer>',cols:['value (key)','index'],rows:[...seen],hl,probe}];
+ const V=(...x)=>[['target',target],...x];
+ F.push({line:2,chunk:0,arr:arr(null),ds:map(),vars:V(),msg:'Create an empty map <b>seen</b>. It will remember <b>value → index</b> of every number we have already walked past.'});
+ for(let i=0;i<nums.length;i++){
+  const x=nums[i],need=target-x;
+  F.push({line:3,chunk:1,arr:arr(i),ds:map(),vars:V(['i',i],['nums[i]',x]),msg:`<b>i = ${i}</b> → look at <b>nums[${i}] = ${x}</b>.`});
+  F.push({line:4,chunk:1,arr:arr(i),ds:map(),vars:V(['i',i],['nums[i]',x],['need',need]),msg:`Partner I need: <b>need = ${target} − ${x} = ${need}</b>.`});
+  if(seen.has(need)){const j=seen.get(need);
+   F.push({line:5,chunk:2,arr:arr(i,{[j]:'hit'}),ds:map({[need]:'hit'},{t:`seen.containsKey(${need})`,ok:true}),vars:V(['i',i],['nums[i]',x],['need',need]),msg:`<b>${need}</b> is in the map — we saw it at index <b>${j}</b>. Partner found!`});
+   F.push({line:6,chunk:2,arr:arr(i,{[j]:'hit',[i]:'hit'}),ds:map({[need]:'hit'}),vars:V(['i',i],['need',need]),out:`[${j}, ${i}]`,msg:`Return <b>[seen.get(${need}), i] = [${j}, ${i}]</b> → nums[${j}] + nums[${i}] = ${need} + ${x} = ${target} ✓`});
+   return F;}
+  F.push({line:5,chunk:2,arr:arr(i),ds:map({},{t:`seen.containsKey(${need})`,ok:false}),vars:V(['i',i],['nums[i]',x],['need',need]),msg:`<b>${need}</b> is not in the map yet → no partner so far.`});
+  seen.set(x,i);
+  F.push({line:8,chunk:3,arr:arr(i),ds:map({[x]:'new'}),vars:V(['i',i],['nums[i]',x],['need',need]),fly:['a'+i,'m'+x,x],msg:`Remember myself: <b>seen.put(${x}, ${i})</b>, so a later number that needs ${x} can find me.`});
+ }
+ F.push({line:10,chunk:3,arr:arr(null),ds:map(),vars:V(),out:'[-1, -1]',msg:'Loop ended without a match → no pair adds up to the target.'});
+ return F;}
+
+ALGO.page({
+ file:'TwoSum.java',code:CODE,run,
+ statement:'Given an array <code>nums</code> and an integer <code>target</code>, return the <b>indices</b> of the two numbers that add up to <code>target</code>. Exactly one answer exists; you may not use the same element twice.',
+ examples:[['nums = [2, 7, 11, 15], target = 9','[0, 1]   (2 + 7 = 9)'],['nums = [3, 2, 4], target = 6','[1, 2]']],
+ idea:'For each number, the partner it needs is <b>target − num</b>. Keep every number you have passed in a <b>HashMap (value → index)</b>, so "have I seen my partner?" is an O(1) lookup instead of a second loop.',
+ tags:[['HashMap','warn'],['one pass','ok'],['complement lookup','no'],['O(n) time','ok']],
+ mnem:{letters:['D','L','C','S'],phrase:'Declare · Loop · Check · Store',sub:'Ask “have I seen my partner?” BEFORE you store yourself.'},
+ overview:{nums:[3,8,11,2,7,15],target:9},
+ step:{nums:[2,7,11,15],target:9},
+ fields:[{k:'nums',type:'arr',min:2,max:9},{k:'target',type:'num'}],
+ chunks:[
+  {t:'Declare',d:'an empty HashMap: value → index',lines:[2]},
+  {t:'Loop',d:'walk i from 0; compute need = target − nums[i]',lines:[3,4]},
+  {t:'Check',d:'if the map has need → return [map.get(need), i]',lines:[5,6,7]},
+  {t:'Store',d:'otherwise put(nums[i], i); after the loop return a fallback',lines:[8,10]}],
+ declare:[
+  ['seen','Map&lt;Integer,Integer&gt;','new HashMap&lt;&gt;()','key = number, value = its index'],
+  ['i','int','0','current index (we must return indices)'],
+  ['need','int','target − nums[i]','the partner value to look up']],
+ approach:'Walk the array once. For each number compute <b>need</b>; if <b>need</b> is already in the map, the answer is <b>[its index, i]</b>. If not, store the current number with its index and move on.',
+ forget:[
+  'Map stores <b>value → index</b> (key is the number, not the index) — we look up by value.',
+  '<b>Check before put.</b> Putting first can pair a number with itself (e.g. [3], target 6 → wrong [0, 0]).',
+  'Return order is <code>{seen.get(need), i}</code> — the older index first.',
+  'Java needs a return after the loop: <code>return new int[]{-1, -1};</code> (or throw).'],
+ cx:{time:'O(n)',timeWhy:'one pass; each map get/put is O(1) on average',space:'O(n)',spaceWhy:'the map can hold up to n − 1 numbers',
+  rows:[['Brute force: two loops','O(n²)','O(1)','check every pair i &lt; j',false],
+   ['Sort + two pointers','O(n log n)','O(n)','must keep original indices → extra array',false],
+   ['HashMap one pass','O(n)','O(n)','trade memory for speed ✓',true]],
+  race:[{label:'Two loops n²/2',f:n=>n*(n-1)/2,col:'#EF4444'},{label:'Sort n log n',f:n=>n*Math.log2(n),col:'#F59E0B'},{label:'HashMap n',f:n=>n,col:'#22C55E'}],
+  follow:[
+   ['Array is sorted (Two Sum II)?','Two pointers L=0, R=n−1: sum too small → L++, too big → R−−. O(n) time, O(1) space.'],
+   ['Return all pairs / count pairs?','Do not return early; for counting store value → frequency and add freq[need] each step.'],
+   ['Duplicates like [3, 3], target 6?','Works: the first 3 is stored, the second 3 finds it → [0, 1]. Check-before-put is what makes it correct.'],
+   ['Return values instead of indices?','A HashSet is enough — no index to remember.'],
+   ['Worst case of HashMap?','Many collisions → O(log n) per bucket in Java 8+ (tree bins); still O(n log n) overall, practically O(n).']],
+  gtk:'Two Sum is the parent of <b>3Sum</b> (#11): fix one number, then solve Two Sum on the rest with two pointers.'}
+});
+</script>
+</body></html>

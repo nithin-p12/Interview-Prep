@@ -111,6 +111,8 @@ E · Under the hood
 ====================================================================
 7. INTERVIEW EXTRAS  (folder 07_Interview — to be created)
 ====================================================================
+[NEW]  01 Coding Practice — 07_Interview/01_Coding/ (hub + engine/ + structures gallery; all 22 problems built on the
+          2-screen player: Run it · Remember it)
 [TODO] 01 Java coding round — Streams / String / Collections problems
 [TODO] 02 Git essentials
 
@@ -159,3 +161,40 @@ CHANGE LOG
 2026-11-02  00_Core_Components.html v1.0 (watch first): Load balancer, Cache, Kafka, When to use what. Learn page removed;
             URL Shortener is the classic page again (v2.2).
 2026-11-12  Core Components v2.2: + CDN (edges vs one far origin, hit/miss/revalidate/deploy) + DB scaling (replicas, read-your-writes, sharding, SQL vs NoSQL); compact pills.
+2026-11-12  Core Components v2.3: + API Gateway / rate limiting (bot flood vs 429, JWT, token bucket in Redis, aggregation); compact header always; segmented wraps on mobile.
+2026-11-12  Rate Limiter rebuilt as its own page (v2.0): 5 flows, links to Core Components, spoken 60-second answer.
+2026-11-12  Notification System rebuilt as its own page (v2.0): 5 flows (dedupe, retry topics/DLQ, duplicate on crash, OTP priority), spoken answer.
+2026-11-12  E-commerce Order System rebuilt as its own page (v2.0): orchestrated saga, outbox, last-unit race, compensation, late payment refund, retries/duplicates.
+2026-11-12  Chat System rebuilt as its own page (v2.0): WebSockets taught here (polling vs upgrade, heartbeats), seq ordering, clientMsgId dedupe, offline sync, gateway crash.
+2026-11-13  Distributed Job Scheduler rebuilt as its own page (v2.0): atomic claim, leases, fencing tokens, run keys, retries/backoff, misfire policy.
+2026-11-13  News Feed rebuilt as its own page (v2.0): fan-out on write, celebrity hybrid pull, cursor pagination, hydration, timeline rebuild.
+2026-11-13  Search System rebuilt as its own page (v2.0): Elasticsearch taught here (inverted index, analyzers, BM25, shards), CDC indexing, external versions, alias reindex.
+2026-11-13  Video Streaming rebuilt as its own page (v2.0): chunked parallel transcoding, idempotent tasks, HLS + adaptive bitrate, CDN collapsing/origin shield.
+2026-11-13  Distributed Cache rebuilt as its own page (v2.0): consistent hashing taught here (mod N vs ring + vnodes), delete-on-write, versioned sets, eviction, failover, hot keys.
+2026-11-13  All 12 designs now have their own pages; the archived all-in-one simulator is history only.
+2026-11-13  Ticket Booking and File Upload (v2.3): Core Components links and 4-paragraph spoken interview answers, matching the other designs.
+2026-11-16  Coding Practice: hub (22 problems), shared trace engine (array/bars, Map/Set/List/Stack/Queue panels,
+            variables, fly animation, Java line highlight), pages 01 Two Sum + 02 Best Time to Buy & Sell Stock.
+2026-11-16  Coding Practice v2 direction: engine/ds.js (11 animated structure views) + engine/player.js (4 blocks: Code,
+            Visualize, Data structures, Variables; Debug/Auto). New: 00_Structures_Gallery.html, 08 Longest Substring.
+            01 Two Sum + 02 Stock still on the old algo.js engine → rebuild on the player. 99_Viz_Styles_Lab = style comparison.
+2026-11-16  Coding pages = 2 screens (Run it · Remember it). 01 Two Sum, 02 Stock, 08 Longest Substring rebuilt on
+            engine/player.js; old v1 pages + engine/algo.* moved to _archive/07_Interview/01_Coding/. All fit 1365×650.
+2026-11-17  Coding Practice: the remaining 19 problem pages (03–07, 09–22) built on engine/player.js — 22 of 22 READY.
+            Each: Run it (code + inline values, Visualize, Data structures, Variables by scope; Debug/Auto, own input +
+            4 presets) and Remember it (4-letter shortcut, declarations, traps, time & space table, follow-ups).
+2026-11-17  Coding engine: intervals view (number line), Visualize rows (extra views below or beside, e.g. call stack next
+            to a tree/grid), array index labels + no-pointer rows, small stack, map column widths, ArrayList item width;
+            code font auto-fits code + inline values, return badge moved to the Visualize header, number-only chunk
+            badges, input grows with its text. Gallery v1.1 (+ Intervals); 01/02/08 → v2.1; hub v1.1.
+            Verified headless at 1365×650: every preset, every step, both modes + Remember it → 0 JS errors, 0 overflow.
+2026-11-19  Customer Support Ticketing page (13_Support_Ticketing.html, v1.0): intake + outbox, CAS claims, state machine,
+            SLA timers + escalation, live updates, tenant isolation. Hub v3.8 (catalog entry). Verified: static dry-run of
+            every flow + headless walk of every tab and flow step → 0 JS errors.
+2026-11-19  Git page (14_Git.html, v1.0): content-addressed objects, refs, merge base + 3-way merge, packfile negotiation,
+            ref CAS + non-fast-forward, repo sharding with quorum replicas, Git LFS, push events/webhooks. Hub v3.9.
+            Verified: static dry-run of every flow + headless walk of every tab and flow step → 0 JS errors.
+2026-11-19  Parking Lot page (15_Parking_Lot.html, v1.0): LLD class model + Strategy (allocation, pricing), thread-safe
+            allocate, gate race (CAS on spot state + Redis ZPOPMIN), idempotent exit + pay-later fallback, live availability,
+            reservations with hold TTL + no-show, offline lot server with journal resync, cloud sharded by lotId. Hub v3.10.
+            Verified: static dry-run of every flow + headless walk of every tab and flow step → 0 JS errors.

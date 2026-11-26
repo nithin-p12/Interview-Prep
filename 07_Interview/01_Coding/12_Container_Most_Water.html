@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="doc-id" content="code-container-water">
+<meta name="doc-version" content="v1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>12. Container With Most Water · Coding Practice · v1.0</title>
+<link rel="stylesheet" href="../../_shared/design-tokens.css">
+<link rel="stylesheet" href="engine/ds.css">
+</head>
+<body>
+<script src="engine/ds.js"></script>
+<script src="engine/player.js"></script>
+<script>
+const CODE=`public int maxArea(int[] height) {
+    int left = 0, right = height.length - 1;
+    int best = 0;
+    while (left < right) {
+        int h = Math.min(height[left], height[right]);
+        int area = h * (right - left);
+        best = Math.max(best, area);
+        if (height[left] < height[right]) {
+            left++;
+        } else {
+            right--;
+        }
+    }
+    return best;
+}`;
+
+// The real algorithm. After every line that matters we save a snapshot (= one step).
+function run(h){
+ const S=[],n=h.length;let left=0,right=n-1,best=0,bl=-1,br=-1;
+ function snap(o){const hl={};
+  if(o.final){if(bl>=0){hl[bl]='hit';hl[br]='hit';}}
+  else{for(let k=0;k<n;k++)if(k<left||k>right)hl[k]='dim';if(left<right){hl[left]=o.short==='l'?'bad':'cur';hl[right]=o.short==='r'?'bad':'cur';}}
+  S.push({line:o.line,ann:o.ann,text:o.text,tone:o.tone||'',result:o.result,
+   viz:{vals:h,hl,ptrs:o.final?{}:{left:left<right?left:null,right:left<right?right:null},
+    win:o.final?(bl>=0?[bl,br]:null):(left<right?[left,right]:null),winLabel:o.final?`best = ${best}`:(o.area!=null?`area = ${o.area}`:'container')},
+   vars:[{t:'method',note:'whole call',v:[['left',left],['right',right],['best',best,o.result!=null?'res':'']]},
+         {t:'loop',note:'new each turn',v:[['h',o.m],['area',o.area]]}]});}
+
+ snap({line:[2,3],ann:{2:`left = 0, right = ${n-1}`,3:'best = 0'},text:'Start with the <b>widest</b> container: one wall at each end. <b>best = 0</b>.'});
+ while(left<right){
+  const width=right-left,m=Math.min(h[left],h[right]),area=m*width;
+  snap({width,area,m,line:[4,5,6],ann:{5:`h = ${m}`,6:`${m} * ${width} = ${area}`},
+   text:`Water level = the <b>shorter</b> wall (${m}). Area = ${m} × ${width} = <b>${area}</b>.`});
+  const old=best;best=Math.max(best,area);if(best>old){bl=left;br=right;}
+  snap({width,area,m,line:[7],ann:{7:`best = ${best}`},tone:best>old?'good':'',text:best>old?`New record: <b>best = ${best}</b> 🏆`:`${area} is not more than ${old} → best stays <b>${best}</b>.`});
+  if(h[left]<h[right]){
+   snap({width,area,short:'l',line:[8,9],ann:{8:`${h[left]} < ${h[right]} → true`,9:`left = ${left+1}`},tone:'bad',
+    text:`The left wall (${h[left]}) is shorter — it limits the water. Keeping it can never beat ${area}, so move <b>left</b> inward.`});
+   left++;}
+  else{
+   snap({width,area,short:'r',line:[8,11],ann:{8:`${h[left]} < ${h[right]} → false`,11:`right = ${right-1}`},tone:'bad',
+    text:`The right wall (${h[right]}) is ${h[right]===h[left]?'not taller':'shorter'} → move <b>right</b> inward and hope for a taller wall.`});
+   right--;}
+ }
+ snap({final:true,line:[14],ann:{14:`return ${best}`},tone:'good',result:best,text:bl>=0?`The pointers met. Best container: walls at ${bl} and ${br} → <b>${best}</b>.`:`The pointers met → <b>${best}</b>.`});
+ return S;}
+
+PLAYER.start({
+ title:'12. Container With Most Water',code:CODE,run,
+ problem:{pattern:'Two pointers · move the shorter wall',text:'Pick two lines in <code>height</code> that hold the most water with the x-axis. Return that area.',example:'[1, 8, 6, 2, 5, 4, 8, 3, 7] → 49'},
+ viz:{kind:'array',title:'height as walls — blue box = current container',opts:{cw:44,bars:true,barH:80,ptrColors:{left:'#16A34A',right:'#9333EA'}}},
+ ds:[],dsNote:'No collection needed — two pointers (<code>left</code>, <code>right</code>) and <code>best</code> are the whole state (see Variables).<br>That is why the space is <b>O(1)</b>.',
+ input:{label:'height =',value:'1,8,6,2,5,7',presets:['1,8,6,2,5,4,8,3,7','1,1','4,3,2,1,4','1,2,1'],
+  parse(v){const a=v.match(/-?\d+/g)?.map(Number)||[];if(a.length<2||a.length>9)throw 'height: 2 to 9 numbers, e.g. 1,8,6,2,5,4';if(a.some(x=>x<0))throw 'heights cannot be negative';return a;}},
+ remember:{
+  mnem:{letters:['E','A','B','M'],phrase:'Ends · Area · Best · Move-shorter',sub:'Start wide; the shorter wall is the one holding you back.'},
+  chunks:[
+   {t:'Ends',d:'left = 0, right = n−1, best = 0',lines:[2,3]},
+   {t:'Area',d:'while left &lt; right: min(height) × (right − left)',lines:[4,5,6]},
+   {t:'Best',d:'best = max(best, area)',lines:[7]},
+   {t:'Move-shorter',d:'move the pointer at the shorter wall; return best',lines:[8,9,10,11,12,14]}],
+  declare:[
+   ['int left = 0, right = height.length - 1;','the two walls, start at the ends'],
+   ['int best = 0;','largest area so far'],
+   ['int area = h * (right - left);','h = the shorter wall: it caps the water']],
+  forget:[
+   'Use <code>Math.min</code> of the two heights — water spills over the <b>shorter</b> wall.',
+   'Width is <code>right − left</code> (no + 1: it is the distance between walls).',
+   'Move the <b>shorter</b> wall. Moving the taller one can only make it worse.',
+   'Equal heights? Moving either one is fine.'],
+  cx:{time:'O(n)',timeWhy:'each step moves one pointer inward',space:'O(1)',spaceWhy:'three ints',
+   rows:[['Every pair of walls','O(n²)','O(1)','two loops',false],
+    ['Two pointers from the ends','O(n)','O(1)','move the shorter wall ✓',true]],
+   follow:[
+    ['Why is moving the shorter wall safe?','Every container with that short wall and a closer partner is narrower and no taller → can’t beat the current area.'],
+    ['Trapping Rain Water?','Different problem: water above every bar = min(maxLeft, maxRight) − height, also with two pointers.'],
+    ['Return the two indices?','Save (left, right) whenever best improves.']]}}
+});
+</script>
+</body></html>

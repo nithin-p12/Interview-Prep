@@ -1,0 +1,1505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-support">
+<meta name="doc-version" content="v2.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Customer Support Ticketing · System Design · v2.0</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:#ffffff;color:#0f172a}
+
+/* ---------- header ---------- */
+header{height:64px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.brand .logo{flex-shrink:0}
+.brand .txt{min-width:0}
+.brand .t{font-size:16px;font-weight:800;white-space:nowrap;display:flex;align-items:baseline;gap:10px}
+.brand .t a{font-size:11.5px;font-weight:600;color:#0b5cff;text-decoration:none}
+.brand .t a:hover{text-decoration:underline}
+.brand .s{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrls{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.seg{display:flex;align-items:center;background:#f1f5f9;border-radius:10px;padding:3px;gap:2px}
+.seg .lbl{font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;padding:0 6px 0 7px}
+.seg button{border:0;background:transparent;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#475569;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.seg button:hover{color:#0f172a}
+.seg button.on{background:#fff;color:#0b5cff;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.btn{border:1px solid #e2e8f0;background:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:#334155;padding:7px 12px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f8fafc}
+
+/* ---------- main / svg ---------- */
+main{position:relative;height:calc(100vh - 64px - 78px)}
+#dia{display:block;width:100%;height:100%;user-select:none}
+.hint{position:absolute;left:12px;bottom:8px;font-size:11px;color:#64748b;background:rgba(255,255,255,.85);padding:3px 8px;border-radius:6px;pointer-events:none}
+.zl{font-size:13px;font-weight:800;letter-spacing:1.2px;fill:#334155}
+.nl{font:11px ui-monospace,Consolas,monospace;fill:#64748b}
+.edge{fill:none;stroke:#94a3b8;stroke-width:2;stroke-dasharray:6 7}
+.edge.hot{stroke-dasharray:none;stroke-width:3}
+.elbl{font-size:11px;font-weight:600;fill:#64748b;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.node{cursor:pointer}
+.node .card{transition:filter .2s,stroke-width .2s;filter:drop-shadow(0 1px 3px rgba(15,23,42,.08))}
+.node:hover .card{filter:drop-shadow(0 4px 10px rgba(15,23,42,.18))}
+.node.active .card{stroke-width:3.5;filter:drop-shadow(0 0 14px rgba(11,92,255,.55))}
+.nlab{font-size:14px;font-weight:700;fill:#0f172a;text-anchor:middle}
+.nsub{font-size:11px;fill:#64748b;text-anchor:middle}
+.tag text{font-size:10.5px;font-weight:700;fill:#fff;text-anchor:middle}
+.ptag{font-size:10.5px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3.5px;stroke-linejoin:round;text-anchor:middle}
+
+/* ---------- legend popover ---------- */
+.ibtn{width:34px;padding:7px 0;text-align:center;font-size:14px;line-height:1}
+.ibtn.on{background:#eef4ff;border-color:#cfe0ff;color:#0b5cff}
+#legendPop{position:fixed;top:70px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 18px 44px rgba(15,23,42,.2),0 3px 10px rgba(15,23,42,.08);padding:12px 14px;z-index:7;display:none}
+#legendPop.open{display:block}
+#legendPop:before{content:"";position:absolute;top:-6px;right:var(--arrow,20px);width:10px;height:10px;background:#fff;border-left:1px solid #e5e7eb;border-top:1px solid #e5e7eb;transform:rotate(45deg)}
+.lgh{font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8;margin:2px 0 8px}
+.lgk{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+.lgk span{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569}
+.lgk i{width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.06),0 0 7px var(--c);background:var(--c)}
+.lgs{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:10px}
+.lgs b{display:block;font-size:16px;font-weight:800;color:#0f172a;line-height:1.15}
+.lgs span{font-size:11px;color:#475569}
+.lgn{font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:8px}
+
+/* ---------- footer ---------- */
+footer{height:78px;background:#fff;border-top:1px solid #e5e7eb;display:flex;align-items:center;gap:14px;padding:0 16px}
+#badge{flex-shrink:0;min-width:52px;height:44px;padding:0 8px;border-radius:12px;background:#0b5cff;color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+#badge.live{background:#16a34a;letter-spacing:1px}
+.fmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.frow{display:flex;align-items:center;gap:8px;min-width:0}
+#ftitle{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{flex-shrink:0;font:600 11px ui-monospace,Consolas,monospace;color:#0b5cff;background:#eef4ff;border:1px solid #cfe0ff;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill:empty{display:none}
+.grow{flex:1}
+#dots{display:flex;gap:3px;flex-shrink:0}
+#dots i{display:block;width:18px;height:4px;border-radius:2px;background:#e2e8f0}
+#dots i.on{background:#0b5cff}
+#ftext{font-size:12.5px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{display:flex;gap:8px;flex-shrink:0}
+.stat{width:78px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:6px 8px}
+.stat b{display:block;font-size:18px;line-height:1.1}
+.stat span{font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#64748b;white-space:nowrap}
+
+/* ---------- drawer ---------- */
+#drawer{position:fixed;right:14px;top:76px;bottom:90px;width:380px;max-width:calc(100vw - 28px);background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.22),0 4px 14px rgba(15,23,42,.08);transform:translateX(420px);transition:transform .35s ease;display:flex;flex-direction:column;overflow:hidden;z-index:5}
+#drawer.open{transform:translateX(0)}
+.dh{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #e5e7eb}
+.dh .dl{width:52px;height:52px;border-radius:12px;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dh h3{margin:0;font-size:16px}
+.dh p{margin:2px 0 0;font-size:12px;color:#475569}
+.dh button{margin-left:auto;align-self:flex-start;border:0;background:rgba(255,255,255,.7);border-radius:8px;width:28px;height:28px;font-size:16px;cursor:pointer;color:#334155}
+.db{padding:14px 16px 18px;overflow:auto;font-size:13px;line-height:1.5;color:#334155}
+.db h4{margin:14px 0 6px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.db ul{margin:0;padding-left:18px}
+.db li{margin:3px 0}
+.db pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.db code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px}
+.core-link{display:inline-block;margin-top:14px;font-size:12.5px;font-weight:600;color:#0b5cff;text-decoration:none;background:#eef4ff;border:1px solid #cfe0ff;padding:6px 10px;border-radius:9px}
+.core-link:hover{text-decoration:underline}
+
+/* ---------- header nav + view tabs ---------- */
+.brand .s{display:flex;align-items:center;gap:6px}
+.brand .s .sub{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.brand .nav{display:flex;align-items:center;gap:1px;flex-shrink:0}
+.brand .nav a,.brand .nav span{font-size:11.5px;font-weight:700;color:#0b5cff;text-decoration:none;padding:0 4px;border-radius:5px;line-height:16px}
+.brand .nav a:hover{background:#eef4ff}
+.brand .nav span.off{color:#cbd5e1;cursor:default}
+.brand .nav a.hub{color:#64748b;font-weight:600}
+body:not(.v-flow) .flowonly{display:none}
+body:not(.v-flow) main,body:not(.v-flow) footer,body:not(.v-flow) #drawer,body:not(.v-flow) #legendPop{display:none}
+body.v-flow #reader{display:none}
+
+/* ---------- reading panel (tabs 2-4) ---------- */
+#reader{position:relative;height:calc(100vh - 64px);overflow:auto;background:#f8fafc;scroll-behavior:smooth}
+.rd{max-width:1120px;margin:0 auto;padding:18px 20px 40px}
+.rd-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:12px}
+.rd-head h2{margin:0;font-size:20px;font-weight:800}
+.rd-head p{margin:4px 0 0;font-size:13px;color:#64748b;max-width:760px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#94a3b8}
+.rcard{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.05);padding:14px 16px;margin-bottom:12px;font-size:13.5px;line-height:1.55;color:#334155}
+.rcard code,.fu code,.rd td code{font:12px ui-monospace,Consolas,monospace;background:#f1f5f9;padding:0 4px;border-radius:4px;color:#0f172a}
+.rcard h3{margin:0 0 6px;font-size:15px;color:#0f172a}
+/* explain */
+.timebar{position:sticky;top:0;z-index:2;display:flex;gap:4px;background:#f8fafc;padding:6px 0 10px}
+.timebar button{min-width:126px;border:1px solid #e5e7eb;background:#fff;border-radius:9px;padding:6px 8px;text-align:left;cursor:pointer;font:inherit;border-top:3px solid var(--c)}
+.timebar button:hover{background:#f1f5f9}
+.timebar b{display:block;font-size:12px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.timebar span{font-size:11px;color:#64748b}
+.stage{border-left:4px solid var(--c);scroll-margin-top:70px}
+.stage-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.stage-h .sn{width:24px;height:24px;border-radius:50%;background:var(--c);color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center}
+.stage-h .mn{font-size:11px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:999px;padding:1px 8px}
+.goal{margin:2px 0 10px;color:#64748b}
+.msg{display:flex;gap:10px;margin:6px 0;align-items:flex-start}
+.msg .who{flex-shrink:0;width:88px;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding-top:3px}
+.msg p{margin:0;flex:1;padding:6px 10px;border-radius:10px}
+.msg.iv .who{color:#7c3aed}.msg.iv p{background:#f5f3ff}
+.msg.you .who{color:#0b5cff}.msg.you p{background:#eef4ff}
+.msg.tip .who{color:#a16207}.msg.tip p{background:#fefce8;font-style:italic}
+.avoid{margin:10px 0 0;padding:8px 12px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+/* answer */
+.jump{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.jump button,.chips button{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:4px 11px;font:600 12px "Segoe UI",system-ui,sans-serif;color:#475569;cursor:pointer}
+.jump button:hover,.chips button:hover{border-color:#cbd5e1;color:#0f172a}
+.pitch{border-left:4px solid #0b5cff;scroll-margin-top:56px}
+.pitch p{margin:0 0 8px}.pitch p:last-child{margin:0}
+.ans-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.ans-grid .rcard{margin:0}
+.ans{border-top:4px solid var(--c);scroll-margin-top:56px}
+.ans ul,.ans ol{margin:0;padding-left:20px}.ans li{margin:3px 0}
+.ans table{border-collapse:collapse;width:100%;font-size:13px}
+.ans td,.ans th{border-bottom:1px solid #f1f5f9;padding:5px 8px;text-align:left;vertical-align:top}
+.ans th{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8}
+.ans .m{font:12px ui-monospace,Consolas,monospace;white-space:nowrap;color:#0f172a}
+.ans pre,.codeblk pre{margin:0;background:#0f172a;color:#e2e8f0;font:11.5px/1.5 ui-monospace,Consolas,monospace;padding:12px;border-radius:10px;overflow:auto;white-space:pre}
+.code-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;scroll-margin-top:56px}
+.codeblk{margin:0}
+.codeblk h3{font-size:13px}
+/* follow-ups */
+.chips{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:6px;background:#f8fafc;padding:6px 0 10px}
+.chips button small{color:#94a3b8;font-weight:700;margin-left:2px}
+.chips button.on{background:var(--c,#0b5cff);border-color:var(--c,#0b5cff);color:#fff}
+.chips button.on small{color:rgba(255,255,255,.8)}
+.fu{padding:0;border-left:4px solid var(--c)}
+.fu summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px}
+.fu summary::-webkit-details-marker{display:none}
+.fu summary:after{content:"▸";margin-left:auto;color:#94a3b8;transition:transform .2s}
+.fu[open] summary:after{transform:rotate(90deg)}
+.fu-g{flex-shrink:0;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border-radius:999px;padding:2px 9px}
+.fu-q{font-size:14px;font-weight:700;color:#0f172a}
+.fu-body{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;padding:0 16px 14px}
+.fu-body > div > b{display:block;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8;margin-bottom:2px}
+.fu-body p{margin:0}
+.fu-body .say{grid-column:1/-1;background:#eef4ff;border-radius:10px;padding:8px 12px}
+.fu-body .say > b{color:#0b5cff}
+.watch{grid-column:1/-1;justify-self:start;border:0;background:#0b5cff;color:#fff;font:600 12.5px "Segoe UI",system-ui,sans-serif;padding:7px 14px;border-radius:9px;cursor:pointer}
+.watch:hover{background:#0a4fe0}
+</style>
+</head>
+<body class="v-flow">
+<header>
+  <div class="brand">
+    <svg class="logo" width="34" height="34" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#0b5cff"/><path d="M9 15h30v6a3.2 3.2 0 0 0 0 6.4v6.1H9v-6.1a3.2 3.2 0 0 0 0-6.4z" fill="#fff"/><path d="M29 16.5v16" stroke="#0b5cff" stroke-width="2" stroke-dasharray="2.4 2"/><path d="M14 21h10M14 26h8" stroke="#0b5cff" stroke-width="2.2" stroke-linecap="round"/></svg>
+    <div class="txt">
+      <div class="t">Support Ticketing</div>
+      <div class="s"><span class="nav" id="dNav"></span><span class="sub">Zendesk-style helpdesk · ticket + event in one txn (outbox) · CAS claims · state machine · SLA timers · WebSocket push · tenant isolation</span></div>
+    </div>
+  </div>
+  <div class="ctrls">
+    <div class="seg" id="viewSeg">
+      <button data-view="flow" class="on" title="Animated data flow">Data flow</button>
+      <button data-view="explain" title="How to explain it, stage by stage">Explain</button>
+      <button data-view="answer" title="Interview-ready answer">Answer</button>
+      <button data-view="followups" title="Follow-up questions">Follow-ups</button>
+    </div>
+    <div class="seg flowonly" id="scSeg"><span class="lbl">Scenario</span>
+      <button data-sc="intake" title="Email becomes a ticket: webhook · dedupe · outbox · threading">Intake</button>
+      <button data-sc="claim" title="Two agents, one ticket: read-then-write vs compare-and-set on version">Claim</button>
+      <button data-sc="lifecycle" title="Ticket lifecycle: state machine · reopen · auto-close · follow-up">States</button>
+      <button data-sc="sla" title="SLA breach: timer · warn · escalate · check on fire">SLA</button>
+      <button data-sc="realtime" title="Live updates: WebSocket · versions · resync · offline email">Push</button>
+      <button data-sc="tenant" title="Many tenants: tenant filter · leak vs filtered alias · noisy tenant">Tenant</button>
+      <button data-sc="live" title="Live mixed traffic">Live</button>
+    </div>
+    <div class="seg flowonly" id="spSeg"><span class="lbl">Speed</span>
+      <button data-sp="0.5">0.5x</button><button data-sp="1" class="on">1x</button><button data-sp="2">2x</button>
+    </div>
+    <button class="btn flowonly" id="pauseBtn">⏸ Pause</button>
+    <button class="btn flowonly" id="replayBtn">↻ Replay</button>
+    <button class="btn ibtn flowonly" id="legendBtn" title="Legend &amp; scale (L)" aria-haspopup="dialog" aria-expanded="false">ⓘ</button>
+  </div>
+</header>
+
+<main>
+  <svg id="dia" viewBox="0 0 1600 600" preserveAspectRatio="xMidYMid meet"></svg>
+  <div class="hint">Click any component for details · Space pause · 1 2 3 speed · R replay · L legend</div>
+</main>
+
+<footer>
+  <div id="badge">1/1</div>
+  <div class="fmid">
+    <div class="frow"><span id="ftitle"></span><span id="fproto" class="pill"></span><span class="grow"></span><div id="dots"></div></div>
+    <div id="ftext"></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="stReq">0</b><span>Requests</span></div>
+    <div class="stat"><b id="stHit">0</b><span>Conflicts</span></div>
+    <div class="stat"><b id="stEvt">0</b><span>Events</span></div>
+    <div class="stat"><b id="stRes">0</b><span>Responses</span></div>
+  </div>
+</footer>
+
+<section id="reader" aria-live="polite"></section>
+
+<div id="legendPop" role="dialog" aria-label="Legend and scale">
+  <div class="lgh">PACKETS</div>
+  <div class="lgk" id="lgKinds"></div>
+  <div class="lgh">SCALE (FROM THE FULL DESIGN)</div>
+  <div class="lgs">
+    <div><b>50 k</b><span>tenants</span></div>
+    <div><b>5 M</b><span>tickets / day</span></div>
+    <div><b>30 min</b><span>first-response SLA</span></div>
+    <div><b>1</b><span>owner per ticket</span></div>
+  </div>
+  <div class="lgn">Dashed edges crawl in the request direction · solid = packet in transit</div>
+</div>
+
+<aside id="drawer" aria-hidden="true">
+  <div class="dh" id="dHead"><div class="dl" id="dLogo"></div><div><h3 id="dTitle"></h3><p id="dTag"></p></div><button id="dClose" title="Close (Esc)">×</button></div>
+  <div class="db" id="dBody"></div>
+</aside>
+
+<script src="engine/catalog.js"></script>
+<script>
+'use strict';
+// =====================================================================
+// Customer Support Ticketing · Data Flow: nodes grouped by app role (client · entry · app services · data · async events & timers);
+// no infra containers, no CDN (tickets are private, per tenant, and change every minute). Self-contained: no engine/ except catalog.js for prev/next.
+// Content comes from 13_Support_Ticketing.html (v1.0): one writer (Ticket API), ticket + event in one MongoDB transaction (outbox + audit),
+// relay → Kafka (key = ticketId) → router / SLA worker / indexer / push gateway / notifications, CAS claims on version, state machine,
+// durable SLA timers that check on fire, versioned live updates over WebSocket, tenant isolation.
+// Taught HERE: state machine, CAS claim, SLA timers, outbox events, live updates, tenancy. Kafka, S3, DB scaling, gateway basics → Core Components.
+// =====================================================================
+
+const NS = 'http://www.w3.org/2000/svg';
+const KIND = { request: '#2563eb', response: '#16a34a', event: '#f97316', error: '#dc2626' };
+const CLIENTS = new Set(['customer', 'agentA', 'agentB']);
+const PAL = {
+  customer: ['#eef0ff', '#818cf8'], agentA: ['#ecfdf5', '#10b981'], agentB: ['#ecfdf5', '#10b981'],
+  gw: ['#ffffff', '#7c3aed'],
+  api: ['#ffffff', '#2563eb'], push: ['#fff9db', '#e0b400'],
+  s3: ['#fdecef', '#c7254e'], tdb: ['#e6f6ea', '#34a853'], es: ['#e6faf8', '#00a39a'],
+  kafka: ['#fff0e0', '#f59e0b'], router: ['#e0f2fe', '#0284c7'], sla: ['#fef9c3', '#ca8a04'], notify: ['#ffffff', '#db2777'],
+};
+// zone tints: [fill, stroke, label] (same palette as 01_URL_Shortener.html)
+const ZT = {
+  client: ['#fed7aa', '#fb923c', '#9a3412'], entry: ['#ddd6fe', '#8b5cf6', '#5b21b6'], app: ['#bfdbfe', '#3b82f6', '#1e3a8a'],
+  data: ['#e5e7eb', '#9ca3af', '#374151'], async: ['#ffe4e6', '#fb7185', '#9f1239'],
+};
+
+// ---------------- logos (48x48 inline SVG) ----------------
+const cube = (badge) => `<path d="M24 5l17 9.5v19L24 43 7 33.5v-19z" fill="#326ce5"/><path d="M24 24l17-9.5v19L24 43z" fill="#2557c4"/><path d="M24 5l17 9.5L24 24 7 14.5z" fill="#6f9cf0"/>${badge}`;
+const person = c => `<circle cx="24" cy="15" r="8.5" fill="${c}"/><path d="M7 43c0-10 7.6-16 17-16s17 6 17 16z" fill="${c}"/>`;
+const agent = `<circle cx="24" cy="16" r="8.5" fill="#10b981"/><path d="M7 43c0-10 7.6-16 17-16s17 6 17 16z" fill="#10b981"/><path d="M13.5 17a10.5 10.5 0 0 1 21 0" fill="none" stroke="#065f46" stroke-width="2.6"/><rect x="10.5" y="14.5" width="5.5" height="8.5" rx="2.2" fill="#065f46"/><rect x="32" y="14.5" width="5.5" height="8.5" rx="2.2" fill="#065f46"/><path d="M34.8 23c0 3.8-3 6.2-7.3 6.2" fill="none" stroke="#065f46" stroke-width="2"/><circle cx="27" cy="29.2" r="2" fill="#065f46"/>`;
+const LOGO = {
+  customer: person('#6366f1'),
+  agentA: agent,
+  agentB: agent,
+  gw: `<rect x="5" y="5" width="38" height="38" rx="10" fill="#7c3aed"/><path d="M15 38V23a9 9 0 0 1 18 0v15" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M11 38h26" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="28" cy="31" r="1.9" fill="#fff"/>`,
+  api: cube(`<circle cx="37" cy="37" r="9" fill="#2563eb" stroke="#fff" stroke-width="2"/><path d="M31.6 33.4h10.8v2.3a1.4 1.4 0 0 0 0 2.6v2.3H31.6v-2.3a1.4 1.4 0 0 0 0-2.6z" fill="#fff"/><path d="M38.4 33.8v6.4" stroke="#2563eb" stroke-width="1.1" stroke-dasharray="1.3 1.1"/>`),
+  push: `<circle cx="24" cy="25" r="4.6" fill="#b45309"/><path d="M24 27l-6.5 16h13z" fill="#b45309"/><g fill="none" stroke="#e0b400" stroke-width="3.2" stroke-linecap="round"><path d="M16.5 17.5a10.5 10.5 0 0 0 0 15M31.5 17.5a10.5 10.5 0 0 1 0 15"/><path d="M10.5 11.5a19 19 0 0 0 0 27M37.5 11.5a19 19 0 0 1 0 27"/></g>`,
+  s3: `<path d="M8 13h32l-3.8 28.4a3 3 0 0 1-3 2.6H14.8a3 3 0 0 1-3-2.6z" fill="#c7254e"/><path d="M9.6 24.5h28.8M10.9 34h26.2" stroke="#e8577a" stroke-width="2.2"/><ellipse cx="24" cy="13" rx="16" ry="5.2" fill="#e8577a"/><ellipse cx="24" cy="13" rx="11.5" ry="3" fill="#8c1636"/>`,
+  tdb: `<path d="M24 3c8 9 12 17 12 24.5 0 8.5-5.2 13.5-10.6 15.5h-2.8C17.2 41 12 36 12 27.5 12 20 16 12 24 3z" fill="#13aa52"/><path d="M24 9v37" stroke="#0b6b33" stroke-width="2"/>`,
+  es: `<path d="M8.5 18.5C10.6 10.5 16.7 5 24.5 5 30.6 5 36 8.4 38.9 13.5H14.2c-2.6 0-4.8 2-5.7 5z" fill="#fec514"/><rect x="8" y="20.2" width="33" height="7.6" rx="3.8" fill="#343741"/><path d="M8.5 29.5c.9 3 3.1 5 5.7 5h24.7C36 39.6 30.6 43 24.5 43 16.7 43 10.6 37.5 8.5 29.5z" fill="#00bfb3"/><path d="M3.5 21.5a6 6 0 0 1 2.4-2.6v10.2a6 6 0 0 1-2.4-2.6z" fill="#f04e98"/><path d="M42.6 20.2h1.4a2.5 2.5 0 0 1 0 7.6h-1.4z" fill="#1ba9f5"/>`,
+  kafka: `<g stroke="#231f20" stroke-width="2.4" fill="none"><path d="M24 11v26M24 24l12-7M24 24l12 7"/></g><g fill="#fff" stroke="#231f20" stroke-width="2.8"><circle cx="24" cy="8" r="4.5"/><circle cx="24" cy="40" r="4.5"/><circle cx="24" cy="24" r="5.5"/><circle cx="37" cy="16" r="4"/><circle cx="37" cy="32" r="4"/></g>`,
+  router: `<rect x="5" y="5" width="38" height="38" rx="10" fill="#0284c7"/><path d="M12 24h9l8-9h6M21 24l8 9h6" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M32.5 11l4 4-4 4M32.5 29l4 4-4 4" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="24" r="3.2" fill="#fff"/>`,
+  sla: `<rect x="19.5" y="3.5" width="9" height="5" rx="1.6" fill="#ca8a04"/><path d="M24 8.5v4" stroke="#ca8a04" stroke-width="3.4"/><path d="M36 11.5l3 3" stroke="#ca8a04" stroke-width="3.4" stroke-linecap="round"/><circle cx="24" cy="28" r="16" fill="#ca8a04"/><circle cx="24" cy="28" r="12.2" fill="#fff"/><path d="M24 15.8A12.2 12.2 0 0 1 36.2 28H24z" fill="#fde68a"/><path d="M24 28V18.5" stroke="#b91c1c" stroke-width="3" stroke-linecap="round"/><path d="M24 28l6.5 4" stroke="#1f2937" stroke-width="2.6" stroke-linecap="round"/><circle cx="24" cy="28" r="2" fill="#1f2937"/>`,
+  notify: `<path d="M24 5.5a3 3 0 0 1 3 3v1.6c6 1.5 10 6.7 10 13.2V32l4 5H7l4-5v-8.7c0-6.5 4-11.7 10-13.2V8.5a3 3 0 0 1 3-3z" fill="#db2777"/><path d="M18.8 39a5.2 5.2 0 0 0 10.4 0z" fill="#9d174d"/><circle cx="36.5" cy="11" r="6" fill="#f97316" stroke="#fff" stroke-width="2"/>`,
+};
+
+// ---------------- topology ----------------
+const NODES = {
+  customer: { x: 93, y: 110, label: 'Customer', sub: 'acme · email · web · chat' },
+  agentA: { x: 93, y: 300, label: 'Agent Asha', sub: 'billing · L1 · cap 5' },
+  agentB: { x: 93, y: 490, label: 'Agent Ben', sub: 'billing · L1 · cap 5' },
+  gw: { x: 285, y: 300, label: 'API Gateway', sub: 'JWT · tenant · WSS', replicas: 2 },
+  api: { x: 505, y: 300, label: 'Ticket API', sub: 'the only writer', replicas: 3 },
+  push: { x: 505, y: 490, label: 'Push Gateway', sub: 'WebSocket · STOMP', replicas: 3 },
+  s3: { x: 745, y: 110, label: 'Attachments', sub: 'S3 · acme/T-101/…' },
+  tdb: { x: 745, y: 300, label: 'Ticket DB', sub: 'MongoDB · + events', replicas: 3 },
+  es: { x: 745, y: 490, label: 'Ticket Search', sub: 'Elasticsearch', replicas: 2 },
+  kafka: { x: 1075, y: 300, label: 'Kafka', sub: 'ticket-events · key id', replicas: 3 },
+  router: { x: 1290, y: 110, label: 'Router', sub: 'skill queues · assign', replicas: 2 },
+  sla: { x: 1290, y: 490, label: 'SLA & Rules', sub: 'timers · escalate', replicas: 2 },
+  notify: { x: 1495, y: 300, label: 'Notification', sub: 'email · page · 4 Notify' },
+};
+// grouped by developer role, not by infrastructure
+const ZONES = [
+  { x: 8, y: 8, w: 170, h: 584, t: 'client', label: 'CLIENT', cap: 'requester · agents' },
+  { x: 190, y: 8, w: 190, h: 584, t: 'entry', label: 'ENTRY', cap: 'HTTPS + WebSocket' },
+  { x: 392, y: 8, w: 226, h: 584, t: 'app', label: 'APP SERVICES', cap: 'Spring Boot · stateless', dash: true },
+  { x: 630, y: 8, w: 230, h: 584, t: 'data', label: 'DATA', cap: 'tickets · files · search', dash: true },
+  { x: 872, y: 8, w: 720, h: 584, t: 'async', label: 'ASYNC EVENTS & TIMERS', cap: 'outbox → Kafka → consumer groups', dash: true },
+];
+// [from, to, protocol label, route?]; the path direction is the request direction (dashes crawl that way).
+// route 'under': runs below the bottom row of cards (Kafka → Push Gateway would otherwise cross the data column).
+const EDGE_DEFS = [
+  ['customer', 'gw', 'HTTPS · WSS'], ['agentA', 'gw', ''], ['agentB', 'gw', 'HTTPS · WSS'],
+  ['gw', 'api', 'REST'], ['gw', 'push', 'WSS'],
+  ['api', 's3', 'PUT object'], ['api', 'tdb', 'txn'], ['api', 'es', 'search'],
+  ['tdb', 'kafka', 'outbox relay'],
+  ['kafka', 'router', 'ticket-events'], ['kafka', 'sla', ''], ['kafka', 'es', 'indexer'], ['kafka', 'notify', 'notifications'],
+  ['kafka', 'push', 'consumer group push-gateway', 'under'],
+  ['router', 'tdb', 'assign · CAS'], ['sla', 'tdb', 'timers · escalate'], ['sla', 'notify', 'page lead'],
+];
+
+// ---------------- drawer content ----------------
+const INFO = {
+  customer: {
+    tag: 'Requester · writes in by email, web form or chat',
+    desc: 'Writes to <code>support@acme.help</code>, fills the web form or opens chat; replies to the email thread and sees the ticket in the help-center portal. Every state change they care about (a reply, "solved") must reach them, usually by <b>email</b>, because they are rarely online.',
+    points: ['Belongs to exactly one <b>tenant</b> (acme): the to-address or the JWT decides which', 'Email replies thread onto the same ticket through <code>In-Reply-To</code> or <code>[#T-101]</code> in the subject', 'Portal open → live updates over WebSocket; portal closed → email through the Notification service', 'Millions of requesters across 50 k tenants'],
+    code: `# what the inbound mail provider POSTs when the customer writes in
+curl -X POST https://help.ex/inbound/email \\
+  -H 'X-Signature: sha256=9f2c…' \\
+  -d '{"to":"support@acme.help","from":"dana@client.io",
+       "messageId":"m-77","subject":"Invoice 4411 charged twice",
+       "attachments":[{"name":"invoice.pdf","size":48211}]}'
+# -> 200 {"ticketId":"T-101"}
+
+# the customer's reply later threads by header
+In-Reply-To: <T-101.acme@help>
+Subject: Re: [#T-101] Invoice 4411 charged twice`,
+  },
+  agentA: {
+    tag: 'Agent · billing group · L1 · capacity 5',
+    desc: 'Agents belong to <b>groups</b> with <b>skills</b> (billing, language, tier L1/L2) and a <b>capacity</b> (max open tickets). They claim tickets from their queues, reply and change status in a browser tab that keeps one WebSocket open for live updates.',
+    points: ['Routing and claims exist so each ticket has exactly <b>one owner</b>', 'Every claim and status change carries the <code>version</code> the agent saw', 'Sees presence ("Ben is viewing") so two agents do not answer the same customer', 'Tab closes → presence expires after its TTL; assigned tickets stay assigned'],
+    code: `curl -X POST https://help.ex/tickets/T-101/claim \\
+  -H 'Authorization: Bearer eyJ…(asha, tenant acme)' \\
+  -d '{"version": 1}'
+# -> 200 {"id":"T-101","assignee":"asha","status":"OPEN","version":2}
+# -> 409 {"error":"TICKET_TAKEN","by":"asha","version":2}   (the loser)
+
+curl -X PATCH https://help.ex/tickets/T-101/status \\
+  -d '{"to":"PENDING","version":2}'
+# -> 200 | 409 stale version | 422 illegal transition`,
+  },
+  agentB: {
+    tag: 'Agent · same group and skills as Asha',
+    desc: 'Races Asha for tickets, watches tickets she works on and drops off Wi-Fi at the worst moment: Ben shows the <b>claim race</b>, <b>presence</b>, <b>duplicate events</b> and the <b>resync</b> after a reconnect.',
+    points: ['Keeps <code>lastVersion</code> per ticket and applies an event only if <code>version &gt; lastVersion</code>', 'On reconnect asks <code>GET /tickets/{id}/events?since=v</code>', 'Gets a clear 409 when he loses a claim, then picks the next ticket', 'One WebSocket per open tab'],
+    code: `// agent workspace (browser): STOMP over WebSocket
+const client = new StompJs.Client({ brokerURL: 'wss://help.ex/ws' });
+const last = {};                                   // ticketId -> lastVersion
+client.onConnect = async () => {
+  client.subscribe('/topic/acme.ticket.T-101', msg => {
+    const e = JSON.parse(msg.body);
+    if (e.version <= (last[e.ticketId] ?? 0)) return;  // duplicate or stale
+    last[e.ticketId] = e.version; render(e);
+  });
+  // catch up on whatever was missed while offline
+  const since = last['T-101'] ?? 0;
+  (await fetch(\`/tickets/T-101/events?since=\${since}\`).then(r => r.json())).forEach(render);
+};
+client.activate();`,
+  },
+  gw: {
+    tag: 'API gateway · HTTPS and WebSocket entry point',
+    desc: 'Verifies the <b>JWT</b> (and the HMAC signature of intake webhooks), puts <code>tenantId</code> from the token into a trusted header, applies <b>per-tenant rate limits</b> with Redis token buckets, and routes: <code>/inbound/**</code>, <code>/tickets/**</code> and <code>/search</code> to the Ticket API, the <code>/ws</code> WebSocket upgrade to the Push Gateway.',
+    points: ['The tenant always comes from the token or the to-address, <b>never from the request body</b>', 'Per-tenant token buckets stop one company\'s mail loop from starving everyone else (2 · Rate Limiter)', 'WebSocket connections stay sticky to one Push Gateway node', '<b>Why no CDN?</b> Tickets are private, per tenant and change every minute; only the static agent app could use one.'],
+    code: `# Spring Cloud Gateway: application.yml
+spring:
+  cloud:
+    gateway:
+      routes:
+      - id: tickets
+        uri: lb://ticket-api
+        predicates: [ Path=/tickets/**, Path=/inbound/**, Path=/search/** ]
+        filters:
+        - name: RequestRateLimiter               # Redis token bucket
+          args:
+            key-resolver: "#{@tenantKeyResolver}" # one bucket per tenantId
+            redis-rate-limiter.replenishRate: 200
+            redis-rate-limiter.burstCapacity: 400
+      - id: push
+        uri: lb:ws://push-gateway                # WebSocket upgrade, sticky
+        predicates: [ Path=/ws/** ]`,
+  },
+  api: {
+    tag: 'Spring Boot · the only writer · 3 instances',
+    desc: 'Inbound webhooks (<code>POST /inbound/email</code> from SES / SendGrid, chat, web form), <code>POST /tickets/{id}/claim</code>, replies, status changes, <code>GET /tickets/{id}/events?since=v</code> and search. Takes <code>tenantId</code> from the <b>JWT</b>, never from the request body.',
+    points: ['Validates every <b>state transition</b> against one transition table', 'Writes <b>ticket + event in one transaction</b>: the transactional outbox', 'Claims and status changes are <b>compare-and-set on version</b> → 200 or 409', 'Intake is idempotent: unique <code>{ tenantId, sourceMessageId }</code>', 'Search goes through a tenant-filtered alias, then hydrates and re-checks the tenant'],
+    code: `@Service
+class TicketCommands {
+  @Transactional                                         // ticket + event commit together
+  public Ticket changeStatus(String tenant, String id, Status to, long seen, String by) {
+    Ticket t = tickets.find(tenant, id);
+    if (!Lifecycle.NEXT.get(t.status()).contains(to))
+      throw new IllegalTransitionException(t.status(), to);         // -> 422
+    Ticket moved = mongo.findAndModify(
+        query(where("_id").is(id).and("tenantId").is(tenant)
+            .and("status").is(t.status()).and("version").is(seen)),
+        new Update().set("status", to).inc("version", 1),
+        options().returnNew(true), Ticket.class);
+    if (moved == null) throw new TicketConflictException(id);       // -> 409
+    events.insert(TicketEvent.transition(moved, t.status(), to, by)); // outbox row
+    return moved;
+  }
+}`,
+  },
+  push: {
+    tag: 'Spring WebSocket / STOMP · Kafka consumer · 3 nodes',
+    desc: 'Holds a WebSocket per open tab; clients subscribe to <code>acme:ticket:T-101</code> and <code>acme:queue:billing</code>. Consumes ticket events from Kafka and forwards them to subscribers. Also tracks <b>presence</b> ("Ben is viewing") in Redis with a TTL. WebSockets themselves are taught in <a href="07_Chat_System.html">7 · Chat System</a>.',
+    points: ['Consumer group <code>push-gateway</code> on <code>ticket-events</code>: the same events that drive routing and SLAs drive the screens', 'Subscribers held by other nodes are reached through <b>Redis pub/sub</b>', 'Presence <code>viewing:T-101 → ben</code> in Redis with a 30 s TTL, refreshed by heartbeats', 'Nothing is queued for offline clients: they resync with <code>events?since=v</code>'],
+    code: `@KafkaListener(topics = "ticket-events", groupId = "push-gateway")
+void onEvent(TicketEvent e) {                         // key = ticketId → per-ticket order
+  // every node gets it via Redis pub/sub and sends to the sockets it holds
+  redis.convertAndSend("push:" + e.tenantId(), e);
+}
+
+void onPubSub(TicketEvent e) {                        // Redis listener on each node
+  stomp.convertAndSend("/topic/" + e.tenantId() + ".ticket." + e.ticketId(), e);
+}
+
+@MessageMapping("/presence")                          // heartbeat every 10 s from the tab
+void viewing(Presence p, Principal agent) {
+  redis.opsForValue().set("presence:" + p.tenant() + ":" + p.ticketId() + ":" + agent.getName(),
+                          "viewing", Duration.ofSeconds(30));
+}`,
+  },
+  s3: {
+    tag: 'S3 · per-tenant prefixes · presigned URLs',
+    desc: 'Screenshots, invoices, logs. Web uploads go <b>straight to S3</b> with a presigned URL; email attachments are streamed there by the intake. Messages store only the key <code>acme/T-101/invoice.pdf</code>, which keeps big binaries out of the ticket DB and out of the API\'s memory.',
+    points: ['Base64 files in ticket documents would bloat every thread read', 'Downloads use a short-lived presigned GET', 'A virus scan runs on <code>ObjectCreated</code> before agents can open the file', 'Lifecycle rules move old attachments to cheaper tiers'],
+    code: `// email intake: stream the attachment, keep only the key
+String key = tenant + "/" + ticketId + "/" + att.fileName();     // acme/T-101/invoice.pdf
+s3.putObject(PutObjectRequest.builder().bucket("helpdesk-files").key(key)
+        .contentType(att.contentType()).build(),
+    RequestBody.fromInputStream(att.stream(), att.size()));
+
+// web form: the browser uploads directly, the API only signs
+PresignedPutObjectRequest url = presigner.presignPutObject(p -> p
+    .signatureDuration(Duration.ofMinutes(10))
+    .putObjectRequest(r -> r.bucket("helpdesk-files").key(key)));`,
+  },
+  tdb: {
+    tag: 'MongoDB replica set · tickets, messages, events, timers',
+    desc: 'Holds <code>tickets</code>, <code>messages</code>, <code>timers</code> and an <code>events</code> collection that is both the <b>outbox</b> (still to publish) and the <b>audit history</b> (who changed what, when). Ticket and event are written in <b>one transaction</b>, so nothing changes without an event.',
+    points: ['Sharded by <code>{ tenantId, _id }</code>: big tenants spread over chunks, small ones share', '<code>version</code> on every ticket for optimistic locking', 'Unique <code>{ tenantId, sourceMessageId }</code> makes intake idempotent', '<code>events</code> double as the replay log for <code>events?since=v</code>', 'Primary failover pauses writes for seconds; the API retries'],
+    code: `// tickets  (shard key { tenantId: 1, _id: 1 })
+{ _id: "T-101", tenantId: "acme", status: "OPEN", priority: "high",
+  queue: "billing", assignee: "asha", version: 5, firstResponseAt: ISODate(…) }
+
+db.tickets.createIndex({ tenantId: 1, sourceMessageId: 1 }, { unique: true })
+db.events.createIndex({ tenantId: 1, ticketId: 1, version: 1 }, { unique: true })
+db.events.createIndex({ at: 1 }, { partialFilterExpression: { published: false } })
+db.timers.createIndex({ status: 1, dueAt: 1 })
+
+// events: outbox + audit (append-only)
+{ tenantId: "acme", ticketId: "T-101", version: 5, type: "reply",
+  by: "asha", at: ISODate(…), published: false }`,
+  },
+  es: {
+    tag: 'Elasticsearch · ticket index · tenant-filtered aliases',
+    desc: 'An index fed by ticket events: subject, thread text, tags, requester, status. Agents search "refund invoice 4411" across millions of tickets; Mongo text search does not rank or scale like that. Inverted index, analyzers and ranking are taught in <a href="10_Search_System.html">10 · Search System</a>.',
+    points: ['Every query carries a <b>tenant filter</b> and <code>routing=acme</code>; endpoints use the filtered alias <code>tickets-acme</code>, never the raw index', 'Indexed with <code>version_type=external</code> = ticket version, so a late event cannot win', 'Returns ids; the API <b>hydrates</b> from the Ticket DB and re-checks the tenant', 'About a second behind; the DB stays the source of truth'],
+    code: `POST _aliases
+{ "actions": [ { "add": {
+    "index": "tickets", "alias": "tickets-acme",
+    "routing": "acme",
+    "filter": { "term": { "tenantId": "acme" } } } } ] }
+
+// Ticket API: search only through the tenant's alias
+SearchResponse<TicketDoc> res = es.search(s -> s
+    .index("tickets-" + TenantContext.get())          // tickets-acme
+    .query(q -> q.multiMatch(m -> m.query("refund").fields("subject^2", "thread"))),
+    TicketDoc.class);`,
+  },
+  kafka: {
+    tag: 'Topic ticket-events · key = ticketId',
+    desc: 'An <b>outbox relay</b> (polling <code>published: false</code>, or a MongoDB change stream) publishes each event keyed by <b>ticketId</b>, so all events of one ticket stay in order on one partition. One event, many independent consumer groups.',
+    points: ['Consumer groups: <code>router</code>, <code>sla</code>, <code>indexer</code>, <code>push-gateway</code>, <code>notifications</code>, analytics', 'Keyed by ticketId, not tenantId, so one big tenant does not make a hot partition', 'At-least-once → every consumer dedupes by <code>(ticketId, version)</code>', 'Without it the API would call five services synchronously, and one slow consumer would slow every reply'],
+    code: `@Scheduled(fixedDelay = 200)                         // outbox relay (or a change stream)
+void relay() {
+  List<TicketEvent> batch = mongo.find(query(where("published").is(false))
+      .with(Sort.by("at")).limit(500), TicketEvent.class);
+  for (TicketEvent e : batch) {
+    kafka.send("ticket-events", e.ticketId(), e).join();  // key = ticketId → per-ticket order
+    mongo.updateFirst(query(where("_id").is(e.id())),
+        Update.update("published", true), TicketEvent.class);
+  }
+}
+// kafka-topics.sh --create --topic ticket-events --partitions 24 --replication-factor 3`,
+  },
+  router: {
+    tag: 'Kafka consumer group "router" · rules per tenant',
+    desc: 'On <code>ticket.created</code> it applies the tenant\'s <b>routing rules</b> (channel, language, product, customer tier) → <b>queue</b> and priority. In push mode it also picks the least-loaded agent with free capacity. Routing is a business rule per tenant; it changes often and must not block intake.',
+    points: ['Pull mode: the ticket lands in a <b>skill queue</b>; agents claim it with a CAS', 'Push mode: conditional <code>$inc openCount</code> with <code>openCount &lt; capacity</code>, then the same CAS on the ticket', 'Partitioned by ticketId: many routers in parallel', 'Down → tickets stay NEW in the default queue; SLA timers still run'],
+    code: `@KafkaListener(topics = "ticket-events", groupId = "router")
+void onEvent(TicketEvent e) {
+  if (!e.type().equals("created")) return;
+  Route r = rules.forTenant(e.tenantId()).match(e);         // billing · en · L1
+  mongo.updateFirst(
+      query(where("_id").is(e.ticketId()).and("tenantId").is(e.tenantId())
+          .and("version").is(e.version())),                // only the version we saw
+      new Update().set("queue", r.queue()).set("priority", r.priority())
+          .inc("version", 1), Ticket.class);
+  // + event "queued" in the same transaction → push gateway updates the queue view
+}`,
+  },
+  sla: {
+    tag: 'SLA & rules worker · durable timers · lease-based claims',
+    desc: 'Computes <b>due times</b> from the tenant\'s SLA policy (first response in 30 min for high priority, business hours) and stores <b>timer documents</b>. Due timers are claimed exactly like jobs in <a href="08_Job_Scheduler.html">8 · Job Scheduler</a>. Also fires <b>auto-close</b> and <b>escalation</b>.',
+    points: ['Timers survive restarts: a down worker means late, never lost', '<b>Checks on fire</b>: escalation is a conditional update (<code>firstResponseAt: null</code>), so a late timer is harmless', 'PENDING stores <code>pausedAt</code>; on resume the paused time is added to <code>dueAt</code>', 'Auto-close only closes a ticket still RESOLVED at the version it expected'],
+    code: `@Scheduled(fixedDelay = 1000)
+void fireDue() {
+  Timer t;
+  while ((t = mongo.findAndModify(                         // lease one due timer
+      query(where("status").is("WAITING").and("dueAt").lte(now())),
+      new Update().set("status", "RUNNING").set("leaseUntil", now().plusSeconds(30)),
+      Timer.class)) != null) {
+    UpdateResult r = mongo.updateFirst(
+        query(where("_id").is(t.ticketId()).and("firstResponseAt").isNull()
+            .and("status").ne("PENDING")),
+        new Update().set("priority", "URGENT").set("queue", "billing-L2")
+            .set("breached", true).inc("version", 1), Ticket.class);
+    if (r.getModifiedCount() == 1) notifier.pageLead(t);  // 0 → already answered: no-op
+    timers.markDone(t);
+  }
+}`,
+  },
+  notify: {
+    tag: 'Notification service · its own system',
+    desc: 'Sends "we got your request", agent replies, "resolved, rate us" and escalation pages to the team lead. Built in <a href="04_Notification_System.html">4 · Notification System</a>: Kafka, retries, DLQ and SES. Customers are rarely online, so email is the main channel back.',
+    points: ['Consumes ticket events in its own consumer group', 'Sends with <code>Reply-To: support+T-101@acme.help</code> so answers thread back onto T-101', 'Pages the team lead on an SLA breach', 'Retries with a dedupe key; a mail failure never affects the ticket'],
+    code: `@KafkaListener(topics = "ticket-events", groupId = "notifications")
+void onEvent(TicketEvent e) {
+  if (!e.type().equals("reply") || presence.portalOpen(e.requester())) return;
+  notifications.send(Notification.email(e.requesterEmail())
+      .subject("Re: [#" + e.ticketId() + "] " + e.subject())
+      .header("Message-ID", "<" + e.ticketId() + "." + e.version() + "@help>")
+      .replyTo("support+" + e.ticketId() + "@acme.help")
+      .dedupeKey(e.ticketId() + ":" + e.version()));      // retries never double-send
+}`,
+  },
+};
+
+// building blocks taught once in 00_Core_Components.html (same "#id/what" links as the engine pages)
+const CORE = {
+  gw: ['gw', 'API Gateway'], push: ['cache', 'Cache · Redis'], tdb: ['db', 'DB scaling'], kafka: ['kafka', 'Queue · Kafka'], s3: ['s3', 'Storage · S3'],
+};
+
+// ---------------- scenarios ----------------
+// hop: `from`/`to` may be an array (fan-out / fan-in: one packet per pair, all at once).
+// node: `id` may be an array (several nodes work in parallel); `tags` gives one tag per node.
+const hop = (from, to, kind, tag, title, proto, text, extra) => Object.assign({ type: 'hop', from, to, kind, tag, title, proto, text }, extra || {});
+const node = (id, tag, title, proto, text, extra) => Object.assign({ type: 'node', id, tag, title, proto, text }, extra || {});
+const GREEN = '#16a34a', RED = '#dc2626', AMBER = '#d97706', BLUE = '#0b5cff', PURPLE = '#7c3aed';
+const AGENTS = ['agentA', 'agentB'];
+
+const SCEN = {
+  // Ported from the old page's "Email becomes a ticket" flow: webhook, S3 attachment, ticket + event txn, duplicate webhook, relay, threading.
+  intake: {
+    name: 'Email becomes a ticket',
+    steps: [
+      hop('customer', 'gw', 'request', 'POST /inbound/email', 'The customer emails support@acme.help', 'HTTPS · webhook', `The inbound mail provider (SES / SendGrid) POSTs the mail to /inbound/email with Message-ID m-77, from, subject, body and invoice.pdf; the gateway checks its HMAC signature and maps the to-address support@acme.help to tenant acme.`),
+      hop('gw', 'api', 'request', 'inbound m-77', 'Routed to the Ticket API, the only writer', 'X-Tenant: acme', `Intake webhooks, replies, claims and status changes all go through the Ticket API, so every write is validated and evented in one place.`),
+      hop('api', 's3', 'request', 'PUT invoice.pdf', 'Attachments go to S3, not the DB', 'S3 PutObject', `The intake streams invoice.pdf to S3 under acme/T-101/…; from the web form the browser uploads directly with a presigned URL, so files never pass through the API.`),
+      hop('s3', 'api', 'response', 'ETag ✓', 'Only the key is kept', 'HTTP 200 · ETag', `S3 returns the ETag; the message document stores the key acme/T-101/invoice.pdf, never the bytes.`),
+      hop('api', 'tdb', 'request', 'insert · txn', 'Ticket + message + event in one transaction', 'Mongo · multi-doc txn', `One MongoDB transaction inserts { _id: "T-101", tenantId: "acme", status: "NEW", version: 1 }, the first message and an event { v1, created, published: false }.`),
+      node('tdb', 'T-101 NEW · v1', 'Committed: the event is outbox + audit log', 'published: false', `The event row is both the outbox (still to publish) and the first line of the audit history; ticket and event can never disagree because they commit together.`, { tagColor: GREEN }),
+      hop('tdb', 'api', 'response', 'committed', 'Transaction committed', 'commitTransaction · ok', `The commit returns to the Ticket API with the new ticket id.`),
+      hop('api', 'gw', 'response', '200 · T-101', 'Answer 200 with the ticket id', 'HTTP 200 · { ticketId: "T-101" }', `The 2xx tells the provider to stop retrying; the acknowledgement mail will carry Message-ID <T-101.acme@help> so replies thread back.`),
+      hop('gw', 'customer', 'response', 'T-101 ✓', 'The provider gets 200', 'HTTPS · 200 · 1.9 s', `It arrived, but after 1.9 s, longer than the provider's 1.5 s timeout.`),
+      hop('customer', 'gw', 'request', 'same webhook', 'The provider retries the webhook', 'HTTPS · same Message-ID m-77', `Our 200 came too late, so the provider sends the same email again; without a guard this would open T-102 for the same mail.`),
+      hop('gw', 'api', 'request', 'inbound m-77', 'Same request, another API instance', 'HTTP/1.1 · :8080', `It may land on a different instance, so in-memory dedupe would not help: the guard must live in the database.`),
+      hop('api', 'tdb', 'request', 'insert m-77', 'Insert the same email again', 'unique { tenantId, sourceMessageId }', `The insert carries sourceMessageId m-77, covered by a unique index on { tenantId, sourceMessageId }.`),
+      node('tdb', 'E11000 dup key', 'Decision: duplicate key → return T-101', 'E11000 duplicate key error', `The unique index rejects the second insert (and the whole transaction with it); nothing new is written.`, { tagColor: AMBER, stat: 'hit' }),
+      hop('tdb', 'api', 'error', 'E11000', 'Intake is idempotent', 'DuplicateKeyException → findBySource', `The API catches DuplicateKeyException and looks up the ticket by { tenantId, sourceMessageId }: still exactly one ticket, T-101.`),
+      { type: 'fork', title: 'Meanwhile: 200 with the same T-101', proto: 'HTTP 200 · { ticketId: "T-101" }', text: `In parallel: the retry gets the same answer as the first call, so the provider stops; meanwhile the relay publishes event v1.`, steps: [
+        hop('api', 'gw', 'response', '200 · T-101', '', '', ''),
+        hop('gw', 'customer', 'response', 'same T-101 ✓', '', '', ''),
+      ] },
+      hop('tdb', 'kafka', 'event', 'created v1', 'The relay publishes the event to Kafka', 'key T-101 · acks=all', `A relay (poller on published: false, or a MongoDB change stream) sends the event to ticket-events keyed by T-101, then marks it published: true.`),
+      hop('kafka', ['router', 'sla', 'es'], 'event', null, 'Each consumer group gets v1', 'consumer groups router · sla · indexer', `Router, SLA worker and search indexer each read the same event in their own consumer group; the push gateway and notifications do too.`, { tags: ['v1', 'v1', 'v1'] }),
+      node(['router', 'sla', 'es'], null, 'Route, start the SLA timer, index', '3 consumer groups', `The router matches billing · English · L1, the SLA worker stores a first-response timer due 10:28, and the indexer writes T-101 to Elasticsearch with external version 1.`, { tags: ['billing queue', 'FRT 10:28', 'indexed v1'], tagColor: GREEN, dur: 3 }),
+      hop('customer', 'gw', 'request', 'Re: [#T-101]', 'The customer replies: same ticket', 'In-Reply-To header', `The reply carries In-Reply-To <T-101.acme@help> (the Message-ID we set on our acknowledgement) and [#T-101] in the subject.`),
+      hop('gw', 'api', 'request', 'Re: [#T-101]', 'Intake matches the thread', 'findThread(tenant, inReplyTo, subject)', `The Ticket API finds T-101 by the In-Reply-To header, falling back to the [#T-101] token in the subject.`),
+      hop('api', 'tdb', 'request', 'append · v2', 'Append a message, no new ticket', 'txn: message + ticket v2 + event v2', `The message is appended to T-101, the ticket goes to version 2 and event v2 "message · customer" is written in the same transaction: the thread grows, no new ticket.`),
+    ],
+  },
+  // Ported from the old page's "Two agents, one ticket" flow: read-then-write race vs CAS on version, 409, live owner update.
+  claim: {
+    name: 'Two agents, one ticket',
+    steps: [
+      hop('kafka', 'push', 'event', 'queued billing v1', 'T-101 enters the billing queue', 'group push-gateway', `The router matched T-101 to billing · English · L1; its "queued" event reaches the push gateway, which looks up subscribers of acme:queue:billing.`),
+      hop('push', 'gw', 'event', 'T-101 v1', 'Push to every open billing screen', 'WS frames · Redis pub/sub', `The gateway holds the agents' WSS connections (sticky) and relays the push gateway's frames to each subscribed tab.`),
+      hop('gw', AGENTS, 'event', null, 'Asha and Ben both see T-101 at version 1', 'STOMP MESSAGE', `Both lists show T-101 at the top with version 1; on a busy queue the oldest ticket is the one everybody sees first.`, { tags: ['T-101 v1', 'T-101 v1'] }),
+      hop(AGENTS, 'gw', 'request', null, 'Both click "Take" at the same moment', 'POST …/claim { version: 1 }', `With dozens of agents on a busy queue, two clicks within the same 50 ms are normal.`, { tags: ['take v1', 'take v1'] }),
+      hop('gw', 'api', 'request', null, 'Two claims reach the Ticket API together', '2 instances', `They land on two instances, so nothing in one JVM's memory can order them.`, { count: 2, tags: ['asha', 'ben'] }),
+      node('api', 'assignee == null ×2', '❌ Read, then write', 'findById → if (assignee == null) save', `Naive code: t = findById("T-101"); if (t.assignee == null) { t.assignee = me; save(t); }. Both instances read before either saves, so both checks pass.`, { tagColor: RED, dur: 2.8 }),
+      hop('api', 'tdb', 'error', null, 'Two saves, both succeed', 'Mongo wire · save() replaces the document', `Each save overwrites the whole document without a condition; Ben's lands last.`, { count: 2, tags: ['save asha', 'save ben'] }),
+      node('tdb', 'Ben + Asha ✕', '❌ Both think they own it', 'last write wins · no version check', `The document says Ben, both requests returned 200, both UIs say "yours" and both agents start typing an answer.`, { tagColor: RED }),
+      hop('tdb', 'kafka', 'error', 'reply ×2', 'Both reply to the customer', 'ticket-events · two reply events', `Two different answers enter the event stream within a minute of each other.`),
+      hop('kafka', 'notify', 'error', '2 answers ✕', 'The customer gets two different answers', 'Notification · email ×2', `Check-then-act on a ticket is a race: both agents could take it, and the customer sees it.`),
+      hop('api', 'tdb', 'request', 'CAS v1 → asha', '✅ Rewind: compare-and-set on version', 'findAndModify · version: 1', `findAndModify({ _id: "T-101", tenantId: "acme", version: 1, assignee: null }, { $set: { assignee: "asha", status: "OPEN" }, $inc: { version: 1 } }): a single-document update is atomic.`),
+      node('tdb', 'v2 · Asha ✓', 'Asha\'s update matches: version becomes 2', 'matched 1 · modified 1', `Asha's request arrives first and matches; T-101 is OPEN, version 2, owned by Asha. Spring Data @Version does exactly this.`, { tagColor: GREEN }),
+      hop('api', 'tdb', 'request', 'CAS v1 → ben', 'Ben\'s update arrives a moment later', 'findAndModify · version: 1', `Ben's update also says version: 1, because that is what his screen showed.`),
+      node('tdb', 'matched 0', 'Decision: version is 2 now → matched 0', 'findAndModify → null', `Nothing was overwritten, and no lock was held while anyone was thinking.`, { tagColor: AMBER, stat: 'hit' }),
+      hop('tdb', 'api', 'error', 'null', 'No document comes back', 'TicketConflictException', `The service maps the null result to a conflict instead of retrying blindly.`),
+      hop('api', 'gw', 'error', '409 taken', '409 Conflict: taken by Asha', 'HTTP 409 · { by: "asha", version: 2 }', `The response says who owns it and at which version, so the UI can refresh without another round trip.`),
+      hop('gw', 'agentB', 'error', '409 · taken', 'Ben sees "taken by Asha"', 'HTTPS · 409', `Ben's list refreshes and he picks the next ticket; the conflict is cheap and rare.`),
+      hop('tdb', 'kafka', 'event', 'assigned v2', 'Event v2 "assigned asha" through the outbox', 'key T-101', `The event was written in the same transaction as the claim; the relay publishes it keyed by T-101.`),
+      hop('kafka', 'push', 'event', 'assigned v2', 'The push gateway consumes v2', 'consumer group push-gateway', `Subscribers of acme:queue:billing and acme:ticket:T-101 must learn the new owner.`),
+      hop('push', 'gw', 'event', 'v2', 'Relayed to the open sockets', 'WebSocket frames', `One frame per subscribed tab, through the sticky gateway connections.`),
+      hop('gw', AGENTS, 'event', null, 'Every screen learns the new owner', 'WSS · STOMP MESSAGE · version 2', `T-101 leaves the queue on every screen. In push mode the router assigns instead (least-loaded agent, same CAS plus openCount < capacity), which removes most races entirely.`, { tags: ['yours v2', 'gone v2'] }),
+    ],
+  },
+  // Ported from the old page's "Ticket lifecycle" flow: transition table, PENDING pause, resolve, reopen, auto-close timer, follow-up ticket.
+  lifecycle: {
+    name: 'Ticket lifecycle',
+    steps: [
+      hop('agentA', 'gw', 'request', 'reply + PENDING', 'OPEN → PENDING: waiting on the customer', 'PATCH …/status · v2', `Asha asks for the invoice number and sets PENDING.`),
+      hop('gw', 'api', 'request', 'PENDING · v2', 'Routed to the Ticket API', 'HTTP/1.1 · :8080', `Every status change goes through the one service that owns the transition table.`),
+      node('api', 'OPEN → PENDING ✓', 'Decision: is the transition allowed?', 'NEXT[OPEN] = { PENDING, RESOLVED }', `The table is checked in one place; PENDING is allowed from OPEN, so the update runs with a filter on the current status and version.`, { tagColor: GREEN }),
+      hop('api', 'tdb', 'request', 'PENDING · v3', 'Conditional update + event v3', 'filter status + version', `T-101 becomes PENDING, version 3; while it is pending the resolution SLA clock is paused, because the delay is not ours.`),
+      hop('customer', 'gw', 'request', 'invoice #4411', 'The customer answers → back to OPEN', 'HTTPS · inbound reply · 11:40', `An inbound message from the requester on a PENDING ticket triggers the rule PENDING → OPEN.`),
+      hop('gw', 'api', 'request', 'reply on PENDING', 'Intake threads the reply onto T-101', 'HTTP/1.1 · :8080', `The reply is matched to T-101 by its In-Reply-To header.`),
+      hop('api', 'tdb', 'request', 'OPEN · v4', 'PENDING → OPEN, the clock resumes', 'txn · event v4', `T-101 is OPEN at version 4 and shows up again in Asha's "needs action" list.`),
+      hop('agentA', 'gw', 'request', 'resolve', 'Asha resolves it', 'HTTPS · PATCH status { to: RESOLVED, version: 4 }', `OPEN → RESOLVED is in the table.`),
+      hop('gw', 'api', 'request', 'RESOLVED · v4', 'Routed to the Ticket API', 'HTTP/1.1 · :8080', `Same path, same checks: transition allowed, version still 4.`),
+      hop('api', 'tdb', 'request', 'RESOLVED · v5', 'OPEN → RESOLVED (v5)', 'filter { status: OPEN, version: 4 }', `T-101 is RESOLVED at version 5, with event v5 in the same transaction.`),
+      hop('tdb', 'kafka', 'event', 'resolved v5', 'Resolved is not closed', 'key T-101', `The customer can still reopen it for a few days, so two consumers react.`),
+      hop('kafka', ['sla', 'notify'], 'event', null, 'Auto-close timer + "solved" email', 'consumer groups sla · notifications', `The rules worker starts an auto-close timer for 7 days, and the Notification service emails "Your request was solved" with a satisfaction link.`, { tags: ['auto-close 7 d', '"solved" email'] }),
+      hop('customer', 'gw', 'request', 'still broken', '"Still broken" → reopen', 'HTTPS · inbound reply · +2 days', `Two days later the customer replies.`),
+      hop('gw', 'api', 'request', 'reply on RESOLVED', 'RESOLVED → OPEN is allowed', 'NEXT[RESOLVED] = { OPEN, CLOSED }', `Same ticket, same assignee, reopenCount + 1 (a quality metric).`),
+      hop('api', 'tdb', 'request', 'OPEN · v6', 'T-101 is OPEN again (v6)', 'txn: message + status + event v6', `The auto-close timer is not deleted; it will re-check the status when it fires.`),
+      hop('sla', 'tdb', 'request', 'close if RESOLVED · v7', 'Resolved again; 7 days later the timer fires', 'filter RESOLVED · v7', `Asha fixed it (v7 RESOLVED); the auto-close runs updateOne({ _id: "T-101", status: "RESOLVED", version: 7 }, { $set: { status: "CLOSED" }, $inc: { version: 1 } }).`),
+      node('tdb', 'CLOSED · v8', 'The timer only closes what it expected', 'matched 1', `Had the customer replied in between, the filter would not match and nothing would happen.`, { tagColor: GREEN }),
+      hop('customer', 'gw', 'request', 'Re: [#T-101]', 'A reply after CLOSED', 'HTTPS · inbound reply · +9 days', `The customer answers the old thread once more.`),
+      hop('gw', 'api', 'request', 'reply on CLOSED', 'Intake looks at the state machine', 'NEXT[CLOSED] = { }', `Closed tickets are final for reports and billing.`),
+      node('api', 'CLOSED → OPEN ✕', 'Decision: CLOSED is final → follow-up ticket', 'NEXT[CLOSED] = { }', `CLOSED → OPEN is not in the transition table, so intake creates a new ticket instead of reopening history that reports already counted.`, { tagColor: RED, stat: 'hit' }),
+      hop('api', 'tdb', 'request', 'new T-245 ↩ T-101', 'New ticket T-245, linked to T-101', 'followUpOf: T-101', `T-245 gets followUpOf: "T-101", the same requester, and is routed to the same group.`),
+    ],
+  },
+  // Ported from the old page's "SLA breach" flow: due time, timer doc, warning, breach → escalate, PENDING pause, check on fire.
+  sla: {
+    name: 'SLA breach',
+    steps: [
+      hop('tdb', 'kafka', 'event', 'created T-102 · high', 'A high-priority chat became T-102', 'ticket-events · 10:00', `A chat opened T-102 at 10:00 with priority high; its "created" event is published like any other.`),
+      hop('kafka', 'sla', 'event', 'created v1', 'The SLA worker reads acme\'s policy', 'consumer group sla', `acme's SLA policy: high priority → first response within 30 minutes, counted in business hours.`),
+      node('sla', 'due 10:30 · warn 10:24', 'Compute the due time', 'business-hours calendar · 80 % warning', `First response due at 10:30, with a warning at 80 % of the budget: 10:24.`, { tagColor: BLUE }),
+      hop('sla', 'tdb', 'request', 'timer T-102:frt', 'Store a durable timer document', 'timers · dueAt 10:30', `SLA deadlines are timer documents, not in-memory schedules, so a deploy or crash cannot lose them.`),
+      node('sla', '10:24 · 80 % gone', '10:24: a worker leases the warning', 'find { warnAt ≤ now } · lease 30 s', `Timer workers poll { dueAt or warnAt ≤ now } and claim with a lease, exactly like the job scheduler.`, { tagColor: AMBER }),
+      hop('sla', 'tdb', 'event', 'sla.warning', 'Write event sla.warning', 'events insert · same as any change', `The warning is an event like every other, so screens, reports and the audit log all see it.`),
+      hop('tdb', 'kafka', 'event', 'sla.warning', 'The relay publishes the warning', 'outbox relay · key T-102', `Keyed by T-102, so it stays in order with the ticket's other events.`),
+      hop('kafka', 'push', 'event', 'T-102 ⚠', 'The push gateway consumes it', 'consumer group push-gateway', `Subscribers of acme:queue:billing must see T-102 at risk.`),
+      hop('push', 'gw', 'event', 'T-102 ⚠', 'Relayed to the open sockets', 'WebSocket frames', `One frame per subscribed billing tab.`),
+      hop('gw', AGENTS, 'event', null, 'T-102 turns orange on every billing screen', 'WSS · STOMP MESSAGE', `Asha and Ben both see the warning, but both are busy at capacity 5/5.`, { tags: ['T-102 ⚠', 'T-102 ⚠'] }),
+      node('sla', '10:30 · BREACH', 'Decision: still no first response at 10:30', 'timer dueAt ≤ now · leased', `Nobody replied; the due timer fires.`, { tagColor: RED }),
+      hop('sla', 'tdb', 'error', 'escalate if no reply', 'Escalate with a conditional update', 'firstResponseAt: null', `updateOne({ _id: "T-102", firstResponseAt: null, status: { $ne: "PENDING" } }, { $set: { priority: "urgent", queue: "billing-L2", breached: true }, $inc: { version: 1 } }).`),
+      node('tdb', 'urgent · billing-L2 ✕', 'T-102 is urgent in billing-L2', 'matched 1 · event sla.breach', `On breach we escalate: higher priority, a senior queue, and the event sla.breach in the audit log.`, { tagColor: RED }),
+      { type: 'fork', title: 'Meanwhile: page the team lead', proto: 'Notification service · page', text: `In parallel: the SLA worker pages the billing team lead through the Notification service, which owns retries and dedupe.`, steps: [
+        hop('sla', 'notify', 'error', 'page lead', '', '', ''),
+      ] },
+      node('sla', '+40 min → due 11:10', 'Rewind: PENDING pauses the clock', 'pausedAt 10:10 · resumed 10:50', `Had Asha set PENDING at 10:10, the timer would store pausedAt; when the customer answers at 10:50 the 40 paused minutes are added: dueAt = 10:30 + 40 min = 11:10.`, { tagColor: PURPLE, dur: 3 }),
+      hop('agentA', 'gw', 'request', 'first reply 10:29:59', 'Rewind: a reply one second before the breach', 'POST …/messages', `Asha replies at 10:29:59.`),
+      hop('gw', 'api', 'request', 'reply', 'Routed to the Ticket API', 'HTTP/1.1 · :8080', `Cancelling the timer would be a separate write that can lose the race, so we do not rely on it.`),
+      hop('api', 'tdb', 'request', 'firstResponseAt = 10:29:59', 'The reply sets firstResponseAt', 'txn: message + ticket + event', `The first agent reply stamps firstResponseAt on T-102.`),
+      hop('sla', 'tdb', 'request', 'escalate if no reply', 'At 10:30 the timer still fires', 'filter { firstResponseAt: null }', `The timer was due and gets leased as usual, then runs the same conditional escalation.`),
+      node('tdb', 'matched 0 → no-op', 'Decision: firstResponseAt is set → matched 0', 'modifiedCount = 0', `Timers check on fire: the action is a conditional update, so a late or racing timer is harmless.`, { tagColor: GREEN, stat: 'hit' }),
+      node('sla', 'FRT met ✓ · DONE', 'The timer is marked DONE', 'timers.markDone · no page', `No escalation, no page; the SLA report records the first response as met.`, { tagColor: GREEN }),
+    ],
+  },
+  // Ported from the old page's "Live updates" flow: presence, reply, fan-out, duplicate dropped by version, resync after reconnect, offline email.
+  realtime: {
+    name: 'Live updates',
+    steps: [
+      hop('agentB', 'gw', 'request', 'SUBSCRIBE T-101', 'Ben opens T-101', 'WSS · STOMP SUBSCRIBE /topic/acme.ticket.T-101', `Asha, Ben and the customer's portal each hold a WebSocket and subscribe to acme:ticket:T-101.`),
+      hop('gw', 'push', 'request', 'viewing T-101', 'The gateway forwards the frame', 'WS proxy · sticky', `The gateway keeps each socket on one Push Gateway node.`),
+      node('push', 'viewing: ben · TTL 30 s', 'Presence in Redis with a TTL', 'Redis SET … EX 30', `Ben opening the ticket writes presence with a 30 s TTL, refreshed by heartbeats, so Asha sees "Ben is viewing" and nobody replies twice (collision detection).`, { tagColor: BLUE }),
+      hop('agentA', 'gw', 'request', 'reply · v4', 'Asha replies', 'HTTPS · POST /tickets/T-101/messages { version: 4 }', `Asha's reply goes through the normal write path.`),
+      hop('gw', 'api', 'request', 'reply', 'Routed to the Ticket API', 'HTTP/1.1 · :8080', `The only writer validates and versions the change.`),
+      hop('api', 'tdb', 'request', 'msg + v5 + event', 'Message, ticket v5 and event v5 in one transaction', 'one txn', `The API writes the message, bumps the ticket to v5 and inserts event v5 "reply" together.`),
+      { type: 'fork', title: 'Meanwhile: Asha\'s HTTP response returns v5', proto: 'HTTP 201 · v5', text: `In parallel: Asha learns v5 from her own response immediately; everyone else learns it from the event.`, steps: [
+        hop('tdb', 'api', 'response', 'v5', '', '', ''),
+        hop('api', 'gw', 'response', '201 · v5', '', '', ''),
+        hop('gw', 'agentA', 'response', 'v5 ✓', '', '', ''),
+      ] },
+      hop('tdb', 'kafka', 'event', 'reply v5', 'The relay publishes v5', 'key T-101', `Same stream that drives routing, SLAs and search.`),
+      hop('kafka', 'push', 'event', 'v5', 'The push gateway consumes v5', 'push-gateway · pub/sub', `It looks up subscribers of acme:ticket:T-101, on other gateway nodes via Redis pub/sub.`),
+      hop('push', 'gw', 'event', 'v5', 'Relayed to the open sockets', 'WebSocket frames', `One frame per subscribed tab.`),
+      hop('gw', ['agentB', 'customer'], 'event', null, 'Fan-out to every open screen', 'WSS · STOMP MESSAGE · version 5', `Ben's screen and the customer's portal update within a second: outbox, Kafka, push gateway, WebSocket.`, { tags: ['v5', 'v5'] }),
+      hop('kafka', 'push', 'event', 'v5 again', 'A duplicate arrives after a rebalance', 'at-least-once', `Kafka is at-least-once: after a consumer rebalance the push gateway gets v5 again.`),
+      hop('push', 'gw', 'event', 'v5 again', 'The duplicate is relayed', 'WebSocket frames', `The gateway does not dedupe; the client does.`),
+      hop('gw', 'agentB', 'event', 'v5 again', 'Ben receives v5 a second time', 'WSS · STOMP MESSAGE', `The client keeps lastVersion = 5 for T-101.`),
+      node('agentB', 'v5 ≤ last 5 → skip', 'Decision: apply only if version > lastVersion', 'client dedupe', `The duplicate changes nothing; the same rule protects against an older event arriving late.`, { tagColor: GREEN, stat: 'hit' }),
+      node('agentB', 'offline · misses v6', 'Ben\'s Wi-Fi drops; he misses v6', 'socket closed', `While Ben is offline the customer replies (v6). The gateway has no socket for him, so nothing is queued there.`, { tagColor: AMBER }),
+      hop('agentB', 'gw', 'request', 'events?since=5', 'On reconnect: events since 5', 'HTTPS · GET /tickets/T-101/events?since=5', `The client reconnects, resubscribes and asks for everything after its last version.`),
+      hop('gw', 'api', 'request', 'since=5', 'Routed to the Ticket API', 'HTTP/1.1 · :8080', `The audit events double as the replay log.`),
+      hop('api', 'tdb', 'request', 'find version > 5', 'Read the missed events', 'events.find { ticketId, version > 5 }', `An indexed range read on { tenantId, ticketId, version }.`),
+      { type: 'fork', title: 'Meanwhile: Ben catches up with v6', proto: 'HTTP 200 · [v6]', text: `In parallel: [v6] goes back to Ben's tab, which applies it and is current again; meanwhile Asha's next reply (v7) heads for a customer who closed the portal.`, steps: [
+        hop('tdb', 'api', 'response', '[v6]', '', '', ''),
+        hop('api', 'gw', 'response', '200 · [v6]', '', '', ''),
+        hop('gw', 'agentB', 'response', 'v6 ✓', '', '', ''),
+      ] },
+      hop('kafka', 'notify', 'event', 'email v7', 'Customer offline → email instead', 'Reply-To: support+T-101@…', `Asha answers (v7) after the customer closed the portal: no subscriber, so the Notification consumer emails the reply, and the answer threads back onto T-101 (4 · Notification System handles retries and dedupe).`),
+    ],
+  },
+  // Ported from the old page's "Many tenants" flow: tenant from the JWT, tenant-filtered search, missing filter leak, filtered alias + hydration check, noisy tenant.
+  tenant: {
+    name: 'Many tenants',
+    steps: [
+      hop('agentA', 'gw', 'request', 'JWT tenant=acme', 'Tenant comes from the token', 'Bearer JWT · /search', `Asha's JWT carries tenantId: "acme"; she searches "refund".`),
+      node('gw', 'tenantId = acme', 'Gateway: verify the JWT', 'JWT claim → X-Tenant header (never the body)', `The gateway validates the signature and forwards the tenant as a trusted header; a tenant in the request body is ignored.`, { tagColor: BLUE }),
+      hop('gw', 'api', 'request', 'GET /search', 'Routed to the Ticket API', 'HTTP/1.1 · :8080', `Tickets are sharded by { tenantId, _id }: a big tenant spreads over chunks, small tenants share them.`),
+      node('api', 'TenantContext = acme', 'Request-scoped tenant context', 'TenantScopedRepository', `The API puts the tenant in a request-scoped context; every repository method adds tenantId to the query.`, { tagColor: BLUE }),
+      hop('api', 'es', 'request', 'refund · acme', 'Search with a tenant filter', 'filter tenantId · routing', `The query carries filter: { term: { tenantId: "acme" } } and routing: acme. (Inverted index, analyzers and ranking: 10 · Search System.)`),
+      hop('es', 'api', 'response', '[T-101]', 'Only acme results', 'HTTP 200 · ids only', `Elasticsearch returns ids; the API hydrates them from the Ticket DB.`),
+      hop('api', 'gw', 'response', '1 result', 'Results returned', 'HTTP 200 · JSON', `One hit: T-101.`),
+      hop('gw', 'agentA', 'response', '1 result ✓', 'Asha sees her own tenant\'s ticket', 'HTTPS · 200', `Correct, as long as every query remembers the tenant.`),
+      hop('api', 'es', 'error', 'invoice.pdf · no tenant', '❌ A new endpoint forgets the tenant filter', 'no tenant filter', `A new "search by attachment name" endpoint builds its own query and forgets the tenant filter.`),
+      hop('es', 'api', 'error', '[T-101, G-9]', 'Another company\'s ticket comes back', 'HTTP 200 · globex hit', `G-9 belongs to globex, including the customer's email and invoice.`),
+      node('api', 'G-9 globex ✕', '❌ One missing filter leaks data', 'cross-tenant leak', `In a helpdesk this is the worst bug you can ship: the real risk in multi-tenancy is one query that forgets the tenant.`, { tagColor: RED, dur: 2.8 }),
+      hop('api', 'es', 'request', 'alias tickets-acme', '✅ Enforce it in one place', 'POST tickets-acme/_search · filtered alias', `Endpoints never build raw queries: a shared TenantScopedRepository and a filtered alias per tenant (tickets-acme = index + tenant filter) add the filter for them.`),
+      hop('es', 'api', 'response', '[T-101]', 'The alias cannot return G-9', 'HTTP 200 · ids', `Whatever the endpoint forgets, the alias still filters by tenant.`),
+      node('api', 'hydrate: tenant ✓', 'Check it twice', 'ticket.tenantId == context.tenantId', `Hydration re-checks every ticket's tenant and drops anything else; an automated test runs every endpoint as tenant B against tenant A's data.`, { tagColor: GREEN }),
+      hop('customer', 'gw', 'request', null, 'A noisy tenant: globex\'s mail loop', 'HTTPS · 2,000 webhooks / min', `Globex's auto-responder answers our acknowledgement, which answers back: 2,000 emails a minute.`, { count: 3, tags: ['auto-reply', 'auto-reply', 'auto-reply'] }),
+      node('gw', 'globex bucket empty', 'Decision: globex\'s token bucket is empty → 429', 'Redis token bucket', `Per-tenant token buckets cap intake; loop detection also drops mail with Auto-Submitted headers or the same sender + subject repeating.`, { tagColor: RED, stat: 'hit' }),
+      hop('gw', 'customer', 'error', '429', 'Globex is throttled', 'HTTP 429 · Retry-After', `Only globex is slowed down; its provider retries later.`),
+      hop('agentA', 'gw', 'request', 'acme reply', 'Acme keeps flowing', 'HTTPS · POST /tickets/T-101/messages', `Asha's reply has its own tenant's budget.`),
+      hop('gw', 'api', 'request', 'acme reply', 'Routed normally', 'HTTP/1.1 · :8080', `Kafka is keyed by ticketId and consumers have per-tenant quotas, so globex's flood does not block acme's partitions.`),
+      hop('api', 'tdb', 'request', 'acme ✓', 'Acme is unaffected', 'txn: message + ticket + event', `Per-tenant rate limits and quotas stop one customer from hurting the others.`),
+    ],
+  },
+  // Live-only (no buttons): quiet versions of the hot paths.
+  lintake: {
+    name: 'Intake',
+    steps: [
+      hop('customer', 'gw', 'request', 'webhook', '', '', ''),
+      hop('gw', 'api', 'request', 'inbound', '', '', ''),
+      hop('api', 'tdb', 'request', 'txn', '', '', ''),
+      { type: 'fork', steps: [hop('tdb', 'api', 'response', 'ok', '', '', ''), hop('api', 'gw', 'response', '200', '', '', ''), hop('gw', 'customer', 'response', '200', '', '', '')] },
+      hop('tdb', 'kafka', 'event', 'created', '', '', ''),
+      hop('kafka', ['router', 'sla', 'es'], 'event', null, '', '', ''),
+    ],
+  },
+  lreply: {
+    name: 'Reply',
+    steps: [
+      hop('agentA', 'gw', 'request', 'reply', '', '', ''),
+      hop('gw', 'api', 'request', 'reply', '', '', ''),
+      hop('api', 'tdb', 'request', 'txn', '', '', ''),
+      { type: 'fork', steps: [hop('tdb', 'api', 'response', 'ok', '', '', ''), hop('api', 'gw', 'response', '201', '', '', ''), hop('gw', 'agentA', 'response', '201', '', '', '')] },
+      hop('tdb', 'kafka', 'event', 'reply', '', '', ''),
+      { type: 'fork', steps: [hop('kafka', 'notify', 'event', 'email', '', '', '')] },
+      hop('kafka', 'push', 'event', 'reply', '', '', ''),
+      hop('push', 'gw', 'event', 'reply', '', '', ''),
+      hop('gw', ['agentB', 'customer'], 'event', null, '', '', ''),
+    ],
+  },
+  lsearch: {
+    name: 'Search',
+    steps: [
+      hop('agentB', 'gw', 'request', 'search', '', '', ''),
+      hop('gw', 'api', 'request', 'search', '', '', ''),
+      hop('api', 'es', 'request', 'tickets-acme', '', '', ''),
+      hop('es', 'api', 'response', 'ids', '', '', ''),
+      hop('api', 'gw', 'response', '200', '', '', ''),
+      hop('gw', 'agentB', 'response', '200', '', '', ''),
+    ],
+  },
+  lclaim: {
+    name: 'Lost claim',
+    steps: [
+      hop('agentB', 'gw', 'request', 'take', '', '', ''),
+      hop('gw', 'api', 'request', 'claim', '', '', ''),
+      hop('api', 'tdb', 'request', 'CAS', '', '', ''),
+      node('tdb', '409', '', '', '', { tagColor: AMBER, stat: 'hit' }),
+      hop('tdb', 'api', 'error', 'null', '', '', ''),
+      hop('api', 'gw', 'error', '409', '', '', ''),
+      hop('gw', 'agentB', 'error', '409', '', '', ''),
+    ],
+  },
+};
+const LIVE_MIX = [['lreply', 0.35], ['lintake', 0.3], ['lsearch', 0.2], ['lclaim', 0.15]];
+
+
+// =====================================================================
+// rendering
+// =====================================================================
+const svg = document.getElementById('dia');
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const box = id => { const n = NODES[id]; return { l: n.x - 75, r: n.x + 75, t: n.y - 56, b: n.y + 56 }; };
+
+function edgePath(a, b, route) {
+  const A = NODES[a], B = NODES[b], dx = B.x - A.x, dy = B.y - A.y;
+  if (route === 'under') {   // down from A, along a channel below the bottom row of cards, up into B (A is right of B)
+    const cy = 575, r = 14;
+    return { d: `M${A.x} ${A.y + 56} L${A.x} ${cy - r} Q${A.x} ${cy} ${A.x - r} ${cy} L${B.x + r} ${cy} Q${B.x} ${cy} ${B.x} ${cy - r} L${B.x} ${B.y + 56}`, horiz: true };
+  }
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const s = Math.sign(dx) || 1, x1 = A.x + 75 * s, x2 = B.x - 75 * s, mx = (x1 + x2) / 2;
+    return { d: `M${x1} ${A.y} C${mx} ${A.y} ${mx} ${B.y} ${x2} ${B.y}`, horiz: true };
+  }
+  const s = Math.sign(dy) || 1, y1 = A.y + 56 * s, y2 = B.y - 56 * s, my = (y1 + y2) / 2;
+  return { d: `M${A.x} ${y1} C${A.x} ${my} ${B.x} ${my} ${B.x} ${y2}`, horiz: false };
+}
+
+function buildSvg() {
+  let s = `<defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#eef1f5"/></pattern>
+    <filter id="glow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect id="bg" x="-2000" y="-1200" width="5600" height="3000" fill="url(#grid)"/>`;
+  // zones: grouped by developer role (solid = outside our code, dashed = our backend)
+  for (const z of ZONES) {
+    const [f, st, lc] = ZT[z.t];
+    s += `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="18" fill="${f}" stroke="${st}" stroke-width="1.6"${z.dash ? ' stroke-dasharray="7 5"' : ''}/>`;
+    s += `<text class="zl" x="${z.x + 16}" y="${z.y + 24}" style="fill:${lc}">${esc(z.label)}</text>`;
+    if (z.cap) s += `<text class="nl" x="${z.x + 16}" y="${z.y + 41}" style="fill:${lc};opacity:.75">${esc(z.cap)}</text>`;
+  }
+  // edges + labels
+  s += '<g id="edges">';
+  EDGE_DEFS.forEach(([a, b, , route], i) => { s += `<path class="edge" id="e${i}" d="${edgePath(a, b, route).d}"/>`; });
+  s += '</g><g id="elabels"></g><g id="ripples"></g><g id="nodes">';
+  // nodes
+  for (const [id, n] of Object.entries(NODES)) {
+    const [bg, st] = PAL[id];
+    let dots = '';
+    const r = n.replicas || 0;
+    for (let k = 0; k < r; k++) dots += `<circle cx="${75 + (k - (r - 1) / 2) * 10}" cy="104" r="3.2" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>`;
+    s += `<g class="node" data-id="${id}" transform="translate(${n.x - 75},${n.y - 56})">
+      <rect class="sel" x="-6" y="-6" width="162" height="124" rx="18" fill="none" stroke="#0b5cff" stroke-width="2" stroke-dasharray="6 5" opacity="0"/>
+      <rect class="card" width="150" height="112" rx="14" fill="${bg}" stroke="${st}" stroke-width="1.6"/>
+      <rect x="49" y="8" width="52" height="52" rx="12" fill="#fff" opacity=".85"/>
+      <g transform="translate(52.9,11.9) scale(.92)">${LOGO[id]}</g>
+      <text class="nlab" x="75" y="78">${esc(n.label)}</text>
+      <text class="nsub" x="75" y="95">${esc(n.sub)}</text>${dots}
+      <g class="tag" style="display:none"><rect y="-11" height="20" rx="10"/><text y="3.5"></text></g>
+    </g>`;
+  }
+  s += '</g><g id="packets"></g>';
+  svg.innerHTML = s;
+}
+buildSvg();
+
+const EDGES = EDGE_DEFS.map(([a, b, label, route], i) => {
+  const el = document.getElementById('e' + i);
+  return { a, b, label, el, len: el.getTotalLength(), hot: 0, horiz: edgePath(a, b, route).horiz };
+});
+// protocol labels at the path midpoint: above horizontal edges, right of vertical ones
+(function labels() {
+  const g = document.getElementById('elabels');
+  for (const e of EDGES) {
+    const p = e.el.getPointAtLength(e.len / 2);
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('class', 'elbl');
+    if (e.horiz) { t.setAttribute('x', p.x); t.setAttribute('y', p.y - 8); t.setAttribute('text-anchor', 'middle'); }
+    else { t.setAttribute('x', p.x + 8); t.setAttribute('y', p.y + 4); }
+    t.textContent = e.label;
+    g.appendChild(t);
+  }
+})();
+const NODE_EL = {};
+document.querySelectorAll('.node').forEach(g => { NODE_EL[g.dataset.id] = { g, act: 0, tagTok: 0 }; });
+
+// =====================================================================
+// engine: one rAF loop, own timer queue, everything scaled by speed
+// =====================================================================
+let speed = 1, paused = false, GEN = 0, current = 'intake', view = 'flow';
+let timers = [], packets = [], ripples = [], dashOffset = 0, flows = 0;
+const stats = { req: 0, hit: 0, evt: 0, res: 0 };
+const STAT_EL = { req: document.getElementById('stReq'), hit: document.getElementById('stHit'), evt: document.getElementById('stEvt'), res: document.getElementById('stRes') };
+
+function wait(sec, cb) { timers.push({ t: sec, cb, gen: GEN }); }
+const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function bump(k, n = 1) { stats[k] += n; STAT_EL[k].textContent = stats[k]; }
+
+function findEdge(from, to) {
+  for (const e of EDGES) {
+    if (e.a === from && e.b === to) return { e, rev: false };
+    if (e.a === to && e.b === from) return { e, rev: true };
+  }
+  throw new Error('no edge ' + from + ' -> ' + to);
+}
+function heat(e, color) { e.hot++; e.el.classList.add('hot'); e.el.style.stroke = color; }
+function cool(e) { e.hot = Math.max(0, e.hot - 1); if (!e.hot) { e.el.classList.remove('hot'); e.el.style.stroke = ''; } }
+
+function activate(id, sec) {
+  const n = NODE_EL[id]; n.act++; n.g.classList.add('active');
+  wait(sec, () => { n.act = Math.max(0, n.act - 1); if (!n.act) n.g.classList.remove('active'); });
+}
+function ripple(id) {
+  const b = box(id), el = document.createElementNS(NS, 'rect');
+  el.setAttribute('rx', 16); el.setAttribute('fill', 'none'); el.setAttribute('stroke', PAL[id][1]); el.setAttribute('stroke-width', 2.5);
+  document.getElementById('ripples').appendChild(el);
+  ripples.push({ el, b, age: 0 });
+}
+function showTag(id, text, color, sec) {
+  const n = NODE_EL[id], tag = n.g.querySelector('.tag'), r = tag.querySelector('rect'), t = tag.querySelector('text');
+  const w = Math.max(34, text.length * 6.3 + 16);
+  t.textContent = text; r.setAttribute('width', w); r.setAttribute('x', 152 - w); r.setAttribute('fill', color);
+  t.setAttribute('x', 152 - w / 2); tag.setAttribute('transform', 'translate(0,0)');
+  tag.style.display = '';
+  const tok = ++n.tagTok;
+  wait(sec, () => { if (n.tagTok === tok) tag.style.display = 'none'; });
+}
+
+function spawn(from, to, kind, tag, onArrive) {
+  const { e, rev } = findEdge(from, to), color = KIND[kind];
+  const g = document.createElementNS(NS, 'g');
+  const trail = [];
+  for (let i = 0; i < 6; i++) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('r', 6 - i * 0.8); c.setAttribute('fill', color); c.setAttribute('opacity', (0.35 - i * 0.05).toFixed(2));
+    c.style.display = 'none'; g.appendChild(c); trail.push(c);
+  }
+  const head = document.createElementNS(NS, 'circle');
+  head.setAttribute('r', 7.5); head.setAttribute('fill', color); head.setAttribute('stroke', '#fff'); head.setAttribute('stroke-width', 2); head.setAttribute('filter', 'url(#glow)');
+  g.appendChild(head);
+  let txt = null;
+  if (tag) { txt = document.createElementNS(NS, 'text'); txt.setAttribute('class', 'ptag'); txt.setAttribute('fill', color); txt.textContent = tag; g.appendChild(txt); }
+  document.getElementById('packets').appendChild(g);
+  heat(e, color);
+  if (CLIENTS.has(from) && kind === 'request') bump('req');
+  const p = { e, rev, kind, to, dist: 0, hist: [], g, head, trail, txt, onArrive };
+  packets.push(p);
+  place(p, 0);
+}
+function place(p, t) {
+  const { e } = p, len = e.len;
+  let s = ease(t) * len; if (p.rev) s = len - s;
+  const a = e.el.getPointAtLength(s);
+  const b = s + 1 <= len ? e.el.getPointAtLength(s + 1) : e.el.getPointAtLength(s - 1);
+  let tx = b.x - a.x, ty = b.y - a.y; if (s + 1 > len) { tx = -tx; ty = -ty; }
+  const m = Math.hypot(tx, ty) || 1, off = p.rev ? -6 : 6;
+  const x = a.x + (-ty / m) * off, y = a.y + (tx / m) * off;
+  p.hist.unshift([x, y]); if (p.hist.length > 24) p.hist.pop();
+  p.head.setAttribute('cx', x); p.head.setAttribute('cy', y);
+  p.trail.forEach((c, i) => {
+    const h = p.hist[(i + 1) * 3];
+    if (h) { c.style.display = ''; c.setAttribute('cx', h[0]); c.setAttribute('cy', h[1]); } else c.style.display = 'none';
+  });
+  if (p.txt) { p.txt.setAttribute('x', x); p.txt.setAttribute('y', y - 13); }
+}
+function arrive(p) {
+  p.g.remove(); cool(p.e);
+  activate(p.to, 0.45); ripple(p.to);
+  if (p.to === 'kafka' && p.kind === 'event') bump('evt');
+  if (CLIENTS.has(p.to) && (p.kind === 'response' || p.kind === 'error')) bump('res');
+  p.onArrive && p.onArrive();
+}
+
+function update(k) {
+  dashOffset -= 40 * k;
+  for (const e of EDGES) if (!e.hot) e.el.style.strokeDashoffset = dashOffset;
+  // timers
+  for (const tm of timers) tm.t -= k;
+  const due = timers.filter(tm => tm.t <= 0);
+  if (due.length) { timers = timers.filter(tm => tm.t > 0); due.forEach(tm => { if (tm.gen === GEN) tm.cb(); }); }
+  // packets
+  const done = [];
+  for (const p of packets) {
+    p.dist += 260 * k;
+    const t = Math.min(1, p.dist / p.e.len);
+    place(p, t);
+    if (t >= 1) done.push(p);
+  }
+  if (done.length) { packets = packets.filter(p => !done.includes(p)); done.forEach(arrive); }
+  // ripples: grow ~14px and fade over 0.5s
+  ripples = ripples.filter(r => {
+    r.age += k;
+    const q = r.age / 0.5;
+    if (q >= 1) { r.el.remove(); return false; }
+    const g = 14 * q;
+    r.el.setAttribute('x', r.b.l - g); r.el.setAttribute('y', r.b.t - g);
+    r.el.setAttribute('width', 150 + 2 * g); r.el.setAttribute('height', 112 + 2 * g);
+    r.el.setAttribute('opacity', (1 - q).toFixed(3));
+    return true;
+  });
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused && view === 'flow') update(dt * speed);
+  requestAnimationFrame(frame);
+}
+
+// ---------------- step runner ----------------
+// o.footer: top-level scenario (updates footer, reading pauses); o.fast: live mode (short pauses, no packet tags)
+function runFlow(steps, o) {
+  let i = 0;
+  const next = () => {
+    if (i >= steps.length) { o.done && o.done(); return; }
+    const st = steps[i];
+    if (o.footer) showStep(i, steps.length, st);
+    i++;
+    exec(st, o, next);
+  };
+  next();
+}
+function exec(st, o, next) {
+  if (st.type === 'hop') {
+    // fan-out / fan-in: an array on one side = one packet per pair, all at once; otherwise `count` packets 0.25 s apart
+    const fan = Array.isArray(st.to) ? st.to.map(t => [st.from, t]) : Array.isArray(st.from) ? st.from.map(f => [f, st.to]) : null;
+    const pairs = fan || Array.from({ length: st.count || 1 }, () => [st.from, st.to]);
+    const n = pairs.length; let got = 0;
+    pairs.forEach(([from, to], k) => {
+      const kind = st.kinds ? st.kinds[k] : st.kind;
+      const tag = o.fast ? null : (st.tags ? st.tags[k] : st.tag);
+      const fire = () => spawn(from, to, kind, tag, () => { if (++got === n) wait(o.footer ? 1.1 : 0.08, next); });
+      if (k && !fan) wait(k * 0.25, fire); else fire();
+    });
+  } else if (st.type === 'node') {
+    const d = o.fast ? Math.max(0.25, (st.dur || 2.2) * 0.3) : (o.footer ? (st.dur || 2.4) : (st.dur || 1));
+    [].concat(st.id).forEach((id, k) => {
+      activate(id, d); ripple(id);
+      const tag = st.tags ? st.tags[k] : st.tag;
+      if (tag) showTag(id, tag, st.tagColor || '#0b5cff', d + (o.fast ? 0.15 : 0.6));
+    });
+    if (st.stat === 'hit') bump('hit');
+    wait(d, next);
+  } else if (st.type === 'fork') {
+    runFlow(st.steps, { fast: o.fast });
+    wait(o.footer ? 2.0 : 0.05, next);
+  }
+}
+
+// ---------------- footer ----------------
+const badge = document.getElementById('badge'), fTitle = document.getElementById('ftitle'), fProto = document.getElementById('fproto'), fText = document.getElementById('ftext'), dotsEl = document.getElementById('dots');
+function buildDots(n) { dotsEl.innerHTML = '<i></i>'.repeat(n); }
+function showStep(i, total, st) {
+  badge.className = ''; badge.textContent = `${i + 1}/${total}`;
+  fTitle.textContent = st.title; fProto.textContent = st.proto || '';
+  fText.textContent = st.text || ''; fText.title = st.text || '';
+  [...dotsEl.children].forEach((d, k) => d.classList.toggle('on', k <= i));
+}
+
+// ---------------- scenarios / live ----------------
+function reset() {
+  GEN++;
+  timers = [];
+  packets.forEach(p => p.g.remove()); packets = [];
+  ripples.forEach(r => r.el.remove()); ripples = [];
+  EDGES.forEach(e => { e.hot = 0; e.el.classList.remove('hot'); e.el.style.stroke = ''; });
+  Object.values(NODE_EL).forEach(n => { n.act = 0; n.g.classList.remove('active'); n.g.querySelector('.tag').style.display = 'none'; });
+  flows = 0;
+  for (const k in stats) { stats[k] = 0; STAT_EL[k].textContent = 0; }
+}
+function start(id) {
+  current = id;
+  document.querySelectorAll('#scSeg button').forEach(b => b.classList.toggle('on', b.dataset.sc === id));
+  reset();
+  if (id === 'live') startLive(); else runMain(id);
+}
+function runMain(id) {
+  const steps = SCEN[id].steps;
+  buildDots(steps.length);
+  runFlow(steps, {
+    footer: true,
+    done: () => {
+      badge.className = ''; badge.textContent = '✓';
+      fTitle.textContent = '✓ Journey complete'; fProto.textContent = SCEN[id].name;
+      fText.textContent = 'Looping in 2.5 s · press R to replay now, or pick another scenario.'; fText.title = '';
+      wait(2.5, () => runMain(id));
+    },
+  });
+}
+function pickMix() {
+  let r = Math.random();
+  for (const [id, w] of LIVE_MIX) { if ((r -= w) <= 0) return id; }
+  return 'lreply';
+}
+function startLive() {
+  dotsEl.innerHTML = '';
+  badge.className = 'live'; badge.textContent = 'LIVE';
+  fTitle.textContent = 'Live mixed traffic'; fProto.textContent = '35% reply · 30% intake · 20% search · 15% lost claim';
+  const tick = () => {
+    if (flows < 14) {
+      const id = pickMix(); flows++;
+      runFlow(SCEN[id].steps, { fast: true, done: () => { flows--; } });
+    }
+    wait(0.55 + Math.random() * 0.6, tick);
+  };
+  const info = () => {
+    fText.textContent = `${flows} flows and ${packets.length} packets in flight · every write leaves through the outbox → Kafka → router, SLA, indexer, push gateway and notifications · ${stats.hit} conflicts / duplicates absorbed`;
+    fText.title = '';
+    wait(0.5, info);
+  };
+  tick(); info();
+}
+
+// ---------------- drawer ----------------
+const drawer = document.getElementById('drawer');
+let selected = null;
+function openDrawer(id) {
+  const n = NODES[id], inf = INFO[id], [bg, st] = PAL[id];
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = id; NODE_EL[id].g.querySelector('.sel').setAttribute('opacity', 1);
+  document.getElementById('dHead').style.background = bg;
+  document.getElementById('dHead').style.borderBottomColor = st;
+  document.getElementById('dLogo').innerHTML = `<svg width="44" height="44" viewBox="0 0 48 48">${LOGO[id]}</svg>`;
+  document.getElementById('dTitle').textContent = n.label;
+  document.getElementById('dTag').textContent = inf.tag;
+  const body = document.getElementById('dBody');
+  const core = CORE[id];
+  body.innerHTML = `<div>${inf.desc}</div><h4>Key points</h4><ul>${inf.points.map(p => `<li>${p}</li>`).join('')}</ul><h4>Example</h4><pre></pre>`
+    + (core ? `<a class="core-link" href="00_Core_Components.html#${core[0]}/what">🧩 Basics: ${esc(core[1])} in Core Components →</a>` : '');
+  body.querySelector('pre').textContent = inf.code;
+  body.scrollTop = 0;
+  drawer.classList.add('open'); drawer.setAttribute('aria-hidden', 'false');
+}
+function closeDrawer() {
+  if (selected) NODE_EL[selected].g.querySelector('.sel').setAttribute('opacity', 0);
+  selected = null; drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true');
+}
+svg.addEventListener('click', ev => {
+  const g = ev.target.closest('.node');
+  if (g) openDrawer(g.dataset.id); else closeDrawer();
+});
+document.getElementById('dClose').onclick = closeDrawer;
+
+// ---------------- legend popover ----------------
+const legendPop = document.getElementById('legendPop'), legendBtn = document.getElementById('legendBtn');
+document.getElementById('lgKinds').innerHTML = Object.entries(KIND).map(([k, c]) => `<span><i style="--c:${c}"></i>${k}</span>`).join('');
+const legendOpen = () => legendPop.classList.contains('open');
+function setLegend(open) {
+  if (open) {   // point the little arrow at the button
+    const r = legendBtn.getBoundingClientRect();
+    legendPop.style.setProperty('--arrow', Math.max(12, window.innerWidth - 16 - (r.left + r.width / 2) - 6) + 'px');
+  }
+  legendPop.classList.toggle('open', open);
+  legendBtn.classList.toggle('on', open);
+  legendBtn.setAttribute('aria-expanded', open);
+}
+legendBtn.addEventListener('click', () => setLegend(!legendOpen()));
+document.addEventListener('mousedown', ev => {
+  if (legendOpen() && !legendPop.contains(ev.target) && !legendBtn.contains(ev.target)) setLegend(false);
+});
+
+// ---------------- controls ----------------
+function setSpeed(v) { speed = v; document.querySelectorAll('#spSeg button').forEach(b => b.classList.toggle('on', +b.dataset.sp === v)); }
+function togglePause() { paused = !paused; document.getElementById('pauseBtn').textContent = paused ? '▶ Play' : '⏸ Pause'; }
+document.querySelectorAll('header button').forEach(b => b.addEventListener('click', () => b.blur()));
+document.querySelectorAll('#scSeg button').forEach(b => b.onclick = () => start(b.dataset.sc));
+document.querySelectorAll('#spSeg button').forEach(b => b.onclick = () => setSpeed(+b.dataset.sp));
+document.getElementById('pauseBtn').onclick = togglePause;
+document.getElementById('replayBtn').onclick = () => start(current);
+document.addEventListener('keydown', ev => {
+  if (ev.target.closest && ev.target.closest('input,textarea')) return;
+  if (view !== 'flow' || ev.ctrlKey || ev.metaKey || ev.altKey) return;   // shortcuts drive the Data flow tab only
+  if (ev.code === 'Space') { ev.preventDefault(); togglePause(); }
+  else if (ev.key === '1') setSpeed(0.5);
+  else if (ev.key === '2') setSpeed(1);
+  else if (ev.key === '3') setSpeed(2);
+  else if (ev.key === 'r' || ev.key === 'R') start(current);
+  else if (ev.key === 'l' || ev.key === 'L') setLegend(!legendOpen());
+  else if (ev.key === 'Escape') { if (legendOpen()) setLegend(false); else closeDrawer(); }
+});
+
+
+
+
+// ====================================================================
+// interview content: copied verbatim from 13_Support_Ticketing.html (v1.0)
+// ====================================================================
+const CONTENT = {
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'Channels, tenants, SLAs, real time.',
+      lines: [
+        ['I', 'Design a customer support ticketing system like Zendesk.'],
+        ['C', 'Is it multi-tenant, many companies each with their own agents and customers?'],
+        ['I', 'Yes, a SaaS product.'],
+        ['C', 'Which channels: email, web form, chat? And do we need SLAs with escalation?'],
+        ['I', 'All three channels, and yes, SLAs matter.'],
+        ['C', 'Must agents see changes live, and how do tickets reach agents: queues they pick from, or automatic assignment?'],
+        ['I', 'Live, and both modes.'],
+        ['P', 'Write: multi-tenant · email/web/chat intake · lifecycle · routing + claim · SLA timers · live updates · search · audit.'],
+      ],
+      avoid: 'Jumping into the database before agreeing that the hard parts are claims, SLAs and tenant isolation.',
+    },
+    {
+      t: 'Estimate the scale', min: 3, goal: 'Writes are modest; reads and fan-out dominate.',
+      lines: [
+        ['C', '50 k tenants, **5 M new tickets a day** ≈ 60/s, peaks ~300/s. Each ticket gets ~5 messages → ~300 writes/s average.'],
+        ['C', 'Ticket + messages ~10 KB without attachments → **50 GB/day** in the DB; attachments in S3, several TB/day.'],
+        ['C', 'Hundreds of thousands of agents online → that many WebSockets, but only a few events per ticket.'],
+        ['P', 'The DB load is fine; the design work is correctness and isolation.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 5, goal: 'Ticket with version, events as outbox + audit.',
+      lines: [
+        ['C', '`POST /inbound/email` (webhook), `POST /tickets`, `POST /tickets/{id}/messages`, `POST /tickets/{id}/claim { version }`, `PATCH /tickets/{id}/status { to, version }`, `GET /tickets/{id}/events?since=v`, `GET /search?q=`.'],
+        ['C', '`tickets { _id, tenantId, status, priority, queue, assignee, version, firstResponseAt }`, `messages`, `events { ticketId, version, type, by, published }`, `timers { dueAt }`.'],
+        ['C', 'Shard key `{ tenantId, _id }`; unique `{ tenantId, sourceMessageId }`.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'API, DB + outbox, Kafka, consumers, push.',
+      lines: [
+        ['P', 'Draw: channels → Ticket API → Ticket DB (+ events) → relay → Kafka → router / SLA / search / push / notification.'],
+        ['C', 'The API is the only writer. Each change writes the ticket and an event in one transaction: that is the outbox and the audit log.'],
+        ['C', 'The router puts the ticket in a skill queue; agents claim with a compare-and-set on the version.'],
+        ['C', 'The SLA worker stores timers and fires them through a lease-based scheduler.'],
+        ['C', 'The push gateway consumes events and pushes them over WebSockets; offline customers get email.'],
+        ['I', 'Why not just publish to Kafka from the API after saving?'],
+        ['C', 'Two writes without a transaction: a crash in between loses the event. The outbox makes it atomic.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Claim race, state machine, SLA, live updates, tenancy.',
+      lines: [
+        ['I', 'Two agents take the same ticket.'],
+        ['C', 'Conditional update on version and assignee null; the loser matches 0 and gets 409.'],
+        ['I', 'How do you stop invalid status changes?'],
+        ['C', 'A transition table checked in one service, applied with a filter on the current status and version. Closed is final; a reply creates a follow-up.'],
+        ['I', 'An SLA timer fires right after the agent replied.'],
+        ['C', 'The escalation is conditional on `firstResponseAt: null`, so it is a no-op. Timers check on fire.'],
+        ['I', 'An agent reconnects after a network drop.'],
+        ['C', 'Events carry versions; the client asks for events since its last version.'],
+        ['I', 'How do you keep tenants apart?'],
+        ['C', 'Tenant from the token, filter enforced in a shared repository and ES filtered alias, re-checked on hydration, rate limits per tenant.'],
+      ],
+      avoid: 'Pessimistic locks held while an agent is typing.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: one writer, ticket + event in one transaction, Kafka fan-out, CAS claims, state machine, durable SLA timers that check on fire, versioned live updates, tenant isolation.'],
+        ['C', 'Next: skills-based push routing with capacity, macros and automations engine, CSAT analytics from the event stream, data residency per tenant (EU cluster), GDPR delete.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): 1–2 minutes, pause between paragraphs
+    summary: [
+      "I'd build it around one **Ticket service** in Spring Boot that is the only writer. Email arrives as a webhook from the inbound mail provider, web and chat call the same API, and the tenant comes from the to-address or the JWT. Because webhooks get retried, intake is idempotent: there's a unique index on tenant plus the email's Message-ID. Replies are threaded onto the existing ticket using the In-Reply-To header or the ticket number in the subject, and attachments go to **S3**, so the ticket only stores the key.",
+      "Every change writes the ticket document and an **event** in one MongoDB transaction. That events collection is the **transactional outbox**, and it's also the audit history: who changed what and when. A relay publishes the events to **Kafka**, keyed by ticket id so one ticket's events stay in order, and several consumer groups react: the router puts the ticket in a skill queue, the SLA worker starts timers, the indexer updates Elasticsearch, and the push gateway sends it over **WebSockets** to every open screen.",
+      "The status is a **state machine**, new, open, pending, resolved, closed, with a transition table checked in one place. Claims use **optimistic locking**: the update says \"only if the version is still 1 and nobody is assigned\", and increments the version, so if two agents click Take together, one wins and the other gets a 409. Spring Data's `@Version` does this out of the box.",
+      "SLA deadlines are stored as **timer documents** and fired by lease-based workers, the same pattern as a job scheduler. The important detail is that a timer checks on fire: the escalation is a conditional update on \"no first response yet\", so a reply one second earlier makes it a no-op. Pending time pauses the clock. And for multi-tenancy, tenantId is in every index and shard key, enforced in one shared repository layer and a filtered search alias, with per-tenant rate limits so one company's mail loop can't slow down everybody else.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> intake from email / web / chat with threading and attachments; lifecycle NEW → OPEN → PENDING → RESOLVED → CLOSED with reopen; skill queues + claim / auto-assign; SLA timers + escalation; live updates; search; audit history.</li>
+        <li><b>Non-functional:</b> multi-tenant isolation; one owner per ticket; no lost or duplicated tickets; updates in ~1 s; SLA timers survive restarts.</li>
+        <li><b>Reuses:</b> timers like <a href="08_Job_Scheduler.html">8 · Job Scheduler</a>, mail via <a href="04_Notification_System.html">4 · Notification System</a>, search via <a href="10_Search_System.html">10 · Search System</a>, WebSockets from <a href="07_Chat_System.html">7 · Chat</a>.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Tickets</td><td class="m">5 M / day</td><td>≈ 60/s, peaks ~300/s</td></tr>
+        <tr><td>Messages</td><td class="m">~5 per ticket</td><td>~300 writes/s average</td></tr>
+        <tr><td>Storage</td><td class="m">~10 KB / ticket</td><td>≈ 50 GB/day DB; files in S3</td></tr>
+        <tr><td>Sockets</td><td class="m">agents + portals</td><td>100 k+ open WebSockets</td></tr></table>` },
+      { h: '3 · API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">POST /inbound/email</td><td>provider webhook → 200 { ticketId } (idempotent)</td></tr>
+        <tr><td class="m">POST /tickets/{id}/claim</td><td>{ version } → 200 | 409 Conflict</td></tr>
+        <tr><td class="m">PATCH /tickets/{id}/status</td><td>{ to, version } → 200 | 409 | 422 illegal</td></tr>
+        <tr><td class="m">GET /tickets/{id}/events?since=v</td><td>resync after reconnect; audit view</td></tr>
+        <tr><td class="m">GET /search?q=</td><td>tenant-scoped Elasticsearch query</td></tr></table>` },
+      { h: '4 · Data', color: '#8f4fc4', html: `<pre>// tickets (shard key { tenantId: 1, _id: 1 })
+{ _id: "T-101", tenantId: "acme", status: "OPEN",
+  priority: "high", queue: "billing", assignee: "asha",
+  version: 5, firstResponseAt: ISODate(…),
+  sourceMessageId: "m-77", followUpOf: null }
+// unique { tenantId: 1, sourceMessageId: 1 }
+
+// events: outbox + audit (append-only)
+{ tenantId: "acme", ticketId: "T-101", version: 5,
+  type: "reply", by: "asha", at: …, published: true }
+
+// timers
+{ _id: "T-101:frt", dueAt: …, warnAt: …, status: "WAITING" }</pre>` },
+      { h: '5 · Lifecycle', color: '#2f6fe0', html: `<ol>
+        <li><b>NEW</b> → OPEN (claimed / agent reply) · PENDING · RESOLVED</li>
+        <li><b>OPEN</b> ⇄ PENDING (waiting on customer, SLA paused)</li>
+        <li><b>OPEN / PENDING</b> → RESOLVED (agent) → OPEN on customer reply (reopen)</li>
+        <li><b>RESOLVED</b> → CLOSED after 7 days (timer, conditional on status + version)</li>
+        <li><b>CLOSED</b> is final: a reply creates a follow-up ticket.</li></ol>` },
+      { h: '6 · Reliability', color: '#ce3434', html: `<ul>
+        <li>Outbox in the same transaction → no lost events; consumers dedupe by (ticketId, version).</li>
+        <li>CAS on version for claims and status changes; no locks held while agents type.</li>
+        <li>Timers are durable and leased; actions check on fire.</li>
+        <li>Clients resync with <code>events?since=v</code>; offline customers get email.</li>
+        <li>Tenant filter in one shared layer, re-checked on hydration; per-tenant rate limits.</li></ul>` },
+    ],
+    decisions: [
+      ['Transactional outbox (events collection)', 'Ticket change and event can never disagree; doubles as audit history.', 'A relay to run; events arrive ~100 ms later.'],
+      ['Optimistic locking (version CAS) for claims', 'No locks held; the loser gets a clear 409.', 'Clients must refresh and retry on conflict.'],
+      ['Explicit state machine', 'Illegal transitions rejected in one place; clean reporting.', 'Every new status needs table + migration.'],
+      ['Durable timers that check on fire', 'Survive restarts; a late timer is harmless.', 'Fires up to a poll interval late.'],
+      ['Kafka keyed by ticketId', 'Per-ticket ordering, independent consumers.', 'At-least-once → version-based dedupe everywhere.'],
+      ['Shared DB, tenantId everywhere', 'Cheap for 50 k mostly small tenants.', 'One missing filter leaks data → enforce centrally; big tenants may need their own shard / cluster.'],
+      ['Pull queues vs push assignment', 'Pull is simple and fair to agents; push balances load by capacity.', 'Pull has claim races; push needs capacity tracking.'],
+    ],
+    code: [
+      { t: 'Idempotent intake + outbox in one transaction', code: `@PostMapping("/inbound/email")
+@Transactional                                                    // Mongo replica set: multi-document txn
+public TicketRef inbound(@RequestBody InboundEmail mail) {
+  String tenant = tenants.byAddress(mail.to());                   // support@acme.help → "acme"
+  Optional<Ticket> thread = tickets.findThread(tenant, mail.inReplyTo(), mail.subject());
+  if (thread.isPresent()) return appendMessage(thread.get(), mail); // reply → same ticket
+  try {
+    Ticket t = tickets.insert(Ticket.newFrom(tenant, mail));      // unique { tenantId, sourceMessageId }
+    events.insert(TicketEvent.of(t, "created"));                   // outbox row, same transaction
+    return t.ref();
+  } catch (DuplicateKeyException retry) {                          // provider re-sent the webhook
+    return tickets.findBySource(tenant, mail.messageId()).ref();
+  }
+}` },
+      { t: 'Claim with compare-and-set on version', code: `public Ticket claim(String tenant, String id, long seenVersion, String agent) {
+  Query q = query(where("_id").is(id).and("tenantId").is(tenant)
+      .and("version").is(seenVersion).and("assignee").isNull());
+  Update u = new Update().set("assignee", agent).set("status", "OPEN").inc("version", 1);
+  Ticket t = mongo.findAndModify(q, u, options().returnNew(true), Ticket.class);
+  if (t == null) throw new TicketConflictException(id);           // → 409, client refreshes
+  events.insert(TicketEvent.of(t, "assigned"));
+  return t;
+}
+// Same idea with Spring Data: @Version Long version → OptimisticLockingFailureException` },
+      { t: 'State machine: allowed transitions', code: `enum Status { NEW, OPEN, PENDING, RESOLVED, CLOSED }
+
+static final Map<Status, Set<Status>> NEXT = Map.of(
+    NEW,      EnumSet.of(Status.OPEN, Status.PENDING, Status.RESOLVED),
+    OPEN,     EnumSet.of(Status.PENDING, Status.RESOLVED),
+    PENDING,  EnumSet.of(Status.OPEN, Status.RESOLVED),
+    RESOLVED, EnumSet.of(Status.OPEN, Status.CLOSED),           // customer reply reopens
+    CLOSED,   EnumSet.noneOf(Status.class));                     // final: reply → follow-up ticket
+
+Ticket move(Ticket t, Status to, String by) {
+  if (!NEXT.get(t.status()).contains(to)) throw new IllegalTransitionException(t.status(), to);
+  Query q = query(where("_id").is(t.id()).and("status").is(t.status()).and("version").is(t.version()));
+  Ticket moved = mongo.findAndModify(q, new Update().set("status", to).inc("version", 1),
+                                     options().returnNew(true), Ticket.class);
+  if (moved == null) throw new TicketConflictException(t.id());   // changed under us
+  events.insert(TicketEvent.transition(moved, t.status(), to, by));
+  return moved;
+}` },
+      { t: 'SLA timer checks on fire · push consumer', code: `void onTimerDue(Timer timer) {                                    // claimed with a lease (see 8 · Job Scheduler)
+  UpdateResult r = mongo.updateFirst(
+      query(where("_id").is(timer.ticketId()).and("firstResponseAt").isNull()
+          .and("status").ne("PENDING")),
+      new Update().set("priority", "URGENT").set("queue", "billing-L2")
+          .set("breached", true).inc("version", 1), Ticket.class);
+  if (r.getModifiedCount() == 1) notifier.pageLead(timer);         // 0 → already answered: no-op
+  timers.markDone(timer);
+}
+
+@KafkaListener(topics = "ticket-events", groupId = "push-gateway")
+void onEvent(TicketEvent e) {                                      // key = ticketId → per-ticket order
+  sessions.subscribers(e.tenantId() + ":ticket:" + e.ticketId())
+          .forEach(s -> s.send(e));                                // client drops version ≤ lastVersion
+}` },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    cc: { name: 'Concurrency', color: '#8f4fc4' },
+    lc: { name: 'Lifecycle & SLA', color: '#c47d1e' },
+    ev: { name: 'Events & real time', color: '#348747' },
+    mt: { name: 'Tenancy & scale', color: '#2f6fe0' },
+    tt: { name: 'Alternatives', color: '#ce3434' },
+  },
+  followups: [
+    { g: 'cc', q: 'Two agents click "Take" on the same ticket.', what: 'With read-then-save, both own it and both reply.', why: 'The check and the write are separate operations.', how: 'Conditional update on `version` + `assignee: null`, `$inc version`; the loser matches 0 → 409 and the UI refreshes. `@Version` in Spring Data does it automatically.', trade: 'Losers see an error and must pick another ticket.', flow: 'claim' },
+    { g: 'cc', q: 'Why optimistic locking and not a lock on the ticket?', what: 'A pessimistic lock would be held while the agent reads and types.', why: 'Minutes-long locks block automations and other agents, and leak when tabs close.', how: 'Optimistic CAS for writes plus **presence** ("Ben is viewing") for humans; conflicts are rare and cheap.', trade: 'Occasional 409s instead of waiting.', flow: 'claim' },
+    { g: 'cc', q: 'An automation and an agent change the same ticket at once.', what: 'One would overwrite the other.', why: 'Both read version 5.', how: 'Every write is version-checked; the automation retries by re-reading and re-evaluating its rule, the agent sees a 409 with the new state.', trade: 'Retry logic in every writer.' },
+    { g: 'cc', q: 'How does push (auto) assignment respect agent capacity?', what: 'The router must not give a 6th ticket to someone with max 5.', why: 'Two routers may pick the same least-loaded agent.', how: 'Conditional `$inc openCount` on the agent document with `openCount < capacity`, then CAS on the ticket; undo the counter if the ticket CAS fails.', trade: 'Two documents to keep consistent; a transaction or a reconciliation job.' },
+    { g: 'lc', q: 'How do you model the ticket lifecycle?', what: 'NEW, OPEN, PENDING, RESOLVED, CLOSED, with reopen.', why: 'Illegal jumps break SLAs and reports.', how: 'Transition table in one service, applied with a filter on current status + version, each transition written as an event.', trade: 'Custom statuses per tenant map onto these base states.', flow: 'lifecycle' },
+    { g: 'lc', q: 'A customer replies to a closed ticket.', what: 'Closed must stay closed for reporting and billing.', why: 'Reopening would change history that reports already counted.', how: 'Create a follow-up ticket linked with `followUpOf`, same requester and group.', trade: 'Context split over two tickets (the link shows both).', flow: 'lifecycle' },
+    { g: 'lc', q: 'How do SLA timers work, and what if the worker is down?', what: 'Due times must fire even after restarts.', why: 'In-memory schedulers lose timers on deploy.', how: 'Timer documents with `dueAt`, claimed with a lease like the job scheduler; a down worker means late, not lost.', trade: 'Precision = poll interval (seconds).', flow: 'sla' },
+    { g: 'lc', q: 'The agent replies one second before the breach.', what: 'The timer may still fire.', why: 'Cancelling a timer races with firing it.', how: 'Check on fire: the escalation filters on `firstResponseAt: null`, so it matches 0.', trade: 'Timers must be written as idempotent conditional actions.', flow: 'sla' },
+    { g: 'lc', q: 'How are business hours and PENDING handled in SLAs?', what: 'The clock should not run at night or while waiting on the customer.', why: 'SLAs are contractual and measured in business time.', how: 'Compute dueAt with the tenant\'s calendar; on PENDING store `pausedAt`, on resume add the paused time to dueAt.', trade: 'Calendar math and holiday tables per tenant.', flow: 'sla' },
+    { g: 'ev', q: 'Why the outbox instead of publishing to Kafka after saving?', what: 'Save + publish are two systems.', why: 'A crash between them loses the event, or publishes a rolled-back change.', how: 'Insert the event in the same transaction; a relay or change stream publishes and marks it.', trade: 'Extra component; events are slightly delayed.', flow: 'intake' },
+    { g: 'ev', q: 'How do agents and customers get live updates?', what: 'Screens must change within a second.', why: 'Stale screens cause double replies.', how: 'Push gateway consumes ticket-events and pushes over WebSockets to `tenant:ticket:id` subscribers; Redis pub/sub between gateway nodes.', trade: '100 k+ open sockets to operate.', flow: 'realtime' },
+    { g: 'ev', q: 'A client misses or gets duplicate events.', what: 'Reconnects and Kafka redeliveries happen.', why: 'At-least-once delivery, flaky networks.', how: 'Every event has the ticket version; clients apply only newer ones and call `events?since=v` on reconnect.', trade: 'Events must be kept long enough to replay.', flow: 'realtime' },
+    { g: 'ev', q: 'The webhook provider sends the same email twice.', what: 'Two tickets for one email.', why: 'Providers retry on slow or failed responses.', how: 'Unique index on `{ tenantId, sourceMessageId }`; on duplicate key return the existing ticket.', trade: 'Needs a stable id from every channel (chat message id, form submission id).', flow: 'intake' },
+    { g: 'mt', q: 'How do you isolate tenants?', what: 'One forgotten filter leaks another company\'s data.', why: 'Shared database and index.', how: 'TenantId from JWT, shared tenant-scoped repository, ES filtered alias + routing, re-check on hydration, cross-tenant tests.', trade: 'Discipline everywhere; regulated tenants may need their own cluster.', flow: 'tenant' },
+    { g: 'mt', q: 'One tenant floods the system.', what: 'A mail loop or a huge import.', why: 'Shared intake, Kafka and workers.', how: 'Per-tenant token buckets at the API, loop detection, per-tenant consumer quotas; Kafka keyed by ticketId, not tenantId, to avoid hot partitions.', trade: 'Throttled tenants see delays.', flow: 'tenant' },
+    { g: 'mt', q: 'How do you shard the ticket data?', what: 'Billions of tickets over years.', why: 'One replica set will not hold it.', how: 'Shard key `{ tenantId, _id }`: tenant queries stay targeted, big tenants split over chunks; archive closed tickets after N months.', trade: 'Cross-tenant analytics go to a warehouse, not the OLTP DB.' },
+    { g: 'tt', q: 'Why Elasticsearch and not MongoDB text search?', what: 'Agents search full threads with ranking and filters.', why: 'Mongo text indexes rank poorly and load the primary.', how: 'Index from ticket events with the version as external version; DB stays the source of truth.', trade: 'A second store, ~1 s lag.', flow: 'tenant' },
+    { g: 'tt', q: 'Pull queues or push assignment?', what: 'Agents pick tickets vs the router assigns them.', why: 'Different teams want different control.', how: 'Support both: pull uses CAS claims; push uses capacity-aware assignment with the same CAS.', trade: 'Pull = races and cherry-picking; push = capacity tracking and fairness rules.', flow: 'claim' },
+  ],
+};
+
+// =====================================================================
+// reading tabs: How to explain · Interview answer · Follow-ups (self-contained renderers)
+// =====================================================================
+const reader = document.getElementById('reader');
+// **bold** and `code` in plain-text content (same rules as engine/app.js)
+const rich = s => esc(s).replace(/"/g, '&quot;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+// old flow ids -> scenarios on the Data flow tab
+const FLOW_TO_SC = { intake: 'intake', claim: 'claim', lifecycle: 'lifecycle', sla: 'sla', realtime: 'realtime', tenant: 'tenant' };
+const STAGE_C = ['#fb923c', '#8b5cf6', '#3b82f6', '#0d9488', '#db2777', '#16a34a'];
+
+function renderExplain() {
+  const E = CONTENT.explain, total = E.reduce((a, s) => a + s.min, 0);
+  const who = { I: ['Interviewer', 'iv'], C: ['You', 'you'], P: ['Tip', 'tip'] };
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">How to explain it</span><h2>Drive the ${total}-minute interview, stage by stage</h2>
+    <p>Interviewers grade the <b>structure</b> as much as the design. Follow the stages in order and say out loud which stage you are in.</p></div></div>
+    <div class="timebar">${E.map((s, k) => `<button data-to="ex${k}" style="flex:${s.min};--c:${STAGE_C[k % STAGE_C.length]}"><b>${k + 1}. ${esc(s.t)}</b><span>${s.min} min</span></button>`).join('')}</div>
+    ${E.map((s, k) => `<section class="rcard stage" id="ex${k}" style="--c:${STAGE_C[k % STAGE_C.length]}">
+      <div class="stage-h"><span class="sn">${k + 1}</span><h3>${esc(s.t)}</h3><span class="mn">~${s.min} min</span></div>
+      <p class="goal"><b>Goal:</b> ${rich(s.goal)}</p>
+      ${s.lines.map(([w, t]) => `<div class="msg ${who[w][1]}"><span class="who">${who[w][0]}</span><p>${rich(t)}</p></div>`).join('')}
+      ${s.avoid ? `<p class="avoid"><b>⚠ Avoid</b> ${rich(s.avoid)}</p>` : ''}
+    </section>`).join('')}
+  </div>`;
+}
+
+function renderAnswer() {
+  const A = CONTENT.answer;
+  const jumps = [['a-pitch', '⏱ 60-second answer'], ...A.sections.map((s, k) => [`a-sec${k}`, s.h]), ['a-dec', '⚖ Trade-offs'], ['a-code', '{ } Code']];
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Interview-ready answer</span><h2>What to actually say</h2>
+    <p>Start with the 60-second version, then expand any section the interviewer picks.</p></div></div>
+    <nav class="jump">${jumps.map(([id, t]) => `<button data-to="${id}">${esc(t)}</button>`).join('')}</nav>
+    <section class="rcard pitch" id="a-pitch"><h3>⏱ The 60-second answer</h3>${[].concat(A.summary).map(p => `<p>${rich(p)}</p>`).join('')}</section>
+    <div class="ans-grid">${A.sections.map((s, k) => `<section class="rcard ans" id="a-sec${k}" style="--c:${s.color || '#0b5cff'}"><h3>${esc(s.h)}</h3>${s.html}</section>`).join('')}</div>
+    <section class="rcard ans" id="a-dec" style="--c:#7c3aed"><h3>⚖ Key decisions &amp; trade-offs</h3>
+      <table><thead><tr><th>Decision</th><th>Why</th><th>Trade-off</th></tr></thead><tbody>${A.decisions.map(r => `<tr>${r.map(c => `<td>${rich(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>
+    <div class="code-grid" id="a-code">${A.code.map(c => `<section class="rcard codeblk"><h3>${esc(c.t)}</h3><pre>${esc(c.code)}</pre></section>`).join('')}</div>
+  </div>`;
+}
+
+let fuGroup = 'all';
+function renderFollowups() {
+  const G = CONTENT.followGroups, F = CONTENT.followups, list = F.filter(f => fuGroup === 'all' || f.g === fuGroup);
+  reader.innerHTML = `<div class="rd">
+    <div class="rd-head"><div><span class="eyebrow">Follow-up questions</span><h2>What they ask next, and what to answer</h2>
+    <p>Each answer has the same shape: <b>what happens</b> → <b>why</b> → <b>how you handle it</b> → <b>the trade-off</b>. Saying the trade-off unprompted is what separates senior answers.</p></div></div>
+    <div class="chips"><button data-g="all" class="${fuGroup === 'all' ? 'on' : ''}">All <small>${F.length}</small></button>${Object.entries(G).map(([k, g]) => `<button data-g="${k}" class="${fuGroup === k ? 'on' : ''}" style="--c:${g.color}">${esc(g.name)} <small>${F.filter(f => f.g === k).length}</small></button>`).join('')}</div>
+    ${list.map((f, k) => `<details class="rcard fu" style="--c:${G[f.g].color}"${k === 0 ? ' open' : ''}>
+      <summary><span class="fu-g">${esc(G[f.g].name)}</span><span class="fu-q">${esc(f.q)}</span></summary>
+      <div class="fu-body">
+        <div><b>What happens</b><p>${rich(f.what)}</p></div>
+        <div><b>Why</b><p>${rich(f.why)}</p></div>
+        <div class="say"><b>🎤 Say this</b><p>${rich(f.how)}</p></div>
+        <div style="grid-column:1/-1"><b>Trade-off</b><p>${rich(f.trade)}</p></div>
+        ${f.flow ? `<button class="watch" data-sc="${FLOW_TO_SC[f.flow]}">▶ Watch flow: ${esc(SCEN[FLOW_TO_SC[f.flow]].name)}</button>` : ''}
+      </div></details>`).join('')}
+  </div>`;
+  reader.querySelectorAll('[data-g]').forEach(b => b.onclick = () => { fuGroup = b.dataset.g; renderFollowups(); });
+  reader.querySelectorAll('.watch').forEach(b => b.onclick = () => { setView('flow'); start(b.dataset.sc); });
+}
+// sticky jump bars scroll inside the reading panel
+reader.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-to]');
+  if (!b) return;
+  const el = document.getElementById(b.dataset.to), bar = b.parentElement;
+  reader.scrollTo({ top: el.offsetTop - bar.offsetHeight - 8 });
+});
+
+function setView(v) {
+  view = v;
+  document.body.className = 'v-' + v;
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  if (v !== 'flow') {
+    closeDrawer(); setLegend(false);
+    if (v === 'explain') renderExplain(); else if (v === 'answer') renderAnswer(); else renderFollowups();
+    reader.scrollTop = 0;
+  }
+  last = performance.now();
+}
+document.querySelectorAll('#viewSeg button').forEach(b => b.onclick = () => { b.blur(); setView(b.dataset.view); });
+
+// ---------------- header: previous / next design + hub (engine/catalog.js) ----------------
+(function designNav() {
+  const cat = (window.SD_CATALOG || []).filter(c => c.file), at = cat.findIndex(c => c.id === 'support');
+  const link = (d, txt, dir) => d ? `<a href="${d.file}" title="${dir}: ${d.n} · ${esc(d.title)}">${txt}</a>` : `<span class="off" title="No ${dir.toLowerCase()} design">${txt}</span>`;
+  document.getElementById('dNav').innerHTML = link(cat[at - 1], '←', 'Previous') + link(cat[at + 1], '→', 'Next')
+    + `<a class="hub" href="../02_SD_Interview_Simulator.html" title="All designs">All designs</a>`;
+})();
+
+
+start('intake');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

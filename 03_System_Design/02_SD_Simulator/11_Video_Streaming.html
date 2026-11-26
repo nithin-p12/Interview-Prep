@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="doc-id" content="sd-video">
+<meta name="doc-version" content="v2.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Streaming · System Design · v2.0</title>
+<link rel="stylesheet" href="engine/sd.css">
+</head>
+<body>
+<script src="engine/scene.js"></script>
+<script src="engine/player.js"></script>
+<script src="engine/catalog.js"></script>
+<script>
+// Video streaming (YouTube-style VOD). Presigned / multipart S3 upload is taught in 06_File_Upload.html and only
+// referenced here. S3, CDN, Kafka and DB basics live in 00_Core_Components.html.
+const BLUE = '#2f6fe0', TEAL = '#13968a', GREEN = '#348747', PURPLE = '#8f4fc4', AMBER = '#c47d1e', RED = '#ce3434', GREY = '#7b878f';
+const KEEP = '#d5d9dc';
+
+// Rendition rows in the Video storage panel: one per rung of the encoding ladder, plus the master playlist.
+const ST = {
+  WAIT: { fill: '#f6f7f8', stroke: KEEP, color: GREY },
+  RUN: { fill: '#fdf6ea', stroke: AMBER, color: '#8a5a12' },
+  DONE: { fill: '#f1f9ee', stroke: GREEN, color: GREEN },
+  BAD: { fill: '#fff4f4', stroke: RED, color: RED },
+};
+const RENDS = ['1080p', '720p', '480p', '240p'];
+const NB = ' ';                                   // SVG collapses normal spaces; NBSP keeps columns aligned
+const pad = (t, n) => String(t).padEnd(n, NB);
+const bar = (d, n) => { const k = Math.min(10, Math.round(10 * d / n)); return '█'.repeat(k) + '░'.repeat(10 - k); };
+const fmt = (r, d, n, tag = '') => `${pad(r, 6)}${bar(d, n)}${NB}${pad(`${d}/${n}`, 8)}${tag}`;
+const num = x => x.toLocaleString('en-US');
+
+// State shown next to the components: users, original, video doc, planner, Kafka, workers, CDN, origin, renditions.
+function setup(s, v, { clock = '10:00:00', n = 300, rows = {}, master = null, a = 'has demo.mov · 4K', b = 'laptop · Wi-Fi', c = 'phone · 4G',
+  raw = 'no original yet', vdb = 'no video yet', plan = 'idle', kaf = 'tasks —', wk = 'idle', cdn = 'edge cache —', org = 'origin ~50 req/s' } = {}) {
+  v.n0 = n;
+  v.clock = s.chip(15, 500, `🕒 ${clock}`, { anchor: 'start', mono: true, color: GREY });
+  v.prog = s.store(712, 352, 378, 'VIDEO STORAGE · v-1/ renditions', { color: TEAL });
+  v.rows = {};
+  for (const r of RENDS) {
+    const [d, st, tag] = rows[r] ?? [0, 'WAIT', ''];
+    s.row(v.prog, fmt(r, d, n, tag), { ...ST[st], now: true }); v.rows[r] = v.prog.rows[v.prog.rows.length - 1];
+  }
+  if (master) { s.row(v.prog, master, { ...ST.DONE, now: true }); v.rows.master = v.prog.rows[v.prog.rows.length - 1]; }
+  v.ua = s.chip(70, 125, a, { color: GREY });
+  v.ub = s.chip(70, 335, b, { color: GREY });
+  v.uc = s.chip(70, 455, c, { color: GREY });
+  v.rawc = s.chip(560, 125, raw, { mono: true, color: GREY });
+  v.vdb = s.chip(560, 270, vdb, { mono: true, color: TEAL });
+  v.org = s.chip(560, 435, org, { mono: true, color: GREY });
+  v.cdnc = s.chip(305, 405, cdn, { mono: true, color: GREY });
+  v.plan = s.chip(790, 125, plan, { mono: true, color: GREY });
+  v.kaf = s.chip(975, 125, kaf, { mono: true, color: PURPLE });
+  v.wk = s.chip(900, 312, wk, { color: GREY });
+  return v;
+}
+const paint = color => ({ color, stroke: color === GREY ? KEEP : color });
+const chip = (s, c, t, color = GREY) => s.setChip(c, t, paint(color));
+const who = (s, v, u, t, color = GREY) => chip(s, u === 'B' ? v.ub : u === 'C' ? v.uc : v.ua, t, color);
+const tick = (s, v, t) => s.setChip(v.clock, `🕒 ${t}`);
+const ok = { color: GREEN, stroke: GREEN, fill: '#f1f9ee' }, bad = { color: RED, stroke: RED, fill: '#fff4f4' };
+
+async function prog(s, v, r, d, st, tag) {
+  const done = d >= v.n0;
+  st = st ?? (d === 0 ? 'WAIT' : done ? 'DONE' : 'RUN');
+  tag = tag ?? (done && st === 'DONE' ? '✓' : '');
+  const row = v.rows[r];
+  row.label.textContent = fmt(r, d, v.n0, tag);
+  s.paintRow(row, ST[st]);
+  await s.pulse(row, 1, 1.03);
+}
+// ds = done chunks for [1080p, 720p, 480p, 240p]
+const progAll = (s, v, ds) => Promise.all(RENDS.map((r, i) => prog(s, v, r, ds[i])));
+async function master(s, v, text, st = 'DONE') {
+  if (v.rows.master) { v.rows.master.label.textContent = text; s.paintRow(v.rows.master, ST[st]); await s.pulse(v.rows.master, 1, 1.03); return; }
+  v.rows.master = await s.row(v.prog, text, ST[st]);
+}
+async function dropMaster(s, v) { if (v.rows.master) { await s.unrow(v.prog, v.rows.master); delete v.rows.master; } }
+const ALL_DONE = { '1080p': [300, 'DONE', '✓'], '720p': [300, 'DONE', '✓'], '480p': [300, 'DONE', '✓'], '240p': [300, 'DONE', '✓'] };
+
+window.DESIGN = {
+  id: 'video', n: 11, title: 'Video Streaming (YouTube)', tagline: 'chunk and transcode in parallel, package as HLS, serve every byte from the CDN',
+  viewBox: [1100, 520],
+
+  // ---------------- architecture ----------------
+  layers: [
+    { id: 'entry', title: 'Creators & viewers', x0: 0, x1: 190, color: '#4f7bd9', soft: '#f5f8fe', chip: '#e3ebfb', line: '#d5e0f6',
+      why: 'Few people **upload**, a huge number **watch**. Creators send one big original; viewers run an **adaptive player** (hls.js, ExoPlayer, AVPlayer) that picks a quality per segment.',
+      detail: 'Viewing bandwidth, not uploads, decides the architecture.' },
+    { id: 'edge', title: 'API & CDN edge', x0: 190, x1: 430, color: '#c47d1e', soft: '#fefaf3', chip: '#f8e8cc', line: '#f1dfbf',
+      why: 'The **Video API** is the control plane: it signs upload and playback URLs and owns metadata, but **never touches video bytes**. The **CDN** serves playlists and segments from an edge near the viewer.',
+      detail: 'Most bytes come from the edge; the origin only fills cache misses.' },
+    { id: 'data', title: 'Storage', x0: 430, x1: 690, color: '#13968a', soft: '#f2faf9', chip: '#dcf1ee', line: '#c8e8e3',
+      why: '**Raw storage** (S3) keeps the original forever, **Video storage** (S3) holds the HLS output and is the CDN origin, and the **Video DB** tracks status and progress of each video.',
+      detail: 'Segments are immutable objects under deterministic keys.' },
+    { id: 'async', title: 'Processing pipeline', x0: 690, x1: 1100, color: '#8f4fc4', soft: '#faf6fd', chip: '#efe2f8', line: '#e6d5f3',
+      why: 'The **planner** cuts the source at keyframes into 4-second chunks and puts one task per **chunk × rendition** on Kafka. Hundreds of **transcoders** encode them in parallel.',
+      detail: 'Panel bottom right: segments written per rendition of video v-1.' },
+  ],
+  layersIntro: {
+    title: 'Upload once, transcode in parallel, stream from the edge',
+    text: 'The creator uploads the original **straight to S3**. An S3 event starts the **planner**, which splits the video into **4-second chunks** and queues one task per **chunk × rendition**. **Transcoders** encode them in parallel into **HLS segments** under deterministic keys; when every task is done the video is **READY**. Viewers get a **signed CDN URL**, and the player switches quality segment by segment. Hover a layer or a component to see why it exists.',
+  },
+  nodes: {
+    creator: { x: 70, y: 80, w: 140, label: 'Creator A', sub: 'uploads 4K', icon: '🎥', layer: 'entry' },
+    viewerB: { x: 70, y: 290, w: 140, label: 'Viewer B', sub: 'laptop', icon: '💻', layer: 'entry' },
+    viewerC: { x: 70, y: 410, w: 140, label: 'Viewer C', sub: 'phone', icon: '📱', layer: 'entry' },
+    api: { x: 305, y: 165, w: 150, label: 'Video API', sub: 'sign · metadata', icon: '🧩', layer: 'edge' },
+    cdn: { x: 305, y: 360, w: 150, label: 'CDN edges', sub: 'cached segments', icon: '🌐', layer: 'edge' },
+    raw: { x: 560, y: 80, w: 170, label: 'Raw storage', sub: 'S3 · originals', icon: '🪣', layer: 'data' },
+    db: { x: 560, y: 225, w: 170, label: 'Video DB', sub: 'MongoDB · status', icon: '🍃', layer: 'data' },
+    out: { x: 560, y: 390, w: 170, label: 'Video storage', sub: 'S3 · HLS origin', icon: '🎞️', layer: 'data' },
+    planner: { x: 790, y: 80, w: 150, label: 'Planner', sub: 'keyframe split', icon: '✂️', layer: 'async' },
+    kafka: { x: 975, y: 80, w: 150, label: 'Kafka', sub: 'transcode tasks', icon: '📨', layer: 'async' },
+    workers: { x: 900, y: 265, w: 170, label: 'Transcoders', sub: 'ffmpeg × 300 pods', icon: '⚙️', layer: 'async' },
+  },
+  wires: [['creator', 'api'], ['creator', 'raw'], ['viewerB', 'api'], ['viewerB', 'cdn'], ['viewerC', 'cdn'], ['api', 'db'], ['raw', 'planner'], ['planner', 'db'], ['planner', 'kafka'], ['kafka', 'workers'], ['workers', 'raw'], ['workers', 'out'], ['workers', 'db'], ['cdn', 'out']],
+
+  components: {
+    creator: {
+      name: 'Creator (uploader)',
+      what: 'Asks the API for upload URLs, then uploads the original **directly to S3** in 10 MB parts, in parallel, retrying only failed parts.',
+      why: 'A 6 GB file through our servers would tie up threads and bandwidth for minutes.',
+      without: 'App servers stream gigabytes; one dropped connection restarts the whole upload.',
+      tech: 'Browser / mobile SDK with S3 multipart (see design #6, File Upload)', scale: 'Uploads are few compared with views.', fails: 'Part fails → retry that part; an abandoned upload is cleaned up by an S3 lifecycle rule.',
+    },
+    viewerB: {
+      name: 'Viewers and the adaptive player',
+      what: 'The player downloads the **master playlist**, picks a rendition, and fetches ~4-second segments. After each segment it measures **throughput** and **buffer** and may switch quality.',
+      why: 'Networks change second by second; the player adapts instead of stalling.',
+      without: 'One fixed bitrate: weak networks buffer forever, fast ones get poor quality.',
+      tech: 'HLS / DASH players: hls.js, Shaka, ExoPlayer, AVPlayer', scale: 'Millions at once; bandwidth dominates everything.', fails: 'Throughput drops → switch down at the next segment boundary.',
+    },
+    viewerC: {
+      name: 'Viewer C (phone)',
+      what: 'A second viewer on a phone; in the viral flow there are thousands like B and C behind every edge.',
+      why: 'Shows that many viewers ask the same edge for the same segment at once.',
+      without: '—',
+      tech: 'Mobile player', scale: '—', fails: 'Slow start or errors when the origin is overloaded.',
+    },
+    api: {
+      name: 'Video API (control plane)',
+      what: '`POST /videos` creates the video and presigns upload parts; `GET /videos/{id}/play` checks access and returns a **signed CDN URL / cookies**; metadata reads.',
+      why: 'One place for auth, rules and metadata, while the heavy bytes go directly between clients and S3 / CDN.',
+      without: 'Video bytes flow through app servers: huge, slow, expensive.',
+      tech: 'Spring Boot, stateless, behind the API gateway', scale: 'Light: it never serves video bytes.', fails: 'Down → no new uploads or play URLs; people already watching keep streaming from the CDN.',
+      core: ['gw', 'API Gateway'],
+    },
+    cdn: {
+      name: 'CDN edges (+ origin shield)',
+      what: 'Caches playlists and segments in hundreds of locations near viewers. **Request collapsing** and an **origin shield** turn thousands of misses into one origin fetch.',
+      why: '10 M viewers × 3 Mbps ≈ 30 Tbps: only a CDN can deliver that.',
+      without: 'Every viewer pulls from one S3 region: high latency, huge egress bill, origin overload.',
+      tech: 'CloudFront (Origin Shield), Akamai, own edge caches (Netflix Open Connect)', scale: '95 %+ of bytes served from the edge.', fails: 'Cold cache for a viral video → miss storm unless misses are collapsed.',
+      core: ['cdn', 'CDN'],
+    },
+    raw: {
+      name: 'Raw storage (originals)',
+      what: '`raw/v-1/original.mov`: the creator\'s file, kept after transcoding. Its `ObjectCreated` event starts the pipeline.',
+      why: 'New codecs (AV1) or a better ladder later need the original, not an already compressed copy.',
+      without: 'Re-encoding from a 1080p rendition loses quality every time.',
+      tech: 'S3, multipart upload, lifecycle to Glacier after N days', scale: 'Petabytes.', fails: 'Very durable; event delivery is at least once, so the planner must tolerate duplicates.',
+      core: ['s3', 'Object Storage (S3)'],
+    },
+    db: {
+      name: 'Video DB',
+      what: '`videos { _id: "v-1", owner, title, status: UPLOADING → PROCESSING → READY, totalTasks: 1200, doneTasks: [...], renditions, manifest }`.',
+      why: 'Tracks where each video is in the pipeline; `$addToSet` makes completion counting idempotent.',
+      without: 'No way to know when a video is ready, or progress counted twice on retries.',
+      tech: 'MongoDB (small documents, indexed by owner)', scale: 'Small docs; sharded by video id at YouTube scale.', fails: 'Primary failover pauses status updates; workers retry their write.',
+      core: ['db', 'DB scaling'],
+    },
+    out: {
+      name: 'Video storage (HLS origin)',
+      what: '`v-1/master.m3u8`, one playlist per rendition, and ~4-second segments `v-1/720p/seg_007.ts`.',
+      why: 'The CDN origin. Keys are deterministic and segments never change, so they can be cached for a year.',
+      without: 'Nothing for the CDN to fetch from.',
+      tech: 'S3 (as CloudFront origin)', scale: 'Rarely read directly: the CDN absorbs traffic.', fails: 'Throttles (503 SlowDown) under a miss storm → shield + collapsing.',
+      core: ['s3', 'Object Storage (S3)'],
+    },
+    planner: {
+      name: 'Planner (splitter)',
+      what: 'On the S3 event: probes the source (duration, keyframes), cuts it at **keyframes** into 4-second chunks, and creates one task per **chunk × rendition**.',
+      why: 'Turns one hour-long job into thousands of small independent tasks that run in parallel.',
+      without: 'One worker encodes the whole video sequentially: hours, and a crash restarts from zero.',
+      tech: 'Spring Boot + ffprobe', scale: 'Cheap: it only reads metadata and publishes tasks.', fails: 'Event redelivered → same task ids → duplicates are harmless.',
+    },
+    kafka: {
+      name: 'Kafka (transcode tasks)',
+      what: '`transcode-tasks` topic: `{ taskId: "v-1/720p/007", sourceKey, byteRange, rendition }`. Key = **task id**, so one video\'s tasks spread over all partitions.',
+      why: 'Buffers bursts of uploads and lets hundreds of workers share the work.',
+      without: 'The planner would have to find free workers itself.',
+      tech: 'Kafka (or SQS)', scale: 'Partitions ≥ number of workers; autoscale workers on consumer lag.', fails: 'At least once: an uncommitted task is redelivered after a crash.',
+      core: ['kafka', 'Queue · Kafka'],
+    },
+    workers: {
+      name: 'Transcoders',
+      what: 'Take a task, **range-read** only that chunk of the original, run **ffmpeg** for one rendition, write the segment under a **deterministic key**, and mark the task done with `$addToSet`.',
+      why: 'CPU/GPU heavy work, scaled horizontally on cheap spot instances.',
+      without: '—',
+      tech: 'ffmpeg (x264 / x265 / SVT-AV1) in Kubernetes pods, spot instances or GPUs', scale: '300 pods × 12 rounds → a 1-hour video in ~5 minutes.', fails: 'Pod killed mid-task → the task is redelivered; the retry overwrites the same key.',
+    },
+  },
+
+  // ---------------- 1 · overview loop ----------------
+  intro: {
+    headline: 'Upload to S3, chunk × rendition in parallel, HLS from the edge.',
+    points: [
+      { t: 'Upload', color: BLUE, d: 'The API creates the video and signs URLs; the creator uploads the original **straight to S3**.' },
+      { t: 'Transcode', color: PURPLE, d: 'The planner splits at keyframes into **4-s chunks**; workers encode **chunk × rendition** in parallel.' },
+      { t: 'Package', color: TEAL, d: 'All tasks done → **master.m3u8** + variant playlists, status **READY**.' },
+      { t: 'Play', color: GREEN, d: 'Signed CDN URL; the player streams segments from the **nearest edge** and adapts quality.' },
+    ],
+    stats: [['500 h', 'uploaded per minute'], ['4 s', 'per HLS segment'], ['~5 min', 'to transcode 1 h'], ['95 %+', 'bytes from the CDN']],
+  },
+  async overview(s, v, ui) {
+    if (!v.ready) { setup(s, v); v.ready = true; }
+    await dropMaster(s, v);
+    for (const r of RENDS) { v.rows[r].label.textContent = fmt(r, 0, 300); s.paintRow(v.rows[r], ST.WAIT); }
+    tick(s, v, '10:00:00');
+    who(s, v, 'A', 'has demo.mov · 4K'); who(s, v, 'B', 'laptop · Wi-Fi'); who(s, v, 'C', 'phone · 4G');
+    chip(s, v.rawc, 'no original yet'); chip(s, v.vdb, 'no video yet', TEAL); chip(s, v.plan, 'idle'); chip(s, v.kaf, 'tasks —', PURPLE);
+    chip(s, v.wk, 'idle'); chip(s, v.cdnc, 'edge cache —'); chip(s, v.org, 'origin ~50 req/s');
+
+    ui.say(0); ui.cap('**Upload** · the API signs part URLs; the 6 GB original goes straight to S3');
+    await s.send(['creator', 'api'], 'POST /videos', BLUE, { ms: 420 });
+    await s.send(['api', 'db'], 'v-1 UPLOADING', TEAL, { ms: 400 });
+    chip(s, v.vdb, 'v-1 · UPLOADING', AMBER);
+    await s.send(['api', 'creator'], '600 part URLs', GREEN, { ms: 400 });
+    await s.send(['creator', 'raw'], 'PUT parts 1…600', BLUE, { ms: 520 });
+    chip(s, v.rawc, 'original.mov 6 GB', TEAL); who(s, v, 'A', 'uploaded', BLUE);
+    ui.say(1); ui.cap('**Transcode** · 300 chunks × 4 renditions = 1,200 tasks, encoded in parallel');
+    await s.send(['raw', 'planner'], 'ObjectCreated', AMBER, { ms: 420 });
+    chip(s, v.plan, '300 chunks × 4', AMBER);
+    await s.send(['planner', 'kafka'], '1,200 tasks', PURPLE, { ms: 400 });
+    chip(s, v.kaf, 'queued 1,200', PURPLE); chip(s, v.vdb, 'v-1 · PROCESSING', AMBER);
+    await s.send(['kafka', 'workers'], 'consume', PURPLE, { ms: 380 });
+    chip(s, v.wk, '300 pods busy', AMBER);
+    await s.send(['workers', 'raw'], 'Range GET', AMBER, { ms: 360 });
+    await s.send(['workers', 'out'], 'seg_007.ts', GREEN, { ms: 380 });
+    tick(s, v, '10:02:00'); await progAll(s, v, [80, 130, 220, 290]);
+    tick(s, v, '10:04:00'); await progAll(s, v, [200, 260, 300, 300]);
+    tick(s, v, '10:05:00'); await progAll(s, v, [300, 300, 300, 300]);
+    chip(s, v.kaf, 'done 1,200', GREEN); chip(s, v.wk, 'idle');
+    ui.say(2); ui.cap('**Package** · playlists written, the video is READY');
+    await s.send(['workers', 'out'], 'master.m3u8', TEAL, { ms: 400 });
+    await master(s, v, 'master.m3u8 · 4 variants ✓');
+    await s.send(['workers', 'db'], 'READY', GREEN, { ms: 400 });
+    chip(s, v.vdb, 'v-1 · READY', GREEN); who(s, v, 'A', 'published ✓', GREEN);
+    ui.say(3); ui.cap('**Play** · signed URL, master playlist and segments from the nearest edge');
+    await s.send(['viewerB', 'api'], 'GET /play', BLUE, { ms: 400 });
+    await s.send(['api', 'viewerB'], 'signed URL', GREEN, { ms: 380 });
+    await s.send(['viewerB', 'cdn'], 'master.m3u8', BLUE, { ms: 380 });
+    await s.send(['cdn', 'out'], 'miss → origin', AMBER, { ms: 380 });
+    chip(s, v.cdnc, 'v-1 cached', GREEN);
+    await s.send(['cdn', 'viewerB'], '1080p segs', GREEN, { ms: 380 });
+    who(s, v, 'B', 'watching 1080p ✓', GREEN);
+    await s.send(['viewerC', 'cdn'], '240p seg · HIT', BLUE, { ms: 380 });
+    await s.send(['cdn', 'viewerC'], '240p segs', GREEN, { ms: 380 });
+    who(s, v, 'C', 'smooth at 240p ✓', GREEN);
+    await s.wait(1800);
+    ui.say(-1); ui.cap('');
+    await s.wait(400);
+  },
+
+  // ---------------- 3 · flows ----------------
+  flows: [
+    {
+      id: 'upload', title: 'Upload → READY', sub: 'presigned upload · chunk × rendition tasks', color: BLUE,
+      build: (s, v) => setup(s, v),
+      takeaway: 'The API only **signs and records**; bytes go **straight to S3**. An S3 event lets the **planner** cut the video at keyframes into **4-second chunks** and queue **chunk × rendition** tasks. Workers encode in parallel, write segments under **deterministic keys**, mark tasks with `$addToSet`, and the last one triggers **playlists + READY**.',
+      steps: [
+        {
+          title: 'Create the video, get upload URLs',
+          text: '`POST /videos { title: "Demo", size: 6 GB }`. The API inserts `{ _id: "v-1", status: "UPLOADING" }`, starts an S3 **multipart upload** and returns presigned URLs for 600 parts of 10 MB. The details (part retries, `CompleteMultipartUpload`) are design #6, File Upload.',
+          observe: 'v-1 exists with status UPLOADING; A has 600 part URLs.',
+          focus: v => [v.n.api, v.vdb],
+          async run(s, v) {
+            await s.send(['creator', 'api'], 'POST /videos · 6 GB', BLUE);
+            await s.send(['api', 'db'], 'insert v-1 UPLOADING', TEAL);
+            chip(s, v.vdb, 'v-1 · UPLOADING', AMBER); await s.pulse(v.vdb);
+            await s.send(['api', 'creator'], '600 part URLs', GREEN);
+          },
+        },
+        {
+          title: 'Upload straight to S3',
+          text: 'The app uploads 10 MB parts **in parallel** directly to S3 and finishes with `CompleteMultipartUpload`. A failed part is retried alone. The Video API never sees a byte of the 6 GB file.',
+          observe: 'raw/v-1/original.mov (6 GB) is in Raw storage.',
+          say: 'The creator uploads the original directly to S3 with presigned multipart URLs; our servers only sign.',
+          focus: v => [v.n.raw, v.rawc],
+          async run(s, v) {
+            who(s, v, 'A', 'uploading…', AMBER);
+            await s.send(['creator', 'raw'], 'PUT parts 1…600', BLUE, { ms: 700 });
+            await s.send(['creator', 'raw'], 'Complete', BLUE);
+            chip(s, v.rawc, 'original.mov 6 GB', TEAL); await s.pulse(v.rawc);
+            who(s, v, 'A', 'uploaded · processing', BLUE);
+          },
+        },
+        {
+          title: 'S3 event → the planner splits the work',
+          text: '`ObjectCreated` reaches the **planner**. `ffprobe`: 20 minutes, a keyframe every 2 s. It cuts the video **at keyframes** into **300 chunks of 4 s** and multiplies by the ladder (1080p, 720p, 480p, 240p): **1,200 tasks**. It sets `status: "PROCESSING", totalTasks: 1200`.',
+          observe: '300 chunks × 4 renditions; v-1 is PROCESSING.',
+          say: 'A planner splits the source at keyframes into 4-second chunks, one task per chunk and rendition.',
+          focus: v => [v.n.planner, v.plan],
+          async run(s, v) {
+            await s.send(['raw', 'planner'], 'ObjectCreated', AMBER);
+            chip(s, v.plan, '300 chunks × 4', AMBER); await s.pulse(v.plan);
+            await s.send(['planner', 'db'], 'PROCESSING · 1,200', TEAL);
+            chip(s, v.vdb, 'v-1 · PROCESSING', AMBER);
+          },
+        },
+        {
+          title: 'One Kafka message per chunk × rendition',
+          text: '`transcode-tasks ← { taskId: "v-1/720p/007", sourceKey, byteRange, rendition: "720p" }`. The message **key is the task id**, not the video id: keyed by video, all 1,200 tasks would land in one partition and only **one** consumer could work on them.',
+          observe: '1,200 tasks queued across the partitions.',
+          focus: v => [v.n.kafka, v.kaf],
+          async run(s, v) {
+            await s.send(['planner', 'kafka'], '1,200 tasks', PURPLE);
+            chip(s, v.kaf, 'queued 1,200', PURPLE); await s.pulse(v.kaf);
+          },
+        },
+        {
+          title: 'Hundreds of workers encode in parallel',
+          text: 'Each transcoder takes a task, **range-reads** only its chunk of the original, runs `ffmpeg` for one rendition and writes `v-1/720p/seg_007.ts`: a key built only from (video, rendition, chunk). Then `$addToSet: { doneTasks: "v-1/720p/007" }` and the Kafka offset is committed. 240p is cheap and finishes first; 1080p last.',
+          observe: 'The rendition bars fill up over about five minutes.',
+          say: 'Hundreds of workers encode chunks in parallel, so a long video is ready in minutes.',
+          focus: v => [v.n.workers, v.prog],
+          async run(s, v) {
+            await s.send(['kafka', 'workers'], 'task 720p/007', PURPLE);
+            chip(s, v.wk, '300 pods busy', AMBER);
+            await s.send(['workers', 'raw'], 'Range GET chunk 7', AMBER);
+            await s.send(['workers', 'out'], 'v-1/720p/seg_007.ts', GREEN);
+            await s.send(['workers', 'db'], '$addToSet 720p/007', TEAL);
+            for (const [t, ds] of [['10:02:00', [60, 110, 200, 280]], ['10:04:00', [180, 240, 300, 300]], ['10:05:00', [300, 300, 300, 300]]]) {
+              tick(s, v, t); await progAll(s, v, ds);
+              const done = ds.reduce((x, y) => x + y, 0);
+              chip(s, v.kaf, `done ${num(done)}/1,200`, done === 1200 ? GREEN : PURPLE);
+              chip(s, v.vdb, `done ${num(done)}/1,200`, done === 1200 ? GREEN : AMBER);
+            }
+            chip(s, v.wk, 'idle');
+          },
+        },
+        {
+          title: 'Playlists, then READY',
+          text: 'The task that makes `doneTasks` reach 1,200 publishes a **package** event: write one variant playlist per rendition (300 × `#EXTINF:4.0`) and **master.m3u8** listing the 4 variants with their bandwidth. Then `status: "READY"`.',
+          observe: 'master.m3u8 appears; v-1 is READY; A sees "published".',
+          focus: v => [v.rows.master, v.vdb],
+          async run(s, v) {
+            await s.send(['workers', 'out'], 'master + 4 playlists', TEAL);
+            await master(s, v, 'master.m3u8 · 4 variants ✓');
+            await s.send(['workers', 'db'], 'READY', GREEN);
+            chip(s, v.vdb, 'v-1 · READY', GREEN); await s.pulse(v.vdb);
+            who(s, v, 'A', 'published ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'parallel', title: 'Why chunked transcoding?', sub: 'one long job vs 3,600 small tasks', color: AMBER,
+      build: (s, v) => setup(s, v, { n: 900, a: 'uploaded 1 h video', raw: 'original.mov 18 GB', vdb: 'v-1 · PROCESSING' }),
+      takeaway: 'One worker encoding a whole hour of 4K into 4 renditions takes **hours**, and a crash at 75 % starts over. Cut at **keyframes** into 4-s chunks: **900 chunks × 4 = 3,600** independent tasks over 300 workers finish in **~5 minutes**, and a crash costs **one chunk**. Because every rendition is cut at the same keyframes, the player can switch quality at any segment boundary.',
+      steps: [
+        {
+          title: '❌ One worker encodes the whole hour',
+          text: 'The simple design: one task "transcode v-1". One machine decodes 1 hour of 4K and encodes 4 renditions, roughly **4 hours** of CPU time. The other 299 workers sit idle; the creator waits.',
+          observe: 'After two hours, only half done.',
+          focus: v => [v.n.workers, v.prog],
+          async run(s, v) {
+            await s.send(['raw', 'planner'], 'ObjectCreated', AMBER);
+            chip(s, v.plan, '1 job', AMBER);
+            await s.send(['planner', 'kafka'], '1 task', PURPLE);
+            chip(s, v.kaf, 'queued 1', PURPLE);
+            await s.send(['kafka', 'workers'], 'transcode v-1', PURPLE);
+            chip(s, v.wk, '1 busy · 299 idle', RED);
+            tick(s, v, '11:00:00'); await progAll(s, v, [225, 225, 225, 225]);
+            tick(s, v, '12:00:00'); await progAll(s, v, [450, 450, 450, 450]);
+            who(s, v, 'A', 'waiting 2 h…', AMBER);
+          },
+        },
+        {
+          title: '❌ ...and a crash starts it over',
+          text: 'At 75 % the spot instance is reclaimed. The task was never committed, so Kafka redelivers it, but there is no partial result to resume from: **the whole hour starts again from zero**.',
+          observe: 'Three hours of work lost.',
+          say: 'One big transcode job is slow, uses one machine, and a crash loses everything.',
+          focus: v => [v.n.workers, v.n.creator],
+          async run(s, v) {
+            tick(s, v, '13:00:00'); await progAll(s, v, [675, 675, 675, 675]);
+            s.tone(v.n.workers, 'fail'); s.setSub(v.n.workers, '✕ pod reclaimed', RED);
+            await s.shake(v.n.workers);
+            await Promise.all(RENDS.map(r => prog(s, v, r, 0, 'BAD', 'restart')));
+            who(s, v, 'A', 'still 0 % after 3 h', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: split at keyframes',
+          text: 'The planner probes the file and cuts it **at keyframes** (closed GOPs) every 4 s: 1 h ÷ 4 s = **900 chunks**. Each chunk decodes on its own. Times 4 renditions = **3,600 tasks**, each only ~25 s of CPU.',
+          observe: '3,600 small tasks instead of one huge one.',
+          say: 'We split at keyframes into 4-second chunks, so every chunk can be encoded independently.',
+          focus: v => [v.n.planner, v.plan, v.kaf],
+          async run(s, v) {
+            s.tone(v.n.workers, null); s.setSub(v.n.workers, 'ffmpeg × 300 pods');
+            tick(s, v, '10:00:00'); who(s, v, 'A', 'uploaded 1 h video'); chip(s, v.wk, 'idle');
+            await Promise.all(RENDS.map(r => prog(s, v, r, 0)));
+            await s.send(['raw', 'planner'], 'ObjectCreated', AMBER);
+            chip(s, v.plan, '900 chunks × 4', AMBER); await s.pulse(v.plan);
+            await s.send(['planner', 'kafka'], '3,600 tasks', PURPLE);
+            chip(s, v.kaf, 'queued 3,600', PURPLE);
+          },
+        },
+        {
+          title: '✅ 300 workers, one chunk each',
+          text: '3,600 tasks ÷ 300 workers = 12 rounds × ~25 s ≈ **5 minutes**. Workers autoscale on **consumer lag** and run on cheap spot instances. Each one reads only its chunk with an S3 range GET.',
+          observe: 'All four renditions are done by 10:05.',
+          say: 'Hundreds of workers encode chunks in parallel, so a one-hour video is ready in minutes instead of hours.',
+          focus: v => [v.n.workers, v.prog],
+          async run(s, v) {
+            await s.send(['kafka', 'workers'], '300 tasks at once', PURPLE);
+            chip(s, v.wk, '300 pods busy', GREEN);
+            await s.send(['workers', 'raw'], 'Range GET ×300', AMBER);
+            await s.send(['workers', 'out'], 'segments ×300', GREEN);
+            tick(s, v, '10:02:00'); await progAll(s, v, [260, 380, 650, 900]);
+            tick(s, v, '10:04:00'); await progAll(s, v, [620, 800, 900, 900]);
+            tick(s, v, '10:05:00'); await progAll(s, v, [900, 900, 900, 900]);
+            chip(s, v.kaf, 'done 3,600', GREEN);
+          },
+        },
+        {
+          title: 'A crash now costs one chunk',
+          text: 'If a pod dies now, only its 4-second chunk is redone (~25 s). The segments join seamlessly because every chunk starts on a keyframe, and all renditions share the **same boundaries**, which is exactly what adaptive bitrate needs to switch quality between segments.',
+          observe: 'One task retried; A has the video in ~5 minutes.',
+          focus: v => [v.n.workers, v.n.creator],
+          async run(s, v) {
+            await s.flash(900, 220, '1 task retried · 25 s', ok, 800);
+            await s.send(['workers', 'db'], 'READY', GREEN);
+            chip(s, v.vdb, 'v-1 · READY', GREEN); chip(s, v.wk, 'idle');
+            who(s, v, 'A', 'ready in ~5 min ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'retry', title: 'Worker crash mid-task', sub: 'redelivery · deterministic key · $addToSet', color: RED,
+      build: (s, v) => setup(s, v, {
+        rows: { '1080p': [300, 'DONE', '✓'], '720p': [299, 'RUN', 'seg_007 missing'], '480p': [300, 'DONE', '✓'], '240p': [300, 'DONE', '✓'] },
+        a: 'waiting for v-1', raw: 'original.mov 6 GB', vdb: 'done 1,199/1,200', plan: '300 chunks × 4', kaf: 'pending 720p/007', wk: 'pod-17: 720p/007',
+      }),
+      takeaway: 'Kafka is **at least once**, so any task can run twice. Make the output **deterministic** (`v-1/720p/seg_007.ts` depends only on video, rendition, chunk): a retry overwrites the same object. Make completion **idempotent** (`$addToSet` of task ids, not `$inc`): a duplicate is a no-op. Commit the offset only after both writes.',
+      steps: [
+        {
+          title: 'pod-17 dies halfway through chunk 7 (720p)',
+          text: 'The spot instance running task `v-1/720p/007` is reclaimed. Its S3 `PUT` never completed (an S3 PUT is all or nothing, so no half segment is visible) and its Kafka offset was **not committed**.',
+          observe: 'The task is unfinished; 1,199 of 1,200 done.',
+          focus: v => [v.n.workers, v.rows['720p']],
+          async run(s, v) {
+            s.tone(v.n.workers, 'fail'); s.setSub(v.n.workers, '✕ pod-17 lost', RED);
+            await s.shake(v.n.workers);
+            chip(s, v.wk, 'pod-17 gone', RED);
+          },
+        },
+        {
+          title: 'Kafka redelivers the task',
+          text: 'After the session timeout the consumer group rebalances and pod-42 receives `v-1/720p/007` again. The same task can also run twice when the first worker was only **slow**, not dead: both may finish.',
+          observe: 'Attempt 2 starts on another pod.',
+          say: 'The queue is at least once, so a task can run more than once; the work must be idempotent.',
+          focus: v => [v.n.kafka, v.n.workers],
+          async run(s, v) {
+            s.tone(v.n.workers, null); s.setSub(v.n.workers, 'ffmpeg × 300 pods');
+            await s.send(['kafka', 'workers'], 'retry 720p/007', AMBER);
+            chip(s, v.wk, 'pod-42: attempt 2', AMBER);
+            await s.send(['workers', 'raw'], 'Range GET chunk 7', AMBER);
+          },
+        },
+        {
+          title: '❌ Random output names + a counter',
+          text: 'If each attempt writes `seg_007-<uuid>.ts` and appends it to the playlist, chunk 7 appears **twice**; if completion is `$inc: { done: 1 }`, the counter reaches **1,201**, so "done == total" fires early, late or never.',
+          observe: 'A duplicate segment and a wrong counter.',
+          focus: v => [v.rows['720p'], v.vdb],
+          async run(s, v) {
+            await s.send(['workers', 'out'], 'seg_007-9f3a.ts', RED);
+            await prog(s, v, '720p', 301, 'BAD', 'chunk 7 ×2 ✕');
+            await s.send(['workers', 'db'], '$inc done', RED);
+            chip(s, v.vdb, 'done 1,201/1,200 ✕', RED); await s.pulse(v.vdb);
+            who(s, v, 'A', 'glitch at 0:28 ✕', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: a deterministic key',
+          text: 'The key is computed from the task alone: `v-1/720p/seg_007.ts`. Attempt 2 (and a late attempt 1) write the **same object** with the same bytes; the last PUT wins and nothing is duplicated. Playlists are generated from the chunk count, never appended to.',
+          observe: '720p has exactly 300 segments.',
+          say: 'Output keys are deterministic, so a retried task just overwrites the same segment.',
+          focus: v => [v.rows['720p'], v.n.out],
+          async run(s, v) {
+            await prog(s, v, '720p', 299, 'RUN', 'seg_007 missing');
+            chip(s, v.vdb, 'done 1,199/1,200', TEAL); who(s, v, 'A', 'waiting for v-1');
+            await s.send(['workers', 'out'], 'PUT v-1/720p/seg_007.ts', GREEN);
+            await prog(s, v, '720p', 300);
+          },
+        },
+        {
+          title: '✅ Count completion with a set',
+          text: '`updateOne({ _id: "v-1" }, { $addToSet: { doneTasks: "v-1/720p/007" } })`. Adding an id that is already there changes nothing, so a duplicate attempt is a **no-op**. When `doneTasks` reaches `totalTasks` (1,200), the package step writes the playlists and sets READY. Then the offset is committed.',
+          observe: '1,200 / 1,200 exactly once, then READY.',
+          say: 'Completion is tracked as a set of done task ids, so duplicates are counted once.',
+          focus: v => [v.vdb, v.rows.master],
+          async run(s, v) {
+            await s.send(['workers', 'db'], '$addToSet 720p/007', TEAL);
+            chip(s, v.vdb, 'done 1,200/1,200', GREEN); await s.pulse(v.vdb);
+            await s.send(['workers', 'db'], 'same id again', GREY);
+            await s.flash(560, 175, 'already in set → no-op', ok, 800);
+            await s.send(['workers', 'out'], 'master.m3u8', TEAL);
+            await master(s, v, 'master.m3u8 · 4 variants ✓');
+            chip(s, v.vdb, 'v-1 · READY', GREEN); chip(s, v.wk, 'idle'); chip(s, v.kaf, 'done 1,200', GREEN);
+            who(s, v, 'A', 'published ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'abr', title: 'Playback & adaptive bitrate', sub: 'signed URL · master playlist · switch down', color: GREEN,
+      build: (s, v) => setup(s, v, { rows: ALL_DONE, master: 'master.m3u8 · 4 variants ✓', a: 'published ✓', b: 'laptop · 40 Mbps', raw: 'original kept', vdb: 'v-1 · READY' }),
+      takeaway: 'The master playlist offers the same video at **4 bitrates**, all cut at the same 4-second boundaries. The player measures **throughput and buffer** after every segment and picks the next segment\'s rendition, so a slow network means **lower quality, not a spinner**. Playback URLs are **signed** and expire.',
+      steps: [
+        {
+          title: 'B presses play: a signed URL',
+          text: '`GET /videos/v-1/play`. The API checks access (private / unlisted, region) and returns **signed CloudFront cookies** for `cdn…/v-1/*`, valid for 6 hours, plus the URL of `master.m3u8`. Video bytes never pass through the API.',
+          observe: 'B has a signed playback URL.',
+          focus: v => [v.n.api, v.n.viewerB],
+          async run(s, v) {
+            await s.send(['viewerB', 'api'], 'GET /videos/v-1/play', BLUE);
+            await s.send(['api', 'db'], 'v-1 READY? access?', TEAL);
+            await s.send(['api', 'viewerB'], 'signed URL · 6 h', GREEN);
+          },
+        },
+        {
+          title: 'Master playlist from the nearest edge',
+          text: 'The player fetches `master.m3u8` from the CDN. Edge miss → origin → cached. It lists four variants: 1080p @ 5 Mbps, 720p @ 2.8, 480p @ 1.4, 240p @ 0.4, each pointing to its own playlist of 4-second segments.',
+          observe: 'The edge now caches the master playlist.',
+          focus: v => [v.n.cdn, v.cdnc],
+          async run(s, v) {
+            await s.send(['viewerB', 'cdn'], 'GET master.m3u8', BLUE);
+            await s.send(['cdn', 'out'], 'miss → origin', AMBER);
+            chip(s, v.cdnc, 'master cached', GREEN);
+            await s.send(['cdn', 'viewerB'], '4 variants', GREEN);
+          },
+        },
+        {
+          title: 'Start low, measure, climb to 1080p',
+          text: 'For a fast first frame the player starts at 480p, measures **40 Mbps**, and switches up: the next segments come from `1080p/`. The buffer fills to 30 s ahead.',
+          observe: 'B watches 1080p with a full buffer.',
+          focus: v => [v.n.viewerB, v.ub],
+          async run(s, v) {
+            await s.send(['viewerB', 'cdn'], '480p/seg_000', BLUE);
+            await s.send(['cdn', 'viewerB'], 'fast · 40 Mbps', GREEN);
+            await s.send(['viewerB', 'cdn'], '1080p/seg_001…', BLUE);
+            chip(s, v.cdnc, 'HIT · 1080p segs', GREEN);
+            who(s, v, 'B', '1080p · buffer 30 s', GREEN);
+          },
+        },
+        {
+          title: '❌ One fixed 1080p file: the network drops',
+          text: 'Someone starts a big download; B\'s bandwidth falls to **2 Mbps**. With only one 5 Mbps version, bytes arrive slower than real time: the buffer drains in seconds and the **spinner** appears every few seconds.',
+          observe: 'B is buffering.',
+          focus: v => [v.n.viewerB],
+          async run(s, v) {
+            tick(s, v, '10:03:20'); who(s, v, 'B', 'network: 2 Mbps', AMBER);
+            await s.send(['viewerB', 'cdn'], '1080p/seg_031', BLUE);
+            await s.send(['cdn', 'viewerB'], '5 Mbps over 2', RED, { ms: 1400 });
+            who(s, v, 'B', 'buffering… ✕', RED);
+            await s.flash(70, 245, '⏳ spinner', bad, 700);
+          },
+        },
+        {
+          title: '✅ Rewind: switch down at the next segment',
+          text: 'With ABR the player sees throughput 2 Mbps and a falling buffer, so the **next** segment comes from `480p/seg_032.ts` (1.4 Mbps, under 0.8 × 2). All renditions share keyframes, so seg_032 of 480p continues exactly where seg_031 of 1080p ended.',
+          observe: 'B keeps playing at 480p, no stall.',
+          say: 'The player measures throughput and buffer after each segment and switches rendition instead of stalling.',
+          focus: v => [v.n.viewerB, v.ub],
+          async run(s, v) {
+            who(s, v, 'B', 'network: 2 Mbps', AMBER);
+            await s.send(['viewerB', 'cdn'], '480p/seg_032', BLUE);
+            await s.send(['cdn', 'viewerB'], '1.4 Mbps · fits', GREEN);
+            who(s, v, 'B', '480p · no stall ✓', GREEN);
+          },
+        },
+        {
+          title: 'Network recovers: climb back up',
+          text: 'Throughput is back to 40 Mbps and the buffer is above 30 s, so the player steps up to 720p, then 1080p. Seeking works the same way: jumping to 10:00 means segment 10:00 ÷ 4 s = **150**, fetched directly.',
+          observe: 'B is back on 1080p.',
+          focus: v => [v.n.viewerB],
+          async run(s, v) {
+            tick(s, v, '10:03:50');
+            await s.send(['viewerB', 'cdn'], '720p/seg_040', BLUE);
+            await s.send(['viewerB', 'cdn'], '1080p/seg_041', BLUE);
+            await s.send(['cdn', 'viewerB'], 'HIT', GREEN);
+            who(s, v, 'B', '1080p again ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'viral', title: 'A video goes viral', sub: 'miss storm vs collapsing + origin shield', color: PURPLE,
+      build: (s, v) => setup(s, v, { rows: ALL_DONE, master: 'master.m3u8 · 4 variants ✓', a: 'big creator ✓', b: 'opens v-1', c: 'opens v-1', raw: 'original kept', vdb: 'v-1 · READY', cdn: 'edge cache: cold' }),
+      takeaway: 'A brand-new viral video means **every edge misses at the same moment**. Without protection, millions of misses hit the origin. **Request collapsing** turns identical misses at one edge into one fetch, and an **origin shield** (one regional cache layer) turns 200 edges into a handful of origin requests. After that, segments are immutable and cached for a long time.',
+      steps: [
+        {
+          title: 'A million viewers in one minute',
+          text: 'A big creator publishes; within a minute ~20,000 viewers at **each of 200 edges** ask for `720p/seg_000.ts`. Nothing is cached yet anywhere.',
+          observe: 'Every edge misses at once.',
+          focus: v => [v.n.cdn, v.cdnc],
+          async run(s, v) {
+            await Promise.all([
+              s.send(['viewerB', 'cdn'], 'GET seg_000 ×20k', BLUE),
+              s.send(['viewerC', 'cdn'], 'GET seg_000 ×20k', BLUE, { pulse: false }),
+            ]);
+            chip(s, v.cdnc, 'every edge: MISS', RED); await s.pulse(v.cdnc);
+          },
+        },
+        {
+          title: '❌ Every miss goes to the origin',
+          text: 'Each miss becomes an origin request: about **4 million** GETs for the first few segments. S3 starts answering `503 SlowDown`; viewers wait 8 s for a first frame, some get errors and leave.',
+          observe: 'The origin is overloaded; B waits, C errors.',
+          focus: v => [v.n.out, v.org],
+          async run(s, v) {
+            await s.send(['cdn', 'out'], 'GET ×4,000,000', RED, { ms: 700 });
+            s.tone(v.n.out, 'fail'); chip(s, v.org, 'origin 200k req/s ✕', RED);
+            await s.shake(v.n.out);
+            await s.send(['cdn', 'viewerB'], '503 · slow start', RED);
+            who(s, v, 'B', 'waits 8 s ✕', RED); who(s, v, 'C', 'error ✕', RED);
+          },
+        },
+        {
+          title: '✅ Rewind: request collapsing at each edge',
+          text: 'The edge sends only the **first** miss upstream and parks the other 19,999 identical requests until that response arrives (single-flight, like cache stampede protection). 20,000 requests → **1 fetch** per edge.',
+          observe: 'Each edge makes one upstream request.',
+          say: 'The CDN collapses identical misses so one request goes upstream per edge.',
+          focus: v => [v.n.cdn],
+          async run(s, v) {
+            s.tone(v.n.out, null); chip(s, v.org, 'origin ~50 req/s'); who(s, v, 'B', 'opens v-1'); who(s, v, 'C', 'opens v-1');
+            s.setSub(v.n.cdn, 'collapse misses', PURPLE);
+            await Promise.all([
+              s.send(['viewerB', 'cdn'], 'GET seg_000 ×20k', BLUE),
+              s.send(['viewerC', 'cdn'], 'GET seg_000 ×20k', BLUE, { pulse: false }),
+            ]);
+            await s.flash(305, 312, '20,000 → 1 fetch', ok, 800);
+          },
+        },
+        {
+          title: '✅ Origin shield: one regional layer',
+          text: 'Edges do not go to S3 directly; they go to a few **regional shield** caches, which collapse again. 200 edges → 5 shields → **5 origin requests** per segment (CloudFront Origin Shield). Expected hits can also be **pre-warmed**.',
+          observe: 'The origin sees a handful of requests.',
+          focus: v => [v.n.out, v.org],
+          async run(s, v) {
+            s.setSub(v.n.cdn, 'edges → shield', PURPLE);
+            await s.send(['cdn', 'out'], 'GET ×5 (shields)', GREEN);
+            chip(s, v.org, 'origin ~60 req/s ✓', GREEN);
+            chip(s, v.cdnc, 'cached at edges', GREEN);
+          },
+        },
+        {
+          title: 'Then everything is a hit',
+          text: 'Segments never change (deterministic keys, new content = new key), so they are served with `Cache-Control: max-age=31536000, immutable`. The next million viewers are served from the edge: first frame in **under a second**.',
+          observe: 'B and C start instantly.',
+          say: 'Segments are immutable, so the CDN caches them for a long time and the origin stays quiet.',
+          focus: v => [v.n.viewerB, v.n.viewerC],
+          async run(s, v) {
+            s.setSub(v.n.cdn, 'cached segments');
+            await Promise.all([
+              s.send(['cdn', 'viewerB'], 'HIT seg_000', GREEN),
+              s.send(['cdn', 'viewerC'], 'HIT seg_000', GREEN),
+            ]);
+            who(s, v, 'B', 'starts < 1 s ✓', GREEN); who(s, v, 'C', 'starts < 1 s ✓', GREEN);
+          },
+        },
+      ],
+    },
+    {
+      id: 'early', title: 'Publish low renditions first', sub: 'time-to-watch · manifest TTL', color: TEAL,
+      build: (s, v) => setup(s, v, { a: 'just uploaded', b: 'follower, waiting', raw: 'original.mov 6 GB', vdb: 'v-1 · PROCESSING', plan: '300 chunks × 4', kaf: 'queued 1,200', wk: '300 pods busy' }),
+      takeaway: 'Low renditions are much cheaper to encode, so they finish first. Publish as soon as **240p and 480p** exist and add HD to the master playlist later. Give **manifests a short CDN TTL** (or invalidate them) while they change; segments stay immutable with a long TTL.',
+      steps: [
+        {
+          title: '240p and 480p finish first',
+          text: 'Encoding 240p costs a fraction of 1080p. Two minutes in, 240p and 480p are complete; 720p is at 40 %, 1080p at 20 %.',
+          observe: 'Two renditions done, two still running.',
+          focus: v => [v.prog],
+          async run(s, v) {
+            await s.send(['workers', 'out'], 'low renditions', GREEN);
+            tick(s, v, '10:02:00'); await progAll(s, v, [60, 120, 300, 300]);
+          },
+        },
+        {
+          title: '❌ Wait for every rendition',
+          text: 'If the video only becomes visible at READY, the **slowest rendition** decides: B and every other follower wait until 10:09, even though watchable versions existed at 10:02.',
+          observe: 'B waits 9 minutes.',
+          focus: v => [v.n.viewerB, v.ub],
+          async run(s, v) {
+            tick(s, v, '10:09:00'); await progAll(s, v, [300, 300, 300, 300]);
+            await s.send(['workers', 'db'], 'READY', GREEN);
+            chip(s, v.vdb, 'v-1 · READY', GREEN);
+            who(s, v, 'B', 'waited 9 min ✕', RED); who(s, v, 'A', 'live after 9 min', AMBER);
+          },
+        },
+        {
+          title: '✅ Rewind: publish what exists',
+          text: 'At 10:02 the package step writes a master playlist with only the **240p and 480p** variants and sets `status: "PLAYABLE"`. Manifests are served with a short TTL (`max-age=5`) so the CDN picks up changes.',
+          observe: 'v-1 is PLAYABLE with 2 variants.',
+          say: 'We publish the low renditions first and add HD to the master playlist when it is ready.',
+          focus: v => [v.rows.master, v.vdb],
+          async run(s, v) {
+            tick(s, v, '10:02:00'); await progAll(s, v, [60, 120, 300, 300]);
+            chip(s, v.vdb, 'v-1 · PROCESSING', TEAL); who(s, v, 'B', 'follower, waiting'); who(s, v, 'A', 'just uploaded');
+            await s.send(['workers', 'out'], 'master: 240p, 480p', TEAL);
+            await master(s, v, 'master.m3u8 · 2 variants', 'RUN');
+            await s.send(['workers', 'db'], 'PLAYABLE', GREEN);
+            chip(s, v.vdb, 'v-1 · PLAYABLE', GREEN); who(s, v, 'A', 'live · HD soon', GREEN);
+          },
+        },
+        {
+          title: 'B watches right away',
+          text: 'B gets a signed URL, fetches the master playlist (2 variants) and plays **480p** at 10:02.',
+          observe: 'B is watching 7 minutes earlier.',
+          focus: v => [v.n.viewerB],
+          async run(s, v) {
+            await s.send(['viewerB', 'api'], 'GET /play', BLUE);
+            await s.send(['api', 'viewerB'], 'signed URL', GREEN);
+            await s.send(['viewerB', 'cdn'], 'GET master.m3u8', BLUE);
+            await s.send(['cdn', 'out'], 'miss → origin', AMBER);
+            await s.send(['cdn', 'viewerB'], '480p segs', GREEN);
+            who(s, v, 'B', '480p at 10:02 ✓', GREEN);
+          },
+        },
+        {
+          title: 'HD lands later; the manifest is updated',
+          text: 'At 10:09 1080p and 720p are complete. The master playlist is rewritten with all 4 variants and the status becomes READY. Because of the short manifest TTL, new plays (and a reload) see HD within seconds; segments already cached stay valid.',
+          observe: 'master.m3u8 has 4 variants; B\'s next play is HD.',
+          focus: v => [v.rows.master, v.n.viewerB],
+          async run(s, v) {
+            tick(s, v, '10:09:00'); await progAll(s, v, [300, 300, 300, 300]);
+            await s.send(['workers', 'out'], 'master: 4 variants', TEAL);
+            await master(s, v, 'master.m3u8 · 4 variants ✓');
+            await s.send(['workers', 'db'], 'READY', GREEN);
+            chip(s, v.vdb, 'v-1 · READY', GREEN); chip(s, v.wk, 'idle'); chip(s, v.kaf, 'done 1,200', GREEN);
+            await s.send(['viewerB', 'cdn'], 'GET master (TTL 5 s)', BLUE);
+            await s.send(['cdn', 'viewerB'], '1080p segs', GREEN);
+            who(s, v, 'B', 'next play: HD ✓', GREEN);
+          },
+        },
+      ],
+    },
+  ],
+
+  // ---------------- 4 · how to explain ----------------
+  explain: [
+    {
+      t: 'Clarify requirements', min: 5, goal: 'VOD or live, scale, devices, scope.',
+      lines: [
+        ['I', 'Design YouTube: upload and watch videos.'],
+        ['C', 'Video on demand only, or live streaming too?'],
+        ['I', 'On demand.'],
+        ['C', 'Scale: how much is uploaded, how many people watch at once?'],
+        ['I', '500 hours uploaded per minute, about 10 million concurrent viewers worldwide.'],
+        ['C', 'Devices and networks: TVs down to cheap phones on weak mobile networks?'],
+        ['I', 'Yes, everything.'],
+        ['C', 'I\'ll leave out recommendations, comments and ads, and focus on upload, processing and playback. A few minutes of processing before a video is watchable is fine?'],
+        ['I', 'Agreed.'],
+        ['P', 'Write: VOD · 500 h/min uploads · 10 M concurrent viewers · all devices · minutes to publish.'],
+      ],
+      avoid: 'Starting with the recommendation algorithm: the interviewer wants the media pipeline.',
+    },
+    {
+      t: 'Estimate the scale', min: 4, goal: 'Egress is the number that matters.',
+      lines: [
+        ['C', '500 h/min ≈ **720 k hours of video per day** to transcode.'],
+        ['C', 'Ladder 5 + 2.8 + 1.4 + 0.4 ≈ 9.6 Mbps ≈ **4.3 GB per hour** of output → ~3 PB/day, plus originals.'],
+        ['C', '10 M viewers × ~3 Mbps ≈ **30 Tbps** egress: only a CDN can serve that.'],
+        ['C', 'One hour = 900 chunks of 4 s × 4 renditions = **3,600 tasks**; with 300 workers ≈ 5 minutes.'],
+        ['P', 'Bandwidth, not storage or QPS, is the main cost: that is why the CDN is the centre of the design.'],
+      ],
+    },
+    {
+      t: 'API & data model', min: 5, goal: 'Control plane only; bytes go elsewhere.',
+      lines: [
+        ['C', '`POST /videos` → videoId + presigned multipart URLs; `GET /videos/{id}` → metadata and status; `GET /videos/{id}/play` → signed CDN URL of master.m3u8.'],
+        ['C', '`videos { _id, owner, title, status, totalTasks, doneTasks[], renditions, manifest }` in MongoDB.'],
+        ['C', 'Storage layout: `raw/v-1/original.mov`, `v-1/master.m3u8`, `v-1/720p/index.m3u8`, `v-1/720p/seg_007.ts`.'],
+        ['I', 'Why does the API not stream the video?'],
+        ['C', 'Gigabytes through app servers is slow and expensive; S3 and the CDN are built for bytes, the API only signs.'],
+      ],
+    },
+    {
+      t: 'High-level design', min: 10, goal: 'Upload, pipeline, playback.',
+      lines: [
+        ['P', 'Draw: Creator → API / Raw S3 → Planner → Kafka → Transcoders → Video storage (origin) → CDN → Viewers; Video DB on the side.'],
+        ['C', 'Upload: presigned multipart straight to S3; the S3 event starts the planner.'],
+        ['C', 'Planner: split at keyframes into 4-s chunks; one Kafka task per chunk × rendition, keyed by task id.'],
+        ['C', 'Workers: range-read the chunk, ffmpeg, write a deterministic key, `$addToSet` the task; the last one triggers playlists and READY.'],
+        ['C', 'Playback: signed CDN URL, master playlist, segments from the nearest edge, adaptive bitrate in the player.'],
+      ],
+    },
+    {
+      t: 'Deep dives', min: 15, goal: 'Parallelism, idempotency, ABR, viral load.',
+      lines: [
+        ['I', 'Why not just transcode the whole file on one machine?'],
+        ['C', 'Hours per video and a crash restarts it. Chunks at keyframes run in parallel: minutes, and a crash costs one chunk.'],
+        ['I', 'A worker dies in the middle of a task.'],
+        ['C', 'Kafka redelivers; the output key is deterministic so the retry overwrites, and completion is a set, so it counts once.'],
+        ['I', 'A viewer is on a bad network.'],
+        ['C', 'Four renditions on the same boundaries; the player measures throughput and buffer and switches down per segment.'],
+        ['I', 'A video goes viral.'],
+        ['C', 'Request collapsing at the edge, an origin shield, pre-warming; segments are immutable with a long TTL.'],
+      ],
+      avoid: 'Saying "the CDN handles it" without explaining what happens on a cold cache.',
+    },
+    {
+      t: 'Wrap up', min: 4, goal: 'Summarise and name next steps.',
+      lines: [
+        ['C', 'Summary: direct upload to S3, chunked parallel transcoding into an HLS ladder with idempotent tasks, signed CDN delivery with collapsing and a shield, adaptive bitrate in the player.'],
+        ['C', 'Next: per-title encoding ladders, AV1 for popular videos, CMAF so HLS and DASH share segments, DRM for premium content, low-latency HLS for live.'],
+      ],
+    },
+  ],
+
+  // ---------------- 5 · interview answer ----------------
+  answer: {
+    // short spoken paragraphs (owner's answer style): 1–2 minutes, pause between paragraphs
+    summary: [
+      "For upload I'd keep the video bytes away from our servers. The creator calls a Spring Boot **Video API**, which creates the video in MongoDB with status UPLOADING and returns **presigned multipart URLs**, so a 6 GB file goes straight to S3 in 10 MB parts. When the upload completes, S3 fires an event, and that starts the processing pipeline.",
+      "A **planner** probes the file and splits it at **keyframes** into 4-second chunks. For every chunk and every rendition, say 1080p down to 240p, it publishes one task to **Kafka**, keyed by task id so the work spreads over all partitions. A one-hour video becomes 3,600 small tasks, and a few hundred transcoder pods running ffmpeg finish it in about five minutes instead of hours on one machine.",
+      "Kafka is at least once, so a task can run twice when a pod dies. That's fine because the output key is **deterministic**, like `v-1/720p/seg_007.ts`, so a retry just overwrites, and completion is tracked with `$addToSet` of task ids, so it's counted once. When all tasks are done we write the **HLS** master and variant playlists and mark the video READY. We can even publish 240p and 480p first and add HD later.",
+      "For playback the API returns a **signed CloudFront URL**. The player fetches the master playlist and then segments from the **nearest edge**, and after each segment it checks throughput and buffer, so on a weak network it drops to 480p instead of stalling. For a viral video, the CDN collapses identical misses and uses an **origin shield**, so S3 sees a handful of requests, and since segments never change we cache them for a long time.",
+    ],
+    sections: [
+      { h: '1 · Requirements', color: '#4f7bd9', html: `<ul>
+        <li><b>Functional:</b> resumable upload, transcode to several resolutions, adaptive playback on any device, seek, private / unlisted videos, processing status.</li>
+        <li><b>Non-functional:</b> first frame in &lt; ~2 s, rare rebuffering, durable originals, a 1-hour video watchable within minutes, pipeline that scales with uploads.</li>
+        <li><b>Out of scope (say so):</b> recommendations, comments, ads, live streaming.</li></ul>` },
+      { h: '2 · Estimates', color: '#13968a', html: `<table>
+        <tr><td>Uploads</td><td class="m">500 h/min</td><td>≈ 720 k hours of video / day</td></tr>
+        <tr><td>Output size</td><td class="m">≈ 9.6 Mbps ladder</td><td>≈ 4.3 GB per hour → ~3 PB / day</td></tr>
+        <tr><td>Egress</td><td class="m">10 M × 3 Mbps</td><td>≈ 30 Tbps → CDN</td></tr>
+        <tr><td>Tasks per hour of video</td><td class="m">900 chunks × 4</td><td>3,600 tasks ≈ 5 min on 300 pods</td></tr></table>` },
+      { h: '3 · API', color: '#c47d1e', html: `<table>
+        <tr><td class="m">POST /videos</td><td>create (UPLOADING) + presigned multipart part URLs</td></tr>
+        <tr><td class="m">POST /videos/{id}/complete</td><td>complete the multipart upload (ETags)</td></tr>
+        <tr><td class="m">GET /videos/{id}</td><td>metadata and processing status</td></tr>
+        <tr><td class="m">GET /videos/{id}/play</td><td>access check → signed CDN URL / cookies for master.m3u8</td></tr>
+        <tr><td class="m">CDN …/720p/seg_007.ts</td><td>segments, cached at the edge</td></tr></table>` },
+      { h: '4 · Data & storage', color: '#8f4fc4', html: `<pre>// videos (MongoDB)
+{ _id: "v-1", owner: "A", title: "Demo", status: "READY",
+  durationSec: 1200, totalTasks: 1200, doneTasks: [ "v-1/720p/007", … ],
+  renditions: ["1080p", "720p", "480p", "240p"], manifest: "v-1/master.m3u8" }
+
+// S3
+raw/v-1/original.mov            // kept for re-encoding, lifecycle → Glacier
+v-1/master.m3u8                 // short CDN TTL while it can change
+v-1/720p/index.m3u8
+v-1/720p/seg_007.ts             // deterministic key, immutable, long TTL</pre>` },
+      { h: '5 · Pipeline', color: '#2f6fe0', html: `<ol>
+        <li>S3 <code>ObjectCreated</code> → planner: ffprobe, split at keyframes into 4-s chunks.</li>
+        <li>One Kafka task per chunk × rendition, key = task id.</li>
+        <li>Worker: range GET → ffmpeg → PUT deterministic key → <code>$addToSet</code> → commit offset.</li>
+        <li>doneTasks = totalTasks → write variant + master playlists → READY (or PLAYABLE with low renditions first).</li></ol>` },
+      { h: '6 · Playback & CDN', color: '#ce3434', html: `<ul>
+        <li>Signed CloudFront URL / cookies, expiring; DRM (Widevine / FairPlay) for premium content.</li>
+        <li>Adaptive bitrate: same keyframe boundaries in every rendition; switch per segment on throughput + buffer.</li>
+        <li>Viral load: request collapsing, origin shield, pre-warming; segments immutable with long TTL.</li>
+        <li>Seek = segment index (10:00 ÷ 4 s = 150).</li></ul>` },
+    ],
+    decisions: [
+      ['Direct multipart upload to S3', 'App servers never carry gigabytes; parts retry independently.', 'Two extra calls (create, complete) and abandoned uploads to clean up.'],
+      ['Chunk × rendition tasks', 'Minutes instead of hours; a crash costs one chunk.', 'Chunks must start on keyframes; a planner and a package step.'],
+      ['Deterministic keys + $addToSet', 'Retries and duplicates are harmless.', 'A done-task set per video (fine at thousands of ids).'],
+      ['HLS with a 4-rung ladder', 'Plays on weak networks without stalling.', '~2× storage of a single file; more encode work.'],
+      ['CDN with origin shield', 'Most bytes from the edge; the origin survives viral spikes.', 'CDN cost and an extra hop on misses.'],
+      ['Publish low renditions first', 'Watchable in minutes.', 'Early viewers get lower quality; manifests need short TTLs.'],
+    ],
+    code: [
+      { t: 'Video API: create the video + presigned multipart upload', code: `@RestController @RequestMapping("/videos")
+class VideoController {
+  static final long PART = 10 * 1024 * 1024;                     // 10 MB parts
+
+  @PostMapping
+  ResponseEntity<UploadPlan> create(@RequestBody NewVideo req, @AuthenticationPrincipal Jwt user) {
+    String id = "v-" + ids.next(), key = "raw/" + id + "/original";
+    String uploadId = s3.createMultipartUpload(b -> b.bucket(RAW).key(key)).uploadId();
+    videos.insert(new Video(id, user.getSubject(), req.title(), Status.UPLOADING, key, uploadId));
+
+    int parts = (int) Math.ceil(req.sizeBytes() / (double) PART);
+    List<String> urls = IntStream.rangeClosed(1, parts).mapToObj(n ->
+        presigner.presignUploadPart(p -> p.signatureDuration(Duration.ofHours(6))
+            .uploadPartRequest(u -> u.bucket(RAW).key(key).uploadId(uploadId).partNumber(n)))
+          .url().toString()).toList();
+    return ResponseEntity.status(201).body(new UploadPlan(id, uploadId, urls));
+  }
+  // POST /videos/{id}/complete → s3.completeMultipartUpload(parts + ETags); the S3 event starts the pipeline
+}` },
+      { t: 'Planner: S3 event → one Kafka task per chunk × rendition', code: `@KafkaListener(topics = "raw-video-events", groupId = "planner")
+void onUploaded(S3ObjectCreated e) {
+  String videoId = e.videoId();                                  // raw/v-1/original
+  List<Chunk> chunks = probe.chunksAtKeyframes(e.key(), Duration.ofSeconds(4));   // ffprobe → 300 chunks
+  int total = chunks.size() * Rendition.LADDER.size();           // × 1080p, 720p, 480p, 240p
+
+  mongo.updateFirst(query(where("_id").is(videoId)),
+      new Update().set("status", "PROCESSING").set("totalTasks", total), Video.class);
+
+  for (Chunk c : chunks)
+    for (Rendition r : Rendition.LADDER) {
+      String taskId = "%s/%s/%03d".formatted(videoId, r.name(), c.index());
+      // key = task id → tasks spread over every partition (key = videoId would use ONE consumer)
+      kafka.send("transcode-tasks", taskId, new Task(taskId, videoId, e.key(), c.byteRange(), c.index(), r));
+    }
+  // a redelivered event re-sends the same task ids: harmless, workers are idempotent
+}` },
+      { t: 'Transcoder: range read, ffmpeg, deterministic key, $addToSet', code: `@KafkaListener(topics = "transcode-tasks", groupId = "transcoders", concurrency = "2")
+void transcode(Task t, Acknowledgment ack) throws Exception {
+  Path dir = Files.createTempDirectory("task"), in = dir.resolve("chunk.mov"), out = dir.resolve("seg.ts");
+  s3.getObject(b -> b.bucket(RAW).key(t.sourceKey()).range("bytes=" + t.byteRange()), in);  // only this chunk
+
+  Process p = new ProcessBuilder("ffmpeg", "-y", "-i", in.toString(),
+          "-c:v", "libx264", "-b:v", t.rendition().kbps() + "k", "-s", t.rendition().size(),
+          "-c:a", "aac", "-b:a", "128k", out.toString())
+      .redirectErrorStream(true).redirectOutput(dir.resolve("ffmpeg.log").toFile()).start();
+  if (p.waitFor() != 0) throw new TranscodeFailed(t.taskId());   // no ack → retried, then DLQ
+
+  String key = "%s/%s/seg_%03d.ts".formatted(t.videoId(), t.rendition().name(), t.chunk());
+  s3.putObject(b -> b.bucket(OUT).key(key), out);                // same task → same key → retry overwrites
+
+  Video v = mongo.findAndModify(query(where("_id").is(t.videoId())),
+      new Update().addToSet("doneTasks", t.taskId()),            // a set: a duplicate is a no-op
+      options().returnNew(true), Video.class);
+  if (v.doneTasks().size() == v.totalTasks())
+    kafka.send("package-video", t.videoId(), t.videoId());       // playlists + READY (idempotent too)
+  ack.acknowledge();                                             // commit only after S3 + Mongo writes
+}` },
+      { t: 'HLS master playlist + signed CloudFront access', code: `# v-1/master.m3u8 (written by the package step)
+#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080
+1080p/index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1280x720
+720p/index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1400000,RESOLUTION=854x480
+480p/index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=400000,RESOLUTION=426x240
+240p/index.m3u8
+
+// GET /videos/{id}/play: one policy for master, variants and segments (v-1/*)
+@GetMapping("/{id}/play")
+Playback play(@PathVariable String id, @AuthenticationPrincipal Jwt user) {
+  Video v = videos.findById(id).filter(x -> x.canWatch(user.getSubject()))
+      .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+  CustomSignerRequest req = CustomSignerRequest.builder()
+      .resourceUrl("https://cdn.example.com/" + id + "/*")
+      .privateKey(cfPrivateKey).keyPairId(cfKeyPairId)
+      .expirationDate(Instant.now().plus(Duration.ofHours(6))).build();
+  CookiesForCustomPolicy cookies = cloudFront.getCookiesForCustomPolicy(req);
+  return new Playback("https://cdn.example.com/" + id + "/master.m3u8", cookies);
+}` },
+    ],
+  },
+
+  // ---------------- 6 · follow-ups ----------------
+  followGroups: {
+    up: { name: 'Upload & pipeline', color: '#2f6fe0' },
+    tc: { name: 'Transcoding', color: '#8f4fc4' },
+    pb: { name: 'Playback', color: '#348747' },
+    cd: { name: 'CDN & cost', color: '#c47d1e' },
+    rr: { name: 'Security & storage', color: '#ce3434' },
+  },
+  followups: [
+    { g: 'up', q: 'Why not upload the video through the API servers?', what: 'Multi-GB bodies on app servers.', why: 'Threads, memory and bandwidth tied up for minutes; one drop restarts everything.', how: 'Presigned **multipart** upload straight to S3, 10 MB parts in parallel, retry single parts (design #6).', trade: 'Extra create / complete calls; abandoned uploads need a lifecycle rule.', flow: 'upload' },
+    { g: 'up', q: 'How is the transcoding work split?', what: 'One hour of video would take hours on one machine.', why: 'Encoding is CPU-bound and independent per chunk.', how: 'Split at **keyframes** into 4-s chunks; one task per chunk × rendition (3,600 for an hour).', trade: 'Chunk boundaries must be keyframes; needs a package step at the end.', flow: 'parallel' },
+    { g: 'up', q: 'What is the Kafka key for transcode tasks?', what: 'Keyed by video id, all of a video\'s tasks land in one partition.', why: 'One partition is consumed by one consumer: no parallelism for that video.', how: 'Key = task id, so tasks spread evenly; partitions ≥ number of workers.', trade: 'No ordering between tasks, which we do not need.', flow: 'upload' },
+    { g: 'up', q: 'The transcode queue has a huge backlog.', what: 'Videos stay PROCESSING for a long time.', why: 'Uploads outpace workers.', how: 'Autoscale workers on **consumer lag** (KEDA), spot instances, a priority topic for big creators, low renditions first.', trade: 'Spot capacity can vanish; priority lanes need fairness rules.' },
+    { g: 'tc', q: 'A transcode task runs twice.', what: 'Two workers produce the same segment.', why: 'Kafka is at least once; a slow worker can look dead.', how: '**Deterministic** output key (video / rendition / chunk) → overwrite; completion via `$addToSet` of task ids.', trade: 'Some wasted compute for the duplicate.', flow: 'retry' },
+    { g: 'tc', q: 'How do you know when a video is completely transcoded?', what: '1,200 tasks finish in any order on different pods.', why: 'A plain counter is wrong under retries.', how: '`$addToSet` + `returnNew`; when the set size equals totalTasks, publish a package event; packaging is idempotent too.', trade: 'Two workers may both see "complete"; packaging must tolerate running twice.', flow: 'retry' },
+    { g: 'tc', q: 'A chunk always makes ffmpeg fail (corrupt source).', what: 'A poison task retries forever.', why: 'Retrying does not fix bad input.', how: 'Limited retries with backoff, then a **DLQ**; mark the video FAILED and tell the creator.', trade: 'Someone must inspect the DLQ.' },
+    { g: 'tc', q: 'HLS or DASH? Which codec?', what: 'Both are segment-based adaptive formats; H.264 plays everywhere, AV1 / VP9 / HEVC compress better.', why: 'Apple devices want HLS; better codecs cut egress but encode slower.', how: '**CMAF** (fMP4) segments shared by HLS and DASH; H.264 for all, AV1 extra for popular videos.', trade: 'More renditions to store; old devices may need TS.' },
+    { g: 'pb', q: 'How does the player avoid buffering on bad networks?', what: 'Bandwidth changes second by second.', why: 'A fixed bitrate cannot adapt.', how: 'Ladder of renditions on the same keyframes; ABR picks per segment from throughput and buffer level.', trade: 'Visible quality jumps; shorter segments add request overhead.', flow: 'abr' },
+    { g: 'pb', q: 'How do you make playback start fast?', what: 'Start-up time drives abandonment.', why: 'The first segment must arrive quickly.', how: 'Start at a low rendition, small first segments, pre-warmed CDN, preload the manifest on hover.', trade: 'The first seconds look blurry.', flow: 'abr' },
+    { g: 'pb', q: 'How does seeking work?', what: 'Jump to minute 10.', why: 'Segments are addressable by index.', how: '10:00 ÷ 4 s = segment 150; the player fetches it directly from the variant playlist.', trade: 'Seek precision = segment / keyframe interval.' },
+    { g: 'cd', q: 'A viral video overwhelms the origin.', what: 'Every edge misses at once.', why: 'The cache is cold everywhere.', how: '**Request collapsing**, an **origin shield**, pre-warming the first segments, multi-CDN.', trade: 'The shield adds a hop on misses.', flow: 'viral' },
+    { g: 'cd', q: 'How long do you cache segments and playlists?', what: 'Segments never change; manifests change while processing.', why: 'Immutable objects can be cached forever.', how: 'Segments: `max-age=1y, immutable`. Manifests: short TTL or invalidate on update.', trade: 'Invalidations cost time and money.', flow: 'early' },
+    { g: 'cd', q: 'Why not stream straight from S3?', what: 'Every viewer pulls from one region.', why: 'Latency, throttling and egress cost.', how: 'CDN edges near viewers; S3 is only the origin. At huge scale, own caches inside ISPs (Netflix Open Connect).', trade: 'CDN cost and configuration.', flow: 'viral' },
+    { g: 'rr', q: 'How do you protect private videos?', what: 'Anyone with a CDN URL could watch.', why: 'Plain CDN URLs are public.', how: '**Signed URLs / cookies** with expiry for `v-1/*`; DRM (Widevine / FairPlay) and encrypted segments for premium content.', trade: 'DRM adds licensing and device complexity.', flow: 'abr' },
+    { g: 'rr', q: 'Why keep the original after transcoding?', what: 'Petabytes of storage cost.', why: 'New codecs or a better ladder need the source, not a compressed copy.', how: 'Keep originals; S3 lifecycle to Infrequent Access / Glacier.', trade: 'Restoring from cold tiers is slow and costs extra.' },
+    { g: 'rr', q: 'Can a video be watchable before all renditions finish?', what: 'Waiting for 1080p delays publishing.', why: 'High renditions take longest.', how: 'Publish 240p / 480p first (PLAYABLE), add HD to the master playlist later.', trade: 'Early viewers get lower quality; manifest needs a short TTL.', flow: 'early' },
+  ],
+};
+</script>
+<script src="engine/app.js"></script>
+</body>
+</html>
